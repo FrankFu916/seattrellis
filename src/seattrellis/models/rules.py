@@ -12,6 +12,13 @@ class FixedSeatRule(BaseModel):
     student: str
     seat_id: str
 
+    @validator("student", "seat_id", pre=True)
+    def clean_required_text(cls, value: object) -> str:
+        text = str(value).strip()
+        if not text:
+            raise ValueError("value cannot be empty.")
+        return text
+
 
 class PairRule(BaseModel):
     students: tuple[str, str]
@@ -20,12 +27,22 @@ class PairRule(BaseModel):
     def normalize_students(cls, value: object) -> tuple[str, str]:
         if not isinstance(value, (list, tuple)) or len(value) != 2:
             raise ValueError("students must contain exactly two student references.")
-        return (str(value[0]), str(value[1]))
+        first = str(value[0]).strip()
+        second = str(value[1]).strip()
+        if not first or not second:
+            raise ValueError("students cannot contain empty references.")
+        return (first, second)
 
 
 class MinDistanceRule(PairRule):
     distance: float
     metric: Literal["euclidean", "graph"] = "euclidean"
+
+    @validator("distance")
+    def positive_distance(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("distance must be positive.")
+        return value
 
 
 class WeightedRule(BaseModel):

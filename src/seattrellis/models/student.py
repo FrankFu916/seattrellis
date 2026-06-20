@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import isfinite
 from typing import Any
 
 try:
@@ -55,6 +56,16 @@ class Student(BaseModel):
     @validator("tags", "needs", pre=True)
     def clean_lists(cls, value: Any) -> list[str]:
         return _normalize_list(value)
+
+    @validator("height_cm", "score")
+    def numeric_values_must_be_finite(cls, value: float | None, field: Any) -> float | None:
+        if value is None:
+            return None
+        if not isfinite(float(value)):
+            raise ValueError(f"{field.name} must be a finite number.")
+        if field.name == "height_cm" and value <= 0:
+            raise ValueError("height_cm must be positive.")
+        return value
 
     @root_validator(skip_on_failure=True)
     def require_identifier(cls, values: dict[str, Any]) -> dict[str, Any]:

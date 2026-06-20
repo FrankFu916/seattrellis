@@ -32,6 +32,12 @@ class SeatNode(BaseModel):
             raise ValueError("seat_id cannot be empty.")
         return value
 
+    @validator("row", "col")
+    def positive_grid_position(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("row and col must be positive integers.")
+        return value
+
     @root_validator(skip_on_failure=True)
     def default_coordinates(cls, values: dict[str, Any]) -> dict[str, Any]:
         if values.get("x") is None:
@@ -80,10 +86,25 @@ class ClassroomLayout(BaseModel):
     @root_validator(skip_on_failure=True)
     def require_unique_seat_ids(cls, values: dict[str, Any]) -> dict[str, Any]:
         seats = values.get("seats") or []
+        if not seats:
+            raise ValueError("Classroom layout must contain at least one seat.")
         seat_ids = [seat.seat_id for seat in seats]
         duplicates = sorted({seat_id for seat_id in seat_ids if seat_ids.count(seat_id) > 1})
         if duplicates:
             raise ValueError(f"Duplicate seat_id values: {', '.join(duplicates)}")
+        enabled_ids = {seat.seat_id for seat in seats if seat.enabled}
+        disabled_ids = {seat.seat_id for seat in seats if not seat.enabled}
+        for first, second in values.get("adjacency", AdjacencyConfig()).custom_edges:
+            missing = [seat_id for seat_id in (first, second) if seat_id not in seat_ids]
+            if missing:
+                raise ValueError(f"custom_edges reference unknown seat_id values: {', '.join(missing)}")
+            disabled = [seat_id for seat_id in (first, second) if seat_id in disabled_ids]
+            if disabled:
+                raise ValueError(f"custom_edges reference disabled seat_id values: {', '.join(disabled)}")
+            if first == second:
+                raise ValueError("custom_edges cannot connect a seat to itself.")
+        if not enabled_ids:
+            raise ValueError("Classroom layout must contain at least one enabled seat.")
         return values
 
     @property

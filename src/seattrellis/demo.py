@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
-import pandas as pd
+from openpyxl import Workbook
 
 from seattrellis.io.json_files import write_json_model
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
@@ -51,11 +52,9 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
     rules_json = examples / "rules.json"
 
     if overwrite or not students_csv.exists():
-        frame = pd.DataFrame(DEMO_STUDENTS)
-        frame.to_csv(students_csv, index=False, encoding="utf-8")
+        _write_students_csv(students_csv)
     if overwrite or not students_xlsx.exists():
-        frame = pd.DataFrame(DEMO_STUDENTS)
-        frame.to_excel(students_xlsx, index=False)
+        _write_students_xlsx(students_xlsx)
     if overwrite or not layout_json.exists():
         write_json_model(_demo_layout(), layout_json)
     if overwrite or not rules_json.exists():
@@ -68,6 +67,24 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         "rules": rules_json,
         "outputs": outputs,
     }
+
+
+def _write_students_csv(path: Path) -> None:
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(DEMO_STUDENTS[0].keys()))
+        writer.writeheader()
+        writer.writerows(DEMO_STUDENTS)
+
+
+def _write_students_xlsx(path: Path) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Students"
+    headers = list(DEMO_STUDENTS[0].keys())
+    sheet.append(headers)
+    for student in DEMO_STUDENTS:
+        sheet.append([student.get(header, "") for header in headers])
+    workbook.save(path)
 
 
 def _demo_layout() -> ClassroomLayout:

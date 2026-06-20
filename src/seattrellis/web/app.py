@@ -4,7 +4,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import pandas as pd
 from pydantic import ValidationError
 
 try:
@@ -13,8 +12,8 @@ except Exception as exc:  # pragma: no cover - depends on optional extra.
     raise RuntimeError("Install SeatTrellis with the web extra: pip install -e '.[web]'") from exc
 
 from seattrellis.exporters import export_snapshot
-from seattrellis.io.json_files import _parse_model, write_json_model
-from seattrellis.io.students import students_from_dataframe
+from seattrellis.io.json_files import InputFileError, _parse_model, write_json_model
+from seattrellis.io.students import read_students
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.solver import SeatTrellisSolveError, solve_seating
@@ -29,16 +28,15 @@ rules_file = st.file_uploader("规则 JSON", type=["json"])
 
 if st.button("生成座位表", type="primary", disabled=not (students_file and layout_file and rules_file)):
     try:
-        if students_file.name.lower().endswith(".csv"):
-            students_frame = pd.read_csv(students_file, dtype=object)
-        else:
-            students_frame = pd.read_excel(students_file, dtype=object)
-        students = students_from_dataframe(students_frame)
-        layout = _parse_model(ClassroomLayout, json.loads(layout_file.getvalue().decode("utf-8")))
-        rules = _parse_model(RuleSet, json.loads(rules_file.getvalue().decode("utf-8")))
+        with tempfile.TemporaryDirectory() as input_tmpdir:
+            students_path = Path(input_tmpdir) / students_file.name
+            students_path.write_bytes(students_file.getvalue())
+            students = read_students(students_path)
+        layout = _parse_model(ClassroomLayout, json.loads(layout_file.getvalue().decode("utf-8")), layout_file.name)
+        rules = _parse_model(RuleSet, json.loads(rules_file.getvalue().decode("utf-8")), rules_file.name)
         solution = solve_seating(students, layout, rules, seed=rules.seed)
         snapshot = solution.to_snapshot(students=students, layout=layout, rules=rules, seed=rules.seed)
-    except (SeatTrellisSolveError, ValidationError, ValueError) as exc:
+    except (InputFileError, SeatTrellisSolveError, ValidationError, ValueError) as exc:
         st.error(str(exc))
     else:
         st.success(f"求解完成：{solution.solver_status}")

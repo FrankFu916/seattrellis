@@ -1,0 +1,4 @@
+include README.en.md CHANGELOG.md CONTRIBUTING.md SECURITY.md
+recursive-include docs *
+recursive-include examples *
+global-exclude .DS_Store

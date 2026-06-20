@@ -1,41 +1,19 @@
 # 席序 SeatTrellis
 
-**简体中文｜[English](README.en.md)**
+[![Tests](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml)
 
-一个注重隐私与公平的智能排座工具，让每一个座位各得其所，让每一种关系安然成序。
+**简体中文 | [English](README.en.md)**
 
-## 项目简介
+席序 SeatTrellis 是一个本地优先的课堂排座工具，用虚构示例数据展示可复现的座位安排流程。它从学生名单、教室座位节点和规则文件生成 JSON snapshot，并可导出 Excel、PNG、HTML。
 
-席序 SeatTrellis 是一个本地优先的智能排座工具，适合教师、班主任、教务人员和需要处理教室座位安排的开发者使用。它可以根据学生名单、教室布局和排座规则自动生成座位表，并保存可复现的 JSON 快照，方便审阅、导出和复盘。
+项目默认在本机处理数据。不要把真实学生名单、学号、成绩、班级、学校、座位偏好或历史座位快照提交到公开仓库。
 
-项目默认在本机处理数据，不上传真实学生名单、成绩、座位偏好或历史座位结果。
-
-## 核心特性
-
-- 本地优先、隐私友好；
-- 支持 CSV 和 Excel 学生名单导入；
-- 支持基于 seat nodes 的教室布局；
-- 支持硬约束和软约束；
-- 支持 OR-Tools CP-SAT 自动排座；
-- 支持可复现 JSON snapshot；
-- 支持 Excel、PNG、HTML 导出；
-- 支持 CLI；
-- 支持 Streamlit 本地网页端；
-- 提供虚构示例数据、pytest 测试和 GitHub Actions。
-
-## 适用场景
-
-- 日常排座；
-- 考试座位安排；
-- 小组合作和邻座搭配；
-- 固定座位、禁邻、间隔距离；
-- 座位轮换和公平分配；
-- 需要保存可复现记录的排座流程。
+![Demo seating chart](docs/assets/demo-seating.png)
 
 ## 快速开始
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,web]"
 seattrellis init-demo
 seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json
 seattrellis export --snapshot outputs/latest.snapshot.json --format excel
@@ -43,183 +21,90 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 seattrellis export --snapshot outputs/latest.snapshot.json --format html
 ```
 
-启动本地网页端：
+导出文件会写入 `outputs/`。该目录已被 `.gitignore` 忽略。
 
-```bash
-python -m pip install -e ".[web]"
-streamlit run src/seattrellis/web/app.py
-```
+## 安装
 
-## 安装方法
+macOS / Linux:
 
 ```bash
 git clone https://github.com/FrankFu916/seattrellis.git
 cd seattrellis
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e ".[dev,web]"
 pytest
 ```
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 git clone https://github.com/FrankFu916/seattrellis.git
 cd seattrellis
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -e ".[dev,web]"
 pytest
 ```
 
-## 基本用法
-
-生成虚构示例数据：
+## CLI
 
 ```bash
-seattrellis init-demo
+seattrellis --help
+seattrellis init-demo --force
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --output outputs/demo.snapshot.json
+seattrellis export --snapshot outputs/demo.snapshot.json --format html --output outputs/demo.html
 ```
 
-生成座位快照：
+`init-demo` 默认不会覆盖已有示例文件；需要覆盖时使用 `--force`。旧命令名 `seatplanner` 仍作为兼容别名保留，新文档统一使用 `seattrellis`。
+
+## 输入与规则
+
+- 学生名单支持 CSV、`.xlsx`、`.xlsm`，至少需要 `student_id` 或 `name`。
+- 教室布局使用 JSON seat nodes，支持 `enabled=false` 的不可用座位。
+- 规则文件分为 `hard` 和 `soft`。
+- 详细格式见 [输入格式](docs/input-format.zh.md) 和 [规则说明](docs/rules.zh.md)。
+
+## 求解器
+
+默认使用内置 deterministic fallback solver，确保示例和小型排座流程无需重依赖即可运行。可选 OR-Tools CP-SAT 支持保留在 `solver` extra 中：
 
 ```bash
-seattrellis solve \
-  --students examples/students.xlsx \
-  --layout examples/classroom.json \
-  --rules examples/rules.json
+python -m pip install -e ".[solver]"
+SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json
 ```
 
-指定输出路径：
+如果本地 OR-Tools 导入失败，项目会回退到内置 solver。
+
+## 本地网页端
 
 ```bash
-seattrellis solve \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
-  --rules examples/rules.json \
-  --output outputs/demo.snapshot.json
+python -m pip install -e ".[web]"
+streamlit run src/seattrellis/web/app.py
 ```
 
-导出结果：
+## 当前支持
 
-```bash
-seattrellis export --snapshot outputs/latest.snapshot.json --format excel
-seattrellis export --snapshot outputs/latest.snapshot.json --format png
-seattrellis export --snapshot outputs/latest.snapshot.json --format html
-```
-
-当前仍保留 `seatplanner` 命令作为兼容别名，新文档和新项目统一使用 `seattrellis`。
-
-## 输入文件格式
-
-学生名单支持 CSV 和 Excel。`student_id` 或 `name` 至少提供一个，其他字段可选。
-
-```csv
-student_id,name,gender,height_cm,score,vision,tags,needs,notes
-STU001,Student001,F,154,92,poor,leader,vision_front,
-```
-
-教室布局使用 JSON，核心是 seat node，不局限于矩阵：
-
-```json
-{
-  "layout_id": "fictional-room",
-  "name": "Fictional Classroom",
-  "seats": [
-    {"seat_id": "R1C1", "row": 1, "col": 1, "enabled": true},
-    {"seat_id": "R1C2", "row": 1, "col": 2, "enabled": false, "zone": "aisle"}
-  ],
-  "adjacency": {
-    "include_horizontal": true,
-    "include_vertical": false,
-    "include_diagonal": false,
-    "custom_edges": []
-  }
-}
-```
-
-规则文件分为 `hard` 和 `soft`：
-
-```json
-{
-  "seed": 42,
-  "hard": {
-    "fixed_seats": [{"student": "STU001", "seat_id": "R1C1"}],
-    "must_be_adjacent": [{"students": ["STU002", "STU003"]}],
-    "cannot_be_adjacent": [{"students": ["STU004", "STU005"]}],
-    "min_distance": []
-  },
-  "soft": {
-    "vision_front": {"enabled": true, "weight": 20},
-    "height_back": {"enabled": true, "weight": 1},
-    "randomize": {"enabled": true, "weight": 1},
-    "score_balance": {"enabled": true, "weight": 1}
-  }
-}
-```
-
-完整示例见 `examples/students.csv`、`examples/students.xlsx`、`examples/classroom.json` 和 `examples/rules.json`。
-
-## 输出结果
-
-当前支持：
-
-- JSON snapshot：默认输出到 `outputs/latest.snapshot.json`；
-- Excel：座位网格和 assignment 明细；
-- PNG：座位表图片；
-- HTML：可在浏览器打开的本地座位表。
-
-## 项目结构
-
-```text
-.
-├── src/seattrellis/
-│   ├── models/      # 学生、座位、教室布局、规则、snapshot 数据模型
-│   ├── solver/      # adjacency graph 和 CP-SAT 求解器
-│   ├── io/          # CSV、Excel、JSON 导入与持久化
-│   ├── exporters/   # Excel、PNG、HTML 导出
-│   ├── web/         # Streamlit 本地网页端
-│   ├── cli.py       # CLI 入口
-│   └── demo.py      # 虚构 demo 数据生成
-├── examples/        # 仅包含虚构示例数据
-├── tests/           # pytest 测试
-└── .github/workflows/tests.yml
-```
+- CSV / Excel 学生名单导入；
+- JSON 教室布局、规则和 snapshot；
+- seat nodes 和 adjacency graph；
+- 固定座位、必须相邻、禁止相邻、最小距离；
+- 视力靠前、高个靠后、随机扰动、邻座成绩偏好；
+- Excel、PNG、HTML 导出；
+- CLI、本地 Streamlit UI、虚构示例数据、pytest 和 GitHub Actions。
 
 ## 隐私说明
 
-- 不要把真实学生名单、成绩、座位偏好、班级信息或历史座位快照上传到公开仓库。
-- `examples/` 中只能放虚构数据。
-- `outputs/`、`exports/`、`snapshots/`、`private/`、`data/`、`real_students/`、`real_classes/`、`.env` 已被 `.gitignore` 忽略。
-- 项目默认在本地处理数据，不默认上传云端。
-- 分享问题前请先脱敏，删除姓名、学号、成绩、备注、班级、学校和任何可识别信息。
+- `examples/` 只能包含虚构数据。
+- `outputs/`、`exports/`、`snapshots/`、`private/`、`data/`、`real_students/`、`real_classes/` 和 `.env` 已被忽略。
+- 分享 Issue、PR、截图或测试数据前，请删除姓名、学号、成绩、备注、班级、学校和任何可识别信息。
 
-## 开发路线
+## 发布
 
-已完成：
-
-- CSV/Excel 学生名单导入；
-- JSON 教室布局、规则和 snapshot；
-- seat nodes 和 adjacency graph；
-- OR-Tools CP-SAT 自动排座；
-- 固定座位、必须相邻、禁止相邻、最小间隔；
-- 视力靠前、高个靠后、随机扰动、邻座成绩搭配；
-- Excel、PNG、HTML 导出；
-- CLI、本地 Streamlit UI、示例数据和自动测试。
-
-计划中：
-
-- SQLite 历史库；
-- 历史同桌回避和座位公平轮换增强；
-- 小组均衡、标签分布、区域偏好；
-- Word/PDF 导出；
-- Word/PDF/图片导入和可选 OCR；
-- 交互式教室布局编辑器；
-- 稳定 JSON schema 和 PyPI 发布。
-
-## 参与贡献
-
-欢迎提交 Issue 和 Pull Request。提交前请运行 `pytest`，为新规则或新导入导出行为添加测试，并确保不提交真实学生数据或隐私材料。
+v0.1.0 准备事项见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 
-本项目使用 Apache License 2.0。详见 [LICENSE](LICENSE)。
+Apache License 2.0。详见 [LICENSE](LICENSE)。

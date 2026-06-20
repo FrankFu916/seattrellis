@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import pandas as pd
+from openpyxl import Workbook
 
-from seattrellis.io.students import read_students, students_from_dataframe
+from seattrellis.io.students import read_students, students_from_records
 
 
 def test_read_students_csv() -> None:
@@ -13,12 +13,12 @@ def test_read_students_csv() -> None:
 
 def test_read_students_excel(tmp_path) -> None:
     path = tmp_path / "students.xlsx"
-    pd.DataFrame(
-        [
-            {"学号": "A", "姓名": "甲", "身高": 150, "成绩": 90, "自定义列": "extra"},
-            {"学号": "B", "姓名": "乙", "身高": 160, "成绩": 80, "自定义列": "extra2"},
-        ]
-    ).to_excel(path, index=False)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["学号", "姓名", "身高", "成绩", "自定义列"])
+    sheet.append(["A", "甲", 150, 90, "extra"])
+    sheet.append(["B", "乙", 160, 80, "extra2"])
+    workbook.save(path)
 
     students = read_students(path)
 
@@ -27,9 +27,9 @@ def test_read_students_excel(tmp_path) -> None:
     assert students[0].attributes["自定义列"] == "extra"
 
 
-def test_students_from_dataframe_rejects_empty_data() -> None:
+def test_students_from_records_rejects_empty_data() -> None:
     try:
-        students_from_dataframe(pd.DataFrame())
+        students_from_records([])
     except ValueError as exc:
         assert "No valid students" in str(exc)
     else:
