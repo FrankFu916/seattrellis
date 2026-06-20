@@ -1,0 +1,15 @@
+{
+  "seed": 42,
+  "hard": {
+    "fixed_seats": [{"student": "STU001", "seat_id": "R1C1"}],
+    "must_be_adjacent": [{"students": ["STU002", "STU003"]}],
+    "cannot_be_adjacent": [{"students": ["STU004", "STU005"]}],
+    "min_distance": []
+  },
+  "soft": {
+    "vision_front": {"enabled": true, "weight": 20},
+    "height_back": {"enabled": true, "weight": 1},
+    "randomize": {"enabled": true, "weight": 1},
+    "score_balance": {"enabled": true, "weight": 1}
+  }
+}

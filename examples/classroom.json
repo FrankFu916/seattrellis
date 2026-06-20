@@ -1,0 +1,34 @@
+{
+  "layout_id": "fictional-room",
+  "name": "Fictional Classroom",
+  "seats": [
+    {"seat_id": "R1C1", "row": 1, "col": 1, "enabled": true, "zone": "front", "near_platform": true, "near_window": true},
+    {"seat_id": "R1C2", "row": 1, "col": 2, "enabled": true, "zone": "front", "near_platform": true},
+    {"seat_id": "R1C3", "row": 1, "col": 3, "enabled": true, "zone": "front", "near_platform": true},
+    {"seat_id": "R1C4", "row": 1, "col": 4, "enabled": true, "zone": "front", "near_platform": true},
+    {"seat_id": "R2C1", "row": 2, "col": 1, "enabled": true, "zone": "middle", "near_window": true},
+    {"seat_id": "R2C2", "row": 2, "col": 2, "enabled": true, "zone": "middle"},
+    {"seat_id": "R2C3", "row": 2, "col": 3, "enabled": false, "zone": "aisle"},
+    {"seat_id": "R2C4", "row": 2, "col": 4, "enabled": true, "zone": "middle"},
+    {"seat_id": "R3C1", "row": 3, "col": 1, "enabled": true, "zone": "middle", "near_window": true},
+    {"seat_id": "R3C2", "row": 3, "col": 2, "enabled": true, "zone": "middle"},
+    {"seat_id": "R3C3", "row": 3, "col": 3, "enabled": true, "zone": "middle"},
+    {"seat_id": "R3C4", "row": 3, "col": 4, "enabled": true, "zone": "middle"},
+    {"seat_id": "R4C1", "row": 4, "col": 1, "enabled": true, "zone": "back", "near_window": true},
+    {"seat_id": "R4C2", "row": 4, "col": 2, "enabled": false, "zone": "aisle"},
+    {"seat_id": "R4C3", "row": 4, "col": 3, "enabled": true, "zone": "back"},
+    {"seat_id": "R4C4", "row": 4, "col": 4, "enabled": true, "zone": "back", "near_door": true}
+  ],
+  "adjacency": {
+    "include_horizontal": true,
+    "include_vertical": false,
+    "include_diagonal": false,
+    "max_row_delta": 1,
+    "max_col_delta": 1,
+    "custom_edges": [["R1C2", "R2C2"]]
+  },
+  "metadata": {
+    "platform": "front",
+    "description": "Fictional 4x4 irregular classroom with two disabled seats."
+  }
+}

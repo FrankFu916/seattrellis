@@ -1,0 +1,9 @@
+student_id,name,gender,height_cm,score,vision,tags,needs,notes
+STU001,Student001,F,154,92,poor,leader,vision_front,
+STU002,Student002,M,172,81,,,,
+STU003,Student003,F,160,76,,,,
+STU004,Student004,M,178,88,,,,
+STU005,Student005,F,158,95,0.8,,,
+STU006,Student006,M,169,70,,,,
+STU007,Student007,F,165,84,,,,
+STU008,Student008,M,181,67,,,,

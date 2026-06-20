@@ -1,0 +1,18 @@
+{
+  "layout_id": "test-room",
+  "name": "Fictional Fixture Room",
+  "seats": [
+    {"seat_id": "A1", "row": 1, "col": 1, "enabled": true},
+    {"seat_id": "A2", "row": 1, "col": 2, "enabled": true},
+    {"seat_id": "A3", "row": 1, "col": 3, "enabled": false},
+    {"seat_id": "B1", "row": 2, "col": 1, "enabled": true},
+    {"seat_id": "B2", "row": 2, "col": 2, "enabled": true},
+    {"seat_id": "B3", "row": 2, "col": 3, "enabled": true}
+  ],
+  "adjacency": {
+    "include_horizontal": true,
+    "include_vertical": false,
+    "include_diagonal": false
+  },
+  "metadata": {"platform": "front"}
+}
