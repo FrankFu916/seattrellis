@@ -4,7 +4,13 @@ SeatTrellis reads three inputs: a student list, a classroom layout, and a rules 
 
 ## Student List
 
-Supported formats are CSV and Excel `.xlsx` / `.xlsm`. Save legacy `.xls` files as `.xlsx` or CSV first.
+The minimal install supports CSV. Install the `excel` extra for Excel `.xlsx` / `.xlsm` support:
+
+```bash
+python -m pip install -e ".[excel]"
+```
+
+Save legacy `.xls` files as `.xlsx` or CSV first.
 
 At least one of `student_id` or `name` is required. Other fields are optional:
 

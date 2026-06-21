@@ -10,10 +10,10 @@ try:
     from pydantic.v1 import ValidationError
 except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import ValidationError
-from openpyxl import load_workbook
 
 from seattrellis.io.json_files import InputFileError
 from seattrellis.models.student import Student
+from seattrellis.optional import MissingOptionalDependencyError
 
 COLUMN_ALIASES = {
     "student_id": {"student_id", "id", "sid", "学号", "学生编号", "编号"},
@@ -42,6 +42,8 @@ def read_students(path: str | Path) -> list[Student]:
         else:
             raise InputFileError(f"Unsupported student file format for {source}: {source.suffix}")
     except InputFileError:
+        raise
+    except MissingOptionalDependencyError:
         raise
     except Exception as exc:
         raise InputFileError(f"Could not read student file {source}: {exc}") from exc
@@ -97,6 +99,11 @@ def _read_csv_rows(path: Path) -> list[dict[str, Any]]:
 
 
 def _read_excel_rows(path: Path) -> list[dict[str, Any]]:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise MissingOptionalDependencyError("Excel import", "excel") from exc
+
     workbook = load_workbook(path, read_only=True, data_only=True)
     sheet = workbook.active
     rows = list(sheet.iter_rows(values_only=True))

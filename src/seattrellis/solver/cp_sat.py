@@ -18,6 +18,7 @@ from seattrellis.solver.adjacency import (
     seat_distance,
 )
 from seattrellis.solver.result import SeatingSolution
+from seattrellis.optional import MissingOptionalDependencyError
 
 cp_model = None
 _cp_model_unavailable = False
@@ -76,9 +77,9 @@ def _load_cp_model():
 
     try:  # pragma: no cover - exercised when OR-Tools is installed and enabled.
         from ortools.sat.python import cp_model as loaded_cp_model
-    except Exception:  # pragma: no cover - local fallback path is tested.
+    except Exception as exc:  # pragma: no cover - local fallback path is tested.
         _cp_model_unavailable = True
-        return None
+        raise MissingOptionalDependencyError("OR-Tools solver", "solver") from exc
     cp_model = loaded_cp_model
     return cp_model
 

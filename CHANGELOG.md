@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.1 - 2026-06-21
+
+### Improved
+- Split heavy dependencies into optional extras.
+- Kept the core package lighter for CLI and fallback-solver usage.
+- Added lazy imports for optional solver, Excel, image, and web features.
+- Improved missing-extra error messages.
+- Added minimal-install and full-feature test coverage.
+- Updated README and documentation to match the dependency model.
+
 ## 0.1.0 - 2026-06-20
 
 Initial open-source MVP:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seattrellis"
-version = "0.1.0"
+version = "0.1.1"
 description = "A privacy-first classroom seating planner for fair, constraint-based, and reproducible seat arrangements."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,14 +22,20 @@ classifiers = [
 dependencies = [
   "pydantic>=1.10,<3",
   "typer>=0.9",
-  "openpyxl>=3.1",
-  "Pillow>=9.4",
 ]
 
 [project.optional-dependencies]
+solver = ["ortools>=9.8,<9.15"]
+excel = ["openpyxl>=3.1"]
+image = ["Pillow>=9.4"]
 web = ["streamlit>=1.30"]
-solver = ["numpy>=1.26,<2", "ortools>=9.8,<9.15"]
 dev = ["pytest>=7.0", "build>=1.2"]
+all = [
+  "ortools>=9.8,<9.15",
+  "openpyxl>=3.1",
+  "Pillow>=9.4",
+  "streamlit>=1.30",
+]
 
 [project.scripts]
 seattrellis = "seattrellis.cli:main"

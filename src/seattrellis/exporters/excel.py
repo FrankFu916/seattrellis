@@ -2,21 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
-
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.optional import MissingOptionalDependencyError
 
 
 def export_excel(snapshot: SeatingSnapshot, output: str | Path) -> Path:
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError as exc:
+        raise MissingOptionalDependencyError("Excel export", "excel") from exc
+
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Seating"
-    _write_grid(sheet, snapshot)
+    _write_grid(sheet, snapshot, Alignment, Font, PatternFill, get_column_letter)
 
     assignments = workbook.create_sheet("Assignments")
     assignments.append(["student_key", "student_name", "seat_id"])
@@ -27,7 +31,7 @@ def export_excel(snapshot: SeatingSnapshot, output: str | Path) -> Path:
     return path
 
 
-def _write_grid(sheet, snapshot: SeatingSnapshot) -> None:
+def _write_grid(sheet, snapshot: SeatingSnapshot, Alignment, Font, PatternFill, get_column_letter) -> None:
     min_row, max_row, min_col, max_col = _bounds(snapshot)
     assignment_by_seat = {assignment.seat_id: assignment for assignment in snapshot.assignments}
     seat_by_position = {(seat.row, seat.col): seat for seat in snapshot.layout.seats}

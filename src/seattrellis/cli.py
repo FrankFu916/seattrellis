@@ -7,6 +7,7 @@ from seattrellis.demo import create_demo_files
 from seattrellis.exporters import export_snapshot
 from seattrellis.io.json_files import InputFileError, load_layout, load_rules, load_snapshot, write_json_model
 from seattrellis.io.students import read_students
+from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver import SeatTrellisSolveError, solve_seating
 
 try:
@@ -94,7 +95,7 @@ def main() -> None:
         return
     try:
         _run_argparse()
-    except (InputFileError, SeatTrellisSolveError, ValueError, OSError) as exc:
+    except (InputFileError, MissingOptionalDependencyError, SeatTrellisSolveError, ValueError, OSError) as exc:
         print(f"Error: {_friendly_error(exc)}")
         raise SystemExit(1) from exc
 
@@ -142,7 +143,7 @@ def _run_argparse() -> None:
 def _run_typer_action(action) -> None:
     try:
         action()
-    except (InputFileError, SeatTrellisSolveError, ValueError, OSError) as exc:
+    except (InputFileError, MissingOptionalDependencyError, SeatTrellisSolveError, ValueError, OSError) as exc:
         typer.echo(f"Error: {_friendly_error(exc)}", err=True)
         raise typer.Exit(1) from exc
 

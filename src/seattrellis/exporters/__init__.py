@@ -2,12 +2,22 @@
 
 from pathlib import Path
 
-from seattrellis.exporters.excel import export_excel
 from seattrellis.exporters.html import export_html
-from seattrellis.exporters.png import export_png
 from seattrellis.models.snapshot import SeatingSnapshot
 
 __all__ = ["export_excel", "export_html", "export_png", "export_snapshot"]
+
+
+def export_excel(snapshot: SeatingSnapshot, output: str | Path) -> Path:
+    from seattrellis.exporters.excel import export_excel as loaded_export_excel
+
+    return loaded_export_excel(snapshot, output)
+
+
+def export_png(snapshot: SeatingSnapshot, output: str | Path) -> Path:
+    from seattrellis.exporters.png import export_png as loaded_export_png
+
+    return loaded_export_png(snapshot, output)
 
 
 def export_snapshot(snapshot: SeatingSnapshot, output_format: str, output: str | Path | None = None) -> Path:

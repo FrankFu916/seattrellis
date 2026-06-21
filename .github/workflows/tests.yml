@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  pytest:
-    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+  minimal:
+    name: Minimal / ${{ matrix.os }} / Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -22,8 +22,36 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: pyproject.toml
-      - name: Install package and development dependencies
-        run: python -m pip install -e ".[dev,web]"
+      - name: Install minimal package and test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install -e .
+      - name: CLI help smoke test
+        run: seattrellis --help
+      - name: Run minimal install tests
+        run: pytest tests/test_minimal_install.py
+
+  full:
+    name: Full / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install full package and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[all,dev]"
       - name: Run tests
         run: pytest
       - name: Build package

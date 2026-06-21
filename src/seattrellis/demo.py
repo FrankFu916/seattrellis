@@ -3,8 +3,6 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from openpyxl import Workbook
-
 from seattrellis.io.json_files import write_json_model
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
 from seattrellis.models.rules import (
@@ -15,6 +13,7 @@ from seattrellis.models.rules import (
     SoftRules,
     WeightedRule,
 )
+from seattrellis.optional import MissingOptionalDependencyError
 
 
 DEMO_STUDENTS = [
@@ -54,7 +53,10 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
     if overwrite or not students_csv.exists():
         _write_students_csv(students_csv)
     if overwrite or not students_xlsx.exists():
-        _write_students_xlsx(students_xlsx)
+        try:
+            _write_students_xlsx(students_xlsx)
+        except MissingOptionalDependencyError:
+            pass
     if overwrite or not layout_json.exists():
         write_json_model(_demo_layout(), layout_json)
     if overwrite or not rules_json.exists():
@@ -77,6 +79,11 @@ def _write_students_csv(path: Path) -> None:
 
 
 def _write_students_xlsx(path: Path) -> None:
+    try:
+        from openpyxl import Workbook
+    except ImportError as exc:
+        raise MissingOptionalDependencyError("Excel demo generation", "excel") from exc
+
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Students"

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
-
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.optional import MissingOptionalDependencyError
 
 
 def export_png(snapshot: SeatingSnapshot, output: str | Path) -> Path:
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError as exc:
+        raise MissingOptionalDependencyError("PNG export", "image") from exc
+
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
 
