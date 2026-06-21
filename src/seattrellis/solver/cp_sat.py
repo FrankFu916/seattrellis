@@ -17,6 +17,7 @@ from seattrellis.solver.adjacency import (
     normalize_edge,
     seat_distance,
 )
+from seattrellis.io.validation import format_infeasible_diagnostic, validate_loaded_inputs
 from seattrellis.solver.result import SeatingSolution
 from seattrellis.optional import MissingOptionalDependencyError
 
@@ -53,10 +54,13 @@ def solve_seating(
         raise SeatTrellisSolveError("At least one student is required.")
     if len(students) > len(seats):
         raise SeatTrellisSolveError(
-            f"Not enough enabled seats: {len(students)} students for {len(seats)} seats."
+            f"Not enough enabled seats: {len(students)} students but only {len(seats)} enabled seats."
         )
 
     _validate_unique_students(students)
+    validation_report = validate_loaded_inputs(students, layout, rules)
+    if validation_report.errors:
+        raise SeatTrellisSolveError(validation_report.format_failure(title="Input validation failed."))
     edges = build_adjacency_edges(layout)
     compiled = _compile_rules(students, seats, layout, rules, edges)
 
@@ -120,9 +124,7 @@ def _solve_with_ortools(
     solver.parameters.num_search_workers = 1
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        raise SeatTrellisSolveError(
-            "No feasible seating plan found. Check fixed seats, adjacency, and distance hard rules."
-        )
+        raise SeatTrellisSolveError(format_infeasible_diagnostic(students, layout, rules))
 
     assignment_by_student: dict[int, int] = {}
     for student_index in range(len(students)):
@@ -286,9 +288,7 @@ def _solve_with_fallback(
             best_cost = cost
 
     if best_assignment is None:
-        raise SeatTrellisSolveError(
-            "No feasible seating plan found by fallback solver. Install OR-Tools for larger or tighter plans."
-        )
+        raise SeatTrellisSolveError(format_infeasible_diagnostic(students, layout, rules))
 
     return _solution_from_assignment(
         students,

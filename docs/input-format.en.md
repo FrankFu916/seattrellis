@@ -29,10 +29,21 @@ At least one of `student_id` or `name` is required. Other fields are optional:
 The importer validates:
 
 - the file is not empty;
+- headers include at least one of `student_id` or `name`;
 - each row has `student_id` or `name`;
+- if a `name` column is present, non-empty student rows must not have an empty `name`;
 - `student_id` values are unique;
-- numeric fields are valid;
+- `height_cm` and `score` values are valid numbers, with errors pointing to the column and row when possible;
 - unknown columns are preserved in `attributes`.
+- students without `student_id` use `name` as their stable internal ID and produce a `validate` warning.
+
+Run a lightweight preflight before solving:
+
+```bash
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+```
+
+`validate` checks inputs and obvious conflicts only; it does not generate a seating plan. With `--strict`, warnings also fail the command.
 
 ## Classroom Layout JSON
 
@@ -61,13 +72,16 @@ Seat fields:
 | --- | --- |
 | `seat_id` | Required unique seat ID |
 | `row` / `col` | Required positive integers |
+| `x` / `y` | Optional coordinates; default to `col` / `row` |
 | `enabled` | Optional; `false` marks an unavailable seat |
 | `zone` | Optional zone label |
 | `near_window` / `near_door` / `near_platform` / `near_ac` | Optional booleans |
 | `tags` | Optional tag list |
 | `attributes` | Optional extension attributes |
 
-Layout validation checks duplicate `seat_id` values, empty layouts, no enabled seats, and `custom_edges` pointing to unknown or disabled seats.
+Layout validation checks empty `seat_id` values, duplicate `seat_id` values, `row` / `col` types, empty layouts, no enabled seats, and `custom_edges` pointing to unknown or disabled seats. Cross-file preflight also checks whether the student count exceeds enabled seats and whether rules fix students to `enabled=false` seats.
+
+Invalid examples include `examples/invalid/duplicate_student_id.csv`, `examples/invalid/duplicate_seat_id.json`, and `examples/invalid/not_enough_seats.json`.
 
 ## Rules JSON
 

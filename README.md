@@ -18,6 +18,7 @@
 python -m pip install -e .
 seattrellis --help
 seattrellis init-demo
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis export --snapshot outputs/latest.snapshot.json --format html
 ```
@@ -66,6 +67,7 @@ streamlit run src/seattrellis/web/app.py
 ```bash
 seattrellis --help
 seattrellis init-demo --force
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --output outputs/demo.snapshot.json
 seattrellis export --snapshot outputs/demo.snapshot.json --format html --output outputs/demo.html
 ```
@@ -80,11 +82,14 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 `init-demo` 默认不会覆盖已有示例文件；需要覆盖时使用 `--force`。最小安装会生成 CSV/JSON demo；安装 `excel` extra 后也会生成 `examples/students.xlsx`。旧命令名 `seatplanner` 仍作为兼容别名保留，新文档统一使用 `seattrellis`。
 
+`validate` 只检查输入文件和明显的规则冲突，不生成座位表；`solve` 会在校验通过后再生成 snapshot。错误信息会尽量指出文件、字段、行号和 hard-rule 冲突。使用 `--strict` 时，warning 也会让命令以非零退出码结束。
+
 ## 输入与规则
 
 - 学生名单支持 CSV；安装 `excel` extra 后支持 `.xlsx` 和 `.xlsm`。旧版 `.xls` 请先另存为 `.xlsx` 或 CSV。
 - 教室布局使用 JSON seat nodes，支持 `enabled=false` 的不可用座位。
 - 规则文件分为 `hard` 和 `soft`。
+- 未识别的规则字段会作为错误报告，避免拼写错误被静默忽略。
 - 详细格式见 [输入格式](docs/input-format.zh.md) 和 [规则说明](docs/rules.zh.md)。
 
 ## 求解器
@@ -106,7 +111,7 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 - 固定座位、必须相邻、禁止相邻、最小距离；
 - 视力靠前、高个靠后、随机扰动、邻座成绩偏好；
 - HTML 导出，安装 `excel` / `image` extras 后支持 Excel / PNG 导出；
-- CLI、本地 Streamlit UI、虚构示例数据、pytest 和 GitHub Actions。
+- 输入预检与冲突诊断、CLI、本地 Streamlit UI、虚构示例数据、pytest 和 GitHub Actions。
 
 ## 隐私说明
 
@@ -116,7 +121,7 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 
 ## 发布
 
-v0.1.1 准备事项见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
+v0.1.2 准备事项见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 

@@ -37,15 +37,15 @@ def read_json(path: str | Path) -> dict[str, Any]:
 
 
 def load_layout(path: str | Path) -> ClassroomLayout:
-    return _parse_model(ClassroomLayout, read_json(path), path)
+    return _parse_model(ClassroomLayout, read_json(path), path, "classroom layout")
 
 
 def load_rules(path: str | Path) -> RuleSet:
-    return _parse_model(RuleSet, read_json(path), path)
+    return _parse_model(RuleSet, read_json(path), path, "rules file")
 
 
 def load_snapshot(path: str | Path) -> SeatingSnapshot:
-    return _parse_model(SeatingSnapshot, read_json(path), path)
+    return _parse_model(SeatingSnapshot, read_json(path), path, "snapshot")
 
 
 def write_json_model(model: BaseModel, path: str | Path) -> Path:
@@ -57,18 +57,19 @@ def write_json_model(model: BaseModel, path: str | Path) -> Path:
     return output
 
 
-def _parse_model(model_type: type[ModelT], data: dict[str, Any], path: str | Path) -> ModelT:
+def _parse_model(model_type: type[ModelT], data: dict[str, Any], path: str | Path, label: str) -> ModelT:
     try:
         if hasattr(model_type, "model_validate"):
             return model_type.model_validate(data)  # type: ignore[attr-defined,return-value]
         return model_type.parse_obj(data)
     except ValidationError as exc:
         errors = "; ".join(_format_validation_error(error) for error in exc.errors())
-        raise InputFileError(f"Invalid {model_type.__name__} in {Path(path)}: {errors}") from exc
+        raise InputFileError(f"Invalid {label}: {Path(path)}\n{errors}") from exc
 
 
 def _format_validation_error(error: dict[str, Any]) -> str:
-    location = ".".join(str(item) for item in error.get("loc", ()))
+    location_items = [item for item in error.get("loc", ()) if item != "__root__"]
+    location = ".".join(str(item) for item in location_items)
     message = error.get("msg", "invalid value")
     return f"{location}: {message}" if location else str(message)
 

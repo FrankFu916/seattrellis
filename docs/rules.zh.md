@@ -34,11 +34,21 @@ hard 规则必须满足，否则求解失败。
 - 同一学生被固定到多个座位；
 - 同一座位被固定给多个学生；
 - 同一学生对同时出现在 `must_be_adjacent` 和 `cannot_be_adjacent`；
-- 固定座位已经明显违反相邻或距离规则。
+- `min_distance` 与 `must_be_adjacent` 对同一学生对明显冲突；
+- 固定座位已经明显违反相邻或距离规则；
+- 未识别规则字段会作为错误报告。
+
+预检命令：
+
+```bash
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+```
+
+如果求解器没有找到可行解，CLI 会输出学生人数、可用座位数、hard 规则数量，并提示可能需要检查固定座位、禁止相邻、最小距离和 disabled 座位。
 
 ## soft 规则
 
-soft 规则是偏好，不保证一定满足。每条规则包含 `enabled` 和非负整数 `weight`。
+soft 规则是偏好，不保证一定满足。每条规则包含 `enabled` 和非负整数 `weight`。负数权重会报错，未识别的 soft rule 名称也会报错。
 
 ```json
 {

@@ -27,6 +27,16 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ["seattrellis", "init-demo"],
         [
             "seattrellis",
+            "validate",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--rules",
+            "examples/rules.json",
+        ],
+        [
+            "seattrellis",
             "solve",
             "--students",
             "examples/students.xlsx",

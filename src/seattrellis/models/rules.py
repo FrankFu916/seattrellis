@@ -19,6 +19,9 @@ class FixedSeatRule(BaseModel):
             raise ValueError("value cannot be empty.")
         return text
 
+    class Config:
+        extra = "forbid"
+
 
 class PairRule(BaseModel):
     students: tuple[str, str]
@@ -32,6 +35,9 @@ class PairRule(BaseModel):
         if not first or not second:
             raise ValueError("students cannot contain empty references.")
         return (first, second)
+
+    class Config:
+        extra = "forbid"
 
 
 class MinDistanceRule(PairRule):
@@ -55,12 +61,18 @@ class WeightedRule(BaseModel):
             raise ValueError("weight must be non-negative.")
         return value
 
+    class Config:
+        extra = "forbid"
+
 
 class HardRules(BaseModel):
     fixed_seats: list[FixedSeatRule] = Field(default_factory=list)
     must_be_adjacent: list[PairRule] = Field(default_factory=list)
     cannot_be_adjacent: list[PairRule] = Field(default_factory=list)
     min_distance: list[MinDistanceRule] = Field(default_factory=list)
+
+    class Config:
+        extra = "forbid"
 
 
 class SoftRules(BaseModel):
@@ -69,8 +81,14 @@ class SoftRules(BaseModel):
     randomize: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=True, weight=1))
     score_balance: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=False, weight=1))
 
+    class Config:
+        extra = "forbid"
+
 
 class RuleSet(BaseModel):
     seed: int = 42
     hard: HardRules = Field(default_factory=HardRules)
     soft: SoftRules = Field(default_factory=SoftRules)
+
+    class Config:
+        extra = "forbid"

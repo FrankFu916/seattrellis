@@ -1,0 +1,8 @@
+{
+  "hard": {
+    "fixed_seats": [
+      {"student": "MISSING_STUDENT", "seat_id": "R1C1"}
+    ]
+  },
+  "soft": {}
+}

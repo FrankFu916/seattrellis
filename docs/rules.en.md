@@ -34,11 +34,21 @@ Current validation checks:
 - one student fixed to multiple seats;
 - one seat fixed to multiple students;
 - the same pair appearing in both `must_be_adjacent` and `cannot_be_adjacent`;
-- fixed seats that already violate adjacency or distance rules.
+- obvious `min_distance` and `must_be_adjacent` conflicts for the same pair;
+- fixed seats that already violate adjacency or distance rules;
+- unknown rule fields as errors.
+
+Preflight command:
+
+```bash
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+```
+
+If the solver cannot find a feasible plan, the CLI prints the student count, enabled-seat count, hard-rule count, and possible causes such as fixed seats, dense cannot-adjacent rules, minimum distances, or disabled seats.
 
 ## soft Rules
 
-Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and a non-negative integer `weight`.
+Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and a non-negative integer `weight`. Negative weights fail validation, and unknown soft-rule names are reported as errors.
 
 ```json
 {

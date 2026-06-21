@@ -91,7 +91,7 @@ class ClassroomLayout(BaseModel):
         seat_ids = [seat.seat_id for seat in seats]
         duplicates = sorted({seat_id for seat_id in seat_ids if seat_ids.count(seat_id) > 1})
         if duplicates:
-            raise ValueError(f"Duplicate seat_id values: {', '.join(duplicates)}")
+            raise ValueError(f"Duplicate seat_id: {', '.join(duplicates)}")
         enabled_ids = {seat.seat_id for seat in seats if seat.enabled}
         disabled_ids = {seat.seat_id for seat in seats if not seat.enabled}
         for first, second in values.get("adjacency", AdjacencyConfig()).custom_edges:

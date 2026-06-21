@@ -1,0 +1,9 @@
+{
+  "hard": {
+    "fixed_seats": [
+      {"student": "STU001", "seat_id": "R1C1"},
+      {"student": "STU001", "seat_id": "R1C2"}
+    ]
+  },
+  "soft": {}
+}

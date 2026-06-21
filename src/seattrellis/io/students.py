@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Iterable, Mapping
-from math import isnan
+from math import isfinite, isnan
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,8 @@ COLUMN_ALIASES = {
     "needs": {"needs", "need", "特殊需求", "需求"},
 }
 
+NUMERIC_COLUMNS = {"height_cm", "score"}
+
 
 def read_students(path: str | Path) -> list[Student]:
     source = Path(path)
@@ -50,7 +52,7 @@ def read_students(path: str | Path) -> list[Student]:
     try:
         return students_from_records(rows)
     except ValueError as exc:
-        raise InputFileError(f"Invalid student file {source}: {exc}") from exc
+        raise InputFileError(f"Invalid students file: {source}\n{exc}") from exc
 
 
 def students_from_dataframe(frame: Any) -> list[Student]:
@@ -66,27 +68,53 @@ def students_from_records(records: Iterable[Mapping[str, Any]]) -> list[Student]
     columns = [str(column) for row in rows for column in row.keys()]
     column_map = _build_column_map(columns)
     students: list[Student] = []
+    seen_student_ids: dict[str, int] = {}
     for row_index, row in enumerate(rows):
+        row_number = row_index + 2
         data: dict[str, Any] = {}
         attributes: dict[str, Any] = {}
+        saw_non_empty_value = False
+        saw_name_column = False
+        name_was_empty = False
         for column, raw_value in row.items():
+            column_name = str(column)
+            canonical = column_map.get(column_name)
+            if canonical == "name":
+                saw_name_column = True
             value = _clean_value(raw_value)
             if value is None:
+                if canonical == "name":
+                    name_was_empty = True
                 continue
-            canonical = column_map.get(str(column))
+            saw_non_empty_value = True
             if canonical:
+                if canonical in NUMERIC_COLUMNS:
+                    value = _coerce_number(value, column_name, row_number)
                 data[canonical] = value
             else:
-                attributes[str(column)] = value
+                attributes[column_name] = value
         if attributes:
             data["attributes"] = attributes
         if not data:
             continue
+        if saw_name_column and name_was_empty:
+            raise ValueError(f'Row {row_number}: column "name" cannot be empty.')
+        if not data.get("student_id") and not data.get("name"):
+            if saw_non_empty_value:
+                raise ValueError(
+                    f'Row {row_number}: at least one of column "student_id" or "name" is required.'
+                )
+            continue
+        if data.get("student_id"):
+            student_id = str(data["student_id"])
+            if student_id in seen_student_ids:
+                raise ValueError(f'Row {row_number}: column "student_id" is duplicated: {student_id}')
+            seen_student_ids[student_id] = row_number
         try:
             students.append(Student(**data))
         except ValidationError as exc:
             messages = "; ".join(error["msg"] for error in exc.errors())
-            raise ValueError(f"row {row_index + 2}: {messages}") from exc
+            raise ValueError(f"Row {row_number}: {messages}") from exc
     if not students:
         raise ValueError("No valid students found.")
     _validate_unique_keys(students)
@@ -95,7 +123,9 @@ def students_from_records(records: Iterable[Mapping[str, Any]]) -> list[Student]
 
 def _read_csv_rows(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8-sig", newline="") as file:
-        return list(csv.DictReader(file))
+        reader = csv.DictReader(file)
+        _validate_student_headers(reader.fieldnames, path)
+        return list(reader)
 
 
 def _read_excel_rows(path: Path) -> list[dict[str, Any]]:
@@ -110,6 +140,7 @@ def _read_excel_rows(path: Path) -> list[dict[str, Any]]:
     if not rows:
         return []
     headers = [str(value).strip() if value is not None else "" for value in rows[0]]
+    _validate_student_headers(headers, path)
     records: list[dict[str, Any]] = []
     for values in rows[1:]:
         records.append({headers[index]: value for index, value in enumerate(values) if index < len(headers) and headers[index]})
@@ -131,6 +162,17 @@ def _build_column_map(columns: Iterable[str]) -> dict[str, str]:
     return mapping
 
 
+def _validate_student_headers(headers: Iterable[str] | None, path: Path) -> None:
+    if headers is None:
+        raise InputFileError(f"Invalid students file: {path}\nMissing header row.")
+    column_map = _build_column_map(str(header) for header in headers if str(header).strip())
+    present = set(column_map.values())
+    if "student_id" not in present and "name" not in present:
+        raise InputFileError(
+            f'Invalid students file: {path}\nMissing required column: at least one of "student_id" or "name".'
+        )
+
+
 def _clean_value(value: Any) -> Any:
     if value is None:
         return None
@@ -140,6 +182,18 @@ def _clean_value(value: Any) -> Any:
         text = value.strip()
         return text or None
     return value
+
+
+def _coerce_number(value: Any, column_name: str, row_number: int) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f'Row {row_number}: column "{column_name}" must be a number, got "{value}".')
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'Row {row_number}: column "{column_name}" must be a number, got "{value}".') from exc
+    if not isfinite(number):
+        raise ValueError(f'Row {row_number}: column "{column_name}" must be a finite number, got "{value}".')
+    return number
 
 
 def _validate_unique_keys(students: list[Student]) -> None:

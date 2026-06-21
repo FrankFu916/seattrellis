@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.2 - 2026-06-21
+
+### Added
+- Added a `validate` command for input and rule preflight checks.
+- Added stronger validation for students, classroom layouts, and rules.
+- Added clearer hard-constraint conflict diagnostics.
+- Added small fictional invalid examples for common validation failures.
+
+### Improved
+- Improved CLI error messages for invalid files and infeasible seating plans.
+- Expanded tests for invalid inputs and conflicting rules.
+- Updated documentation for validation behavior.
+
 ## 0.1.1 - 2026-06-21
 
 ### Improved

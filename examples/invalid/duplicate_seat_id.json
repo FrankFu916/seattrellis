@@ -1,0 +1,8 @@
+{
+  "layout_id": "invalid-duplicate-seat",
+  "name": "Fictional Invalid Classroom",
+  "seats": [
+    {"seat_id": "A1", "row": 1, "col": 1},
+    {"seat_id": "A1", "row": 1, "col": 2}
+  ]
+}

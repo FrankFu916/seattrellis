@@ -1,0 +1,8 @@
+{
+  "layout_id": "invalid-not-enough-seats",
+  "name": "Fictional Tiny Classroom",
+  "seats": [
+    {"seat_id": "A1", "row": 1, "col": 1, "enabled": true},
+    {"seat_id": "A2", "row": 1, "col": 2, "enabled": false}
+  ]
+}

@@ -65,6 +65,7 @@ jobs:
           tmpdir="$(mktemp -d)"
           cd "$tmpdir"
           seattrellis init-demo
+          seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
           seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json
           seattrellis export --snapshot outputs/latest.snapshot.json --format excel
           seattrellis export --snapshot outputs/latest.snapshot.json --format png

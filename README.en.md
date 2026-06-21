@@ -18,6 +18,7 @@ The minimal install includes only the core models, CLI, and fallback solver:
 python -m pip install -e .
 seattrellis --help
 seattrellis init-demo
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis export --snapshot outputs/latest.snapshot.json --format html
 ```
@@ -66,6 +67,7 @@ The web UI depends on Streamlit. Install `excel` and `image` too if you want Exc
 ```bash
 seattrellis --help
 seattrellis init-demo --force
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --output outputs/demo.snapshot.json
 seattrellis export --snapshot outputs/demo.snapshot.json --format html --output outputs/demo.html
 ```
@@ -80,11 +82,14 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 `init-demo` keeps existing files by default. Use `--force` to overwrite generated demo files. Minimal installs generate CSV/JSON demo files; installing the `excel` extra also enables `examples/students.xlsx` generation. The legacy `seatplanner` command remains available as a compatibility alias; new docs use `seattrellis`.
 
+`validate` checks input files and obvious rule conflicts only; it does not generate a seating snapshot. `solve` validates first, then writes the snapshot. Error messages try to include the file, field, row number, and hard-rule conflict. With `--strict`, warnings also make the command exit with a non-zero status.
+
 ## Inputs And Rules
 
 - Student lists support CSV; installing the `excel` extra enables `.xlsx` and `.xlsm`. Save legacy `.xls` files as `.xlsx` or CSV first.
 - Classroom layouts are JSON seat-node graphs and support `enabled=false` unavailable seats.
 - Rule files separate `hard` constraints from `soft` preferences.
+- Unknown rule fields are reported as errors so typos are not silently ignored.
 - See [input formats](docs/input-format.en.md) and [rules](docs/rules.en.md).
 
 ## Solver
@@ -106,7 +111,7 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 - fixed seats, must-adjacent, cannot-adjacent, and minimum-distance rules;
 - vision-front, height-back, randomization, and score-balance preferences;
 - HTML export, with Excel / PNG export available through the `excel` / `image` extras;
-- CLI, local Streamlit UI, fictional examples, pytest, and GitHub Actions.
+- validation preflight and conflict diagnostics, CLI, local Streamlit UI, fictional examples, pytest, and GitHub Actions.
 
 ## Privacy
 
@@ -116,7 +121,7 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 
 ## Release
 
-See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md) for v0.1.1 preparation.
+See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md) for v0.1.2 preparation.
 
 ## License
 

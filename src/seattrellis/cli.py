@@ -7,6 +7,7 @@ from seattrellis.demo import create_demo_files
 from seattrellis.exporters import export_snapshot
 from seattrellis.io.json_files import InputFileError, load_layout, load_rules, load_snapshot, write_json_model
 from seattrellis.io.students import read_students
+from seattrellis.io.validation import validate_files, validate_loaded_inputs
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver import SeatTrellisSolveError, solve_seating
 
@@ -43,6 +44,15 @@ if typer is not None:
             )
         )
 
+    @app.command("validate", help="Validate input files and hard-rule conflicts without solving.")
+    def validate_command(
+        students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
+        layout: Path = typer.Option(..., "--layout", help="Classroom layout JSON."),
+        rules: Path = typer.Option(..., "--rules", help="Rules JSON."),
+        strict: bool = typer.Option(False, "--strict", help="Treat warnings as validation failures."),
+    ) -> None:
+        _run_typer_action(lambda: typer.echo(run_validate(students_path=students, layout_path=layout, rules_path=rules, strict=strict)))
+
     @app.command("export", help="Export a snapshot to Excel, PNG, or HTML.")
     def export_command(
         snapshot: Path = typer.Option(..., "--snapshot", help="Snapshot JSON path."),
@@ -74,6 +84,7 @@ def solve(
     students = read_students(students_path)
     layout = load_layout(layout_path)
     rules = load_rules(rules_path)
+    validate_loaded_inputs(students, layout, rules).raise_for_errors(title="Input validation failed.")
     solution = solve_seating(students, layout, rules, seed=rules.seed, time_limit_seconds=time_limit_seconds)
     snapshot = solution.to_snapshot(students=students, layout=layout, rules=rules, seed=rules.seed)
     return write_json_model(snapshot, output_path)
@@ -87,6 +98,18 @@ def export(
 ) -> Path:
     snapshot = load_snapshot(snapshot_path)
     return export_snapshot(snapshot, output_format, output_path)
+
+
+def run_validate(
+    *,
+    students_path: str | Path,
+    layout_path: str | Path,
+    rules_path: str | Path,
+    strict: bool = False,
+) -> str:
+    report = validate_files(students_path=students_path, layout_path=layout_path, rules_path=rules_path)
+    report.raise_for_errors(strict=strict)
+    return report.format_success()
 
 
 def main() -> None:
@@ -115,6 +138,12 @@ def _run_argparse() -> None:
     solve_parser.add_argument("--output", "-o", default="outputs/latest.snapshot.json")
     solve_parser.add_argument("--time-limit", type=float, default=3.0)
 
+    validate_parser = subparsers.add_parser("validate", help="Validate input files without solving.")
+    validate_parser.add_argument("--students", required=True)
+    validate_parser.add_argument("--layout", required=True)
+    validate_parser.add_argument("--rules", required=True)
+    validate_parser.add_argument("--strict", action="store_true")
+
     export_parser = subparsers.add_parser("export", help="Export a snapshot.")
     export_parser.add_argument("--snapshot", required=True)
     export_parser.add_argument("--format", required=True)
@@ -135,6 +164,15 @@ def _run_argparse() -> None:
             time_limit_seconds=args.time_limit,
         )
         print(f"Snapshot written to {path}")
+    elif args.command == "validate":
+        print(
+            run_validate(
+                students_path=args.students,
+                layout_path=args.layout,
+                rules_path=args.rules,
+                strict=args.strict,
+            )
+        )
     elif args.command == "export":
         path = export(snapshot_path=args.snapshot, output_format=args.format, output_path=args.output)
         print(f"Export written to {path}")

@@ -14,6 +14,65 @@ def test_cli_help_runs_in_minimal_install() -> None:
     assert "SeatTrellis" in result.stdout
 
 
+def test_csv_validate_and_html_export_run_in_minimal_install(tmp_path) -> None:
+    validate_result = subprocess.run(
+        [
+            "seattrellis",
+            "validate",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--rules",
+            "examples/rules.json",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert validate_result.returncode == 0, validate_result.stderr
+    assert "Validation passed." in validate_result.stdout
+
+    snapshot_path = tmp_path / "latest.snapshot.json"
+    solve_result = subprocess.run(
+        [
+            "seattrellis",
+            "solve",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--rules",
+            "examples/rules.json",
+            "--output",
+            str(snapshot_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert solve_result.returncode == 0, solve_result.stderr
+
+    html_path = tmp_path / "seating.html"
+    export_result = subprocess.run(
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
+            str(snapshot_path),
+            "--format",
+            "html",
+            "--output",
+            str(html_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert export_result.returncode == 0, export_result.stderr
+    assert html_path.exists()
+
+
 def test_fallback_solver_handles_json_layout_and_rules_without_optional_extras() -> None:
     students = students_from_records(
         [
