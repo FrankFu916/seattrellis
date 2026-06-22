@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 - 2026-06-21
+## 0.2.0 - 2026-06-22
 
 ### Added
 - Added historical snapshot loading for seat rotation analysis.
