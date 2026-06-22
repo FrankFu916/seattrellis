@@ -12,6 +12,7 @@ outputs/
 exports/
 snapshots/
 *.snapshot.json
+!examples/history/*.snapshot.json
 data/
 private/
 real_students/

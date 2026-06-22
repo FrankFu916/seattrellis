@@ -41,6 +41,20 @@
     "score_balance": {
       "enabled": true,
       "weight": 1
+    },
+    "fair_rotation": {
+      "enabled": true,
+      "weight": 10,
+      "avoid_repeating_categories": [
+        "front",
+        "back",
+        "side",
+        "corner",
+        "near_window",
+        "near_door",
+        "near_ac"
+      ],
+      "lookback": 4
     }
   }
 }

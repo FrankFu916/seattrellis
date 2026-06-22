@@ -7,9 +7,11 @@ from math import inf
 from typing import Any
 
 from seattrellis.models.layout import ClassroomLayout, SeatNode
+from seattrellis.models.history import SeatHistory
 from seattrellis.models.rules import MinDistanceRule, PairRule, RuleSet
 from seattrellis.models.snapshot import SeatAssignment
 from seattrellis.models.student import Student
+from seattrellis.history import assignment_fairness_summary, fair_rotation_cost
 from seattrellis.solver.adjacency import (
     SeatEdge,
     build_adjacency_edges,
@@ -42,6 +44,7 @@ def solve_seating(
     layout: ClassroomLayout,
     rules: RuleSet | None = None,
     *,
+    history: SeatHistory | None = None,
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
 ) -> SeatingSolution:
@@ -66,8 +69,8 @@ def solve_seating(
 
     cp_sat = _load_cp_model()
     if cp_sat is not None:
-        return _solve_with_ortools(students, seats, layout, rules, compiled, edges, seed, time_limit_seconds)
-    return _solve_with_fallback(students, seats, layout, rules, compiled, edges, seed)
+        return _solve_with_ortools(students, seats, layout, rules, compiled, edges, history, seed, time_limit_seconds)
+    return _solve_with_fallback(students, seats, layout, rules, compiled, edges, history, seed)
 
 
 def _load_cp_model():
@@ -95,6 +98,7 @@ def _solve_with_ortools(
     rules: RuleSet,
     compiled: _CompiledRules,
     edges: set[SeatEdge],
+    history: SeatHistory | None,
     seed: int,
     time_limit_seconds: float,
 ) -> SeatingSolution:
@@ -113,7 +117,7 @@ def _solve_with_ortools(
         model.Add(x[(student_index, seat_index)] == 1)
 
     _add_pair_constraints(model, x, seats, compiled, layout, edges)
-    objective_terms = _build_individual_objective_terms(x, students, seats, rules, seed)
+    objective_terms = _build_individual_objective_terms(x, students, seats, layout, rules, history, seed)
     objective_terms.extend(_build_score_balance_terms(model, x, students, seats, rules, edges))
     if objective_terms:
         model.Minimize(sum(coef * var for var, coef in objective_terms))
@@ -140,6 +144,9 @@ def _solve_with_ortools(
         "OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE",
         float(solver.ObjectiveValue()) if objective_terms else None,
         {"solver": "ortools-cp-sat"},
+        layout,
+        rules,
+        history,
     )
 
 
@@ -189,7 +196,9 @@ def _build_individual_objective_terms(
     x: dict[tuple[int, int], Any],
     students: list[Student],
     seats: list[SeatNode],
+    layout: ClassroomLayout,
     rules: RuleSet,
+    history: SeatHistory | None,
     seed: int,
 ) -> list[tuple[Any, int]]:
     terms: list[tuple[Any, int]] = []
@@ -198,7 +207,7 @@ def _build_individual_objective_terms(
     max_row = max(seat.row for seat in seats)
     for student_index, student in enumerate(students):
         for seat_index, seat in enumerate(seats):
-            coef = _individual_cost(student, seat, rules, rng, min_row, max_row)
+            coef = _individual_cost(student, seat, layout, rules, history, rng, min_row, max_row)
             if coef:
                 terms.append((x[(student_index, seat_index)], coef))
     return terms
@@ -249,6 +258,7 @@ def _solve_with_fallback(
     rules: RuleSet,
     compiled: _CompiledRules,
     edges: set[SeatEdge],
+    history: SeatHistory | None,
     seed: int,
 ) -> SeatingSolution:
     rng = random.Random(seed)
@@ -268,12 +278,15 @@ def _solve_with_fallback(
                 break
             student_index, candidates = choice
             if attempt == 0:
-                candidates = sorted(candidates, key=lambda idx: _fallback_individual_cost(students[student_index], seats[idx], rules))
+                candidates = sorted(
+                    candidates,
+                    key=lambda idx: _fallback_individual_cost(students[student_index], seats[idx], layout, rules, history),
+                )
                 seat_index = candidates[0]
             else:
                 candidates = sorted(
                     candidates,
-                    key=lambda idx: _fallback_individual_cost(students[student_index], seats[idx], rules)
+                    key=lambda idx: _fallback_individual_cost(students[student_index], seats[idx], layout, rules, history)
                     + rng.random() * 25,
                 )
                 seat_index = rng.choice(candidates[: min(3, len(candidates))])
@@ -282,7 +295,7 @@ def _solve_with_fallback(
 
         if not success or not _full_assignment_valid(assignment, seats, layout, compiled, edges):
             continue
-        cost = _fallback_total_cost(assignment, students, seats, rules, edges)
+        cost = _fallback_total_cost(assignment, students, seats, layout, rules, edges, history)
         if cost < best_cost:
             best_assignment = dict(assignment)
             best_cost = cost
@@ -297,6 +310,9 @@ def _solve_with_fallback(
         "FEASIBLE",
         best_cost,
         {"solver": "fallback-heuristic", "attempts": attempts},
+        layout,
+        rules,
+        history,
     )
 
 
@@ -502,7 +518,9 @@ def _distance_for_rule(
 def _individual_cost(
     student: Student,
     seat: SeatNode,
+    layout: ClassroomLayout,
     rules: RuleSet,
+    history: SeatHistory | None,
     rng: random.Random,
     min_row: int,
     max_row: int,
@@ -515,27 +533,36 @@ def _individual_cost(
         cost += rules.soft.height_back.weight * int(round(float(student.height_cm))) * front_penalty
     if rules.soft.randomize.enabled:
         cost += rules.soft.randomize.weight * rng.randint(0, 100)
+    cost += fair_rotation_cost(student, seat, layout, rules.soft.fair_rotation, history)
     return cost
 
 
-def _fallback_individual_cost(student: Student, seat: SeatNode, rules: RuleSet) -> float:
+def _fallback_individual_cost(
+    student: Student,
+    seat: SeatNode,
+    layout: ClassroomLayout,
+    rules: RuleSet,
+    history: SeatHistory | None,
+) -> float:
     fake_rng = random.Random(0)
-    return float(_individual_cost(student, seat, rules, fake_rng, seat.row, seat.row + 4))
+    return float(_individual_cost(student, seat, layout, rules, history, fake_rng, seat.row, seat.row + 4))
 
 
 def _fallback_total_cost(
     assignment: dict[int, int],
     students: list[Student],
     seats: list[SeatNode],
+    layout: ClassroomLayout,
     rules: RuleSet,
     edges: set[SeatEdge],
+    history: SeatHistory | None,
 ) -> float:
     min_row = min(seat.row for seat in seats)
     max_row = max(seat.row for seat in seats)
     rng = random.Random(rules.seed)
     cost = 0.0
     for student_index, seat_index in assignment.items():
-        cost += _individual_cost(students[student_index], seats[seat_index], rules, rng, min_row, max_row)
+        cost += _individual_cost(students[student_index], seats[seat_index], layout, rules, history, rng, min_row, max_row)
 
     if rules.soft.score_balance.enabled and rules.soft.score_balance.weight:
         for first_index, first_seat_index in assignment.items():
@@ -584,6 +611,9 @@ def _solution_from_assignment(
     status: str,
     objective_value: float | None,
     metrics: dict[str, Any],
+    layout: ClassroomLayout,
+    rules: RuleSet,
+    history: SeatHistory | None,
 ) -> SeatingSolution:
     assignments = [
         SeatAssignment(
@@ -593,6 +623,9 @@ def _solution_from_assignment(
         )
         for student_index in range(len(students))
     ]
+    fairness = assignment_fairness_summary(assignments, students, layout, rules, history)
+    if fairness:
+        metrics = {**metrics, "fairness": fairness}
     return SeatingSolution(
         assignments=assignments,
         solver_status=status,

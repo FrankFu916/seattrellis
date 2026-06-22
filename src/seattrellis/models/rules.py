@@ -7,6 +7,8 @@ try:
 except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import BaseModel, Field, validator
 
+from seattrellis.models.history import ROTATION_CATEGORIES, SeatPositionCategory
+
 
 class FixedSeatRule(BaseModel):
     student: str
@@ -65,6 +67,35 @@ class WeightedRule(BaseModel):
         extra = "forbid"
 
 
+class FairRotationRule(WeightedRule):
+    avoid_repeating_categories: list[SeatPositionCategory] = Field(
+        default_factory=lambda: [
+            SeatPositionCategory.FRONT,
+            SeatPositionCategory.BACK,
+            SeatPositionCategory.SIDE,
+            SeatPositionCategory.CORNER,
+            SeatPositionCategory.NEAR_WINDOW,
+            SeatPositionCategory.NEAR_DOOR,
+            SeatPositionCategory.NEAR_AC,
+        ]
+    )
+    lookback: int = 4
+
+    @validator("avoid_repeating_categories")
+    def known_rotation_categories(cls, value: list[SeatPositionCategory]) -> list[SeatPositionCategory]:
+        allowed = set(ROTATION_CATEGORIES)
+        unknown = [category.value for category in value if category not in allowed]
+        if unknown:
+            raise ValueError(f"Unsupported seat position categories: {', '.join(unknown)}")
+        return value
+
+    @validator("lookback")
+    def non_negative_lookback(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("lookback must be non-negative.")
+        return value
+
+
 class HardRules(BaseModel):
     fixed_seats: list[FixedSeatRule] = Field(default_factory=list)
     must_be_adjacent: list[PairRule] = Field(default_factory=list)
@@ -80,6 +111,7 @@ class SoftRules(BaseModel):
     height_back: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=True, weight=1))
     randomize: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=True, weight=1))
     score_balance: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=False, weight=1))
+    fair_rotation: FairRotationRule = Field(default_factory=lambda: FairRotationRule(enabled=False, weight=10))
 
     class Config:
         extra = "forbid"

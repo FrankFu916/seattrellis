@@ -2,9 +2,18 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Sequence
 
+from seattrellis import __version__
 from seattrellis.demo import create_demo_files
 from seattrellis.exporters import export_snapshot
+from seattrellis.history import (
+    build_fairness_report,
+    build_seat_history,
+    fairness_metadata,
+    format_history_report,
+    load_history_snapshots,
+)
 from seattrellis.io.json_files import InputFileError, load_layout, load_rules, load_snapshot, write_json_model
 from seattrellis.io.students import read_students
 from seattrellis.io.validation import validate_files, validate_loaded_inputs
@@ -36,11 +45,21 @@ if typer is not None:
         layout: Path = typer.Option(..., "--layout", help="Classroom layout JSON."),
         rules: Path = typer.Option(..., "--rules", help="Rules JSON."),
         output: Path = typer.Option(Path("outputs/latest.snapshot.json"), "--output", "-o", help="Snapshot path."),
+        history: list[Path] = typer.Option([], "--history", help="Historical snapshot JSON path. Can be repeated."),
+        history_dir: Path | None = typer.Option(None, "--history-dir", help="Directory containing historical *.snapshot.json files."),
         time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit in seconds."),
     ) -> None:
         _run_typer_action(
-            lambda: typer.echo(
-                f"Snapshot written to {solve(students_path=students, layout_path=layout, rules_path=rules, output_path=output, time_limit_seconds=time_limit_seconds)}"
+            lambda: _print_solve_result(
+                solve_with_report(
+                    students_path=students,
+                    layout_path=layout,
+                    rules_path=rules,
+                    output_path=output,
+                    history_paths=history,
+                    history_dir=history_dir,
+                    time_limit_seconds=time_limit_seconds,
+                )
             )
         )
 
@@ -65,6 +84,26 @@ if typer is not None:
             )
         )
 
+    @app.command("history-report", help="Summarize historical seating snapshots.")
+    def history_report_command(
+        students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
+        layout: Path = typer.Option(..., "--layout", help="Classroom layout JSON."),
+        history: list[Path] = typer.Option([], "--history", help="Historical snapshot JSON path. Can be repeated."),
+        history_dir: Path | None = typer.Option(None, "--history-dir", help="Directory containing historical *.snapshot.json files."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Optional JSON report output path."),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                run_history_report(
+                    students_path=students,
+                    layout_path=layout,
+                    history_paths=history,
+                    history_dir=history_dir,
+                    output_path=output,
+                )
+            )
+        )
+
 else:
     app = None
 
@@ -79,15 +118,60 @@ def solve(
     layout_path: str | Path,
     rules_path: str | Path,
     output_path: str | Path = "outputs/latest.snapshot.json",
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
     time_limit_seconds: float = 3.0,
 ) -> Path:
+    path, _summary = solve_with_report(
+        students_path=students_path,
+        layout_path=layout_path,
+        rules_path=rules_path,
+        output_path=output_path,
+        history_paths=history_paths,
+        history_dir=history_dir,
+        time_limit_seconds=time_limit_seconds,
+    )
+    return path
+
+
+def solve_with_report(
+    *,
+    students_path: str | Path,
+    layout_path: str | Path,
+    rules_path: str | Path,
+    output_path: str | Path = "outputs/latest.snapshot.json",
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    time_limit_seconds: float = 3.0,
+) -> tuple[Path, str | None]:
     students = read_students(students_path)
     layout = load_layout(layout_path)
     rules = load_rules(rules_path)
     validate_loaded_inputs(students, layout, rules).raise_for_errors(title="Input validation failed.")
-    solution = solve_seating(students, layout, rules, seed=rules.seed, time_limit_seconds=time_limit_seconds)
-    snapshot = solution.to_snapshot(students=students, layout=layout, rules=rules, seed=rules.seed)
-    return write_json_model(snapshot, output_path)
+    history_snapshots = load_history_snapshots(history_paths=history_paths, history_dir=history_dir)
+    seat_history = build_seat_history(students, layout, history_snapshots)
+    solution = solve_seating(
+        students,
+        layout,
+        rules,
+        history=seat_history,
+        seed=rules.seed,
+        time_limit_seconds=time_limit_seconds,
+    )
+    snapshot = solution.to_snapshot(
+        students=students,
+        layout=layout,
+        rules=rules,
+        seed=rules.seed,
+        metadata={
+            "version": __version__,
+            "fairness": fairness_metadata(rules, seat_history),
+        },
+    )
+    path = write_json_model(snapshot, output_path)
+    fairness = solution.metrics.get("fairness", {})
+    summary = _format_solve_fairness_summary(fairness) if fairness else None
+    return path, summary
 
 
 def export(
@@ -110,6 +194,24 @@ def run_validate(
     report = validate_files(students_path=students_path, layout_path=layout_path, rules_path=rules_path)
     report.raise_for_errors(strict=strict)
     return report.format_success()
+
+
+def run_history_report(
+    *,
+    students_path: str | Path,
+    layout_path: str | Path,
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    output_path: str | Path | None = None,
+) -> str:
+    students = read_students(students_path)
+    layout = load_layout(layout_path)
+    snapshots = load_history_snapshots(history_paths=history_paths, history_dir=history_dir)
+    history = build_seat_history(students, layout, snapshots)
+    report = build_fairness_report(history)
+    if output_path is not None:
+        write_json_model(report, output_path)
+    return format_history_report(report)
 
 
 def main() -> None:
@@ -136,6 +238,8 @@ def _run_argparse() -> None:
     solve_parser.add_argument("--layout", required=True)
     solve_parser.add_argument("--rules", required=True)
     solve_parser.add_argument("--output", "-o", default="outputs/latest.snapshot.json")
+    solve_parser.add_argument("--history", action="append", default=[])
+    solve_parser.add_argument("--history-dir", default=None)
     solve_parser.add_argument("--time-limit", type=float, default=3.0)
 
     validate_parser = subparsers.add_parser("validate", help="Validate input files without solving.")
@@ -149,6 +253,13 @@ def _run_argparse() -> None:
     export_parser.add_argument("--format", required=True)
     export_parser.add_argument("--output", "-o", default=None)
 
+    history_parser = subparsers.add_parser("history-report", help="Summarize historical seating snapshots.")
+    history_parser.add_argument("--students", required=True)
+    history_parser.add_argument("--layout", required=True)
+    history_parser.add_argument("--history", action="append", default=[])
+    history_parser.add_argument("--history-dir", default=None)
+    history_parser.add_argument("--output", "-o", default=None)
+
     args = parser.parse_args()
     if args.command == "init-demo":
         paths = init_demo(output_dir=args.output_dir, overwrite=args.overwrite)
@@ -156,14 +267,18 @@ def _run_argparse() -> None:
         if not args.overwrite:
             print("Existing files were kept. Use --force to overwrite demo files.")
     elif args.command == "solve":
-        path = solve(
+        path, summary = solve_with_report(
             students_path=args.students,
             layout_path=args.layout,
             rules_path=args.rules,
             output_path=args.output,
+            history_paths=args.history,
+            history_dir=args.history_dir,
             time_limit_seconds=args.time_limit,
         )
         print(f"Snapshot written to {path}")
+        if summary:
+            print(summary)
     elif args.command == "validate":
         print(
             run_validate(
@@ -176,6 +291,16 @@ def _run_argparse() -> None:
     elif args.command == "export":
         path = export(snapshot_path=args.snapshot, output_format=args.format, output_path=args.output)
         print(f"Export written to {path}")
+    elif args.command == "history-report":
+        print(
+            run_history_report(
+                students_path=args.students,
+                layout_path=args.layout,
+                history_paths=args.history,
+                history_dir=args.history_dir,
+                output_path=args.output,
+            )
+        )
 
 
 def _run_typer_action(action) -> None:
@@ -190,6 +315,27 @@ def _print_demo_result(paths: dict[str, Path], overwrite: bool) -> None:
     typer.echo(f"Demo files ready in {paths['students_csv'].parent}")
     if not overwrite:
         typer.echo("Existing files were kept. Use --force to overwrite demo files.")
+
+
+def _print_solve_result(result: tuple[Path, str | None]) -> None:
+    path, summary = result
+    typer.echo(f"Snapshot written to {path}")
+    if summary:
+        typer.echo(summary)
+
+
+def _format_solve_fairness_summary(fairness: object) -> str | None:
+    if not isinstance(fairness, dict):
+        return None
+    history_count = fairness.get("history_count", 0)
+    enabled_rules = fairness.get("enabled_rules", [])
+    if not enabled_rules:
+        message = fairness.get("message")
+        if message:
+            return f"Fairness: {message}"
+        return f"Fairness: history snapshots={history_count}, no active fairness rules."
+    cost = fairness.get("fair_rotation_cost")
+    return f"Fairness: history snapshots={history_count}, fair_rotation_cost={cost}."
 
 
 def _friendly_error(exc: Exception) -> str:

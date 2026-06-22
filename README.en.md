@@ -19,6 +19,7 @@ python -m pip install -e .
 seattrellis --help
 seattrellis init-demo
 seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis export --snapshot outputs/latest.snapshot.json --format html
 ```
@@ -69,6 +70,8 @@ seattrellis --help
 seattrellis init-demo --force
 seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --output outputs/demo.snapshot.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
+seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis export --snapshot outputs/demo.snapshot.json --format html --output outputs/demo.html
 ```
 
@@ -84,12 +87,15 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 `validate` checks input files and obvious rule conflicts only; it does not generate a seating snapshot. `solve` validates first, then writes the snapshot. Error messages try to include the file, field, row number, and hard-rule conflict. With `--strict`, warnings also make the command exit with a non-zero status.
 
+`solve` accepts repeated `--history` snapshot paths or `--history-dir examples/history` for a directory of `*.snapshot.json` files. `history-report` summarizes each student's front, back, side, corner, near-window, near-door, near-platform, and near-AC counts. Add `--output outputs/history-report.json` to write a JSON report.
+
 ## Inputs And Rules
 
 - Student lists support CSV; installing the `excel` extra enables `.xlsx` and `.xlsm`. Save legacy `.xls` files as `.xlsx` or CSV first.
 - Classroom layouts are JSON seat-node graphs and support `enabled=false` unavailable seats.
 - Rule files separate `hard` constraints from `soft` preferences.
 - Unknown rule fields are reported as errors so typos are not silently ignored.
+- `fair_rotation` is a history-based soft rule. Hard rules still take priority, and missing history does not fail solving.
 - See [input formats](docs/input-format.en.md) and [rules](docs/rules.en.md).
 
 ## Solver
@@ -109,19 +115,23 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 - JSON classroom layouts, rules, and snapshots;
 - seat nodes and adjacency graphs;
 - fixed seats, must-adjacent, cannot-adjacent, and minimum-distance rules;
-- vision-front, height-back, randomization, and score-balance preferences;
+- vision-front, height-back, randomization, score-balance, and fair-rotation heuristic preferences;
+- historical snapshot statistics and the local `history-report` fairness summary;
 - HTML export, with Excel / PNG export available through the `excel` / `image` extras;
 - validation preflight and conflict diagnostics, CLI, local Streamlit UI, fictional examples, pytest, and GitHub Actions.
 
 ## Privacy
 
 - `examples/` must contain fictional data only.
+- `examples/history/` contains fictional history snapshots only for fair-rotation demos.
 - `outputs/`, `exports/`, `snapshots/`, `private/`, `data/`, `real_students/`, `real_classes/`, and `.env` are ignored.
-- Before sharing Issues, PRs, screenshots, or test data, remove names, IDs, grades, notes, class names, school names, and any identifying information.
+- Before sharing Issues, PRs, screenshots, test data, or historical seating records, remove names, IDs, grades, notes, class names, school names, and any identifying information. Do not commit real historical seating snapshots to a public repository.
+
+Current fair rotation uses heuristic scoring from seat categories and historical counts. It does not guarantee absolute fairness.
 
 ## Release
 
-See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md) for v0.1.2 preparation.
+See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md) for v0.2.0 preparation.
 
 ## License
 

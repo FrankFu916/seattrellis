@@ -19,6 +19,7 @@ python -m pip install -e .
 seattrellis --help
 seattrellis init-demo
 seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis export --snapshot outputs/latest.snapshot.json --format html
 ```
@@ -69,6 +70,8 @@ seattrellis --help
 seattrellis init-demo --force
 seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --output outputs/demo.snapshot.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
+seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis export --snapshot outputs/demo.snapshot.json --format html --output outputs/demo.html
 ```
 
@@ -84,12 +87,15 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 `validate` 只检查输入文件和明显的规则冲突，不生成座位表；`solve` 会在校验通过后再生成 snapshot。错误信息会尽量指出文件、字段、行号和 hard-rule 冲突。使用 `--strict` 时，warning 也会让命令以非零退出码结束。
 
+`solve` 可以通过 `--history` 多次传入历史 snapshot，也可以用 `--history-dir examples/history` 读取目录中的 `*.snapshot.json`。`history-report` 会基于当前学生名单、当前 layout 和历史 snapshot 输出每名学生的前排、后排、边侧、角落、靠窗、靠门、靠讲台、靠空调次数；加 `--output outputs/history-report.json` 可导出 JSON 报告。
+
 ## 输入与规则
 
 - 学生名单支持 CSV；安装 `excel` extra 后支持 `.xlsx` 和 `.xlsm`。旧版 `.xls` 请先另存为 `.xlsx` 或 CSV。
 - 教室布局使用 JSON seat nodes，支持 `enabled=false` 的不可用座位。
 - 规则文件分为 `hard` 和 `soft`。
 - 未识别的规则字段会作为错误报告，避免拼写错误被静默忽略。
+- `fair_rotation` 是基于历史座位类别次数的 soft rule；hard rules 仍然优先，无历史时不会报错。
 - 详细格式见 [输入格式](docs/input-format.zh.md) 和 [规则说明](docs/rules.zh.md)。
 
 ## 求解器
@@ -109,19 +115,23 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 - JSON 教室布局、规则和 snapshot；
 - seat nodes 和 adjacency graph；
 - 固定座位、必须相邻、禁止相邻、最小距离；
-- 视力靠前、高个靠后、随机扰动、邻座成绩偏好；
+- 视力靠前、高个靠后、随机扰动、邻座成绩偏好、公平轮换启发式偏好；
+- 历史 snapshot 统计和 `history-report` 本地公平性摘要；
 - HTML 导出，安装 `excel` / `image` extras 后支持 Excel / PNG 导出；
 - 输入预检与冲突诊断、CLI、本地 Streamlit UI、虚构示例数据、pytest 和 GitHub Actions。
 
 ## 隐私说明
 
 - `examples/` 只能包含虚构数据。
+- `examples/history/` 只包含虚构历史 snapshot，用于演示公平轮换。
 - `outputs/`、`exports/`、`snapshots/`、`private/`、`data/`、`real_students/`、`real_classes/` 和 `.env` 已被忽略。
-- 分享 Issue、PR、截图或测试数据前，请删除姓名、学号、成绩、备注、班级、学校和任何可识别信息。
+- 分享 Issue、PR、截图、测试数据或历史座位记录前，请删除姓名、学号、成绩、备注、班级、学校和任何可识别信息。不要把真实历史座位 snapshot 提交到公开仓库。
+
+当前公平轮换基于座位类别和历史次数进行启发式评分，不保证绝对公平。
 
 ## 发布
 
-v0.1.2 准备事项见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
+v0.2.0 准备事项见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 

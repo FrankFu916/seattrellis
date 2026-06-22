@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 from pathlib import Path
 
 from seattrellis.io.json_files import write_json_model
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
 from seattrellis.models.rules import (
+    FairRotationRule,
     FixedSeatRule,
     HardRules,
     PairRule,
@@ -13,6 +15,8 @@ from seattrellis.models.rules import (
     SoftRules,
     WeightedRule,
 )
+from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
+from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
 
 
@@ -49,6 +53,7 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
     students_xlsx = examples / "students.xlsx"
     layout_json = examples / "classroom.json"
     rules_json = examples / "rules.json"
+    history = examples / "history"
 
     if overwrite or not students_csv.exists():
         _write_students_csv(students_csv)
@@ -61,12 +66,14 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         write_json_model(_demo_layout(), layout_json)
     if overwrite or not rules_json.exists():
         write_json_model(_demo_rules(), rules_json)
+    _write_history_examples(history, overwrite=overwrite)
 
     return {
         "students_csv": students_csv,
         "students_xlsx": students_xlsx,
         "layout": layout_json,
         "rules": rules_json,
+        "history": history,
         "outputs": outputs,
     }
 
@@ -141,5 +148,88 @@ def _demo_rules() -> RuleSet:
             height_back=WeightedRule(enabled=True, weight=1),
             randomize=WeightedRule(enabled=True, weight=1),
             score_balance=WeightedRule(enabled=True, weight=1),
+            fair_rotation=FairRotationRule(enabled=True, weight=10),
         ),
+    )
+
+
+def _write_history_examples(history_dir: Path, *, overwrite: bool) -> None:
+    history_dir.mkdir(parents=True, exist_ok=True)
+    readme = history_dir / "README.md"
+    if overwrite or not readme.exists():
+        readme.write_text(
+            "# Fictional history snapshots\n\n"
+            "These files are fictional SeatTrellis seating snapshots for fair-rotation demos. "
+            "Do not store real historical seating records in this repository.\n",
+            encoding="utf-8",
+        )
+
+    snapshots = [
+        (
+            "week1.snapshot.json",
+            "2026-06-01T00:00:00+00:00",
+            {
+                "STU001": "R1C1",
+                "STU002": "R1C2",
+                "STU003": "R2C1",
+                "STU004": "R2C2",
+                "STU005": "R3C1",
+                "STU006": "R3C2",
+                "STU007": "R4C3",
+                "STU008": "R4C4",
+            },
+        ),
+        (
+            "week2.snapshot.json",
+            "2026-06-08T00:00:00+00:00",
+            {
+                "STU001": "R1C3",
+                "STU002": "R2C4",
+                "STU003": "R1C4",
+                "STU004": "R3C3",
+                "STU005": "R4C1",
+                "STU006": "R4C3",
+                "STU007": "R2C1",
+                "STU008": "R3C4",
+            },
+        ),
+        (
+            "week3.snapshot.json",
+            "2026-06-15T00:00:00+00:00",
+            {
+                "STU001": "R2C1",
+                "STU002": "R4C4",
+                "STU003": "R3C2",
+                "STU004": "R1C2",
+                "STU005": "R1C1",
+                "STU006": "R2C4",
+                "STU007": "R3C1",
+                "STU008": "R4C3",
+            },
+        ),
+    ]
+    for filename, created_at, assignments in snapshots:
+        path = history_dir / filename
+        if overwrite or not path.exists():
+            write_json_model(_demo_history_snapshot(assignments, created_at), path)
+
+
+def _demo_history_snapshot(assignments: dict[str, str], created_at: str) -> SeatingSnapshot:
+    student_names = {record["student_id"]: record["name"] for record in DEMO_STUDENTS}
+    return SeatingSnapshot(
+        created_at=datetime.fromisoformat(created_at).astimezone(timezone.utc),
+        seed=42,
+        metadata={"version": "0.2.0", "example": "fictional history sample"},
+        students=[
+            Student(student_id=record["student_id"], name=record["name"])
+            for record in DEMO_STUDENTS
+        ],
+        layout=_demo_layout(),
+        rules=RuleSet(seed=42),
+        assignments=[
+            SeatAssignment(student_key=student_id, student_name=student_names[student_id], seat_id=seat_id)
+            for student_id, seat_id in assignments.items()
+        ],
+        solver_status="FEASIBLE",
+        metrics={"example": "fictional"},
     )

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 - 2026-06-21
+
+### Added
+- Added historical snapshot loading for seat rotation analysis.
+- Added fair rotation soft rule based on recent seat categories.
+- Added seat history statistics for front, back, side, corner, and tagged seat locations.
+- Added a `history-report` CLI command for local fairness summaries.
+- Added fictional history examples.
+
+### Improved
+- Improved snapshot metadata for fairness-related runs.
+- Updated documentation for history-based seating and fair rotation.
+- Expanded tests for historical seating behavior.
+
 ## 0.1.2 - 2026-06-21
 
 ### Added

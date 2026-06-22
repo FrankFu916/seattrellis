@@ -33,6 +33,24 @@ def test_csv_validate_and_html_export_run_in_minimal_install(tmp_path) -> None:
     assert validate_result.returncode == 0, validate_result.stderr
     assert "Validation passed." in validate_result.stdout
 
+    history_result = subprocess.run(
+        [
+            "seattrellis",
+            "history-report",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--history-dir",
+            "examples/history",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert history_result.returncode == 0, history_result.stderr
+    assert "History report" in history_result.stdout
+
     snapshot_path = tmp_path / "latest.snapshot.json"
     solve_result = subprocess.run(
         [
@@ -44,6 +62,8 @@ def test_csv_validate_and_html_export_run_in_minimal_install(tmp_path) -> None:
             "examples/classroom.json",
             "--rules",
             "examples/rules.json",
+            "--history-dir",
+            "examples/history",
             "--output",
             str(snapshot_path),
         ],

@@ -83,6 +83,37 @@ seattrellis validate --students examples/students.csv --layout examples/classroo
 
 错误示例可参考 `examples/invalid/duplicate_student_id.csv`、`examples/invalid/duplicate_seat_id.json` 和 `examples/invalid/not_enough_seats.json`。
 
+## 历史 snapshot
+
+`solve --history`、`solve --history-dir` 和 `history-report` 读取 SeatTrellis JSON snapshot。历史分析只依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
+
+```bash
+seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
+```
+
+历史 snapshot 会用当前学生名单和当前 layout 解释：
+
+- 多个 snapshot 按传入顺序或目录文件名排序组成历史序列；
+- 某个历史 snapshot 缺少当前学生时，该学生在该周次被跳过并产生 warning；
+- 历史 snapshot 引用当前 layout 中不存在的座位时，该记录标记为 `unknown` 并产生 warning；
+- 历史 snapshot 引用当前 layout 中 `enabled=false` 的座位时，该记录保留为历史座位，但不参与位置类别统计；
+- v0.1.0 / v0.1.1 / v0.1.2 snapshot 仍可读取；v0.2.0 snapshot 可能在 `metadata.fairness` 中加入公平性摘要。
+
+`examples/history/` 只包含虚构历史数据。真实历史座位记录应脱敏并保存在忽略目录中，不要提交到公开仓库。
+
+## 座位位置类别
+
+位置类别用于 `history-report` 和 `fair_rotation`。当前规则如下：
+
+- `row` 越小越靠前；
+- 如果 `zone` 明确为 `front`、`middle` 或 `back`，优先使用该显式区域；否则按当前 layout 的可用座位 row 推断：最小 row 为 `front`，最大 row 为 `back`，其他 row 为 `middle`；只有一行时推断为 `middle`；
+- `side` 使用当前 layout 中可用座位的最小 col 或最大 col；
+- `corner` 使用可用座位的 row 边界和 col 边界交点；
+- `near_window`、`near_door`、`near_platform`、`near_ac` 只由显式布尔字段决定，字段不存在时默认 `false`；
+- 异形教室按实际 seat nodes 处理，缺失座位不会被补成矩阵座位；
+- `enabled=false` 的座位不参与分配统计和类别边界计算。
+
 ## 规则 JSON
 
 规则说明见 [rules.zh.md](rules.zh.md)。

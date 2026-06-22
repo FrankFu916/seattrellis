@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-06-15T00:00:00Z",
+  "seed": 42,
+  "metadata": {
+    "version": "0.2.0",
+    "example": "fictional history sample"
+  },
+  "students": [
+    {"student_id": "STU001", "name": "Student001"},
+    {"student_id": "STU002", "name": "Student002"},
+    {"student_id": "STU003", "name": "Student003"},
+    {"student_id": "STU004", "name": "Student004"},
+    {"student_id": "STU005", "name": "Student005"},
+    {"student_id": "STU006", "name": "Student006"},
+    {"student_id": "STU007", "name": "Student007"},
+    {"student_id": "STU008", "name": "Student008"}
+  ],
+  "layout": {
+    "layout_id": "fictional-room",
+    "name": "Fictional Classroom",
+    "seats": [
+      {"seat_id": "R1C1", "row": 1, "col": 1, "zone": "front", "near_window": true, "near_platform": true},
+      {"seat_id": "R1C2", "row": 1, "col": 2, "zone": "front", "near_platform": true},
+      {"seat_id": "R1C3", "row": 1, "col": 3, "zone": "front", "near_platform": true},
+      {"seat_id": "R1C4", "row": 1, "col": 4, "zone": "front", "near_platform": true},
+      {"seat_id": "R2C1", "row": 2, "col": 1, "zone": "middle", "near_window": true},
+      {"seat_id": "R2C2", "row": 2, "col": 2, "zone": "middle"},
+      {"seat_id": "R2C3", "row": 2, "col": 3, "enabled": false, "zone": "aisle"},
+      {"seat_id": "R2C4", "row": 2, "col": 4, "zone": "middle"},
+      {"seat_id": "R3C1", "row": 3, "col": 1, "zone": "middle", "near_window": true},
+      {"seat_id": "R3C2", "row": 3, "col": 2, "zone": "middle"},
+      {"seat_id": "R3C3", "row": 3, "col": 3, "zone": "middle"},
+      {"seat_id": "R3C4", "row": 3, "col": 4, "zone": "middle"},
+      {"seat_id": "R4C1", "row": 4, "col": 1, "zone": "back", "near_window": true},
+      {"seat_id": "R4C2", "row": 4, "col": 2, "enabled": false, "zone": "aisle"},
+      {"seat_id": "R4C3", "row": 4, "col": 3, "zone": "back"},
+      {"seat_id": "R4C4", "row": 4, "col": 4, "zone": "back", "near_door": true}
+    ],
+    "adjacency": {
+      "include_horizontal": true,
+      "include_vertical": false,
+      "include_diagonal": false,
+      "custom_edges": [["R1C2", "R2C2"]]
+    }
+  },
+  "rules": {"seed": 42},
+  "assignments": [
+    {"student_key": "STU001", "student_name": "Student001", "seat_id": "R2C1"},
+    {"student_key": "STU002", "student_name": "Student002", "seat_id": "R4C4"},
+    {"student_key": "STU003", "student_name": "Student003", "seat_id": "R3C2"},
+    {"student_key": "STU004", "student_name": "Student004", "seat_id": "R1C2"},
+    {"student_key": "STU005", "student_name": "Student005", "seat_id": "R1C1"},
+    {"student_key": "STU006", "student_name": "Student006", "seat_id": "R2C4"},
+    {"student_key": "STU007", "student_name": "Student007", "seat_id": "R3C1"},
+    {"student_key": "STU008", "student_name": "Student008", "seat_id": "R4C3"}
+  ],
+  "solver_status": "FEASIBLE",
+  "objective_value": null,
+  "metrics": {"example": "fictional"}
+}

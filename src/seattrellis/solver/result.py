@@ -30,9 +30,11 @@ class SeatingSolution(BaseModel):
         layout: ClassroomLayout,
         rules: RuleSet,
         seed: int,
+        metadata: dict[str, Any] | None = None,
     ) -> SeatingSnapshot:
         return SeatingSnapshot(
             seed=seed,
+            metadata=metadata or {},
             students=students,
             layout=layout,
             rules=rules,

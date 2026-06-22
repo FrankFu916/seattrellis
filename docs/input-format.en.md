@@ -83,6 +83,37 @@ Layout validation checks empty `seat_id` values, duplicate `seat_id` values, `ro
 
 Invalid examples include `examples/invalid/duplicate_student_id.csv`, `examples/invalid/duplicate_seat_id.json`, and `examples/invalid/not_enough_seats.json`.
 
+## Historical Snapshots
+
+`solve --history`, `solve --history-dir`, and `history-report` read SeatTrellis JSON snapshots. Historical analysis depends only on JSON snapshots. It does not require Excel, PNG, Streamlit, SQLite, or any database.
+
+```bash
+seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
+```
+
+Historical snapshots are interpreted against the current student list and current layout:
+
+- multiple snapshots form a history sequence in the order passed, or by sorted file name for `--history-dir`;
+- if a historical snapshot is missing a current student, that student is skipped for that snapshot and a warning is recorded;
+- if a historical snapshot references a seat that does not exist in the current layout, the record is marked `unknown` and a warning is recorded;
+- if a historical snapshot references an `enabled=false` seat in the current layout, the seat record is retained but excluded from position category counts;
+- v0.1.0 / v0.1.1 / v0.1.2 snapshots still load; v0.2.0 snapshots may add fairness information under `metadata.fairness`.
+
+`examples/history/` contains fictional history only. Real historical seating records should be de-identified and stored in ignored directories, not committed to a public repository.
+
+## Seat Position Categories
+
+Position categories power `history-report` and `fair_rotation`. Current rules:
+
+- smaller `row` values are closer to the front;
+- if `zone` is explicitly `front`, `middle`, or `back`, that explicit zone wins; otherwise, SeatTrellis infers from enabled-seat rows: minimum row is `front`, maximum row is `back`, other rows are `middle`; a one-row layout is inferred as `middle`;
+- `side` means minimum or maximum enabled-seat `col` in the current layout;
+- `corner` means both a row boundary and a column boundary among enabled seats;
+- `near_window`, `near_door`, `near_platform`, and `near_ac` come only from explicit boolean fields and default to `false` when absent;
+- irregular classrooms are handled as actual seat nodes, not filled into a complete matrix;
+- `enabled=false` seats do not participate in allocation statistics or boundary inference.
+
 ## Rules JSON
 
 See [rules.en.md](rules.en.md).

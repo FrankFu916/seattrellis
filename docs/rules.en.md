@@ -56,7 +56,13 @@ Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and
     "vision_front": {"enabled": true, "weight": 20},
     "height_back": {"enabled": true, "weight": 1},
     "randomize": {"enabled": true, "weight": 1},
-    "score_balance": {"enabled": false, "weight": 1}
+    "score_balance": {"enabled": false, "weight": 1},
+    "fair_rotation": {
+      "enabled": true,
+      "weight": 10,
+      "avoid_repeating_categories": ["front", "back", "side", "corner", "near_window", "near_door", "near_ac"],
+      "lookback": 4
+    }
   }
 }
 ```
@@ -67,5 +73,23 @@ Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and
 | `height_back` | Prefer back seats for taller students |
 | `randomize` | Add reproducible seed-based variation |
 | `score_balance` | Prefer score-gap patterns among adjacent students |
+| `fair_rotation` | Prefer rotating seat categories based on historical snapshots |
 
 `seed` controls reproducibility. The same inputs and seed should produce stable output.
+
+## fair_rotation
+
+`fair_rotation` is a soft rule. It never overrides hard rules: fixed seats, must-adjacent, cannot-adjacent, and minimum-distance constraints still take priority. If no historical snapshots are supplied, `fair_rotation` becomes inactive and solving still succeeds with a metrics message. `weight=0` has no solving effect.
+
+Fields:
+
+| Field | Description |
+| --- | --- |
+| `enabled` | Enable fair rotation |
+| `weight` | Non-negative integer weight; larger values avoid repeated categories more strongly |
+| `avoid_repeating_categories` | Seat categories to avoid repeating |
+| `lookback` | Number of recent snapshots used for repeat penalties; `0` disables recent-repeat penalties |
+
+Supported categories are `front`, `back`, `middle`, `side`, `corner`, `near_window`, `near_door`, `near_platform`, and `near_ac`. The default repeated categories are `front`, `back`, `side`, `corner`, `near_window`, `near_door`, and `near_ac`.
+
+Both the fallback solver and the OR-Tools solver translate fair rotation into a per student-seat heuristic cost: recent repeated categories add cost, and students with fewer long-term counts receive a small compensation. The method is category-count based and does not guarantee absolute fairness.

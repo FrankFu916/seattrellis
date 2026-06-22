@@ -23,6 +23,7 @@ class SeatingSnapshot(BaseModel):
     schema_version: str = "1.0"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     seed: int = 42
+    metadata: dict[str, Any] = Field(default_factory=dict)
     students: list[Student]
     layout: ClassroomLayout
     rules: RuleSet
