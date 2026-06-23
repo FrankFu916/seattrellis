@@ -3,7 +3,7 @@
   "created_at": "2026-06-08T00:00:00Z",
   "seed": 42,
   "metadata": {
-    "version": "0.2.0",
+    "version": "0.2.1",
     "example": "fictional history sample"
   },
   "students": [
@@ -50,8 +50,8 @@
     {"student_key": "STU002", "student_name": "Student002", "seat_id": "R2C4"},
     {"student_key": "STU003", "student_name": "Student003", "seat_id": "R1C4"},
     {"student_key": "STU004", "student_name": "Student004", "seat_id": "R3C3"},
-    {"student_key": "STU005", "student_name": "Student005", "seat_id": "R4C1"},
-    {"student_key": "STU006", "student_name": "Student006", "seat_id": "R4C3"},
+    {"student_key": "STU005", "student_name": "Student005", "seat_id": "R3C1"},
+    {"student_key": "STU006", "student_name": "Student006", "seat_id": "R3C2"},
     {"student_key": "STU007", "student_name": "Student007", "seat_id": "R2C1"},
     {"student_key": "STU008", "student_name": "Student008", "seat_id": "R3C4"}
   ],

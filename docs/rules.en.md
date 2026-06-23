@@ -62,6 +62,14 @@ Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and
       "weight": 10,
       "avoid_repeating_categories": ["front", "back", "side", "corner", "near_window", "near_door", "near_ac"],
       "lookback": 4
+    },
+    "avoid_recent_neighbors": {
+      "enabled": true,
+      "weight": 10,
+      "lookback": 4,
+      "relation_types": ["desk_mate", "adjacent_any"],
+      "max_recent_count": 1,
+      "within_distance": 2
     }
   }
 }
@@ -74,6 +82,7 @@ Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and
 | `randomize` | Add reproducible seed-based variation |
 | `score_balance` | Prefer score-gap patterns among adjacent students |
 | `fair_rotation` | Prefer rotating seat categories based on historical snapshots |
+| `avoid_recent_neighbors` | Prefer reducing repeated desk-mate and neighbor relationships from history |
 
 `seed` controls reproducibility. The same inputs and seed should produce stable output.
 
@@ -93,3 +102,50 @@ Fields:
 Supported categories are `front`, `back`, `middle`, `side`, `corner`, `near_window`, `near_door`, `near_platform`, and `near_ac`. The default repeated categories are `front`, `back`, `side`, `corner`, `near_window`, `near_door`, and `near_ac`.
 
 Both the fallback solver and the OR-Tools solver translate fair rotation into a per student-seat heuristic cost: recent repeated categories add cost, and students with fewer long-term counts receive a small compensation. The method is category-count based and does not guarantee absolute fairness.
+
+## avoid_recent_neighbors
+
+`avoid_recent_neighbors` is a soft rule. It analyzes historical snapshots for repeated pair relationships, then adds cost when the next seating plan would repeat recent desk-mate or neighbor relationships. It never overrides hard rules: if `must_be_adjacent` requires two students to be adjacent, or fixed seats make them adjacent, the hard rule still wins; if `cannot_be_adjacent` or `min_distance` forbids a relationship, history avoidance cannot make it valid. If no historical snapshots are supplied, the rule becomes inactive and solving still succeeds with a metrics message. `weight=0` has no solving effect.
+
+Example:
+
+```json
+{
+  "soft": {
+    "avoid_recent_neighbors": {
+      "enabled": true,
+      "weight": 10,
+      "lookback": 4,
+      "relation_types": ["desk_mate", "adjacent_any"],
+      "max_recent_count": 1,
+      "within_distance": 2
+    }
+  }
+}
+```
+
+Fields:
+
+| Field | Description |
+| --- | --- |
+| `enabled` | Enable recent desk-mate / neighbor avoidance |
+| `weight` | Non-negative integer weight; larger values avoid repeated relationships more strongly |
+| `lookback` | Number of recent snapshots used for pair-history penalties; `0` disables recent-pair penalties |
+| `relation_types` | Relationship types to avoid |
+| `max_recent_count` | Start penalizing only after this many recent occurrences; `1` means the second recent occurrence and beyond adds cost |
+| `within_distance` | Chebyshev distance threshold for the `within_distance` relation, default `2` |
+
+Relationship types:
+
+| Type | Definition |
+| --- | --- |
+| `desk_mate` | Defaults to horizontal neighbors in the same row with a column delta of 1; reserved for future custom desk groups |
+| `horizontal` | Same row and column delta of 1 |
+| `vertical` | Same column and row delta of 1 |
+| `diagonal` | Row delta of 1 and column delta of 1 |
+| `adjacent_any` | Horizontal, vertical, diagonal, or adjacent through the current layout adjacency graph / custom edges |
+| `within_distance` | Row/column Chebyshev distance less than or equal to `within_distance` |
+
+Pair history is interpreted against the current student list and current layout; SeatTrellis does not fill irregular layouts into a complete matrix. Missing current students are skipped with a warning. Unknown historical seats are skipped for affected pairs with a warning. If a historical snapshot references an `enabled=false` seat, the seat is still unavailable for new solving, but historical relationships are counted from row/column coordinates when possible and a warning is recorded.
+
+Both the fallback solver and the OR-Tools solver support this rule. The current implementation is heuristic scoring: it tends to reduce repeated desk-mate and neighbor relationships, but it does not guarantee global optimality.

@@ -85,11 +85,13 @@ seattrellis validate --students examples/students.csv --layout examples/classroo
 
 ## 历史 snapshot
 
-`solve --history`、`solve --history-dir` 和 `history-report` 读取 SeatTrellis JSON snapshot。历史分析只依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
+`solve --history`、`solve --history-dir`、`history-report` 和 `pair-report` 读取 SeatTrellis JSON snapshot。历史分析只依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
 
 ```bash
 seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
+seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
 ```
 
 历史 snapshot 会用当前学生名单和当前 layout 解释：
@@ -98,7 +100,10 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 - 某个历史 snapshot 缺少当前学生时，该学生在该周次被跳过并产生 warning；
 - 历史 snapshot 引用当前 layout 中不存在的座位时，该记录标记为 `unknown` 并产生 warning；
 - 历史 snapshot 引用当前 layout 中 `enabled=false` 的座位时，该记录保留为历史座位，但不参与位置类别统计；
-- v0.1.0 / v0.1.1 / v0.1.2 snapshot 仍可读取；v0.2.0 snapshot 可能在 `metadata.fairness` 中加入公平性摘要。
+- pair history 使用当前 layout 的 `row` / `col`、adjacency graph 和 custom edges 判断 `desk_mate`、`horizontal`、`vertical`、`diagonal`、`adjacent_any`、`within_distance`；
+- pair history 中引用 `enabled=false` 座位时，新排座不会使用该座位，但历史关系会尽量按 row/col 坐标统计并记录 warning；
+- `within_distance` 使用 Chebyshev 距离，默认阈值为 `2`；
+- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 snapshot 仍可读取；v0.2.1 snapshot 可能在 `metadata.fairness` 中加入 `fair_rotation` 和 `avoid_recent_neighbors` 摘要。
 
 `examples/history/` 只包含虚构历史数据。真实历史座位记录应脱敏并保存在忽略目录中，不要提交到公开仓库。
 

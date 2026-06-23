@@ -9,9 +9,12 @@ from seattrellis.demo import create_demo_files
 from seattrellis.exporters import export_snapshot
 from seattrellis.history import (
     build_fairness_report,
+    build_pair_history,
+    build_pair_history_report,
     build_seat_history,
     fairness_metadata,
     format_history_report,
+    format_pair_history_report,
     load_history_snapshots,
 )
 from seattrellis.io.json_files import InputFileError, load_layout, load_rules, load_snapshot, write_json_model
@@ -104,6 +107,30 @@ if typer is not None:
             )
         )
 
+    @app.command("pair-report", help="Summarize historical desk-mate and neighbor pairs.")
+    def pair_report_command(
+        students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
+        layout: Path = typer.Option(..., "--layout", help="Classroom layout JSON."),
+        history: list[Path] = typer.Option([], "--history", help="Historical snapshot JSON path. Can be repeated."),
+        history_dir: Path | None = typer.Option(None, "--history-dir", help="Directory containing historical *.snapshot.json files."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Optional JSON report output path."),
+        top: int = typer.Option(10, "--top", help="Number of high-frequency pairs to display."),
+        within_distance: int = typer.Option(2, "--within-distance", help="Chebyshev distance threshold for within_distance."),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                run_pair_report(
+                    students_path=students,
+                    layout_path=layout,
+                    history_paths=history,
+                    history_dir=history_dir,
+                    output_path=output,
+                    top=top,
+                    within_distance=within_distance,
+                )
+            )
+        )
+
 else:
     app = None
 
@@ -150,11 +177,20 @@ def solve_with_report(
     validate_loaded_inputs(students, layout, rules).raise_for_errors(title="Input validation failed.")
     history_snapshots = load_history_snapshots(history_paths=history_paths, history_dir=history_dir)
     seat_history = build_seat_history(students, layout, history_snapshots)
+    pair_rule = rules.soft.avoid_recent_neighbors
+    pair_history = build_pair_history(
+        students,
+        layout,
+        history_snapshots,
+        lookback=pair_rule.lookback,
+        within_distance=pair_rule.within_distance,
+    )
     solution = solve_seating(
         students,
         layout,
         rules,
         history=seat_history,
+        pair_history=pair_history,
         seed=rules.seed,
         time_limit_seconds=time_limit_seconds,
     )
@@ -165,7 +201,7 @@ def solve_with_report(
         seed=rules.seed,
         metadata={
             "version": __version__,
-            "fairness": fairness_metadata(rules, seat_history),
+            "fairness": fairness_metadata(rules, seat_history, pair_history),
         },
     )
     path = write_json_model(snapshot, output_path)
@@ -214,6 +250,30 @@ def run_history_report(
     return format_history_report(report)
 
 
+def run_pair_report(
+    *,
+    students_path: str | Path,
+    layout_path: str | Path,
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    output_path: str | Path | None = None,
+    top: int = 10,
+    within_distance: int = 2,
+) -> str:
+    if top <= 0:
+        raise ValueError("top must be positive.")
+    if within_distance <= 0:
+        raise ValueError("within_distance must be positive.")
+    students = read_students(students_path)
+    layout = load_layout(layout_path)
+    snapshots = load_history_snapshots(history_paths=history_paths, history_dir=history_dir)
+    pair_history = build_pair_history(students, layout, snapshots, within_distance=within_distance)
+    report = build_pair_history_report(pair_history, top=top)
+    if output_path is not None:
+        write_json_model(report, output_path)
+    return format_pair_history_report(report, top=top)
+
+
 def main() -> None:
     if typer is not None:
         app()
@@ -260,6 +320,15 @@ def _run_argparse() -> None:
     history_parser.add_argument("--history-dir", default=None)
     history_parser.add_argument("--output", "-o", default=None)
 
+    pair_parser = subparsers.add_parser("pair-report", help="Summarize historical desk-mate and neighbor pairs.")
+    pair_parser.add_argument("--students", required=True)
+    pair_parser.add_argument("--layout", required=True)
+    pair_parser.add_argument("--history", action="append", default=[])
+    pair_parser.add_argument("--history-dir", default=None)
+    pair_parser.add_argument("--output", "-o", default=None)
+    pair_parser.add_argument("--top", type=int, default=10)
+    pair_parser.add_argument("--within-distance", type=int, default=2)
+
     args = parser.parse_args()
     if args.command == "init-demo":
         paths = init_demo(output_dir=args.output_dir, overwrite=args.overwrite)
@@ -301,6 +370,18 @@ def _run_argparse() -> None:
                 output_path=args.output,
             )
         )
+    elif args.command == "pair-report":
+        print(
+            run_pair_report(
+                students_path=args.students,
+                layout_path=args.layout,
+                history_paths=args.history,
+                history_dir=args.history_dir,
+                output_path=args.output,
+                top=args.top,
+                within_distance=args.within_distance,
+            )
+        )
 
 
 def _run_typer_action(action) -> None:
@@ -334,8 +415,15 @@ def _format_solve_fairness_summary(fairness: object) -> str | None:
         if message:
             return f"Fairness: {message}"
         return f"Fairness: history snapshots={history_count}, no active fairness rules."
-    cost = fairness.get("fair_rotation_cost")
-    return f"Fairness: history snapshots={history_count}, fair_rotation_cost={cost}."
+    fair_cost = fairness.get("fair_rotation_cost")
+    neighbor_cost = fairness.get("avoid_recent_neighbors_cost")
+    cost_parts = []
+    if fair_cost is not None:
+        cost_parts.append(f"fair_rotation_cost={fair_cost}")
+    if neighbor_cost is not None:
+        cost_parts.append(f"avoid_recent_neighbors_cost={neighbor_cost}")
+    suffix = ", ".join(cost_parts) if cost_parts else f"enabled_rules={enabled_rules}"
+    return f"Fairness: history snapshots={history_count}, {suffix}."
 
 
 def _friendly_error(exc: Exception) -> str:

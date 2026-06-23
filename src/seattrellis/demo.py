@@ -7,6 +7,7 @@ from pathlib import Path
 from seattrellis.io.json_files import write_json_model
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
 from seattrellis.models.rules import (
+    AvoidRecentNeighborsRule,
     FairRotationRule,
     FixedSeatRule,
     HardRules,
@@ -15,6 +16,7 @@ from seattrellis.models.rules import (
     SoftRules,
     WeightedRule,
 )
+from seattrellis.models.history import NeighborRelationType
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
@@ -53,6 +55,7 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
     students_xlsx = examples / "students.xlsx"
     layout_json = examples / "classroom.json"
     rules_json = examples / "rules.json"
+    neighbor_rules_json = examples / "rules_neighbor_avoidance.json"
     history = examples / "history"
 
     if overwrite or not students_csv.exists():
@@ -66,6 +69,8 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         write_json_model(_demo_layout(), layout_json)
     if overwrite or not rules_json.exists():
         write_json_model(_demo_rules(), rules_json)
+    if overwrite or not neighbor_rules_json.exists():
+        write_json_model(_demo_neighbor_rules(), neighbor_rules_json)
     _write_history_examples(history, overwrite=overwrite)
 
     return {
@@ -73,6 +78,7 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         "students_xlsx": students_xlsx,
         "layout": layout_json,
         "rules": rules_json,
+        "neighbor_rules": neighbor_rules_json,
         "history": history,
         "outputs": outputs,
     }
@@ -153,6 +159,18 @@ def _demo_rules() -> RuleSet:
     )
 
 
+def _demo_neighbor_rules() -> RuleSet:
+    rules = _demo_rules()
+    rules.soft.avoid_recent_neighbors = AvoidRecentNeighborsRule(
+        enabled=True,
+        weight=10,
+        lookback=4,
+        relation_types=[NeighborRelationType.DESK_MATE, NeighborRelationType.ADJACENT_ANY],
+        max_recent_count=1,
+    )
+    return rules
+
+
 def _write_history_examples(history_dir: Path, *, overwrite: bool) -> None:
     history_dir.mkdir(parents=True, exist_ok=True)
     readme = history_dir / "README.md"
@@ -187,8 +205,8 @@ def _write_history_examples(history_dir: Path, *, overwrite: bool) -> None:
                 "STU002": "R2C4",
                 "STU003": "R1C4",
                 "STU004": "R3C3",
-                "STU005": "R4C1",
-                "STU006": "R4C3",
+                "STU005": "R3C1",
+                "STU006": "R3C2",
                 "STU007": "R2C1",
                 "STU008": "R3C4",
             },
@@ -219,7 +237,7 @@ def _demo_history_snapshot(assignments: dict[str, str], created_at: str) -> Seat
     return SeatingSnapshot(
         created_at=datetime.fromisoformat(created_at).astimezone(timezone.utc),
         seed=42,
-        metadata={"version": "0.2.0", "example": "fictional history sample"},
+        metadata={"version": "0.2.1", "example": "fictional history sample"},
         students=[
             Student(student_id=record["student_id"], name=record["name"])
             for record in DEMO_STUDENTS

@@ -7,11 +7,11 @@ from math import inf
 from typing import Any
 
 from seattrellis.models.layout import ClassroomLayout, SeatNode
-from seattrellis.models.history import SeatHistory
+from seattrellis.models.history import PairHistory, SeatHistory
 from seattrellis.models.rules import MinDistanceRule, PairRule, RuleSet
 from seattrellis.models.snapshot import SeatAssignment
 from seattrellis.models.student import Student
-from seattrellis.history import assignment_fairness_summary, fair_rotation_cost
+from seattrellis.history import assignment_fairness_summary, avoid_recent_neighbors_cost, fair_rotation_cost
 from seattrellis.solver.adjacency import (
     SeatEdge,
     build_adjacency_edges,
@@ -45,6 +45,7 @@ def solve_seating(
     rules: RuleSet | None = None,
     *,
     history: SeatHistory | None = None,
+    pair_history: PairHistory | None = None,
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
 ) -> SeatingSolution:
@@ -69,8 +70,19 @@ def solve_seating(
 
     cp_sat = _load_cp_model()
     if cp_sat is not None:
-        return _solve_with_ortools(students, seats, layout, rules, compiled, edges, history, seed, time_limit_seconds)
-    return _solve_with_fallback(students, seats, layout, rules, compiled, edges, history, seed)
+        return _solve_with_ortools(
+            students,
+            seats,
+            layout,
+            rules,
+            compiled,
+            edges,
+            history,
+            pair_history,
+            seed,
+            time_limit_seconds,
+        )
+    return _solve_with_fallback(students, seats, layout, rules, compiled, edges, history, pair_history, seed)
 
 
 def _load_cp_model():
@@ -99,6 +111,7 @@ def _solve_with_ortools(
     compiled: _CompiledRules,
     edges: set[SeatEdge],
     history: SeatHistory | None,
+    pair_history: PairHistory | None,
     seed: int,
     time_limit_seconds: float,
 ) -> SeatingSolution:
@@ -118,6 +131,7 @@ def _solve_with_ortools(
 
     _add_pair_constraints(model, x, seats, compiled, layout, edges)
     objective_terms = _build_individual_objective_terms(x, students, seats, layout, rules, history, seed)
+    objective_terms.extend(_build_pair_objective_terms(model, x, students, seats, layout, rules, edges, pair_history))
     objective_terms.extend(_build_score_balance_terms(model, x, students, seats, rules, edges))
     if objective_terms:
         model.Minimize(sum(coef * var for var, coef in objective_terms))
@@ -147,6 +161,7 @@ def _solve_with_ortools(
         layout,
         rules,
         history,
+        pair_history,
     )
 
 
@@ -213,6 +228,56 @@ def _build_individual_objective_terms(
     return terms
 
 
+def _build_pair_objective_terms(
+    model: Any,
+    x: dict[tuple[int, int], Any],
+    students: list[Student],
+    seats: list[SeatNode],
+    layout: ClassroomLayout,
+    rules: RuleSet,
+    edges: set[SeatEdge],
+    pair_history: PairHistory | None,
+) -> list[tuple[Any, int]]:
+    rule = rules.soft.avoid_recent_neighbors
+    if not rule.enabled or rule.weight == 0:
+        return []
+
+    terms: list[tuple[Any, int]] = []
+    for first_student_index, first_student in enumerate(students):
+        for second_student_index in range(first_student_index + 1, len(students)):
+            second_student = students[second_student_index]
+            for first_seat_index, first_seat in enumerate(seats):
+                for second_seat_index, second_seat in enumerate(seats):
+                    if first_seat_index == second_seat_index:
+                        continue
+                    cost = avoid_recent_neighbors_cost(
+                        first_student.key,
+                        second_student.key,
+                        first_seat,
+                        second_seat,
+                        layout,
+                        rule,
+                        pair_history,
+                        adjacency_edges=edges,
+                    )
+                    if not cost:
+                        continue
+                    pair_var = model.NewBoolVar(
+                        "recent_neighbor_"
+                        f"{first_student_index}_{second_student_index}_{first_seat_index}_{second_seat_index}"
+                    )
+                    model.Add(pair_var <= x[(first_student_index, first_seat_index)])
+                    model.Add(pair_var <= x[(second_student_index, second_seat_index)])
+                    model.Add(
+                        pair_var
+                        >= x[(first_student_index, first_seat_index)]
+                        + x[(second_student_index, second_seat_index)]
+                        - 1
+                    )
+                    terms.append((pair_var, cost))
+    return terms
+
+
 def _build_score_balance_terms(
     model: Any,
     x: dict[tuple[int, int], Any],
@@ -259,6 +324,7 @@ def _solve_with_fallback(
     compiled: _CompiledRules,
     edges: set[SeatEdge],
     history: SeatHistory | None,
+    pair_history: PairHistory | None,
     seed: int,
 ) -> SeatingSolution:
     rng = random.Random(seed)
@@ -280,13 +346,35 @@ def _solve_with_fallback(
             if attempt == 0:
                 candidates = sorted(
                     candidates,
-                    key=lambda idx: _fallback_individual_cost(students[student_index], seats[idx], layout, rules, history),
+                    key=lambda idx: _fallback_candidate_cost(
+                        student_index,
+                        idx,
+                        assignment,
+                        students,
+                        seats,
+                        layout,
+                        rules,
+                        edges,
+                        history,
+                        pair_history,
+                    ),
                 )
                 seat_index = candidates[0]
             else:
                 candidates = sorted(
                     candidates,
-                    key=lambda idx: _fallback_individual_cost(students[student_index], seats[idx], layout, rules, history)
+                    key=lambda idx: _fallback_candidate_cost(
+                        student_index,
+                        idx,
+                        assignment,
+                        students,
+                        seats,
+                        layout,
+                        rules,
+                        edges,
+                        history,
+                        pair_history,
+                    )
                     + rng.random() * 25,
                 )
                 seat_index = rng.choice(candidates[: min(3, len(candidates))])
@@ -295,7 +383,7 @@ def _solve_with_fallback(
 
         if not success or not _full_assignment_valid(assignment, seats, layout, compiled, edges):
             continue
-        cost = _fallback_total_cost(assignment, students, seats, layout, rules, edges, history)
+        cost = _fallback_total_cost(assignment, students, seats, layout, rules, edges, history, pair_history)
         if cost < best_cost:
             best_assignment = dict(assignment)
             best_cost = cost
@@ -313,6 +401,7 @@ def _solve_with_fallback(
         layout,
         rules,
         history,
+        pair_history,
     )
 
 
@@ -548,6 +637,36 @@ def _fallback_individual_cost(
     return float(_individual_cost(student, seat, layout, rules, history, fake_rng, seat.row, seat.row + 4))
 
 
+def _fallback_candidate_cost(
+    student_index: int,
+    seat_index: int,
+    assignment: dict[int, int],
+    students: list[Student],
+    seats: list[SeatNode],
+    layout: ClassroomLayout,
+    rules: RuleSet,
+    edges: set[SeatEdge],
+    history: SeatHistory | None,
+    pair_history: PairHistory | None,
+) -> float:
+    cost = _fallback_individual_cost(students[student_index], seats[seat_index], layout, rules, history)
+    rule = rules.soft.avoid_recent_neighbors
+    if not rule.enabled or rule.weight == 0:
+        return cost
+    for assigned_student_index, assigned_seat_index in assignment.items():
+        cost += avoid_recent_neighbors_cost(
+            students[student_index].key,
+            students[assigned_student_index].key,
+            seats[seat_index],
+            seats[assigned_seat_index],
+            layout,
+            rule,
+            pair_history,
+            adjacency_edges=edges,
+        )
+    return cost
+
+
 def _fallback_total_cost(
     assignment: dict[int, int],
     students: list[Student],
@@ -556,6 +675,7 @@ def _fallback_total_cost(
     rules: RuleSet,
     edges: set[SeatEdge],
     history: SeatHistory | None,
+    pair_history: PairHistory | None,
 ) -> float:
     min_row = min(seat.row for seat in seats)
     max_row = max(seat.row for seat in seats)
@@ -577,6 +697,23 @@ def _fallback_total_cost(
                     continue
                 if _seat_indexes_adjacent(seats, first_seat_index, second_seat_index, edges):
                     cost -= rules.soft.score_balance.weight * abs(float(first_score) - float(second_score))
+
+    rule = rules.soft.avoid_recent_neighbors
+    if rule.enabled and rule.weight:
+        for first_index, first_seat_index in assignment.items():
+            for second_index, second_seat_index in assignment.items():
+                if second_index <= first_index:
+                    continue
+                cost += avoid_recent_neighbors_cost(
+                    students[first_index].key,
+                    students[second_index].key,
+                    seats[first_seat_index],
+                    seats[second_seat_index],
+                    layout,
+                    rule,
+                    pair_history,
+                    adjacency_edges=edges,
+                )
     return cost
 
 
@@ -614,6 +751,7 @@ def _solution_from_assignment(
     layout: ClassroomLayout,
     rules: RuleSet,
     history: SeatHistory | None,
+    pair_history: PairHistory | None,
 ) -> SeatingSolution:
     assignments = [
         SeatAssignment(
@@ -623,7 +761,8 @@ def _solution_from_assignment(
         )
         for student_index in range(len(students))
     ]
-    fairness = assignment_fairness_summary(assignments, students, layout, rules, history)
+    pair_history = pair_history or (history.pair_history if history is not None else None)
+    fairness = assignment_fairness_summary(assignments, students, layout, rules, history, pair_history)
     if fairness:
         metrics = {**metrics, "fairness": fairness}
     return SeatingSolution(

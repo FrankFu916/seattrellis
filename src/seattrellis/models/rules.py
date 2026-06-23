@@ -7,7 +7,7 @@ try:
 except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import BaseModel, Field, validator
 
-from seattrellis.models.history import ROTATION_CATEGORIES, SeatPositionCategory
+from seattrellis.models.history import NEIGHBOR_RELATION_TYPES, ROTATION_CATEGORIES, NeighborRelationType, SeatPositionCategory
 
 
 class FixedSeatRule(BaseModel):
@@ -96,6 +96,44 @@ class FairRotationRule(WeightedRule):
         return value
 
 
+class AvoidRecentNeighborsRule(WeightedRule):
+    relation_types: list[NeighborRelationType] = Field(
+        default_factory=lambda: [
+            NeighborRelationType.DESK_MATE,
+            NeighborRelationType.ADJACENT_ANY,
+        ]
+    )
+    lookback: int = 4
+    max_recent_count: int = 1
+    within_distance: int = 2
+
+    @validator("relation_types")
+    def known_neighbor_relation_types(cls, value: list[NeighborRelationType]) -> list[NeighborRelationType]:
+        allowed = set(NEIGHBOR_RELATION_TYPES)
+        unknown = [relation.value for relation in value if relation not in allowed]
+        if unknown:
+            raise ValueError(f"Unsupported neighbor relation types: {', '.join(unknown)}")
+        return value
+
+    @validator("lookback")
+    def non_negative_lookback(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("lookback must be non-negative.")
+        return value
+
+    @validator("max_recent_count")
+    def non_negative_max_recent_count(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("max_recent_count must be non-negative.")
+        return value
+
+    @validator("within_distance")
+    def positive_within_distance(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("within_distance must be positive.")
+        return value
+
+
 class HardRules(BaseModel):
     fixed_seats: list[FixedSeatRule] = Field(default_factory=list)
     must_be_adjacent: list[PairRule] = Field(default_factory=list)
@@ -112,6 +150,9 @@ class SoftRules(BaseModel):
     randomize: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=True, weight=1))
     score_balance: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=False, weight=1))
     fair_rotation: FairRotationRule = Field(default_factory=lambda: FairRotationRule(enabled=False, weight=10))
+    avoid_recent_neighbors: AvoidRecentNeighborsRule = Field(
+        default_factory=lambda: AvoidRecentNeighborsRule(enabled=False, weight=10)
+    )
 
     class Config:
         extra = "forbid"

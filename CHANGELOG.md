@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1 - 2026-06-22
+
+### Added
+- Added pair-history analysis for historical seating snapshots.
+- Added an `avoid_recent_neighbors` soft rule for reducing repeated desk-mate and neighbor relationships.
+- Added a `pair-report` CLI command for local relationship-history summaries.
+- Added fictional examples for neighbor-history avoidance.
+
+### Improved
+- Improved history-based scoring by combining seat-category fairness with pair-history awareness.
+- Expanded tests for relation detection, pair-history reports, fallback and OR-Tools scoring, and hard-rule priority.
+- Updated documentation for relationship-aware seating.
+
 ## 0.2.0 - 2026-06-22
 
 ### Added

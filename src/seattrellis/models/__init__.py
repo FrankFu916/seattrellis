@@ -3,12 +3,18 @@
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
 from seattrellis.models.history import (
     FairnessReport,
+    NeighborRelationType,
+    PairHistory,
+    PairHistoryRecord,
+    PairHistoryReport,
     SeatHistory,
     SeatHistoryRecord,
     SeatPositionCategory,
+    StudentPairHistory,
     StudentSeatHistory,
 )
 from seattrellis.models.rules import (
+    AvoidRecentNeighborsRule,
     FairRotationRule,
     FixedSeatRule,
     HardRules,
@@ -24,11 +30,16 @@ from seattrellis.models.student import Student
 __all__ = [
     "AdjacencyConfig",
     "ClassroomLayout",
+    "AvoidRecentNeighborsRule",
     "FairRotationRule",
     "FairnessReport",
     "FixedSeatRule",
     "HardRules",
     "MinDistanceRule",
+    "NeighborRelationType",
+    "PairHistory",
+    "PairHistoryRecord",
+    "PairHistoryReport",
     "PairRule",
     "RuleSet",
     "SeatAssignment",
@@ -39,6 +50,7 @@ __all__ = [
     "SeatingSnapshot",
     "SoftRules",
     "Student",
+    "StudentPairHistory",
     "StudentSeatHistory",
     "WeightedRule",
 ]

@@ -1,4 +1,4 @@
-# v0.2.0 Release Checklist
+# v0.2.1 Release Checklist
 
 ## Local Verification
 
@@ -8,8 +8,9 @@
 - [ ] Run `seattrellis --help`.
 - [ ] Run `seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json`.
 - [ ] Run `seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json`.
-- [ ] Run `seattrellis export --snapshot outputs/fair.snapshot.json --format html`.
+- [ ] Run `seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
+- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json`.
+- [ ] Run `seattrellis export --snapshot outputs/neighbor-aware.snapshot.json --format html`.
 - [ ] Run `pytest tests/test_minimal_install.py`.
 - [ ] Run `python -m pip install -e ".[all,dev]"`.
 - [ ] Run `pytest`.
@@ -21,6 +22,9 @@
 - [ ] Run `seattrellis init-demo`.
 - [ ] Run `seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json`.
 - [ ] Run `seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
+- [ ] Run `seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
+- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json`.
+- [ ] Run `seattrellis export --snapshot outputs/neighbor-aware.snapshot.json --format html`.
 - [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history`.
 - [ ] Run `seattrellis export --snapshot outputs/latest.snapshot.json --format html`.
 - [ ] With `excel` and `image` extras installed, run `seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history`.
@@ -33,7 +37,7 @@
 - [ ] Confirm `examples/history/` contains fictional snapshots only.
 - [ ] Confirm no real student names, IDs, school names, class names, grades, notes, historical snapshots, API keys, `.env`, or private exports are tracked.
 - [ ] Confirm `outputs/`, `exports/`, `snapshots/`, `private/`, `data/`, `real_students/`, and `real_classes/` remain ignored.
-- [ ] Confirm `pyproject.toml` version is `0.2.0`.
+- [ ] Confirm `pyproject.toml` version is `0.2.1`.
 - [ ] Confirm `git status --short` has no suspicious generated files.
 - [ ] Confirm `git ls-files` does not include ignored real-data directories.
 - [ ] Confirm CI passes on GitHub Actions.
@@ -44,9 +48,9 @@
 - [ ] Create and push the tag:
 
 ```bash
-git tag -a v0.2.0 -m "SeatTrellis v0.2.0"
-git push origin v0.2.0
+git tag -a v0.2.1 -m "SeatTrellis v0.2.1"
+git push origin v0.2.1
 ```
 
-- [ ] Create a GitHub Release for `v0.2.0`.
+- [ ] Create a GitHub Release for `v0.2.1`.
 - [ ] Include a short privacy note in the release description.

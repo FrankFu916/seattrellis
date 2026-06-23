@@ -47,6 +47,40 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ],
         [
             "seattrellis",
+            "pair-report",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--history-dir",
+            "examples/history",
+        ],
+        [
+            "seattrellis",
+            "solve",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--rules",
+            "examples/rules_neighbor_avoidance.json",
+            "--history-dir",
+            "examples/history",
+            "--output",
+            "outputs/neighbor-aware.snapshot.json",
+        ],
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
+            "outputs/neighbor-aware.snapshot.json",
+            "--format",
+            "html",
+            "--output",
+            "outputs/neighbor-aware.html",
+        ],
+        [
+            "seattrellis",
             "solve",
             "--students",
             "examples/students.xlsx",
@@ -70,6 +104,8 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "seating.xlsx").exists()
     assert (tmp_path / "outputs" / "seating.png").exists()
     assert (tmp_path / "outputs" / "seating.html").exists()
+    assert (tmp_path / "outputs" / "neighbor-aware.snapshot.json").exists()
+    assert (tmp_path / "outputs" / "neighbor-aware.html").exists()
 
 
 def test_cli_reports_friendly_missing_file_error(tmp_path) -> None:

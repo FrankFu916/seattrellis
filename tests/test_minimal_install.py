@@ -51,6 +51,24 @@ def test_csv_validate_and_html_export_run_in_minimal_install(tmp_path) -> None:
     assert history_result.returncode == 0, history_result.stderr
     assert "History report" in history_result.stdout
 
+    pair_result = subprocess.run(
+        [
+            "seattrellis",
+            "pair-report",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--history-dir",
+            "examples/history",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert pair_result.returncode == 0, pair_result.stderr
+    assert "Pair history report" in pair_result.stdout
+
     snapshot_path = tmp_path / "latest.snapshot.json"
     solve_result = subprocess.run(
         [
@@ -61,7 +79,7 @@ def test_csv_validate_and_html_export_run_in_minimal_install(tmp_path) -> None:
             "--layout",
             "examples/classroom.json",
             "--rules",
-            "examples/rules.json",
+            "examples/rules_neighbor_avoidance.json",
             "--history-dir",
             "examples/history",
             "--output",

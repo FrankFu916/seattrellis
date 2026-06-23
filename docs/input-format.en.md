@@ -85,11 +85,13 @@ Invalid examples include `examples/invalid/duplicate_student_id.csv`, `examples/
 
 ## Historical Snapshots
 
-`solve --history`, `solve --history-dir`, and `history-report` read SeatTrellis JSON snapshots. Historical analysis depends only on JSON snapshots. It does not require Excel, PNG, Streamlit, SQLite, or any database.
+`solve --history`, `solve --history-dir`, `history-report`, and `pair-report` read SeatTrellis JSON snapshots. Historical analysis depends only on JSON snapshots. It does not require Excel, PNG, Streamlit, SQLite, or any database.
 
 ```bash
 seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
+seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
 ```
 
 Historical snapshots are interpreted against the current student list and current layout:
@@ -98,7 +100,10 @@ Historical snapshots are interpreted against the current student list and curren
 - if a historical snapshot is missing a current student, that student is skipped for that snapshot and a warning is recorded;
 - if a historical snapshot references a seat that does not exist in the current layout, the record is marked `unknown` and a warning is recorded;
 - if a historical snapshot references an `enabled=false` seat in the current layout, the seat record is retained but excluded from position category counts;
-- v0.1.0 / v0.1.1 / v0.1.2 snapshots still load; v0.2.0 snapshots may add fairness information under `metadata.fairness`.
+- pair history uses the current layout `row` / `col`, adjacency graph, and custom edges to detect `desk_mate`, `horizontal`, `vertical`, `diagonal`, `adjacent_any`, and `within_distance`;
+- if pair history references an `enabled=false` seat, that seat remains unavailable for new solving, but historical relationships are counted from row/column coordinates when possible and a warning is recorded;
+- `within_distance` uses Chebyshev distance with a default threshold of `2`;
+- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 snapshots still load; v0.2.1 snapshots may add `fair_rotation` and `avoid_recent_neighbors` summaries under `metadata.fairness`.
 
 `examples/history/` contains fictional history only. Real historical seating records should be de-identified and stored in ignored directories, not committed to a public repository.
 
