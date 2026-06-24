@@ -110,6 +110,55 @@ def test_csv_validate_and_html_export_run_in_minimal_install(tmp_path) -> None:
     assert export_result.returncode == 0, export_result.stderr
     assert html_path.exists()
 
+    candidates_path = tmp_path / "candidates.json"
+    report_path = tmp_path / "plan-report.json"
+    multi_result = subprocess.run(
+        [
+            "seattrellis",
+            "solve",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--rules",
+            "examples/rules_multi_candidate.json",
+            "--history-dir",
+            "examples/history",
+            "--candidates",
+            "3",
+            "--output",
+            str(candidates_path),
+            "--report",
+            str(report_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert multi_result.returncode == 0, multi_result.stderr
+
+    recommended_path = tmp_path / "recommended.html"
+    candidate_export = subprocess.run(
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
+            str(candidates_path),
+            "--candidate",
+            "recommended",
+            "--format",
+            "html",
+            "--output",
+            str(recommended_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert candidate_export.returncode == 0, candidate_export.stderr
+    assert report_path.exists()
+    assert recommended_path.exists()
+
 
 def test_fallback_solver_handles_json_layout_and_rules_without_optional_extras() -> None:
     students = students_from_records(

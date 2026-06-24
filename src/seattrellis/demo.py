@@ -56,6 +56,7 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
     layout_json = examples / "classroom.json"
     rules_json = examples / "rules.json"
     neighbor_rules_json = examples / "rules_neighbor_avoidance.json"
+    multi_candidate_rules_json = examples / "rules_multi_candidate.json"
     history = examples / "history"
 
     if overwrite or not students_csv.exists():
@@ -71,6 +72,8 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         write_json_model(_demo_rules(), rules_json)
     if overwrite or not neighbor_rules_json.exists():
         write_json_model(_demo_neighbor_rules(), neighbor_rules_json)
+    if overwrite or not multi_candidate_rules_json.exists():
+        write_json_model(_demo_neighbor_rules(), multi_candidate_rules_json)
     _write_history_examples(history, overwrite=overwrite)
 
     return {
@@ -79,6 +82,7 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         "layout": layout_json,
         "rules": rules_json,
         "neighbor_rules": neighbor_rules_json,
+        "multi_candidate_rules": multi_candidate_rules_json,
         "history": history,
         "outputs": outputs,
     }

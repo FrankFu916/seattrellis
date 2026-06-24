@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 
 from seattrellis import cli
-from seattrellis.io.json_files import load_snapshot
+from seattrellis.io.json_files import load_candidate_set, load_snapshot
 
 
 def test_cli_helpers_init_solve_and_export(tmp_path) -> None:
@@ -71,6 +71,36 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ],
         [
             "seattrellis",
+            "solve",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--rules",
+            "examples/rules_multi_candidate.json",
+            "--history-dir",
+            "examples/history",
+            "--candidates",
+            "5",
+            "--output",
+            "outputs/candidates.json",
+            "--report",
+            "outputs/plan-report.json",
+        ],
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
+            "outputs/candidates.json",
+            "--candidate",
+            "recommended",
+            "--format",
+            "html",
+            "--output",
+            "outputs/recommended.html",
+        ],
+        [
+            "seattrellis",
             "export",
             "--snapshot",
             "outputs/neighbor-aware.snapshot.json",
@@ -106,6 +136,10 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "seating.html").exists()
     assert (tmp_path / "outputs" / "neighbor-aware.snapshot.json").exists()
     assert (tmp_path / "outputs" / "neighbor-aware.html").exists()
+    assert (tmp_path / "outputs" / "candidates.json").exists()
+    assert (tmp_path / "outputs" / "plan-report.json").exists()
+    assert (tmp_path / "outputs" / "recommended.html").exists()
+    assert len(load_candidate_set(tmp_path / "outputs" / "candidates.json").candidates) == 5
 
 
 def test_cli_reports_friendly_missing_file_error(tmp_path) -> None:

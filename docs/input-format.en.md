@@ -103,9 +103,46 @@ Historical snapshots are interpreted against the current student list and curren
 - pair history uses the current layout `row` / `col`, adjacency graph, and custom edges to detect `desk_mate`, `horizontal`, `vertical`, `diagonal`, `adjacent_any`, and `within_distance`;
 - if pair history references an `enabled=false` seat, that seat remains unavailable for new solving, but historical relationships are counted from row/column coordinates when possible and a warning is recorded;
 - `within_distance` uses Chebyshev distance with a default threshold of `2`;
-- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 snapshots still load; v0.2.1 snapshots may add `fair_rotation` and `avoid_recent_neighbors` summaries under `metadata.fairness`.
+- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 / v0.2.1 snapshots still load; v0.2.2 does not change the ordinary snapshot schema.
 
 `examples/history/` contains fictional history only. Real historical seating records should be de-identified and stored in ignored directories, not committed to a public repository.
+
+## Candidate Set JSON
+
+When `--candidates` is greater than 1, the output is a separate candidate set rather than an ordinary snapshot:
+
+```json
+{
+  "schema_version": "0.2.2",
+  "kind": "candidate_set",
+  "metadata": {
+    "project": "SeatTrellis",
+    "candidate_count": 3,
+    "base_seed": 42
+  },
+  "candidates": [
+    {
+      "candidate_id": "candidate_01",
+      "snapshot": {},
+      "score": {
+        "total": 88.5,
+        "breakdown": {}
+      },
+      "hard_constraints_satisfied": true,
+      "warnings": [],
+      "metadata": {}
+    }
+  ],
+  "recommended_candidate_id": "candidate_01",
+  "warnings": []
+}
+```
+
+`kind: "candidate_set"` distinguishes this artifact from an ordinary snapshot. Every nested `snapshot` still uses the existing `schema_version: "1.0"`, preserving single-plan and history compatibility.
+
+`export --snapshot outputs/candidates.json` selects `recommended_candidate_id` by default. Use `--candidate candidate_02` for a specific plan; `--candidate recommended` explicitly requests the default. Unknown IDs produce a friendly error listing available candidates.
+
+The `kind: "plan_comparison_report"` file written by `--report` is a comparison report, not an exportable seating snapshot. Keep real candidate sets, reports, and exports under ignored private paths such as `outputs/`; do not commit them to a public repository.
 
 ## Seat Position Categories
 

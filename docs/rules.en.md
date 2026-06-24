@@ -149,3 +149,34 @@ Relationship types:
 Pair history is interpreted against the current student list and current layout; SeatTrellis does not fill irregular layouts into a complete matrix. Missing current students are skipped with a warning. Unknown historical seats are skipped for affected pairs with a warning. If a historical snapshot references an `enabled=false` seat, the seat is still unavailable for new solving, but historical relationships are counted from row/column coordinates when possible and a warning is recorded.
 
 Both the fallback solver and the OR-Tools solver support this rule. The current implementation is heuristic scoring: it tends to reduce repeated desk-mate and neighbor relationships, but it does not guarantee global optimality.
+
+## Multiple Candidates And Scoring
+
+Multi-candidate mode does not add or relax rules. `solve --candidates N` applies the normal hard constraints and soft costs, then continues solving with different seeds and a constraint that excludes each previously generated complete assignment. Hard constraints remain absolute. Candidate generation and recommendation are heuristic and do not guarantee enumeration of every feasible plan or a global optimum.
+
+```bash
+seattrellis solve \
+  --students examples/students.csv \
+  --layout examples/classroom.json \
+  --rules examples/rules_multi_candidate.json \
+  --history-dir examples/history \
+  --candidates 5 \
+  --seed 42 \
+  --output outputs/candidates.json \
+  --report outputs/plan-report.json
+```
+
+Available dimensions use a 0–100 scale, where higher is better for that dimension. The total includes only dimensions with `status: "available"` and weights them with the corresponding soft-rule weight. `diversity_score` uses `randomize.weight`; `stability_score` uses a fixed comparison weight of 1. A plan that fails hard-constraint verification is never included in a candidate set.
+
+| Dimension | Meaning | Example unavailable condition |
+| --- | --- | --- |
+| `fair_rotation_score` | Historical seat-category rotation cost; lower cost produces a higher score | Rule disabled or no history |
+| `avoid_recent_neighbors_score` | Recent repeated desk-mate / neighbor cost; lower cost produces a higher score | Rule disabled or no pair history |
+| `score_balance_score` | Mixing of different score levels across adjacent seats | Rule disabled or insufficient scores |
+| `height_preference_score` | Match between height ordering and front/back row placement | Rule disabled or insufficient heights/rows |
+| `vision_preference_score` | How close students with vision needs are to the front | Rule disabled or no matching students |
+| `diversity_score` | Percentage of students seated differently from other candidates | Only one candidate |
+| `stability_score` | Percentage of unchanged seats versus the latest historical snapshot | No history |
+| `hard_constraint_summary` | Assignment completeness and all hard-rule checks | Always evaluated |
+
+`not_available` means the current inputs cannot honestly support that dimension; it is not a zero score. The recommended candidate is the highest weighted-total hard-valid plan, with `candidate_id` as a deterministic tie-breaker.

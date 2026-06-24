@@ -70,6 +70,8 @@ jobs:
           seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
           seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
           seattrellis export --snapshot outputs/neighbor-aware.snapshot.json --format html --output outputs/neighbor-aware.html
+          seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 3 --output outputs/candidates.json --report outputs/plan-report.json
+          seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html
           seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history
           seattrellis export --snapshot outputs/latest.snapshot.json --format excel
           seattrellis export --snapshot outputs/latest.snapshot.json --format png

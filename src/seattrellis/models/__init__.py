@@ -1,6 +1,17 @@
 """Pydantic data models used across SeatTrellis."""
 
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
+from seattrellis.models.candidate import (
+    CandidatePlan,
+    CandidateSet,
+    HardConstraintSummary,
+    MultiSolveOptions,
+    PlanComparisonEntry,
+    PlanComparisonReport,
+    PlanScore,
+    ScoreBreakdown,
+    ScoreDimension,
+)
 from seattrellis.models.history import (
     FairnessReport,
     NeighborRelationType,
@@ -29,18 +40,25 @@ from seattrellis.models.student import Student
 
 __all__ = [
     "AdjacencyConfig",
+    "CandidatePlan",
+    "CandidateSet",
     "ClassroomLayout",
     "AvoidRecentNeighborsRule",
     "FairRotationRule",
     "FairnessReport",
     "FixedSeatRule",
     "HardRules",
+    "HardConstraintSummary",
     "MinDistanceRule",
+    "MultiSolveOptions",
     "NeighborRelationType",
     "PairHistory",
     "PairHistoryRecord",
     "PairHistoryReport",
     "PairRule",
+    "PlanComparisonEntry",
+    "PlanComparisonReport",
+    "PlanScore",
     "RuleSet",
     "SeatAssignment",
     "SeatHistory",
@@ -48,6 +66,8 @@ __all__ = [
     "SeatNode",
     "SeatPositionCategory",
     "SeatingSnapshot",
+    "ScoreBreakdown",
+    "ScoreDimension",
     "SoftRules",
     "Student",
     "StudentPairHistory",

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.2 - 2026-06-22
+
+### Added
+- Added multi-candidate seating generation for the fallback and OR-Tools solvers.
+- Added explainable candidate scoring with fair rotation, recent-neighbor avoidance, score balance, height, vision, diversity, stability, and hard-constraint summaries.
+- Added candidate-set JSON output and plan-comparison report output.
+- Added recommended-candidate selection and candidate-set export support.
+- Added fictional multi-candidate examples and CLI smoke coverage.
+
+### Improved
+- Improved solver output for decision-making workflows while preserving single-snapshot compatibility.
+- Expanded documentation for heuristic score-based plan comparison.
+- Added tests for deterministic candidate generation, scoring, hard-rule preservation, persistence, and HTML / Excel / PNG candidate export.
+
 ## 0.2.1 - 2026-06-22
 
 ### Added

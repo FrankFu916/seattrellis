@@ -103,9 +103,46 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 - pair history 使用当前 layout 的 `row` / `col`、adjacency graph 和 custom edges 判断 `desk_mate`、`horizontal`、`vertical`、`diagonal`、`adjacent_any`、`within_distance`；
 - pair history 中引用 `enabled=false` 座位时，新排座不会使用该座位，但历史关系会尽量按 row/col 坐标统计并记录 warning；
 - `within_distance` 使用 Chebyshev 距离，默认阈值为 `2`；
-- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 snapshot 仍可读取；v0.2.1 snapshot 可能在 `metadata.fairness` 中加入 `fair_rotation` 和 `avoid_recent_neighbors` 摘要。
+- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 / v0.2.1 snapshot 仍可读取；v0.2.2 不修改普通 snapshot schema。
 
 `examples/history/` 只包含虚构历史数据。真实历史座位记录应脱敏并保存在忽略目录中，不要提交到公开仓库。
+
+## Candidate set JSON
+
+当 `--candidates` 大于 1 时，输出不再是普通 snapshot，而是独立的 candidate set：
+
+```json
+{
+  "schema_version": "0.2.2",
+  "kind": "candidate_set",
+  "metadata": {
+    "project": "SeatTrellis",
+    "candidate_count": 3,
+    "base_seed": 42
+  },
+  "candidates": [
+    {
+      "candidate_id": "candidate_01",
+      "snapshot": {},
+      "score": {
+        "total": 88.5,
+        "breakdown": {}
+      },
+      "hard_constraints_satisfied": true,
+      "warnings": [],
+      "metadata": {}
+    }
+  ],
+  "recommended_candidate_id": "candidate_01",
+  "warnings": []
+}
+```
+
+candidate set 通过 `kind: "candidate_set"` 与普通 snapshot 区分。每个 `snapshot` 仍使用原有 `schema_version: "1.0"`，因此单方案和历史读取保持向后兼容。
+
+`export --snapshot outputs/candidates.json` 默认选择 `recommended_candidate_id`；也可以使用 `--candidate candidate_02`。`--candidate recommended` 是显式默认选择。如果 ID 不存在，CLI 会列出可用 ID 并返回友好错误。
+
+`--report` 写出的 `kind: "plan_comparison_report"` 是比较报告，不是可导出的座位 snapshot。真实 candidate set、比较报告和导出文件都应放在已忽略的 `outputs/` 等私有目录，不要提交到公开仓库。
 
 ## 座位位置类别
 

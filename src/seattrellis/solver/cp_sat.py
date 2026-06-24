@@ -4,7 +4,7 @@ import os
 import random
 from dataclasses import dataclass
 from math import inf
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.history import PairHistory, SeatHistory
@@ -48,6 +48,7 @@ def solve_seating(
     pair_history: PairHistory | None = None,
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
+    excluded_assignments: Sequence[Mapping[str, str]] | None = None,
 ) -> SeatingSolution:
     """Solve a seating plan using CP-SAT, with a small deterministic fallback."""
 
@@ -67,6 +68,7 @@ def solve_seating(
         raise SeatTrellisSolveError(validation_report.format_failure(title="Input validation failed."))
     edges = build_adjacency_edges(layout)
     compiled = _compile_rules(students, seats, layout, rules, edges)
+    excluded = _compile_excluded_assignments(students, seats, excluded_assignments or [])
 
     cp_sat = _load_cp_model()
     if cp_sat is not None:
@@ -81,8 +83,20 @@ def solve_seating(
             pair_history,
             seed,
             time_limit_seconds,
+            excluded,
         )
-    return _solve_with_fallback(students, seats, layout, rules, compiled, edges, history, pair_history, seed)
+    return _solve_with_fallback(
+        students,
+        seats,
+        layout,
+        rules,
+        compiled,
+        edges,
+        history,
+        pair_history,
+        seed,
+        excluded,
+    )
 
 
 def _load_cp_model():
@@ -114,6 +128,7 @@ def _solve_with_ortools(
     pair_history: PairHistory | None,
     seed: int,
     time_limit_seconds: float,
+    excluded_assignments: list[dict[int, int]],
 ) -> SeatingSolution:
     model = cp_model.CpModel()
     x: dict[tuple[int, int], Any] = {}
@@ -130,6 +145,8 @@ def _solve_with_ortools(
         model.Add(x[(student_index, seat_index)] == 1)
 
     _add_pair_constraints(model, x, seats, compiled, layout, edges)
+    for excluded in excluded_assignments:
+        model.Add(sum(x[(student_index, seat_index)] for student_index, seat_index in excluded.items()) <= len(students) - 1)
     objective_terms = _build_individual_objective_terms(x, students, seats, layout, rules, history, seed)
     objective_terms.extend(_build_pair_objective_terms(model, x, students, seats, layout, rules, edges, pair_history))
     objective_terms.extend(_build_score_balance_terms(model, x, students, seats, rules, edges))
@@ -326,6 +343,7 @@ def _solve_with_fallback(
     history: SeatHistory | None,
     pair_history: PairHistory | None,
     seed: int,
+    excluded_assignments: list[dict[int, int]],
 ) -> SeatingSolution:
     rng = random.Random(seed)
     attempts = max(40, len(students) * 12)
@@ -381,7 +399,11 @@ def _solve_with_fallback(
             assignment[student_index] = seat_index
             used_seats.add(seat_index)
 
-        if not success or not _full_assignment_valid(assignment, seats, layout, compiled, edges):
+        if (
+            not success
+            or not _full_assignment_valid(assignment, seats, layout, compiled, edges)
+            or _assignment_is_excluded(assignment, excluded_assignments)
+        ):
             continue
         cost = _fallback_total_cost(assignment, students, seats, layout, rules, edges, history, pair_history)
         if cost < best_cost:
@@ -507,6 +529,43 @@ def _compile_rules(
     )
     _validate_compiled_rule_conflicts(compiled, seats, layout, edges)
     return compiled
+
+
+def _compile_excluded_assignments(
+    students: Sequence[Student],
+    seats: Sequence[SeatNode],
+    excluded_assignments: Sequence[Mapping[str, str]],
+) -> list[dict[int, int]]:
+    student_index_by_key = {student.key: index for index, student in enumerate(students)}
+    seat_index_by_id = {seat.seat_id: index for index, seat in enumerate(seats)}
+    compiled: list[dict[int, int]] = []
+    for excluded in excluded_assignments:
+        if set(excluded) != set(student_index_by_key):
+            raise SeatTrellisSolveError(
+                "Each excluded assignment must contain every current student exactly once."
+            )
+        try:
+            item = {
+                student_index_by_key[student_key]: seat_index_by_id[seat_id]
+                for student_key, seat_id in excluded.items()
+            }
+        except KeyError as exc:
+            raise SeatTrellisSolveError(
+                f"Excluded assignment references an unknown student or enabled seat: {exc.args[0]!r}."
+            ) from exc
+        compiled.append(item)
+    return compiled
+
+
+def _assignment_is_excluded(
+    assignment: Mapping[int, int],
+    excluded_assignments: Sequence[Mapping[int, int]],
+) -> bool:
+    return any(
+        len(assignment) == len(excluded)
+        and all(assignment.get(student_index) == seat_index for student_index, seat_index in excluded.items())
+        for excluded in excluded_assignments
+    )
 
 
 def _validate_compiled_rule_conflicts(

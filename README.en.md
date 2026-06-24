@@ -4,7 +4,7 @@
 
 **[简体中文](README.md) | English**
 
-SeatTrellis is a local-first classroom seating planner for reproducible seating workflows with fictional demo data. It reads a student list, a seat-node classroom layout, and a rules file, then writes a JSON snapshot that can be exported to Excel, PNG, or HTML.
+SeatTrellis is a local-first classroom seating planner for reproducible seating workflows with fictional demo data. It can write one JSON snapshot or generate multiple explainably scored candidate plans, then export Excel, PNG, or HTML.
 
 SeatTrellis processes data locally by default. Do not commit real student names, IDs, grades, class names, school names, seating preferences, or historical seating snapshots to a public repository.
 
@@ -22,6 +22,8 @@ seattrellis validate --students examples/students.csv --layout examples/classroo
 seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 5 --output outputs/candidates.json --report outputs/plan-report.json
+seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
 seattrellis export --snapshot outputs/latest.snapshot.json --format html
 ```
@@ -37,7 +39,7 @@ python -m pip install -e .
 seattrellis --help
 ```
 
-The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot files, the deterministic built-in fallback solver, and HTML export without heavy optional libraries.
+The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot/candidate-set files, the deterministic built-in fallback solver, multi-candidate scoring, and HTML export without heavy optional libraries.
 
 ### Common Local Install
 
@@ -74,9 +76,11 @@ seattrellis validate --students examples/students.csv --layout examples/classroo
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --output outputs/demo.snapshot.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 5 --output outputs/candidates.json --report outputs/plan-report.json
 seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
 seattrellis export --snapshot outputs/demo.snapshot.json --format html --output outputs/demo.html
+seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html
 ```
 
 After installing the `excel` and `image` extras, you can also run:
@@ -92,6 +96,23 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 `validate` checks input files and obvious rule conflicts only; it does not generate a seating snapshot. `solve` validates first, then writes the snapshot. Error messages try to include the file, field, row number, and hard-rule conflict. With `--strict`, warnings also make the command exit with a non-zero status.
 
 `solve` accepts repeated `--history` snapshot paths or `--history-dir examples/history` for a directory of `*.snapshot.json` files. `history-report` summarizes each student's front, back, side, corner, near-window, near-door, near-platform, and near-AC counts. Add `--output outputs/history-report.json` to write a JSON report. `pair-report` summarizes pair-level desk-mate, horizontal, vertical, diagonal, any-adjacent, and within-distance counts. Add `--top 10` to limit displayed high-frequency pairs, or `--output outputs/pair-report.json` to write JSON.
+
+## Multiple Candidates And Scoring
+
+`--candidates 1` preserves the existing single-snapshot behavior. `--candidates N` repeatedly solves with a deterministic seed sequence and an exact-assignment exclusion constraint, then writes a separate `kind: "candidate_set"` JSON artifact. Candidate generation is heuristic, but every candidate must still satisfy every hard constraint. If the feasible space cannot supply enough distinct plans, SeatTrellis keeps the plans it found and records a warning. Both the fallback and OR-Tools backends support assignment exclusion.
+
+Each candidate contains its snapshot, seed, solver backend, total score, hard-constraint summary, and score breakdown. Current dimensions are:
+
+- `fair_rotation_score`, when fair rotation and history are available;
+- `avoid_recent_neighbors_score`, when relationship avoidance and pair history are available;
+- `score_balance_score`, `height_preference_score`, and `vision_preference_score`, when their rules and required input fields are available;
+- `diversity_score`, based on assignment differences among candidates;
+- `stability_score`, based on unchanged seats versus the latest historical snapshot;
+- `hard_constraint_summary`, covering fixed seats, adjacency rules, minimum distance, and assignment completeness.
+
+Missing history, disabled rules, or insufficient fields produce `not_available` instead of an invented score. The total is a 0–100 weighted average of available dimensions using rule weights. The recommended candidate is the highest-scoring hard-valid plan, with `candidate_id` as a deterministic tie-breaker. Scores support comparison and explanation; they do not claim global optimality.
+
+Snapshots and candidate sets are different formats, and old snapshots remain readable. When `export` receives a candidate set, it exports the recommended candidate by default or a selected ID such as `--candidate candidate_03`. HTML includes the candidate ID and total score; Excel and PNG continue to use their optional extras.
 
 ## Inputs And Rules
 
@@ -117,11 +138,12 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 ## Current Support
 
 - CSV student import, with Excel import available through the `excel` extra;
-- JSON classroom layouts, rules, and snapshots;
+- JSON classroom layouts, rules, snapshots, and candidate sets;
 - seat nodes and adjacency graphs;
 - fixed seats, must-adjacent, cannot-adjacent, and minimum-distance rules;
 - vision-front, height-back, randomization, score-balance, fair-rotation, and recent-neighbor avoidance heuristic preferences;
 - historical snapshot statistics, the local `history-report` fairness summary, and `pair-report` relationship-history summary;
+- multi-candidate generation, explainable scoring, comparison reports, and recommended-candidate selection;
 - HTML export, with Excel / PNG export available through the `excel` / `image` extras;
 - validation preflight and conflict diagnostics, CLI, local Streamlit UI, fictional examples, pytest, and GitHub Actions.
 
@@ -131,12 +153,13 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 - `examples/history/` contains fictional history snapshots only for fair-rotation and relationship-avoidance demos.
 - `outputs/`, `exports/`, `snapshots/`, `private/`, `data/`, `real_students/`, `real_classes/`, and `.env` are ignored.
 - Before sharing Issues, PRs, screenshots, test data, or historical seating records, remove names, IDs, grades, notes, class names, school names, and any identifying information. Do not commit real historical seating snapshots to a public repository.
+- Do not commit real candidate reports or candidate-set snapshots to a public repository; keep them under ignored paths such as `outputs/`.
 
 Current fair rotation and relationship avoidance use heuristic scoring from historical counts. They do not guarantee absolute fairness or global optimality.
 
 ## Release
 
-See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md) for v0.2.1 preparation.
+See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md) for v0.2.2 preparation.
 
 ## License
 
