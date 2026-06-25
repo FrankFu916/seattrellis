@@ -1,0 +1,13 @@
+{
+  "kind": "seattrellis_project",
+  "schema_version": 1,
+  "name": "Demo Class",
+  "students": "students.csv",
+  "layout": "classroom.json",
+  "rules": "rules_multi_candidate.json",
+  "history_dir": "history",
+  "outputs_dir": "outputs",
+  "default_candidates": 5,
+  "default_candidate": "recommended",
+  "default_export_format": "html"
+}

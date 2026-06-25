@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.2.2 - 2026-06-22
+## 0.2.3 - 2026-06-25
+
+### Added
+- Added eight built-in rules presets: `random`, `exam`, `daily`, `fair-rotation`, `neighbor-aware`, `balanced`, `height-aware`, and `vision-friendly`.
+- Added `presets list`, `presets show`, and `presets export` CLI commands with Typer and argparse support.
+- Added `solve --preset` and `validate --preset`, including optional user-rules overlays where explicit user fields override preset defaults.
+- Added preset metadata and graceful-degradation warnings for missing history, score, height, or vision data.
+- Added portable local project workspace files with relative students, layout, rules, history, and output paths.
+- Added `project-init`, `project-info`, `project-validate`, `project-solve`, and `project-export` CLI commands with Typer and argparse support.
+- Added project defaults for candidate generation, candidate selection, and export format.
+- Added a fictional `examples/project.seattrellis.json` workspace plus preset and project workflow tests.
+
+### Improved
+- Kept presets as a thin layer over the existing `RuleSet`, validation, solving, candidate generation, scoring, and export paths.
+- Preserved absolute hard-constraint priority when presets are used alone or combined with user rules.
+- Kept ordinary rules files, snapshots, candidate sets, and existing CLI commands backward compatible.
+- Reused the existing validation, solving, candidate scoring, persistence, and export paths for project workflows.
+- Added clear project-file, referenced-path, and output-directory diagnostics without introducing a database or new dependency.
+- Updated bilingual documentation and the release checklist for v0.2.3.
+
+## 0.2.2 - 2026-06-24
 
 ### Added
 - Added multi-candidate seating generation for the fallback and OR-Tools solvers.
@@ -14,7 +34,7 @@
 - Expanded documentation for heuristic score-based plan comparison.
 - Added tests for deterministic candidate generation, scoring, hard-rule preservation, persistence, and HTML / Excel / PNG candidate export.
 
-## 0.2.1 - 2026-06-22
+## 0.2.1 - 2026-06-23
 
 ### Added
 - Added pair-history analysis for historical seating snapshots.

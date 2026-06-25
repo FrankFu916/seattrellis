@@ -37,6 +37,7 @@ from seattrellis.models.rules import (
 )
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
+from seattrellis.models.project import SeatTrellisProject
 
 __all__ = [
     "AdjacencyConfig",
@@ -66,6 +67,7 @@ __all__ = [
     "SeatNode",
     "SeatPositionCategory",
     "SeatingSnapshot",
+    "SeatTrellisProject",
     "ScoreBreakdown",
     "ScoreDimension",
     "SoftRules",

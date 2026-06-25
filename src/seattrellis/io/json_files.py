@@ -42,7 +42,11 @@ def load_layout(path: str | Path) -> ClassroomLayout:
 
 
 def load_rules(path: str | Path) -> RuleSet:
-    return _parse_model(RuleSet, read_json(path), path, "rules file")
+    return parse_rules_data(read_json(path), path)
+
+
+def parse_rules_data(data: dict[str, Any], source: str | Path = "<generated rules>") -> RuleSet:
+    return _parse_model(RuleSet, data, source, "rules file")
 
 
 def load_snapshot(path: str | Path) -> SeatingSnapshot:

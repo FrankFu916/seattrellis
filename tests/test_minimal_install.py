@@ -160,6 +160,107 @@ def test_csv_validate_and_html_export_run_in_minimal_install(tmp_path) -> None:
     assert recommended_path.exists()
 
 
+def test_project_workflow_runs_in_minimal_install(tmp_path) -> None:
+    from seattrellis import cli
+
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    project_path = paths["project"]
+    snapshot_path = tmp_path / "project.snapshot.json"
+    html_path = tmp_path / "project.html"
+
+    validate_result = subprocess.run(
+        ["seattrellis", "project-validate", "--project", str(project_path)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert validate_result.returncode == 0, validate_result.stderr
+
+    solve_result = subprocess.run(
+        [
+            "seattrellis",
+            "project-solve",
+            "--project",
+            str(project_path),
+            "--candidates",
+            "1",
+            "--output",
+            str(snapshot_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert solve_result.returncode == 0, solve_result.stderr
+
+    export_result = subprocess.run(
+        [
+            "seattrellis",
+            "project-export",
+            "--project",
+            str(project_path),
+            "--snapshot",
+            str(snapshot_path),
+            "--format",
+            "html",
+            "--output",
+            str(html_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert export_result.returncode == 0, export_result.stderr
+    assert html_path.exists()
+
+
+def test_preset_workflow_runs_in_minimal_install(tmp_path) -> None:
+    exported_rules = tmp_path / "daily.rules.json"
+    list_result = subprocess.run(
+        ["seattrellis", "presets", "list"],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    export_result = subprocess.run(
+        [
+            "seattrellis",
+            "presets",
+            "export",
+            "daily",
+            "--output",
+            str(exported_rules),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    validate_result = subprocess.run(
+        [
+            "seattrellis",
+            "validate",
+            "--students",
+            "examples/students.csv",
+            "--layout",
+            "examples/classroom.json",
+            "--preset",
+            "daily",
+            "--history-dir",
+            "examples/history",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert "vision-friendly" in list_result.stdout
+    assert export_result.returncode == 0, export_result.stderr
+    assert exported_rules.exists()
+    assert validate_result.returncode == 0, validate_result.stderr
+    assert "Validation passed." in validate_result.stdout
+
+
 def test_fallback_solver_handles_json_layout_and_rules_without_optional_extras() -> None:
     students = students_from_records(
         [

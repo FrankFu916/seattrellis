@@ -19,15 +19,29 @@ from seattrellis.history import (
 from seattrellis.io.json_files import (
     InputFileError,
     load_layout,
-    load_rules,
     load_seating_artifact,
     write_json_model,
+)
+from seattrellis.io.project import (
+    ProjectPaths,
+    find_latest_project_artifact,
+    load_project_paths,
+    write_project,
 )
 from seattrellis.io.students import read_students
 from seattrellis.io.validation import validate_files, validate_loaded_inputs
 from seattrellis.models.candidate import CandidatePlan, CandidateSet, MultiSolveOptions
+from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.presets import (
+    export_preset,
+    format_preset,
+    format_preset_list,
+    get_preset,
+    load_rules_with_preset,
+    preset_context_warnings,
+)
 from seattrellis.scoring import build_plan_comparison_report
 from seattrellis.solver import SeatTrellisSolveError
 
@@ -42,6 +56,30 @@ if typer is not None:
         help="SeatTrellis classroom seating optimizer.",
         no_args_is_help=True,
     )
+    presets_app = typer.Typer(
+        help="List, inspect, and export built-in rules presets.",
+        no_args_is_help=True,
+    )
+    app.add_typer(presets_app, name="presets")
+
+    @presets_app.command("list", help="List built-in seating scenario presets.")
+    def presets_list_command() -> None:
+        typer.echo(format_preset_list())
+
+    @presets_app.command("show", help="Show preset metadata and generated rules JSON.")
+    def presets_show_command(
+        preset: str = typer.Argument(..., help="Preset name."),
+    ) -> None:
+        _run_typer_action(lambda: typer.echo(format_preset(get_preset(preset))))
+
+    @presets_app.command("export", help="Export a preset as a standard rules JSON file.")
+    def presets_export_command(
+        preset: str = typer.Argument(..., help="Preset name."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Rules JSON output path."),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(f"Preset rules written to {export_preset(preset, output)}")
+        )
 
     @app.command("init-demo", help="Create fictional demo input files under examples/.")
     def init_demo_command(
@@ -54,7 +92,12 @@ if typer is not None:
     def solve_command(
         students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
         layout: Path = typer.Option(..., "--layout", help="Classroom layout JSON."),
-        rules: Path = typer.Option(..., "--rules", help="Rules JSON."),
+        rules: Path | None = typer.Option(
+            None,
+            "--rules",
+            help="Optional rules JSON. When combined with --preset, user fields override the preset.",
+        ),
+        preset: str | None = typer.Option(None, "--preset", help="Built-in rules preset name."),
         output: Path = typer.Option(
             Path("outputs/latest.snapshot.json"),
             "--output",
@@ -74,6 +117,7 @@ if typer is not None:
                     students_path=students,
                     layout_path=layout,
                     rules_path=rules,
+                    preset_name=preset,
                     output_path=output,
                     history_paths=history,
                     history_dir=history_dir,
@@ -89,10 +133,29 @@ if typer is not None:
     def validate_command(
         students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
         layout: Path = typer.Option(..., "--layout", help="Classroom layout JSON."),
-        rules: Path = typer.Option(..., "--rules", help="Rules JSON."),
+        rules: Path | None = typer.Option(
+            None,
+            "--rules",
+            help="Optional rules JSON. When combined with --preset, user fields override the preset.",
+        ),
+        preset: str | None = typer.Option(None, "--preset", help="Built-in rules preset name."),
+        history: list[Path] = typer.Option([], "--history", help="Historical snapshot JSON path. Can be repeated."),
+        history_dir: Path | None = typer.Option(None, "--history-dir", help="Directory containing historical *.snapshot.json files."),
         strict: bool = typer.Option(False, "--strict", help="Treat warnings as validation failures."),
     ) -> None:
-        _run_typer_action(lambda: typer.echo(run_validate(students_path=students, layout_path=layout, rules_path=rules, strict=strict)))
+        _run_typer_action(
+            lambda: typer.echo(
+                run_validate(
+                    students_path=students,
+                    layout_path=layout,
+                    rules_path=rules,
+                    preset_name=preset,
+                    history_paths=history,
+                    history_dir=history_dir,
+                    strict=strict,
+                )
+            )
+        )
 
     @app.command("export", help="Export a snapshot to Excel, PNG, or HTML.")
     def export_command(
@@ -156,6 +219,99 @@ if typer is not None:
             )
         )
 
+    @app.command("project-init", help="Create a portable local project workspace file.")
+    def project_init_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        name: str = typer.Option("SeatTrellis Project", "--name", help="Project display name."),
+        students: str = typer.Option("students.csv", "--students", help="Relative student file path."),
+        layout: str = typer.Option("classroom.json", "--layout", help="Relative classroom layout path."),
+        rules: str = typer.Option("rules.json", "--rules", help="Relative rules path."),
+        history_dir: str | None = typer.Option(None, "--history-dir", help="Optional relative history directory."),
+        outputs_dir: str = typer.Option("outputs", "--outputs-dir", help="Relative generated-output directory."),
+        candidates: int = typer.Option(5, "--candidates", help="Default candidate count (1-20)."),
+        force: bool = typer.Option(False, "--force", help="Overwrite an existing project file."),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                "Project file written to "
+                f"{project_init(project_path=project, name=name, students=students, layout=layout, rules=rules, history_dir=history_dir, outputs_dir=outputs_dir, candidates=candidates, force=force)}"
+            )
+        )
+
+    @app.command("project-info", help="Show project settings and referenced-path status.")
+    def project_info_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+    ) -> None:
+        _run_typer_action(lambda: typer.echo(project_info(project_path=project)))
+
+    @app.command("project-validate", help="Validate the inputs referenced by a project file.")
+    def project_validate_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        strict: bool = typer.Option(False, "--strict", help="Treat warnings as validation failures."),
+    ) -> None:
+        _run_typer_action(lambda: typer.echo(project_validate(project_path=project, strict=strict)))
+
+    @app.command("project-solve", help="Solve using inputs and defaults from a project file.")
+    def project_solve_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        candidates: int | None = typer.Option(None, "--candidates", help="Override the default candidate count."),
+        seed: int | None = typer.Option(None, "--seed", help="Override the rules-file seed."),
+        time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit in seconds."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Override the output JSON path."),
+        report: Path | None = typer.Option(None, "--report", help="Optional plan comparison report JSON path."),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_solve_result(
+                project_solve(
+                    project_path=project,
+                    candidate_count=candidates,
+                    seed=seed,
+                    time_limit_seconds=time_limit_seconds,
+                    output_path=output,
+                    report_path=report,
+                )
+            )
+        )
+
+    @app.command("project-export", help="Export the latest or selected project seating artifact.")
+    def project_export_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        snapshot: Path | None = typer.Option(None, "--snapshot", help="Snapshot or candidate-set JSON path."),
+        output_format: str | None = typer.Option(None, "--format", help="Export format: excel, png, html."),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID, or 'recommended'.",
+        ),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Override the exported file path."),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                "Export written to "
+                f"{project_export(project_path=project, snapshot_path=snapshot, output_format=output_format, candidate_id=candidate, output_path=output)}"
+            )
+        )
+
 else:
     app = None
 
@@ -168,7 +324,8 @@ def solve(
     *,
     students_path: str | Path,
     layout_path: str | Path,
-    rules_path: str | Path,
+    rules_path: str | Path | None = None,
+    preset_name: str | None = None,
     output_path: str | Path = "outputs/latest.snapshot.json",
     history_paths: Sequence[str | Path] | None = None,
     history_dir: str | Path | None = None,
@@ -181,6 +338,7 @@ def solve(
         students_path=students_path,
         layout_path=layout_path,
         rules_path=rules_path,
+        preset_name=preset_name,
         output_path=output_path,
         history_paths=history_paths,
         history_dir=history_dir,
@@ -196,7 +354,8 @@ def solve_with_report(
     *,
     students_path: str | Path,
     layout_path: str | Path,
-    rules_path: str | Path,
+    rules_path: str | Path | None = None,
+    preset_name: str | None = None,
     output_path: str | Path = "outputs/latest.snapshot.json",
     history_paths: Sequence[str | Path] | None = None,
     history_dir: str | Path | None = None,
@@ -207,9 +366,19 @@ def solve_with_report(
 ) -> tuple[Path, str | None]:
     students = read_students(students_path)
     layout = load_layout(layout_path)
-    rules = load_rules(rules_path)
-    validate_loaded_inputs(students, layout, rules).raise_for_errors(title="Input validation failed.")
+    rules, preset = load_rules_with_preset(
+        rules_path=rules_path,
+        preset_name=preset_name,
+    )
     history_snapshots = load_history_snapshots(history_paths=history_paths, history_dir=history_dir)
+    validation = validate_loaded_inputs(students, layout, rules)
+    validation.raise_for_errors(title="Input validation failed.")
+    preset_warnings = preset_context_warnings(
+        preset,
+        students,
+        history_count=len(history_snapshots),
+        rules=rules,
+    )
     seat_history = build_seat_history(students, layout, history_snapshots)
     pair_rule = rules.soft.avoid_recent_neighbors
     pair_history = build_pair_history(
@@ -233,11 +402,18 @@ def solve_with_report(
         options=options,
         time_limit_seconds=time_limit_seconds,
     )
+    _apply_preset_metadata(
+        candidate_set,
+        preset_name=preset.name if preset is not None else None,
+        rules_overlay=rules_path is not None and preset is not None,
+        warnings=preset_warnings,
+    )
     if candidate_count == 1:
         snapshot = candidate_set.candidates[0].snapshot
         path = write_json_model(snapshot, output_path)
         fairness = snapshot.metrics.get("fairness", {})
         summary = _format_solve_fairness_summary(fairness) if fairness else None
+        summary = _append_warnings(summary, preset_warnings)
     else:
         path = write_json_model(candidate_set, output_path)
         summary = _format_candidate_set_summary(candidate_set)
@@ -255,10 +431,11 @@ def export(
     output_format: str,
     output_path: str | Path | None = None,
     candidate_id: str | None = None,
+    default_candidate_id: str = "recommended",
 ) -> Path:
     artifact = load_seating_artifact(snapshot_path)
     if isinstance(artifact, CandidateSet):
-        candidate = artifact.get_candidate(candidate_id or "recommended")
+        candidate = artifact.get_candidate(candidate_id or default_candidate_id)
         snapshot = _snapshot_with_candidate_metadata(candidate)
     else:
         if candidate_id is not None:
@@ -271,10 +448,23 @@ def run_validate(
     *,
     students_path: str | Path,
     layout_path: str | Path,
-    rules_path: str | Path,
+    rules_path: str | Path | None = None,
+    preset_name: str | None = None,
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
     strict: bool = False,
 ) -> str:
-    report = validate_files(students_path=students_path, layout_path=layout_path, rules_path=rules_path)
+    history_snapshots = load_history_snapshots(
+        history_paths=history_paths,
+        history_dir=history_dir,
+    )
+    report = validate_files(
+        students_path=students_path,
+        layout_path=layout_path,
+        rules_path=rules_path,
+        preset_name=preset_name,
+        history_count=len(history_snapshots),
+    )
     report.raise_for_errors(strict=strict)
     return report.format_success()
 
@@ -321,6 +511,137 @@ def run_pair_report(
     return format_pair_history_report(report, top=top)
 
 
+def project_init(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    name: str = "SeatTrellis Project",
+    students: str = "students.csv",
+    layout: str = "classroom.json",
+    rules: str = "rules.json",
+    history_dir: str | None = None,
+    outputs_dir: str = "outputs",
+    candidates: int = 5,
+    force: bool = False,
+) -> Path:
+    project = SeatTrellisProject(
+        name=name,
+        students=students,
+        layout=layout,
+        rules=rules,
+        history_dir=history_dir,
+        outputs_dir=outputs_dir,
+        default_candidates=candidates,
+    )
+    return write_project(project, project_path, overwrite=force)
+
+
+def project_info(*, project_path: str | Path = "seattrellis.project.json") -> str:
+    project, paths = load_project_paths(project_path)
+    lines = [
+        f"Project: {project.name}",
+        f"Project file: {paths.project_file}",
+        f"Schema version: {project.schema_version}",
+        "",
+        "Paths:",
+        _format_project_path("students", project.students, paths.students),
+        _format_project_path("layout", project.layout, paths.layout),
+        _format_project_path("rules", project.rules, paths.rules),
+    ]
+    if project.history_dir is None:
+        lines.append("- history_dir: not configured")
+    else:
+        lines.append(_format_project_path("history_dir", project.history_dir, paths.history_dir))
+    lines.extend(
+        [
+            _format_project_path("outputs_dir", project.outputs_dir, paths.outputs_dir),
+            "",
+            "Defaults:",
+            f"- candidates: {project.default_candidates}",
+            f"- candidate: {project.default_candidate}",
+            f"- export format: {project.default_export_format}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def project_validate(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    strict: bool = False,
+) -> str:
+    _project, paths = load_project_paths(
+        project_path,
+        require_inputs=True,
+        require_history=True,
+    )
+    return run_validate(
+        students_path=paths.students,
+        layout_path=paths.layout,
+        rules_path=paths.rules,
+        strict=strict,
+    )
+
+
+def project_solve(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    candidate_count: int | None = None,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    output_path: str | Path | None = None,
+    report_path: str | Path | None = None,
+) -> tuple[Path, str | None]:
+    project, paths = load_project_paths(
+        project_path,
+        require_inputs=True,
+        require_history=True,
+        create_outputs=True,
+    )
+    count = project.default_candidates if candidate_count is None else candidate_count
+    if not 1 <= count <= 20:
+        raise ValueError("candidates must be between 1 and 20.")
+    if output_path is None:
+        filename = "latest.snapshot.json" if count == 1 else "latest.candidates.json"
+        output_path = paths.outputs_dir / filename
+    return solve_with_report(
+        students_path=paths.students,
+        layout_path=paths.layout,
+        rules_path=paths.rules,
+        output_path=output_path,
+        history_dir=paths.history_dir,
+        time_limit_seconds=time_limit_seconds,
+        candidate_count=count,
+        seed=seed,
+        report_path=report_path,
+    )
+
+
+def project_export(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    snapshot_path: str | Path | None = None,
+    output_format: str | None = None,
+    candidate_id: str | None = None,
+    output_path: str | Path | None = None,
+) -> Path:
+    project, paths = load_project_paths(project_path, create_outputs=True)
+    selected_snapshot = (
+        Path(snapshot_path)
+        if snapshot_path is not None
+        else find_latest_project_artifact(paths.outputs_dir)
+    )
+    selected_format = output_format or project.default_export_format
+    if output_path is None:
+        output_path = paths.outputs_dir / f"seating.{_export_extension(selected_format)}"
+    return export(
+        snapshot_path=selected_snapshot,
+        output_format=selected_format,
+        output_path=output_path,
+        candidate_id=candidate_id,
+        default_candidate_id=project.default_candidate,
+    )
+
+
 def main() -> None:
     if typer is not None:
         app()
@@ -340,10 +661,20 @@ def _run_argparse() -> None:
     init_parser.add_argument("--output-dir", "-o", default=".")
     init_parser.add_argument("--force", "--overwrite", dest="overwrite", action="store_true")
 
+    presets_parser = subparsers.add_parser("presets", help="Manage built-in rules presets.")
+    preset_subparsers = presets_parser.add_subparsers(dest="preset_command", required=True)
+    preset_subparsers.add_parser("list", help="List built-in presets.")
+    preset_show_parser = preset_subparsers.add_parser("show", help="Show one preset.")
+    preset_show_parser.add_argument("preset")
+    preset_export_parser = preset_subparsers.add_parser("export", help="Export one preset.")
+    preset_export_parser.add_argument("preset")
+    preset_export_parser.add_argument("--output", "-o", default=None)
+
     solve_parser = subparsers.add_parser("solve", help="Generate a seating snapshot.")
     solve_parser.add_argument("--students", required=True)
     solve_parser.add_argument("--layout", required=True)
-    solve_parser.add_argument("--rules", required=True)
+    solve_parser.add_argument("--rules", default=None)
+    solve_parser.add_argument("--preset", default=None)
     solve_parser.add_argument("--output", "-o", default="outputs/latest.snapshot.json")
     solve_parser.add_argument("--history", action="append", default=[])
     solve_parser.add_argument("--history-dir", default=None)
@@ -355,7 +686,10 @@ def _run_argparse() -> None:
     validate_parser = subparsers.add_parser("validate", help="Validate input files without solving.")
     validate_parser.add_argument("--students", required=True)
     validate_parser.add_argument("--layout", required=True)
-    validate_parser.add_argument("--rules", required=True)
+    validate_parser.add_argument("--rules", default=None)
+    validate_parser.add_argument("--preset", default=None)
+    validate_parser.add_argument("--history", action="append", default=[])
+    validate_parser.add_argument("--history-dir", default=None)
     validate_parser.add_argument("--strict", action="store_true")
 
     export_parser = subparsers.add_parser("export", help="Export a snapshot.")
@@ -380,17 +714,58 @@ def _run_argparse() -> None:
     pair_parser.add_argument("--top", type=int, default=10)
     pair_parser.add_argument("--within-distance", type=int, default=2)
 
+    project_init_parser = subparsers.add_parser("project-init", help="Create a project workspace file.")
+    project_init_parser.add_argument("--project", default="seattrellis.project.json")
+    project_init_parser.add_argument("--name", default="SeatTrellis Project")
+    project_init_parser.add_argument("--students", default="students.csv")
+    project_init_parser.add_argument("--layout", default="classroom.json")
+    project_init_parser.add_argument("--rules", default="rules.json")
+    project_init_parser.add_argument("--history-dir", default=None)
+    project_init_parser.add_argument("--outputs-dir", default="outputs")
+    project_init_parser.add_argument("--candidates", type=int, default=5)
+    project_init_parser.add_argument("--force", action="store_true")
+
+    project_info_parser = subparsers.add_parser("project-info", help="Show project settings.")
+    project_info_parser.add_argument("--project", default="seattrellis.project.json")
+
+    project_validate_parser = subparsers.add_parser("project-validate", help="Validate project inputs.")
+    project_validate_parser.add_argument("--project", default="seattrellis.project.json")
+    project_validate_parser.add_argument("--strict", action="store_true")
+
+    project_solve_parser = subparsers.add_parser("project-solve", help="Solve a project.")
+    project_solve_parser.add_argument("--project", default="seattrellis.project.json")
+    project_solve_parser.add_argument("--candidates", type=int, default=None)
+    project_solve_parser.add_argument("--seed", type=int, default=None)
+    project_solve_parser.add_argument("--time-limit", type=float, default=3.0)
+    project_solve_parser.add_argument("--output", "-o", default=None)
+    project_solve_parser.add_argument("--report", default=None)
+
+    project_export_parser = subparsers.add_parser("project-export", help="Export a project artifact.")
+    project_export_parser.add_argument("--project", default="seattrellis.project.json")
+    project_export_parser.add_argument("--snapshot", default=None)
+    project_export_parser.add_argument("--format", default=None)
+    project_export_parser.add_argument("--candidate", default=None)
+    project_export_parser.add_argument("--output", "-o", default=None)
+
     args = parser.parse_args()
     if args.command == "init-demo":
         paths = init_demo(output_dir=args.output_dir, overwrite=args.overwrite)
         print(f"Demo files ready in {paths['students_csv'].parent}")
         if not args.overwrite:
             print("Existing files were kept. Use --force to overwrite demo files.")
+    elif args.command == "presets":
+        if args.preset_command == "list":
+            print(format_preset_list())
+        elif args.preset_command == "show":
+            print(format_preset(get_preset(args.preset)))
+        elif args.preset_command == "export":
+            print(f"Preset rules written to {export_preset(args.preset, args.output)}")
     elif args.command == "solve":
         path, summary = solve_with_report(
             students_path=args.students,
             layout_path=args.layout,
             rules_path=args.rules,
+            preset_name=args.preset,
             output_path=args.output,
             history_paths=args.history,
             history_dir=args.history_dir,
@@ -408,6 +783,9 @@ def _run_argparse() -> None:
                 students_path=args.students,
                 layout_path=args.layout,
                 rules_path=args.rules,
+                preset_name=args.preset,
+                history_paths=args.history,
+                history_dir=args.history_dir,
                 strict=args.strict,
             )
         )
@@ -441,6 +819,44 @@ def _run_argparse() -> None:
                 within_distance=args.within_distance,
             )
         )
+    elif args.command == "project-init":
+        path = project_init(
+            project_path=args.project,
+            name=args.name,
+            students=args.students,
+            layout=args.layout,
+            rules=args.rules,
+            history_dir=args.history_dir,
+            outputs_dir=args.outputs_dir,
+            candidates=args.candidates,
+            force=args.force,
+        )
+        print(f"Project file written to {path}")
+    elif args.command == "project-info":
+        print(project_info(project_path=args.project))
+    elif args.command == "project-validate":
+        print(project_validate(project_path=args.project, strict=args.strict))
+    elif args.command == "project-solve":
+        path, summary = project_solve(
+            project_path=args.project,
+            candidate_count=args.candidates,
+            seed=args.seed,
+            time_limit_seconds=args.time_limit,
+            output_path=args.output,
+            report_path=args.report,
+        )
+        print(f"{_solve_output_label(summary)} written to {path}")
+        if summary:
+            print(summary)
+    elif args.command == "project-export":
+        path = project_export(
+            project_path=args.project,
+            snapshot_path=args.snapshot,
+            output_format=args.format,
+            candidate_id=args.candidate,
+            output_path=args.output,
+        )
+        print(f"Export written to {path}")
 
 
 def _run_typer_action(action) -> None:
@@ -494,6 +910,36 @@ def _format_candidate_set_summary(candidate_set: CandidateSet) -> str:
         lines.append("Warnings:")
         lines.extend(f"- {warning}" for warning in candidate_set.warnings)
     return "\n".join(lines)
+
+
+def _apply_preset_metadata(
+    candidate_set: CandidateSet,
+    *,
+    preset_name: str | None,
+    rules_overlay: bool,
+    warnings: Sequence[str],
+) -> None:
+    if preset_name is None:
+        return
+    metadata = {
+        "name": preset_name,
+        "user_rules_overlay": rules_overlay,
+    }
+    candidate_set.metadata["preset"] = metadata
+    for warning in warnings:
+        if warning not in candidate_set.warnings:
+            candidate_set.warnings.append(warning)
+    for candidate in candidate_set.candidates:
+        candidate.snapshot.metadata["preset"] = metadata
+        if warnings:
+            candidate.snapshot.metadata["warnings"] = list(warnings)
+
+
+def _append_warnings(summary: str | None, warnings: Sequence[str]) -> str | None:
+    if not warnings:
+        return summary
+    warning_text = "\n".join(["Warnings:", *(f"- {warning}" for warning in warnings)])
+    return f"{summary}\n\n{warning_text}" if summary else warning_text
 
 
 def _dimension_rating(rating: str) -> str:
@@ -552,6 +998,22 @@ def _format_solve_fairness_summary(fairness: object) -> str | None:
 
 def _friendly_error(exc: Exception) -> str:
     return str(exc) or exc.__class__.__name__
+
+
+def _format_project_path(label: str, configured: str, resolved: Path | None) -> str:
+    if resolved is None:
+        return f"- {label}: {configured} [not configured]"
+    status = "exists" if resolved.exists() else "missing"
+    return f"- {label}: {configured} -> {resolved} [{status}]"
+
+
+def _export_extension(output_format: str) -> str:
+    normalized = output_format.lower()
+    if normalized in {"excel", "xlsx"}:
+        return "xlsx"
+    if normalized in {"html", "png"}:
+        return normalized
+    raise ValueError(f"Unsupported export format: {output_format}")
 
 
 if __name__ == "__main__":

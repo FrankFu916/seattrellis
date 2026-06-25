@@ -4,12 +4,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from seattrellis.io.json_files import InputFileError, load_layout, load_rules
+from seattrellis.io.json_files import InputFileError, load_layout
 from seattrellis.io.students import read_students
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import MinDistanceRule, RuleSet
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.presets import load_rules_with_preset, preset_context_warnings
 
 SeatEdge = tuple[str, str]
 
@@ -88,12 +89,15 @@ def validate_files(
     *,
     students_path: str | Path,
     layout_path: str | Path,
-    rules_path: str | Path,
+    rules_path: str | Path | None = None,
+    preset_name: str | None = None,
+    history_count: int = 0,
 ) -> ValidationReport:
     report = ValidationReport()
     students: list[Student] | None = None
     layout: ClassroomLayout | None = None
     rules: RuleSet | None = None
+    preset = None
 
     try:
         students = read_students(students_path)
@@ -106,12 +110,22 @@ def validate_files(
         report.add_error(_friendly_exception(exc))
 
     try:
-        rules = load_rules(rules_path)
+        rules, preset = load_rules_with_preset(
+            rules_path=rules_path,
+            preset_name=preset_name,
+        )
     except (InputFileError, MissingOptionalDependencyError, OSError) as exc:
         report.add_error(_friendly_exception(exc))
 
     if students is not None and layout is not None and rules is not None:
         report.extend(validate_loaded_inputs(students, layout, rules))
+        for warning in preset_context_warnings(
+            preset,
+            students,
+            history_count=history_count,
+            rules=rules,
+        ):
+            report.add_warning(warning)
     return report
 
 

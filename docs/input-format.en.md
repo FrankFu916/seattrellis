@@ -1,6 +1,6 @@
 # Input Formats
 
-SeatTrellis reads three inputs: a student list, a classroom layout, and a rules file. Files in `examples/` are fictional only.
+SeatTrellis reads a student list, a classroom layout, and a rules file. A local project file can store their relative paths and common defaults. Files in `examples/` are fictional only.
 
 ## Student List
 
@@ -83,6 +83,37 @@ Layout validation checks empty `seat_id` values, duplicate `seat_id` values, `ro
 
 Invalid examples include `examples/invalid/duplicate_student_id.csv`, `examples/invalid/duplicate_seat_id.json`, and `examples/invalid/not_enough_seats.json`.
 
+## Project Workspace JSON
+
+A project file is the configuration entry point for a local file-based workflow. Recommended names include `seattrellis.project.json` and `project.seattrellis.json`:
+
+```json
+{
+  "kind": "seattrellis_project",
+  "schema_version": 1,
+  "name": "Demo Class",
+  "students": "students.csv",
+  "layout": "classroom.json",
+  "rules": "rules_multi_candidate.json",
+  "history_dir": "history",
+  "outputs_dir": "outputs",
+  "default_candidates": 5,
+  "default_candidate": "recommended",
+  "default_export_format": "html"
+}
+```
+
+`students`, `layout`, and `rules` are required. `history_dir` may be omitted, and the remaining fields have defaults. Every path must be relative and is resolved from the directory containing the project file, not from the package installation directory. `project-solve` creates `outputs_dir` when needed, but it never creates or invents student, layout, rules, or history inputs.
+
+```bash
+seattrellis project-info --project examples/project.seattrellis.json
+seattrellis project-validate --project examples/project.seattrellis.json
+seattrellis project-solve --project examples/project.seattrellis.json
+seattrellis project-export --project examples/project.seattrellis.json
+```
+
+The project file stores paths and defaults only. It does not contain student lists, grades, notes, seating preferences, or snapshot contents. Keep real inputs and outputs under private ignored directories; a shareable project file does not make the private data it references safe to commit.
+
 ## Historical Snapshots
 
 `solve --history`, `solve --history-dir`, `history-report`, and `pair-report` read SeatTrellis JSON snapshots. Historical analysis depends only on JSON snapshots. It does not require Excel, PNG, Streamlit, SQLite, or any database.
@@ -158,4 +189,6 @@ Position categories power `history-report` and `fair_rotation`. Current rules:
 
 ## Rules JSON
 
-See [rules.en.md](rules.en.md).
+Rules may come from a `--rules` JSON file, `--preset`, or both. A preset export is an ordinary `RuleSet` JSON document with no extra top-level fields, so it remains compatible with the existing rules-loading path. Preset solving does not change the ordinary snapshot or candidate-set schemas; the selected preset name and whether a user-rules overlay was applied are recorded only under `metadata.preset`.
+
+See [rules.en.md](rules.en.md) for rules and preset behavior.

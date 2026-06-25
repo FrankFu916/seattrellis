@@ -6,6 +6,7 @@ from pathlib import Path
 
 from seattrellis.io.json_files import write_json_model
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
+from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.rules import (
     AvoidRecentNeighborsRule,
     FairRotationRule,
@@ -57,6 +58,7 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
     rules_json = examples / "rules.json"
     neighbor_rules_json = examples / "rules_neighbor_avoidance.json"
     multi_candidate_rules_json = examples / "rules_multi_candidate.json"
+    project_json = examples / "project.seattrellis.json"
     history = examples / "history"
 
     if overwrite or not students_csv.exists():
@@ -74,6 +76,19 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         write_json_model(_demo_neighbor_rules(), neighbor_rules_json)
     if overwrite or not multi_candidate_rules_json.exists():
         write_json_model(_demo_neighbor_rules(), multi_candidate_rules_json)
+    if overwrite or not project_json.exists():
+        write_json_model(
+            SeatTrellisProject(
+                name="Demo Class",
+                students="students.csv",
+                layout="classroom.json",
+                rules="rules_multi_candidate.json",
+                history_dir="history",
+                outputs_dir="outputs",
+                default_candidates=5,
+            ),
+            project_json,
+        )
     _write_history_examples(history, overwrite=overwrite)
 
     return {
@@ -83,6 +98,7 @@ def create_demo_files(base_dir: str | Path = ".", *, overwrite: bool = False) ->
         "rules": rules_json,
         "neighbor_rules": neighbor_rules_json,
         "multi_candidate_rules": multi_candidate_rules_json,
+        "project": project_json,
         "history": history,
         "outputs": outputs,
     }

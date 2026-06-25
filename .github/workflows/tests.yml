@@ -65,6 +65,15 @@ jobs:
           tmpdir="$(mktemp -d)"
           cd "$tmpdir"
           seattrellis init-demo
+          seattrellis presets list
+          seattrellis presets show daily
+          seattrellis presets export daily --output outputs/daily.rules.json
+          seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
+          seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history --output outputs/daily.snapshot.json
+          seattrellis project-info --project examples/project.seattrellis.json
+          seattrellis project-validate --project examples/project.seattrellis.json
+          seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
+          seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html
           seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
           seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
           seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history

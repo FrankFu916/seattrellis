@@ -8,8 +8,10 @@ import seattrellis.solver.cp_sat as cp_sat
 from seattrellis import cli
 from seattrellis.exporters import export_snapshot
 from seattrellis.io.json_files import write_json_model
+from seattrellis.io.project import write_project
 from seattrellis.io.students import read_students
 from seattrellis.models.layout import ClassroomLayout, SeatNode
+from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
@@ -68,6 +70,38 @@ def test_cli_missing_image_extra_exits_without_traceback(monkeypatch, tmp_path) 
     result = CliRunner().invoke(
         cli.app,
         ["export", "--snapshot", str(snapshot_path), "--format", "png", "--output", str(tmp_path / "seating.png")],
+    )
+
+    assert result.exit_code == 1
+    assert "PNG export requires the image extra." in result.output
+    assert "Traceback" not in result.output
+
+
+def test_project_export_preserves_optional_dependency_errors(monkeypatch, tmp_path) -> None:
+    _block_import(monkeypatch, "PIL")
+    project_path = write_project(
+        SeatTrellisProject(
+            students="students.csv",
+            layout="classroom.json",
+            rules="rules.json",
+        ),
+        tmp_path / "project.seattrellis.json",
+    )
+    snapshot_path = write_json_model(_snapshot(), tmp_path / "snapshot.json")
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "project-export",
+            "--project",
+            str(project_path),
+            "--snapshot",
+            str(snapshot_path),
+            "--format",
+            "png",
+            "--output",
+            str(tmp_path / "seating.png"),
+        ],
     )
 
     assert result.exit_code == 1

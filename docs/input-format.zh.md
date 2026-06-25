@@ -1,6 +1,6 @@
 # 输入格式
 
-SeatTrellis 使用三个输入文件：学生名单、教室布局和规则文件。示例文件都在 `examples/`，只包含虚构数据。
+SeatTrellis 使用学生名单、教室布局和规则文件，也可以用一个本地 project 文件保存这些文件的相对路径和常用默认值。示例文件都在 `examples/`，只包含虚构数据。
 
 ## 学生名单
 
@@ -83,6 +83,37 @@ seattrellis validate --students examples/students.csv --layout examples/classroo
 
 错误示例可参考 `examples/invalid/duplicate_student_id.csv`、`examples/invalid/duplicate_seat_id.json` 和 `examples/invalid/not_enough_seats.json`。
 
+## Project workspace JSON
+
+project 文件是本地文件型工作流的配置入口，推荐命名为 `seattrellis.project.json` 或 `project.seattrellis.json`：
+
+```json
+{
+  "kind": "seattrellis_project",
+  "schema_version": 1,
+  "name": "Demo Class",
+  "students": "students.csv",
+  "layout": "classroom.json",
+  "rules": "rules_multi_candidate.json",
+  "history_dir": "history",
+  "outputs_dir": "outputs",
+  "default_candidates": 5,
+  "default_candidate": "recommended",
+  "default_export_format": "html"
+}
+```
+
+`students`、`layout`、`rules` 必填；`history_dir` 可省略；其余字段有默认值。所有路径必须是相对路径，并相对于 project 文件所在目录解析，而不是相对于安装目录。`project-solve` 会在需要时创建 `outputs_dir`，但不会自动创建或伪造学生、layout、rules、history 输入。
+
+```bash
+seattrellis project-info --project examples/project.seattrellis.json
+seattrellis project-validate --project examples/project.seattrellis.json
+seattrellis project-solve --project examples/project.seattrellis.json
+seattrellis project-export --project examples/project.seattrellis.json
+```
+
+project 文件只保存路径和默认配置，不保存学生名单、成绩、备注、座位偏好或 snapshot 内容。真实输入和输出仍应放在 `.gitignore` 覆盖的私有目录中；不要因为 project 文件本身可分享，就误把它引用的真实数据一并提交。
+
 ## 历史 snapshot
 
 `solve --history`、`solve --history-dir`、`history-report` 和 `pair-report` 读取 SeatTrellis JSON snapshot。历史分析只依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
@@ -158,4 +189,6 @@ candidate set 通过 `kind: "candidate_set"` 与普通 snapshot 区分。每个 
 
 ## 规则 JSON
 
-规则说明见 [rules.zh.md](rules.zh.md)。
+规则可以来自 `--rules` JSON、`--preset`，或二者叠加。preset export 写出的文件就是普通 `RuleSet` JSON，不包含额外顶层字段，因此可被旧的 rules 加载流程继续读取。使用 preset 求解时，普通 snapshot schema 和 candidate-set schema 都不变；所选 preset 名称和是否叠加用户 rules 只记录在 `metadata.preset` 中。
+
+规则与 preset 说明见 [rules.zh.md](rules.zh.md)。

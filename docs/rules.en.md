@@ -86,6 +86,52 @@ Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and
 
 `seed` controls reproducibility. The same inputs and seed should produce stable output.
 
+## Scenario Presets
+
+Presets are a convenience layer over the existing `RuleSet`, not a new rule format. Built-in presets are:
+
+| Preset | Focus |
+| --- | --- |
+| `random` | Reproducible random variation only |
+| `exam` | Stronger reproducible variation; exam spacing, fixed seats, and similar requirements still come from explicit hard rules |
+| `daily` | Vision, height, score mixing, fair rotation, and recent-neighbor avoidance |
+| `fair-rotation` | Historical seat-category rotation |
+| `neighbor-aware` | Fewer recently repeated desk-mate / neighbor relationships |
+| `balanced` | Score-level mixing across adjacent seats |
+| `height-aware` | Taller students toward the back |
+| `vision-friendly` | Front seats for students with vision or front-seat needs |
+
+```bash
+seattrellis presets list
+seattrellis presets show daily
+seattrellis presets export daily --output outputs/daily.rules.json
+seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
+```
+
+Use `--preset` alone or layer it with `--rules`. SeatTrellis first generates the preset's complete standard rules, then recursively applies fields explicitly present in the user JSON. For example, this overlay keeps the other `daily` soft rules while disabling randomization and adding a fixed seat:
+
+```json
+{
+  "hard": {
+    "fixed_seats": [{"student": "STU001", "seat_id": "R1C1"}]
+  },
+  "soft": {
+    "randomize": {"enabled": false, "weight": 0}
+  }
+}
+```
+
+```bash
+seattrellis solve \
+  --students examples/students.csv \
+  --layout examples/classroom.json \
+  --preset daily \
+  --rules my-overrides.json
+```
+
+Presets never invent or relax hard rules. User hard rules continue through the existing preflight, fallback solver, OR-Tools solver, and candidate verification paths. Missing history, score, height, or vision/front-seat markers produces a warning, gracefully disables only the unsupported preference, and leaves its score dimension as `not_available`. `validate --strict` treats these warnings as failures.
+
 ## fair_rotation
 
 `fair_rotation` is a soft rule. It never overrides hard rules: fixed seats, must-adjacent, cannot-adjacent, and minimum-distance constraints still take priority. If no historical snapshots are supplied, `fair_rotation` becomes inactive and solving still succeeds with a metrics message. `weight=0` has no solving effect.
