@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
 
 try:
@@ -55,6 +55,10 @@ def _validate_relative_path(value: object, *, field_name: str) -> str:
     text = str(value).strip()
     if not text:
         raise ValueError(f"{field_name} cannot be empty.")
-    if Path(text).is_absolute() or PureWindowsPath(text).is_absolute():
+    if (
+        Path(text).is_absolute()
+        or PurePosixPath(text).is_absolute()
+        or PureWindowsPath(text).is_absolute()
+    ):
         raise ValueError(f"{field_name} must be a relative path.")
     return text

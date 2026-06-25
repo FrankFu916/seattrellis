@@ -46,6 +46,12 @@ def test_project_model_rejects_missing_fields_wrong_kind_and_absolute_paths() ->
             layout="classroom.json",
             rules="rules.json",
         )
+    with pytest.raises(ValueError, match="relative path"):
+        SeatTrellisProject(
+            students=r"C:\private\students.csv",
+            layout="classroom.json",
+            rules="rules.json",
+        )
 
 
 def test_project_load_resolves_paths_and_creates_outputs(tmp_path) -> None:
