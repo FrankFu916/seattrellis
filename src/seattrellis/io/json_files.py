@@ -10,7 +10,7 @@ except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import BaseModel, ValidationError
 
 from seattrellis.models.layout import ClassroomLayout
-from seattrellis.models.candidate import CandidateSet
+from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 
@@ -55,6 +55,10 @@ def load_snapshot(path: str | Path) -> SeatingSnapshot:
 
 def load_candidate_set(path: str | Path) -> CandidateSet:
     return _parse_model(CandidateSet, read_json(path), path, "candidate set")
+
+
+def load_plan_comparison_report(path: str | Path) -> PlanComparisonReport:
+    return _parse_model(PlanComparisonReport, read_json(path), path, "plan comparison report")
 
 
 def load_seating_artifact(path: str | Path) -> SeatingSnapshot | CandidateSet:
