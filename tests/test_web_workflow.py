@@ -168,6 +168,17 @@ def test_streamlit_app_compiles() -> None:
     py_compile.compile("src/seattrellis/web/app.py", doraise=True)
 
 
+def test_streamlit_app_smoke() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+
+    assert not app.exception
+    assert [title.value for title in app.title] == ["SeatTrellis"]
+    assert [tab.label for tab in app.tabs] == ["快速排座", "Project workspace"]
+
+
 def _block_import(monkeypatch, package_name: str) -> None:
     for module_name in list(sys.modules):
         if module_name == package_name or module_name.startswith(f"{package_name}."):

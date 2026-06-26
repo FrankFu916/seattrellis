@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2026-06-26
+
+### Added
+- Added a fuller local Streamlit workflow for presets, optional rules overlays, history snapshot uploads, and 1-20 generated candidates.
+- Added web display for the recommended candidate, score breakdowns, hard-rule checks, candidate warnings, assignment rows, and JSON/report/export downloads.
+- Added a web project workspace flow that reuses `project-info`, `project-validate`, `project-solve`, and `project-export`.
+- Added a Streamlit-free web workflow helper layer so the UI can reuse existing CLI/core behavior without copying solver, scoring, preset, or project logic.
+- Added web workflow tests and a Streamlit app smoke test.
+
+### Improved
+- Kept web exports on the existing snapshot/candidate export path, including friendly optional-extra errors for PNG and Excel.
+- Kept project paths relative to the project file and avoided embedding private classroom data in project files.
+- Updated README and the release checklist for the completed web workflow.
+
 ## 0.2.3 - 2026-06-25
 
 ### Added

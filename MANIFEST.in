@@ -1,4 +1,14 @@
 include README.en.md CHANGELOG.md CONTRIBUTING.md SECURITY.md
 recursive-include docs *
 recursive-include examples *
+prune outputs
+prune exports
+prune snapshots
+prune private
+prune data
+prune real_students
+prune real_classes
+prune examples/outputs
+prune examples/exports
+prune examples/snapshots
 global-exclude .DS_Store
