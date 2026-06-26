@@ -9,6 +9,7 @@ from seattrellis.io.json_files import (
     load_plan_comparison_report,
     load_seating_artifact,
 )
+from seattrellis.io.project import load_project_paths
 from seattrellis.models.candidate import CandidatePlan, CandidateSet, PlanComparisonReport
 from seattrellis.models.snapshot import SeatingSnapshot
 
@@ -82,6 +83,77 @@ def solve_for_web(
         report_path=report_path if report_path is not None and report_path.exists() else None,
         report=report,
         summary=summary,
+    )
+
+
+def project_info_for_web(*, project_path: str | Path) -> str:
+    return cli.project_info(project_path=project_path)
+
+
+def project_validate_for_web(*, project_path: str | Path, strict: bool = False) -> str:
+    return cli.project_validate(project_path=project_path, strict=strict)
+
+
+def project_solve_for_web(
+    *,
+    project_path: str | Path,
+    candidate_count: int | None = None,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+) -> WebSolveResult:
+    project, paths = load_project_paths(
+        project_path,
+        require_inputs=True,
+        require_history=True,
+        create_outputs=True,
+    )
+    count = project.default_candidates if candidate_count is None else candidate_count
+    artifact_path = paths.outputs_dir / (
+        "latest.snapshot.json" if count == 1 else "latest.candidates.json"
+    )
+    report_path = paths.outputs_dir / "latest.plan-report.json" if count > 1 else None
+
+    written_path, summary = cli.project_solve(
+        project_path=project_path,
+        candidate_count=candidate_count,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        output_path=artifact_path,
+        report_path=report_path,
+    )
+    artifact = load_seating_artifact(written_path)
+    report = (
+        load_plan_comparison_report(report_path)
+        if report_path is not None and report_path.exists()
+        else None
+    )
+    return WebSolveResult(
+        artifact_path=written_path,
+        artifact=artifact,
+        report_path=report_path if report_path is not None and report_path.exists() else None,
+        report=report,
+        summary=summary,
+    )
+
+
+def project_export_for_web(
+    result: WebSolveResult,
+    *,
+    project_path: str | Path,
+    output_format: str,
+    output_dir: str | Path,
+    candidate_id: str | None = None,
+) -> Path:
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    normalized_format = output_format.lower()
+    output_path = output_root / f"project-seating.{_extension_for_format(normalized_format)}"
+    return cli.project_export(
+        project_path=project_path,
+        snapshot_path=result.artifact_path,
+        output_format=normalized_format,
+        candidate_id=candidate_id,
+        output_path=output_path,
     )
 
 

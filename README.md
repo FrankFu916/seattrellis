@@ -75,7 +75,7 @@ streamlit run src/seattrellis/web/app.py
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
 
-网页端支持选择内置 preset，也可以上传 rules JSON 作为覆盖；可上传多份历史 snapshot，生成 1–20 个候选方案，查看推荐方案、评分明细和 hard rule 检查，并下载 JSON、report、HTML、PNG 或 Excel。
+网页端支持选择内置 preset，也可以上传 rules JSON 作为覆盖；可上传多份历史 snapshot，生成 1–20 个候选方案，查看推荐方案、评分明细和 hard rule 检查，并下载 JSON、report、HTML、PNG 或 Excel。也可以读取本机 project 文件，复用 project-info、validate、solve 和 export 工作流。
 
 ## CLI
 

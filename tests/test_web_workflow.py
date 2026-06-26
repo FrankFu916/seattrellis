@@ -7,6 +7,7 @@ import sys
 
 import pytest
 
+from seattrellis import cli
 import seattrellis.web.workflow as workflow
 from seattrellis.io.json_files import InputFileError
 from seattrellis.models.candidate import CandidateSet
@@ -105,6 +106,56 @@ def test_web_export_missing_image_extra_is_friendly(monkeypatch, tmp_path) -> No
             output_format="png",
             output_dir=tmp_path / "exports",
         )
+
+
+def test_project_web_workflow_info_validate_solve_and_export(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    project_path = paths["project"]
+
+    info = workflow.project_info_for_web(project_path=project_path)
+    validation = workflow.project_validate_for_web(project_path=project_path)
+    result = workflow.project_solve_for_web(
+        project_path=project_path,
+        candidate_count=3,
+    )
+    html_path = workflow.project_export_for_web(
+        result,
+        project_path=project_path,
+        output_format="html",
+        output_dir=tmp_path / "exports",
+    )
+
+    assert "Project: Demo Class" in info
+    assert "Validation passed." in validation
+    assert isinstance(result.artifact, CandidateSet)
+    assert result.artifact_path == project_path.parent / "outputs" / "latest.candidates.json"
+    assert result.report_path == project_path.parent / "outputs" / "latest.plan-report.json"
+    assert result.report is not None
+    assert len(result.artifact.candidates) == 3
+    assert html_path.exists()
+    assert result.artifact.recommended_candidate_id in html_path.read_text(encoding="utf-8")
+
+
+def test_project_web_workflow_uses_project_default_candidates(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+
+    result = workflow.project_solve_for_web(project_path=paths["project"])
+
+    assert isinstance(result.artifact, CandidateSet)
+    assert len(result.artifact.candidates) == 5
+
+
+def test_project_web_workflow_can_override_to_single_snapshot(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+
+    result = workflow.project_solve_for_web(
+        project_path=paths["project"],
+        candidate_count=1,
+    )
+
+    assert isinstance(result.artifact, SeatingSnapshot)
+    assert result.artifact_path == paths["project"].parent / "outputs" / "latest.snapshot.json"
+    assert result.report is None
 
 
 def test_web_workflow_module_does_not_import_streamlit(monkeypatch) -> None:

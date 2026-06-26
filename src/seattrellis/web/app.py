@@ -21,6 +21,10 @@ from seattrellis.web.workflow import (
     assignment_rows,
     candidate_summary_rows,
     export_for_web,
+    project_export_for_web,
+    project_info_for_web,
+    project_solve_for_web,
+    project_validate_for_web,
     score_breakdown_rows,
     selected_candidate,
     selected_snapshot,
@@ -28,7 +32,7 @@ from seattrellis.web.workflow import (
 )
 
 
-def _render_result(result, output_dir: Path) -> None:
+def _render_result(result, output_dir: Path, *, project_path: Path | None = None) -> None:
     if isinstance(result.artifact, CandidateSet):
         st.success(
             f"生成 {len(result.artifact.candidates)} 个候选方案，"
@@ -85,12 +89,21 @@ def _render_result(result, output_dir: Path) -> None:
         ("excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
     ]:
         try:
-            output_path = export_for_web(
-                result,
-                output_format=output_format,
-                output_dir=output_dir,
-                candidate_id=selected_id,
-            )
+            if project_path is None:
+                output_path = export_for_web(
+                    result,
+                    output_format=output_format,
+                    output_dir=output_dir,
+                    candidate_id=selected_id,
+                )
+            else:
+                output_path = project_export_for_web(
+                    result,
+                    project_path=project_path,
+                    output_format=output_format,
+                    output_dir=output_dir,
+                    candidate_id=selected_id if result.is_candidate_set else None,
+                )
         except MissingOptionalDependencyError as exc:
             st.info(str(exc))
             continue
@@ -102,84 +115,166 @@ def _render_result(result, output_dir: Path) -> None:
         )
 
 
-st.set_page_config(page_title="SeatTrellis", layout="wide")
-st.title("SeatTrellis")
-st.caption("本地处理学生名单、规则和历史座位记录；不要把真实班级数据提交到公开仓库。")
+def _render_quick_solve_tab() -> None:
+    preset_options = [""] + [preset.name for preset in list_presets()]
+    students_file = st.file_uploader("学生名单 CSV / Excel", type=["csv", "xlsx", "xlsm"])
+    layout_file = st.file_uploader("教室布局 JSON", type=["json"])
+    preset_name = st.selectbox(
+        "内置场景 preset",
+        preset_options,
+        format_func=lambda value: value or "不使用 preset",
+    )
+    rules_file = st.file_uploader("规则 JSON（可选，选择 preset 时作为 overlay）", type=["json"])
+    history_files = st.file_uploader(
+        "历史 snapshot JSON（可选，可多选）",
+        type=["json"],
+        accept_multiple_files=True,
+    )
 
-preset_options = [""] + [preset.name for preset in list_presets()]
-students_file = st.file_uploader("学生名单 CSV / Excel", type=["csv", "xlsx", "xlsm"])
-layout_file = st.file_uploader("教室布局 JSON", type=["json"])
-preset_name = st.selectbox(
-    "内置场景 preset",
-    preset_options,
-    format_func=lambda value: value or "不使用 preset",
-)
-rules_file = st.file_uploader("规则 JSON（可选，选择 preset 时作为 overlay）", type=["json"])
-history_files = st.file_uploader(
-    "历史 snapshot JSON（可选，可多选）",
-    type=["json"],
-    accept_multiple_files=True,
-)
-
-with st.sidebar:
-    st.header("求解设置")
+    st.subheader("求解设置")
     candidate_count = st.number_input(
         "候选方案数量",
         min_value=1,
         max_value=20,
         value=3,
         step=1,
+        key="quick_candidate_count",
     )
-    seed_enabled = st.checkbox("自定义 seed")
-    seed = st.number_input("seed", value=42, step=1, disabled=not seed_enabled)
+    seed_enabled = st.checkbox("自定义 seed", key="quick_seed_enabled")
+    seed = st.number_input(
+        "seed",
+        value=42,
+        step=1,
+        disabled=not seed_enabled,
+        key="quick_seed",
+    )
     time_limit_seconds = st.number_input(
         "单次求解秒数",
         min_value=0.5,
         max_value=30.0,
         value=3.0,
         step=0.5,
+        key="quick_time_limit",
     )
 
-has_rules = bool(rules_file or preset_name)
-ready = bool(students_file and layout_file and has_rules)
+    has_rules = bool(rules_file or preset_name)
+    ready = bool(students_file and layout_file and has_rules)
 
-if st.button("生成座位表", type="primary", disabled=not ready):
-    try:
-        with tempfile.TemporaryDirectory() as input_tmpdir, tempfile.TemporaryDirectory() as output_tmpdir:
-            input_root = Path(input_tmpdir)
-            students_path = Path(input_tmpdir) / students_file.name
-            students_path.write_bytes(students_file.getvalue())
-            layout_path = input_root / layout_file.name
-            layout_path.write_bytes(layout_file.getvalue())
-            rules_path = None
-            if rules_file is not None:
-                rules_path = input_root / rules_file.name
-                rules_path.write_bytes(rules_file.getvalue())
-            history_paths = []
-            for index, history_file in enumerate(history_files or [], start=1):
-                history_path = input_root / f"history-{index:02d}-{history_file.name}"
-                history_path.write_bytes(history_file.getvalue())
-                history_paths.append(history_path)
+    if st.button("生成座位表", type="primary", disabled=not ready):
+        try:
+            with tempfile.TemporaryDirectory() as input_tmpdir, tempfile.TemporaryDirectory() as output_tmpdir:
+                input_root = Path(input_tmpdir)
+                students_path = input_root / students_file.name
+                students_path.write_bytes(students_file.getvalue())
+                layout_path = input_root / layout_file.name
+                layout_path.write_bytes(layout_file.getvalue())
+                rules_path = None
+                if rules_file is not None:
+                    rules_path = input_root / rules_file.name
+                    rules_path.write_bytes(rules_file.getvalue())
+                history_paths = []
+                for index, history_file in enumerate(history_files or [], start=1):
+                    history_path = input_root / f"history-{index:02d}-{history_file.name}"
+                    history_path.write_bytes(history_file.getvalue())
+                    history_paths.append(history_path)
 
-            result = solve_for_web(
-                students_path=students_path,
-                layout_path=layout_path,
-                rules_path=rules_path,
-                preset_name=preset_name or None,
-                history_paths=history_paths,
-                output_dir=output_tmpdir,
-                candidate_count=int(candidate_count),
-                seed=int(seed) if seed_enabled else None,
-                time_limit_seconds=float(time_limit_seconds),
-            )
-            _render_result(result, Path(output_tmpdir))
-    except (
-        InputFileError,
-        MissingOptionalDependencyError,
-        SeatTrellisSolveError,
-        ValidationError,
-        ValueError,
-    ) as exc:
-        st.error(str(exc))
-elif not ready:
-    st.info("请上传学生名单、教室布局，并选择 preset 或上传规则 JSON。")
+                result = solve_for_web(
+                    students_path=students_path,
+                    layout_path=layout_path,
+                    rules_path=rules_path,
+                    preset_name=preset_name or None,
+                    history_paths=history_paths,
+                    output_dir=output_tmpdir,
+                    candidate_count=int(candidate_count),
+                    seed=int(seed) if seed_enabled else None,
+                    time_limit_seconds=float(time_limit_seconds),
+                )
+                _render_result(result, Path(output_tmpdir))
+        except (
+            InputFileError,
+            MissingOptionalDependencyError,
+            SeatTrellisSolveError,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            st.error(str(exc))
+    elif not ready:
+        st.info("请上传学生名单、教室布局，并选择 preset 或上传规则 JSON。")
+
+
+def _render_project_tab() -> None:
+    project_path_text = st.text_input("Project 文件路径", value="examples/project.seattrellis.json")
+    project_path = Path(project_path_text).expanduser()
+
+    info_col, validate_col = st.columns(2)
+    with info_col:
+        if st.button("读取 project-info"):
+            try:
+                st.code(project_info_for_web(project_path=project_path))
+            except (InputFileError, ValidationError, ValueError) as exc:
+                st.error(str(exc))
+    with validate_col:
+        strict = st.checkbox("严格校验 warnings")
+        if st.button("校验 project"):
+            try:
+                st.success(project_validate_for_web(project_path=project_path, strict=strict))
+            except (InputFileError, ValidationError, ValueError) as exc:
+                st.error(str(exc))
+
+    st.subheader("Project 求解")
+    use_project_candidates = st.checkbox("使用 project 默认候选数量", value=True)
+    project_candidate_count = st.number_input(
+        "候选方案数量",
+        min_value=1,
+        max_value=20,
+        value=3,
+        step=1,
+        disabled=use_project_candidates,
+        key="project_candidate_count",
+    )
+    project_seed_enabled = st.checkbox("自定义 project seed")
+    project_seed = st.number_input(
+        "project seed",
+        value=42,
+        step=1,
+        disabled=not project_seed_enabled,
+    )
+    project_time_limit = st.number_input(
+        "project 单次求解秒数",
+        min_value=0.5,
+        max_value=30.0,
+        value=3.0,
+        step=0.5,
+    )
+
+    if st.button("按 project 求解", type="primary"):
+        try:
+            with tempfile.TemporaryDirectory() as output_tmpdir:
+                result = project_solve_for_web(
+                    project_path=project_path,
+                    candidate_count=(
+                        None if use_project_candidates else int(project_candidate_count)
+                    ),
+                    seed=int(project_seed) if project_seed_enabled else None,
+                    time_limit_seconds=float(project_time_limit),
+                )
+                _render_result(result, Path(output_tmpdir), project_path=project_path)
+        except (
+            InputFileError,
+            MissingOptionalDependencyError,
+            SeatTrellisSolveError,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            st.error(str(exc))
+
+
+st.set_page_config(page_title="SeatTrellis", layout="wide")
+st.title("SeatTrellis")
+st.caption("本地处理学生名单、规则和历史座位记录；不要把真实班级数据提交到公开仓库。")
+
+quick_tab, project_tab = st.tabs(["快速排座", "Project workspace"])
+with quick_tab:
+    _render_quick_solve_tab()
+with project_tab:
+    _render_project_tab()

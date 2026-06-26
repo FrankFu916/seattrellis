@@ -75,7 +75,7 @@ streamlit run src/seattrellis/web/app.py
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
 
-The web UI can use a built-in preset, optional rules JSON overlay, multiple history snapshots, and 1-20 generated candidates. It shows the recommended plan, score details, hard-rule checks, and downloads for JSON, reports, HTML, PNG, or Excel.
+The web UI can use a built-in preset, optional rules JSON overlay, multiple history snapshots, and 1-20 generated candidates. It shows the recommended plan, score details, hard-rule checks, and downloads for JSON, reports, HTML, PNG, or Excel. It can also read a local project file and reuse the project-info, validate, solve, and export workflow.
 
 ## CLI
 
