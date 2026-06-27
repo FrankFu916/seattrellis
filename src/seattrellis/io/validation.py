@@ -155,6 +155,15 @@ def validate_loaded_inputs(students: list[Student], layout: ClassroomLayout, rul
         )
 
     refs, ambiguous_refs = _student_reference_map(students)
+
+    keys = [student.key for student in students]
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    if duplicates:
+        report.add_error(
+            f"Duplicate student identifiers: {', '.join(duplicates)}. "
+            "Each student must have a unique student_id or name."
+        )
+
     fixed_student_seats: dict[int, tuple[str, str]] = {}
     fixed_seat_students: dict[str, tuple[int, str]] = {}
 

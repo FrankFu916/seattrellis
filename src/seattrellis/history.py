@@ -397,6 +397,8 @@ def classify_seat_position(seat: SeatNode, layout: ClassroomLayout) -> set[SeatP
         return set()
 
     enabled_seats = layout.enabled_seats
+    if not enabled_seats:
+        return set()
     rows = sorted({item.row for item in enabled_seats})
     cols = sorted({item.col for item in enabled_seats})
     min_row, max_row = rows[0], rows[-1]
