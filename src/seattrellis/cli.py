@@ -23,7 +23,6 @@ from seattrellis.io.json_files import (
     write_json_model,
 )
 from seattrellis.io.project import (
-    ProjectPaths,
     find_latest_project_artifact,
     load_project_paths,
     write_project,

@@ -10,7 +10,7 @@ from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.history import PairHistory, SeatHistory
 from seattrellis.models.rules import MinDistanceRule, PairRule, RuleSet
 from seattrellis.models.snapshot import SeatAssignment
-from seattrellis.models.student import Student
+from seattrellis.models.student import Student, student_needs_front
 from seattrellis.history import assignment_fairness_summary, avoid_recent_neighbors_cost, fair_rotation_cost
 from seattrellis.solver.adjacency import (
     SeatEdge,
@@ -674,7 +674,7 @@ def _individual_cost(
     max_row: int,
 ) -> int:
     cost = 0
-    if rules.soft.vision_front.enabled and _needs_front(student):
+    if rules.soft.vision_front.enabled and student_needs_front(student):
         cost += rules.soft.vision_front.weight * (seat.row - min_row) * 100
     if rules.soft.height_back.enabled and student.height_cm is not None:
         front_penalty = max_row - seat.row
@@ -693,7 +693,10 @@ def _fallback_individual_cost(
     history: SeatHistory | None,
 ) -> float:
     fake_rng = random.Random(0)
-    return float(_individual_cost(student, seat, layout, rules, history, fake_rng, seat.row, seat.row + 4))
+    enabled = layout.enabled_seats
+    min_row = min(s.row for s in enabled) if enabled else seat.row
+    max_row = max(s.row for s in enabled) if enabled else seat.row
+    return float(_individual_cost(student, seat, layout, rules, history, fake_rng, min_row, max_row))
 
 
 def _fallback_candidate_cost(
@@ -774,30 +777,6 @@ def _fallback_total_cost(
                     adjacency_edges=edges,
                 )
     return cost
-
-
-def _needs_front(student: Student) -> bool:
-    values = [item.lower() for item in student.tags + student.needs]
-    if student.vision is not None:
-        values.append(str(student.vision).lower())
-        try:
-            return float(student.vision) < 1.0
-        except (TypeError, ValueError):
-            pass
-    keywords = {
-        "vision",
-        "vision_front",
-        "front",
-        "poor",
-        "low",
-        "nearsighted",
-        "short_sighted",
-        "myopia",
-        "视力",
-        "近视",
-        "靠前",
-    }
-    return any(value in keywords for value in values)
 
 
 def _solution_from_assignment(

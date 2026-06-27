@@ -36,7 +36,7 @@ from seattrellis.models.rules import (
     WeightedRule,
 )
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
-from seattrellis.models.student import Student
+from seattrellis.models.student import Student, student_needs_front
 from seattrellis.models.project import SeatTrellisProject
 
 __all__ = [
@@ -72,6 +72,7 @@ __all__ = [
     "ScoreDimension",
     "SoftRules",
     "Student",
+    "student_needs_front",
     "StudentPairHistory",
     "StudentSeatHistory",
     "WeightedRule",

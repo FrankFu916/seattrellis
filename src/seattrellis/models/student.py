@@ -87,3 +87,30 @@ class Student(BaseModel):
         values.extend(tag.lower() for tag in self.tags)
         values.extend(need.lower() for need in self.needs)
         return any(value in needles for value in values)
+
+
+_VISION_NEED_KEYWORDS = {
+    "vision",
+    "vision_front",
+    "front",
+    "poor",
+    "low",
+    "nearsighted",
+    "short_sighted",
+    "myopia",
+    "视力",
+    "近视",
+    "靠前",
+}
+
+
+def student_needs_front(student: Student) -> bool:
+    """Check whether a student should be seated near the front based on vision data or explicit markers."""
+    values = [item.lower() for item in student.tags + student.needs]
+    if student.vision is not None:
+        values.append(str(student.vision).lower())
+        try:
+            return float(student.vision) < 1.0
+        except (TypeError, ValueError):
+            pass
+    return bool(set(values) & _VISION_NEED_KEYWORDS)

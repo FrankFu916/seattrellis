@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1 - 2026-06-27
+
+### Fixed
+- Fixed fallback solver vision-front and height-back preferences being neutralized by incorrect row bounds (`_fallback_individual_cost` now uses actual seat-row range instead of per-seat bounds).
+- Fixed `_score_recent_neighbors` using all seats (`layout.seats`) instead of only enabled seats (`layout.enabled_seats`), consistent with other scoring dimensions.
+- Fixed duplicate `_needs_front` logic — consolidated into `student_needs_front()` on the Student model, eliminating the maintenance risk of two identical copies.
+- Fixed `classify_seat_position` crash on layouts with zero enabled seats (added empty-seats guard).
+
+### Improved
+- Added duplicate student-key detection to file-level validation so the error surfaces at validate time rather than only at solve time.
+- Added comprehensive test coverage for scoring module (48 new tests covering all 7 dimensions, edge cases, hard-constraint evaluation, diversity scoring, recommendation logic, and `student_needs_front`).
+- Removed unused `ProjectPaths` import in `cli.py` and unused `classify_seat_position` import in `scoring.py`.
+- Added CLAUDE.md for repository-level developer guidance.
+
 ## 0.3.0 - 2026-06-26
 
 ### Added

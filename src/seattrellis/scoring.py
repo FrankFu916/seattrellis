@@ -8,7 +8,6 @@ from seattrellis.history import (
     avoid_recent_neighbors_cost,
     build_pair_history,
     build_seat_history,
-    classify_seat_position,
     detect_neighbor_relation_types,
     fair_rotation_cost,
 )
@@ -26,7 +25,7 @@ from seattrellis.models.history import PairHistory, SeatHistory
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
-from seattrellis.models.student import Student
+from seattrellis.models.student import Student, student_needs_front
 from seattrellis.solver.adjacency import build_adjacency_edges, graph_distance, normalize_edge, seat_distance
 
 
@@ -321,7 +320,7 @@ def _score_recent_neighbors(
         return _not_available("avoid_recent_neighbors is disabled.")
     if pair_history is None or pair_history.history_count == 0:
         return _not_available("No pair history was supplied.")
-    seat_by_id = {seat.seat_id: seat for seat in layout.seats}
+    seat_by_id = {seat.seat_id: seat for seat in layout.enabled_seats}
     edges = build_adjacency_edges(layout)
     penalty = 0
     relevant_pairs = 0
@@ -445,7 +444,7 @@ def _score_vision(
     rule = rules.soft.vision_front
     if not rule.enabled or rule.weight == 0:
         return _not_available("vision_front is disabled.")
-    students_needing_front = {student.key for student in students if _needs_front(student)}
+    students_needing_front = {student.key for student in students if student_needs_front(student)}
     if not students_needing_front:
         return _not_available("No students are marked as needing a front seat.")
     rows = [seat.row for seat in layout.enabled_seats]
@@ -579,30 +578,6 @@ def _student_reference_map(students: Sequence[Student]) -> dict[str, str]:
         if student.name:
             refs[student.name] = student.key
     return refs
-
-
-def _needs_front(student: Student) -> bool:
-    values = [item.lower() for item in student.tags + student.needs]
-    if student.vision is not None:
-        values.append(str(student.vision).lower())
-        try:
-            return float(student.vision) < 1.0
-        except (TypeError, ValueError):
-            pass
-    keywords = {
-        "vision",
-        "vision_front",
-        "front",
-        "poor",
-        "low",
-        "nearsighted",
-        "short_sighted",
-        "myopia",
-        "视力",
-        "近视",
-        "靠前",
-    }
-    return any(value in keywords for value in values)
 
 
 def _assignment_distance(first: dict[str, str], second: dict[str, str]) -> float:
