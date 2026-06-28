@@ -159,7 +159,7 @@ if typer is not None:
     @app.command("export", help="Export a snapshot to Excel, PNG, or HTML.")
     def export_command(
         snapshot: Path = typer.Option(..., "--snapshot", help="Snapshot JSON path."),
-        output_format: str = typer.Option(..., "--format", help="Export format: excel, png, html."),
+        output_format: str = typer.Option(..., "--format", help="Export format: excel, png, html, pdf, docx, print-html."),
         output: Path | None = typer.Option(None, "--output", "-o", help="Output file path."),
         candidate: str | None = typer.Option(
             None,
@@ -296,7 +296,7 @@ if typer is not None:
             help="Project JSON path.",
         ),
         snapshot: Path | None = typer.Option(None, "--snapshot", help="Snapshot or candidate-set JSON path."),
-        output_format: str | None = typer.Option(None, "--format", help="Export format: excel, png, html."),
+        output_format: str | None = typer.Option(None, "--format", help="Export format: excel, png, html, pdf, docx, print-html."),
         candidate: str | None = typer.Option(
             None,
             "--candidate",

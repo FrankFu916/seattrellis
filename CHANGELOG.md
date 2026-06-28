@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0 - 2026-06-28
+
+### Added — Export Enhancement
+
+**P0:**
+- **Print-friendly HTML templates**: three scenarios — public notice (class version), teacher internal (rules + warnings + fairness), explanation report (score breakdown + recommendation rationale). A4 portrait, print-optimised CSS.
+- **PDF export via WeasyPrint**: new `pdf` optional extra. Shares template logic with print HTML. `seattrellis export --format pdf`.
+- **`exporters/print_html.py`**: reusable print HTML renderer with `PrintPrivacyOptions` (hide scores, hide notes, hide special needs, anonymize).
+
+**P1:**
+- **Privacy options**: `PrintPrivacyOptions` dataclass controlling score/notes/special-needs/height/vision visibility per template.
+- **Three export templates**: `public` (names + seats), `teacher` (full detail table + warnings), `report` (score grid + recommendation text).
+
+**P2:**
+- **Word (.docx) export via python-docx**: new `docx` optional extra. Tables with student detail. `seattrellis export --format docx`.
+- **Chinese font strategy document**: `docs/font-strategy.zh.md` covering cross-platform CSS font-family fallback chains, WeasyPrint font configuration, and PNG font limitations.
+- **Candidate-aware report export**: `--template report` includes score breakdown grid and recommendation rationale for a specific candidate.
+
+### Changed
+- `exporters/__init__.py` unified to support all formats (html, excel, png, pdf, docx, print-html) with lazy imports.
+- `pyproject.toml` added `pdf` (`weasyprint>=60`) and `docx` (`python-docx>=1.0`) optional extras; both included in `all`.
+- `cli.py` updated format help text to list pdf/docx/print-html.
+- `web/workflow.py` and `web/app.py` extended with PDF and DOCX download buttons.
+
+### Technical Notes
+- WeasyPrint requires system Pango/Cairo libraries (see doc.courtbouillon.org/weasyprint for platform-specific install).
+- PDF/DOCX follow the same optional-extra pattern as solver/excel/image/web.
+
 ## 0.4.0 - 2026-06-28
 
 ### Added — Web Usability

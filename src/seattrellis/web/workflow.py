@@ -263,8 +263,12 @@ def assignment_rows(snapshot: SeatingSnapshot) -> list[dict[str, object]]:
 def _extension_for_format(output_format: str) -> str:
     if output_format in {"excel", "xlsx"}:
         return "xlsx"
-    if output_format in {"html", "png"}:
+    if output_format in {"html", "png", "pdf"}:
         return output_format
+    if output_format == "docx":
+        return "docx"
+    if output_format == "print-html":
+        return "html"
     raise ValueError(f"Unsupported export format: {output_format}")
 
 
