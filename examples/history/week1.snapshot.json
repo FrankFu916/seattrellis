@@ -1,61 +1,481 @@
 {
   "schema_version": "1.0",
-  "created_at": "2026-06-01T00:00:00Z",
+  "created_at": "2026-06-01T00:00:00+00:00",
   "seed": 42,
   "metadata": {
     "version": "0.2.1",
     "example": "fictional history sample"
   },
   "students": [
-    {"student_id": "STU001", "name": "Student001"},
-    {"student_id": "STU002", "name": "Student002"},
-    {"student_id": "STU003", "name": "Student003"},
-    {"student_id": "STU004", "name": "Student004"},
-    {"student_id": "STU005", "name": "Student005"},
-    {"student_id": "STU006", "name": "Student006"},
-    {"student_id": "STU007", "name": "Student007"},
-    {"student_id": "STU008", "name": "Student008"}
+    {
+      "student_id": "STU001",
+      "name": "Student001",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    },
+    {
+      "student_id": "STU002",
+      "name": "Student002",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    },
+    {
+      "student_id": "STU003",
+      "name": "Student003",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    },
+    {
+      "student_id": "STU004",
+      "name": "Student004",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    },
+    {
+      "student_id": "STU005",
+      "name": "Student005",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    },
+    {
+      "student_id": "STU006",
+      "name": "Student006",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    },
+    {
+      "student_id": "STU007",
+      "name": "Student007",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    },
+    {
+      "student_id": "STU008",
+      "name": "Student008",
+      "gender": null,
+      "height_cm": null,
+      "score": null,
+      "vision": null,
+      "notes": null,
+      "tags": [],
+      "needs": [],
+      "attributes": {}
+    }
   ],
   "layout": {
     "layout_id": "fictional-room",
     "name": "Fictional Classroom",
     "seats": [
-      {"seat_id": "R1C1", "row": 1, "col": 1, "zone": "front", "near_window": true, "near_platform": true},
-      {"seat_id": "R1C2", "row": 1, "col": 2, "zone": "front", "near_platform": true},
-      {"seat_id": "R1C3", "row": 1, "col": 3, "zone": "front", "near_platform": true},
-      {"seat_id": "R1C4", "row": 1, "col": 4, "zone": "front", "near_platform": true},
-      {"seat_id": "R2C1", "row": 2, "col": 1, "zone": "middle", "near_window": true},
-      {"seat_id": "R2C2", "row": 2, "col": 2, "zone": "middle"},
-      {"seat_id": "R2C3", "row": 2, "col": 3, "enabled": false, "zone": "aisle"},
-      {"seat_id": "R2C4", "row": 2, "col": 4, "zone": "middle"},
-      {"seat_id": "R3C1", "row": 3, "col": 1, "zone": "middle", "near_window": true},
-      {"seat_id": "R3C2", "row": 3, "col": 2, "zone": "middle"},
-      {"seat_id": "R3C3", "row": 3, "col": 3, "zone": "middle"},
-      {"seat_id": "R3C4", "row": 3, "col": 4, "zone": "middle"},
-      {"seat_id": "R4C1", "row": 4, "col": 1, "zone": "back", "near_window": true},
-      {"seat_id": "R4C2", "row": 4, "col": 2, "enabled": false, "zone": "aisle"},
-      {"seat_id": "R4C3", "row": 4, "col": 3, "zone": "back"},
-      {"seat_id": "R4C4", "row": 4, "col": 4, "zone": "back", "near_door": true}
+      {
+        "seat_id": "R1C1",
+        "row": 1,
+        "col": 1,
+        "x": 1.0,
+        "y": 1.0,
+        "enabled": true,
+        "zone": "front",
+        "near_window": true,
+        "near_door": false,
+        "near_platform": true,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R1C2",
+        "row": 1,
+        "col": 2,
+        "x": 2.0,
+        "y": 1.0,
+        "enabled": true,
+        "zone": "front",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": true,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R1C3",
+        "row": 1,
+        "col": 3,
+        "x": 3.0,
+        "y": 1.0,
+        "enabled": true,
+        "zone": "front",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": true,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R1C4",
+        "row": 1,
+        "col": 4,
+        "x": 4.0,
+        "y": 1.0,
+        "enabled": true,
+        "zone": "front",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": true,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R2C1",
+        "row": 2,
+        "col": 1,
+        "x": 1.0,
+        "y": 2.0,
+        "enabled": true,
+        "zone": "middle",
+        "near_window": true,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R2C2",
+        "row": 2,
+        "col": 2,
+        "x": 2.0,
+        "y": 2.0,
+        "enabled": true,
+        "zone": "middle",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R2C3",
+        "row": 2,
+        "col": 3,
+        "x": 3.0,
+        "y": 2.0,
+        "enabled": false,
+        "zone": "aisle",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R2C4",
+        "row": 2,
+        "col": 4,
+        "x": 4.0,
+        "y": 2.0,
+        "enabled": true,
+        "zone": "middle",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R3C1",
+        "row": 3,
+        "col": 1,
+        "x": 1.0,
+        "y": 3.0,
+        "enabled": true,
+        "zone": "middle",
+        "near_window": true,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R3C2",
+        "row": 3,
+        "col": 2,
+        "x": 2.0,
+        "y": 3.0,
+        "enabled": true,
+        "zone": "middle",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R3C3",
+        "row": 3,
+        "col": 3,
+        "x": 3.0,
+        "y": 3.0,
+        "enabled": true,
+        "zone": "middle",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R3C4",
+        "row": 3,
+        "col": 4,
+        "x": 4.0,
+        "y": 3.0,
+        "enabled": true,
+        "zone": "middle",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R4C1",
+        "row": 4,
+        "col": 1,
+        "x": 1.0,
+        "y": 4.0,
+        "enabled": true,
+        "zone": "back",
+        "near_window": true,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R4C2",
+        "row": 4,
+        "col": 2,
+        "x": 2.0,
+        "y": 4.0,
+        "enabled": false,
+        "zone": "aisle",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R4C3",
+        "row": 4,
+        "col": 3,
+        "x": 3.0,
+        "y": 4.0,
+        "enabled": true,
+        "zone": "back",
+        "near_window": false,
+        "near_door": false,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      },
+      {
+        "seat_id": "R4C4",
+        "row": 4,
+        "col": 4,
+        "x": 4.0,
+        "y": 4.0,
+        "enabled": true,
+        "zone": "back",
+        "near_window": false,
+        "near_door": true,
+        "near_platform": false,
+        "near_ac": false,
+        "tags": [],
+        "attributes": {}
+      }
     ],
     "adjacency": {
       "include_horizontal": true,
       "include_vertical": false,
       "include_diagonal": false,
-      "custom_edges": [["R1C2", "R2C2"]]
+      "max_row_delta": 1,
+      "max_col_delta": 1,
+      "max_distance": null,
+      "use_xy_distance": true,
+      "custom_edges": [
+        [
+          "R1C2",
+          "R2C2"
+        ]
+      ]
+    },
+    "metadata": {
+      "platform": "front",
+      "description": "Fictional 4x4 irregular classroom with two disabled seats."
     }
   },
-  "rules": {"seed": 42},
+  "rules": {
+    "seed": 42,
+    "hard": {
+      "fixed_seats": [],
+      "must_be_adjacent": [],
+      "cannot_be_adjacent": [],
+      "min_distance": []
+    },
+    "soft": {
+      "vision_front": {
+        "enabled": true,
+        "weight": 20
+      },
+      "height_back": {
+        "enabled": true,
+        "weight": 1
+      },
+      "randomize": {
+        "enabled": true,
+        "weight": 1
+      },
+      "score_balance": {
+        "enabled": false,
+        "weight": 1
+      },
+      "fair_rotation": {
+        "enabled": false,
+        "weight": 10,
+        "avoid_repeating_categories": [
+          "front",
+          "back",
+          "side",
+          "corner",
+          "near_window",
+          "near_door",
+          "near_ac"
+        ],
+        "lookback": 4
+      },
+      "avoid_recent_neighbors": {
+        "enabled": false,
+        "weight": 10,
+        "relation_types": [
+          "desk_mate",
+          "adjacent_any"
+        ],
+        "lookback": 4,
+        "max_recent_count": 1,
+        "within_distance": 2
+      },
+      "cooling": {
+        "enabled": false,
+        "weight": 5,
+        "cooling_period": 3,
+        "relation_types": [
+          "desk_mate",
+          "adjacent_any"
+        ]
+      }
+    },
+    "groups": []
+  },
   "assignments": [
-    {"student_key": "STU001", "student_name": "Student001", "seat_id": "R1C1"},
-    {"student_key": "STU002", "student_name": "Student002", "seat_id": "R1C2"},
-    {"student_key": "STU003", "student_name": "Student003", "seat_id": "R2C1"},
-    {"student_key": "STU004", "student_name": "Student004", "seat_id": "R2C2"},
-    {"student_key": "STU005", "student_name": "Student005", "seat_id": "R3C1"},
-    {"student_key": "STU006", "student_name": "Student006", "seat_id": "R3C2"},
-    {"student_key": "STU007", "student_name": "Student007", "seat_id": "R4C3"},
-    {"student_key": "STU008", "student_name": "Student008", "seat_id": "R4C4"}
+    {
+      "student_key": "STU001",
+      "student_name": "Student001",
+      "seat_id": "R1C1"
+    },
+    {
+      "student_key": "STU002",
+      "student_name": "Student002",
+      "seat_id": "R1C2"
+    },
+    {
+      "student_key": "STU003",
+      "student_name": "Student003",
+      "seat_id": "R2C1"
+    },
+    {
+      "student_key": "STU004",
+      "student_name": "Student004",
+      "seat_id": "R2C2"
+    },
+    {
+      "student_key": "STU005",
+      "student_name": "Student005",
+      "seat_id": "R3C1"
+    },
+    {
+      "student_key": "STU006",
+      "student_name": "Student006",
+      "seat_id": "R3C2"
+    },
+    {
+      "student_key": "STU007",
+      "student_name": "Student007",
+      "seat_id": "R4C3"
+    },
+    {
+      "student_key": "STU008",
+      "student_name": "Student008",
+      "seat_id": "R4C4"
+    }
   ],
   "solver_status": "FEASIBLE",
   "objective_value": null,
-  "metrics": {"example": "fictional"}
+  "metrics": {
+    "example": "fictional"
+  }
 }

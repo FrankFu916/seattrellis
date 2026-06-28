@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
 from seattrellis.solver import solve_seating
 
@@ -21,3 +23,12 @@ def test_solver_assigns_each_student_once_and_each_seat_at_most_once() -> None:
     assert len({assignment.student_key for assignment in solution.assignments}) == 3
     assert len({assignment.seat_id for assignment in solution.assignments}) == 3
     assert "B2" not in {assignment.seat_id for assignment in solution.assignments}
+
+
+@pytest.mark.parametrize("time_limit", [float("nan"), float("inf"), float("-inf")])
+def test_solver_rejects_non_finite_time_limit(time_limit: float) -> None:
+    students = [Student(student_id="S1")]
+    layout = ClassroomLayout(seats=[SeatNode(seat_id="A1", row=1, col=1)])
+
+    with pytest.raises(ValueError, match="finite number"):
+        solve_seating(students, layout, time_limit_seconds=time_limit)

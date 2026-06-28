@@ -2,10 +2,20 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Sequence
 
-from seattrellis import cli
+from seattrellis.service import (
+    export,
+    export_extension,
+    project_export,
+    project_info,
+    project_solve,
+    project_validate,
+    score_text,
+    solve_with_report,
+)
 from seattrellis.io.json_files import (
     InputFileError,
     load_plan_comparison_report,
@@ -54,8 +64,8 @@ def solve_for_web(
 ) -> WebSolveResult:
     if not 1 <= candidate_count <= 20:
         raise ValueError("candidate_count must be between 1 and 20")
-    if time_limit_seconds < 0.1:
-        raise ValueError("time_limit_seconds must be >= 0.1")
+    if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be a finite number >= 0.1")
     # Guard against bare string being iterated as characters.
     if isinstance(history_paths, str):
         raise TypeError(
@@ -71,7 +81,7 @@ def solve_for_web(
     )
     report_path = output_root / "seattrellis.plan-report.json" if candidate_count > 1 else None
 
-    written_path, summary = cli.solve_with_report(
+    written_path, summary = solve_with_report(
         students_path=students_path,
         layout_path=layout_path,
         rules_path=rules_path,
@@ -100,11 +110,11 @@ def solve_for_web(
 
 
 def project_info_for_web(*, project_path: str | Path) -> str:
-    return cli.project_info(project_path=project_path)
+    return project_info(project_path=project_path)
 
 
 def project_validate_for_web(*, project_path: str | Path, strict: bool = False) -> str:
-    return cli.project_validate(project_path=project_path, strict=strict)
+    return project_validate(project_path=project_path, strict=strict)
 
 
 def project_solve_for_web(
@@ -116,8 +126,8 @@ def project_solve_for_web(
 ) -> WebSolveResult:
     if candidate_count is not None and not 1 <= candidate_count <= 20:
         raise ValueError("candidate_count must be between 1 and 20")
-    if time_limit_seconds < 0.1:
-        raise ValueError("time_limit_seconds must be >= 0.1")
+    if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be a finite number >= 0.1")
     project, paths = load_project_paths(
         project_path,
         require_inputs=True,
@@ -130,7 +140,7 @@ def project_solve_for_web(
     )
     report_path = paths.outputs_dir / "latest.plan-report.json" if count > 1 else None
 
-    written_path, summary = cli.project_solve(
+    written_path, summary = project_solve(
         project_path=project_path,
         candidate_count=candidate_count,
         seed=seed,
@@ -164,8 +174,8 @@ def project_export_for_web(
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_format = output_format.lower()
-    output_path = output_root / f"project-seating.{_extension_for_format(normalized_format)}"
-    return cli.project_export(
+    output_path = output_root / f"project-seating.{export_extension(normalized_format)}"
+    return project_export(
         project_path=project_path,
         snapshot_path=result.artifact_path,
         output_format=normalized_format,
@@ -208,8 +218,8 @@ def export_for_web(
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_format = output_format.lower()
-    output_path = output_root / f"seating.{_extension_for_format(normalized_format)}"
-    return cli.export(
+    output_path = output_root / f"seating.{export_extension(normalized_format)}"
+    return export(
         snapshot_path=result.artifact_path,
         output_format=normalized_format,
         output_path=output_path,
@@ -232,12 +242,12 @@ def candidate_summary_rows(candidate_set: CandidateSet) -> list[dict[str, object
                 "hard_constraints": "ok"
                 if breakdown.hard_constraint_summary.satisfied
                 else "violations",
-                "fair_rotation": _score_text(breakdown.fair_rotation_score.score),
-                "recent_neighbors": _score_text(
+                "fair_rotation": score_text(breakdown.fair_rotation_score.score),
+                "recent_neighbors": score_text(
                     breakdown.avoid_recent_neighbors_score.score
                 ),
-                "score_balance": _score_text(breakdown.score_balance_score.score),
-                "diversity": _score_text(breakdown.diversity_score.score),
+                "score_balance": score_text(breakdown.score_balance_score.score),
+                "diversity": score_text(breakdown.diversity_score.score),
             }
         )
     return rows
@@ -258,7 +268,7 @@ def score_breakdown_rows(candidate: CandidatePlan) -> list[dict[str, object]]:
         {
             "dimension": name,
             "status": dimension.status,
-            "score": _score_text(dimension.score),
+            "score": score_text(dimension.score),
             "weight": dimension.weight,
             "rating": dimension.rating,
         }
@@ -275,22 +285,6 @@ def assignment_rows(snapshot: SeatingSnapshot) -> list[dict[str, object]]:
         }
         for assignment in snapshot.assignments
     ]
-
-
-def _extension_for_format(output_format: str) -> str:
-    if output_format in {"excel", "xlsx"}:
-        return "xlsx"
-    if output_format in {"html", "png", "pdf"}:
-        return output_format
-    if output_format == "docx":
-        return "docx"
-    if output_format == "print-html":
-        return "html"
-    raise ValueError(f"Unsupported export format: {output_format}")
-
-
-def _score_text(score: float | None) -> str:
-    return "n/a" if score is None else f"{score:.1f}"
 
 
 # ---------------------------------------------------------------------------

@@ -575,6 +575,12 @@ class TestScoreDiversity:
         assert score.breakdown.diversity_score.status == "available"
         assert score.breakdown.diversity_score.score == 0.5
 
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_rejects_non_finite_diversity(self, value: float) -> None:
+        rules = _disabled_rules()
+        with pytest.raises(ValueError, match="finite number"):
+            score_snapshot(_snapshot(rules=rules), diversity_score=value)
+
 
 # ---------------------------------------------------------------------------
 # Total score

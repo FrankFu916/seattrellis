@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import random
 from dataclasses import dataclass
-from math import inf
+from math import inf, isfinite
 from typing import Any, Mapping, Sequence
 
 from seattrellis.models.layout import ClassroomLayout, SeatNode
@@ -52,6 +52,8 @@ def solve_seating(
 ) -> SeatingSolution:
     """Solve a seating plan using CP-SAT, with a small deterministic fallback."""
 
+    if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be a finite number >= 0.1")
     rules = rules or RuleSet()
     seed = rules.seed if seed is None else seed
     seats = sorted(layout.enabled_seats, key=lambda seat: (seat.row, seat.col, seat.seat_id))

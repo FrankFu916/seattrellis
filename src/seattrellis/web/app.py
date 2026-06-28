@@ -717,7 +717,7 @@ def _render_project_tab() -> None:
             )
             from seattrellis.io.json_files import load_layout
 
-            st.session_state["layout_loaded"] = load_layout(paths.layout_path)
+            st.session_state["layout_loaded"] = load_layout(paths.layout)
 
             st.success("求解完成！")
         except (

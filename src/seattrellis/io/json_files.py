@@ -32,6 +32,10 @@ def read_json(path: str | Path) -> dict[str, Any]:
         raise InputFileError(
             f"Invalid JSON in {source}: line {exc.lineno}, column {exc.colno}: {exc.msg}"
         ) from exc
+    except UnicodeDecodeError as exc:
+        raise InputFileError(f"Invalid UTF-8 text in {source}: {exc}") from exc
+    except OSError as exc:
+        raise InputFileError(f"Could not read input file {source}: {exc}") from exc
     if not isinstance(data, dict):
         raise InputFileError(f"Invalid JSON in {source}: top-level value must be an object.")
     return data
