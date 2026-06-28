@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 - 2026-06-28
+
+### Added — Web Usability
+- **Seat map visualization**: HTML/CSS Grid rendering of the classroom layout with student names on seats, disabled-seat styling, and tag-based colour accents (window, door, platform, AC, corner).
+- **Candidate interactive switching**: dropdown selector to switch between candidates; seat map, score breakdown, and assignment table update synchronously.
+- **Candidate comparison view**: expandable table comparing all candidates across total score, hard constraints, and all seven scoring dimensions.
+- **Demo one-click loading**: "🚀 一键加载 Demo" button loads fictional example data without any file preparation.
+- **Preset explanation cards**: expandable panel describing each of the eight presets — scenario, required fields, and degradation behaviour.
+- **Error diagnosis**: user-readable error categorisation (validation errors, file errors, solve errors, missing dependencies, value errors) with actionable suggestions in Chinese.
+- **Step wizard**: three-step horizontal radio guide — load data → configure & solve → view results & export.
+- **Privacy notice panel**: green banner at the top of every tab emphasising local-only processing.
+- **File format hints**: expandable panel documenting supported formats, size limits, and encoding requirements.
+- **Project file upload mode**: project tab now supports file upload in addition to path entry.
+
+### Changed
+- `web/app.py` refactored into a thin Streamlit rendering layer; new business logic in `web/components.py`.
+- Session-state management unified via `_ss()` helper; solve state resets cleanly across runs.
+- `web/workflow.py` extended with `demo_paths()`, `load_demo_layout()`, and `load_demo_snapshot()` helpers.
+
 ## 0.3.2 - 2026-06-28
 
 ### Fixed

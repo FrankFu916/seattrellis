@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
 from seattrellis import cli
 from seattrellis.io.json_files import (
+    InputFileError,
     load_plan_comparison_report,
     load_seating_artifact,
 )
 from seattrellis.io.project import load_project_paths
 from seattrellis.models.candidate import CandidatePlan, CandidateSet, PlanComparisonReport
+from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.snapshot import SeatingSnapshot
 
 
@@ -267,3 +270,48 @@ def _extension_for_format(output_format: str) -> str:
 
 def _score_text(score: float | None) -> str:
     return "n/a" if score is None else f"{score:.1f}"
+
+
+# ---------------------------------------------------------------------------
+# Demo helpers (v0.4.0)
+# ---------------------------------------------------------------------------
+
+_EXAMPLES_DIR = Path(__file__).resolve().parents[3] / "examples"
+
+
+def demo_paths() -> dict[str, Path | None]:
+    """Return paths to the standard demo files, if they exist."""
+    students_csv = _EXAMPLES_DIR / "students.csv"
+    students_xlsx = _EXAMPLES_DIR / "students.xlsx"
+    layout = _EXAMPLES_DIR / "classroom.json"
+    history_dir = _EXAMPLES_DIR / "history"
+
+    return {
+        "students_csv": students_csv if students_csv.exists() else None,
+        "students_xlsx": students_xlsx if students_xlsx.exists() else None,
+        "layout": layout if layout.exists() else None,
+        "history_dir": history_dir if history_dir.is_dir() else None,
+    }
+
+
+def load_demo_layout() -> ClassroomLayout:
+    """Load the demo classroom layout."""
+    layout_path = _EXAMPLES_DIR / "classroom.json"
+    if not layout_path.exists():
+        raise InputFileError(
+            f"Demo layout not found: {layout_path}\n"
+            f"Run `seattrellis init-demo` first."
+        )
+    from seattrellis.io.json_files import load_layout
+
+    return load_layout(layout_path)
+
+
+def load_demo_snapshot() -> SeatingSnapshot | None:
+    """Load a demo snapshot if one exists."""
+    snapshot_path = _EXAMPLES_DIR / "history" / "week1.snapshot.json"
+    if not snapshot_path.exists():
+        return None
+    from seattrellis.io.json_files import load_snapshot
+
+    return load_snapshot(snapshot_path)
