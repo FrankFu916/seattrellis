@@ -146,7 +146,7 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 
 ## 发布
 
-当前稳定版本为 v0.7.0；发布检查见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前稳定版本为 v0.8.0；发布检查见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 - 2026-06-28
+
+### Added — Stability & Quality
+
+**P0:**
+- **Property-based tests** (73 new tests in `tests/test_property_based.py`): random-rule validation never crashes, fixed-seat conflicts always detected, must+cannot conflicts always detected across 20 random seeds each.
+- **Edge-case tests**: zero enabled seats, more students than seats, duplicate keys, fixed-to-disabled seat, unknown student refs, empty student list.
+- **Fuzz tests**: malformed JSON, empty CSV, headers-only CSV, extra rule fields, negative row/height/distance — all verify graceful failure without crashes.
+
+### Changed
+- Test suite: 173 → 246 tests (73 new property-based, edge-case, and fuzz tests).
+
 ## 0.7.0 - 2026-06-28
 
 ### Added — Real Classroom Scenarios
