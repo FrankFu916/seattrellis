@@ -387,6 +387,10 @@ def solve_with_report(
     seed: int | None = None,
     report_path: str | Path | None = None,
 ) -> tuple[Path, str | None]:
+    if not 1 <= candidate_count <= 20:
+        raise ValueError("candidate_count must be between 1 and 20")
+    if time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be >= 0.1")
     students = read_students(students_path)
     layout = load_layout(layout_path)
     rules, preset = load_rules_with_preset(
@@ -1107,8 +1111,10 @@ def _export_extension(output_format: str) -> str:
     normalized = output_format.lower()
     if normalized in {"excel", "xlsx"}:
         return "xlsx"
-    if normalized in {"html", "png"}:
+    if normalized in {"html", "png", "pdf", "docx"}:
         return normalized
+    if normalized == "print-html":
+        return "html"
     raise ValueError(f"Unsupported export format: {output_format}")
 
 
