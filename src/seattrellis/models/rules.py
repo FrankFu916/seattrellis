@@ -134,6 +134,49 @@ class AvoidRecentNeighborsRule(WeightedRule):
         return value
 
 
+class GroupRule(BaseModel):
+    """Defines a named group of students for separation or togetherness rules."""
+
+    name: str
+    students: list[str] = Field(default_factory=list)
+    separate: bool = False
+    together: bool = False
+
+    @validator("name", pre=True)
+    def clean_name(cls, value: object) -> str:
+        text = str(value).strip()
+        if not text:
+            raise ValueError("group name cannot be empty.")
+        return text
+
+    @validator("students", pre=True)
+    def clean_students(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(v).strip() for v in value if str(v).strip()]
+        return [str(value).strip()]
+
+    class Config:
+        extra = "forbid"
+
+
+class CoolingRule(WeightedRule):
+    """Cooling period between repeated desk-mate / neighbor assignments."""
+
+    cooling_period: int = 3
+    relation_types: list[str] = Field(default_factory=lambda: ["desk_mate", "adjacent_any"])
+
+    @validator("cooling_period")
+    def positive_cooling(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("cooling_period must be positive.")
+        return value
+
+    class Config:
+        extra = "forbid"
+
+
 class HardRules(BaseModel):
     fixed_seats: list[FixedSeatRule] = Field(default_factory=list)
     must_be_adjacent: list[PairRule] = Field(default_factory=list)
@@ -153,6 +196,7 @@ class SoftRules(BaseModel):
     avoid_recent_neighbors: AvoidRecentNeighborsRule = Field(
         default_factory=lambda: AvoidRecentNeighborsRule(enabled=False, weight=10)
     )
+    cooling: CoolingRule = Field(default_factory=lambda: CoolingRule(enabled=False, weight=5))
 
     class Config:
         extra = "forbid"
@@ -162,6 +206,7 @@ class RuleSet(BaseModel):
     seed: int = 42
     hard: HardRules = Field(default_factory=HardRules)
     soft: SoftRules = Field(default_factory=SoftRules)
+    groups: list[GroupRule] = Field(default_factory=list)
 
     class Config:
         extra = "forbid"
