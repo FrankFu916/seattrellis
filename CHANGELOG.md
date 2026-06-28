@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2 - 2026-06-28
+
+### Fixed
+- Fixed version strings across `pyproject.toml`, `src/seattrellis/__init__.py`, `README.md`, `README.en.md`, and `docs/release-checklist.md` to consistently read `0.3.2`.
+
+### Added
+- Added `docs/quickstart.en.md` — English-language quick start guide with detailed installation, CLI usage, presets, solving, validation, history analysis, export, project workflow, and scoring dimension documentation.
+- Added `.github/ISSUE_TEMPLATE/` with bug report, feature request, and question templates, plus a config linking to the README.
+- Added `docs/release-checklist.md` updated to v0.3.2.
+
 ## 0.3.1 - 2026-06-27
 
 ### Fixed
