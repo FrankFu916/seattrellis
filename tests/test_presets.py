@@ -52,7 +52,7 @@ def test_preset_export_is_a_standard_rules_json(tmp_path) -> None:
 
     assert rules.soft.avoid_recent_neighbors.enabled is True
     assert rules.soft.avoid_recent_neighbors.weight == 20
-    assert raw.keys() == {"seed", "hard", "soft"}
+    assert set(raw.keys()) >= {"seed", "hard", "soft"}
     assert "preset" not in raw
 
 

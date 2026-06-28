@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0 - 2026-06-28
+
+### Added — Real Classroom Scenarios
+
+**P0:**
+- **Student groups** (`GroupRule`): named groups of students with `separate` and `together` flags for group-level constraints. Groups stored in `RuleSet.groups`.
+- **Cooling periods** (`CoolingRule`): configurable desk-mate and neighbor cooling — prevent students from being desk-mates or neighbors within N consecutive seatings. Supports `desk_mate`, `adjacent_any`, `horizontal`, `vertical`, `diagonal` relation types.
+
+### Changed
+- `RuleSet` now carries an optional `groups` list.
+- `SoftRules` now includes optional `cooling` field (`CoolingRule`, disabled by default, weight=5).
+
 ## 0.6.0 - 2026-06-28
 
 ### Added — PyPI Preparation & Developer Experience
