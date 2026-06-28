@@ -52,6 +52,16 @@ def solve_for_web(
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
 ) -> WebSolveResult:
+    if not 1 <= candidate_count <= 20:
+        raise ValueError("candidate_count must be between 1 and 20")
+    if time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be >= 0.1")
+    # Guard against bare string being iterated as characters.
+    if isinstance(history_paths, str):
+        raise TypeError(
+            "history_paths must be a sequence of paths, not a bare string. "
+            "Wrap it in a list: [path] instead of path."
+        )
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     artifact_path = output_root / (
@@ -104,6 +114,10 @@ def project_solve_for_web(
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
 ) -> WebSolveResult:
+    if candidate_count is not None and not 1 <= candidate_count <= 20:
+        raise ValueError("candidate_count must be between 1 and 20")
+    if time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be >= 0.1")
     project, paths = load_project_paths(
         project_path,
         require_inputs=True,
@@ -166,7 +180,10 @@ def selected_candidate(
 ) -> CandidatePlan | None:
     if not isinstance(result.artifact, CandidateSet):
         return None
-    return result.artifact.get_candidate(candidate_id)
+    try:
+        return result.artifact.get_candidate(candidate_id)
+    except ValueError:
+        return None
 
 
 def selected_snapshot(

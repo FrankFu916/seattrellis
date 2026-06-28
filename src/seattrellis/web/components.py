@@ -7,6 +7,7 @@ without the ``web`` extra.
 
 from __future__ import annotations
 
+from html import escape as html_escape
 from typing import Any
 
 from seattrellis.models.candidate import CandidatePlan, CandidateSet
@@ -46,7 +47,7 @@ def build_seat_grid_html(
     assignment_map: dict[str, str] = {}
     if snapshot is not None:
         for a in snapshot.assignments:
-            assignment_map[a.seat_id] = a.student_name or a.student_key
+            assignment_map[a.seat_id] = html_escape(a.student_name or a.student_key)
 
     rows_html: list[str] = []
     for r in range(1, max_row + 1):
@@ -69,7 +70,7 @@ def build_seat_grid_html(
                 seat_class += " " + tag_classes
 
             student_name = assignment_map.get(seat.seat_id, "")
-            label = student_name if student_name else seat.seat_id
+            label = student_name if student_name else html_escape(seat.seat_id)
 
             cells.append(
                 f'<div class="{seat_class}" title="{_seat_tooltip(seat, student_name)}">'
@@ -115,12 +116,13 @@ def build_candidate_selector(
         candidate_set.candidates,
         key=lambda item: (-item.total_score, item.candidate_id),
     ):
+        if candidate.candidate_id == candidate_set.recommended_candidate_id:
+            continue  # already added as the "recommended" pseudo-entry above
         options.append(
             {
                 "id": candidate.candidate_id,
                 "label": f"{candidate.candidate_id} — {candidate.total_score:.1f}",
-                "is_recommended": candidate.candidate_id
-                == candidate_set.recommended_candidate_id,
+                "is_recommended": False,
             }
         )
     return options
@@ -369,7 +371,7 @@ def _tag_color_classes(seat: SeatNode) -> str:
 
 
 def _seat_tooltip(seat: SeatNode, student_name: str) -> str:
-    parts = [f"座位 {seat.seat_id}"]
+    parts = [f"座位 {html_escape(seat.seat_id)}"]
     if student_name:
         parts.append(f"学生: {student_name}")
     if not seat.enabled:

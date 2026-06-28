@@ -11,6 +11,7 @@ from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.scoring import apply_diversity_scores, refresh_recommendation, score_snapshot
+from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver import SeatTrellisSolveError, solve_seating
 
 
@@ -48,7 +49,7 @@ def generate_candidate_set(
                 time_limit_seconds=time_limit_seconds,
                 excluded_assignments=excluded_assignments,
             )
-        except SeatTrellisSolveError:
+        except (SeatTrellisSolveError, MissingOptionalDependencyError):
             if not candidates:
                 raise
             failed_attempts += 1

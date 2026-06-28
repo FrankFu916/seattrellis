@@ -45,7 +45,16 @@ def load_history_snapshots(
     paths = list(history_paths or [])
     if history_dir is not None:
         paths.extend(_history_paths_in_dir(history_dir))
-    return [load_snapshot(path) for path in paths]
+    # Deduplicate paths — overlapping --history and --history-dir entries
+    # would otherwise cause double-counted history, skewing fairness scores.
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for p in paths:
+        resolved = str(Path(p).resolve())
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(Path(p))
+    return [load_snapshot(path) for path in unique]
 
 
 def build_seat_history(
