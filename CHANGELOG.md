@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0 - 2026-06-28
+
+### Added — PyPI Preparation & Developer Experience
+
+**P0:**
+- **`--version` / `-V` flag**: displays `seattrellis x.y.z` and exits (Typer callback + argparse `action="version"`).
+- **`seattrellis doctor` command**: environment diagnostic checking Python version, platform, all six optional extras (solver/excel/image/web/pdf/docx) with status indicators, presence of example files, outputs directory state, and `SEATTRELLIS_USE_ORTOOLS` env var.
+- **MkDocs documentation site skeleton**: `mkdocs.yml` with Material theme, full navigation structure covering quickstart, CLI, Web, input formats, rules, presets, project workflow, candidates/scoring, export, font strategy, history, privacy, troubleshooting, architecture, API reference, and desktop research.
+- **`docs/versioning.md`**: SemVer policy, schema version strategy for all file formats, CLI/Python API deprecation policy, compatibility matrix.
+
+**P1:**
+- **`docs/desktop-research.zh.md`**: comprehensive desktop technology evaluation (Tauri vs PySide vs NiceGUI vs FastAPI+pywebview vs Electron), with recommendation for Tauri + embedded Python sidecar as primary direction.
+
+### Changed
+- `cli.py`: added `--version` callback on Typer app, `doctor` command (Typer + argparse), `run_doctor()` reusable function.
+
 ## 0.5.0 - 2026-06-28
 
 ### Added — Export Enhancement

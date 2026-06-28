@@ -1,0 +1,96 @@
+site_name: SeatTrellis · 席序
+site_description: A privacy-first classroom seating planner
+site_author: Frank Fu
+repo_url: https://github.com/FrankFu916/seattrellis
+repo_name: FrankFu916/seattrellis
+edit_uri: edit/main/docs/
+copyright: Apache-2.0 License
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite
+  - md_in_html
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - 首页: index.md
+  - 快速开始:
+      - 中文: quickstart.zh.md
+      - English: quickstart.en.md
+  - CLI:
+      - 命令参考: cli.md
+      - 版本与兼容: versioning.md
+  - Web 端:
+      - 使用指南: web.zh.md
+  - 输入格式:
+      - 中文: input-format.zh.md
+      - English: input-format.en.md
+  - 规则:
+      - 中文: rules.zh.md
+      - English: rules.en.md
+  - Presets:
+      - 场景预设: presets.md
+  - Project 工作流:
+      - 项目文件: project.zh.md
+  - 多方案与评分:
+      - 候选方案: candidates.md
+      - 评分维度: scoring.md
+  - 导出:
+      - 导出格式: export.zh.md
+      - 字体策略: font-strategy.zh.md
+  - 历史分析:
+      - 公平轮换: history.md
+      - 关系回避: pair-history.md
+  - 隐私:
+      - 隐私说明: privacy.md
+  - 故障排除:
+      - 常见问题: troubleshooting.md
+  - 开发者:
+      - 架构: architecture.md
+      - API 参考: api.md
+      - 发布检查: release-checklist.md
+  - 桌面端调研: desktop-research.zh.md
