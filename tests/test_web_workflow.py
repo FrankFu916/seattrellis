@@ -175,7 +175,7 @@ def test_streamlit_app_smoke() -> None:
     app.run(timeout=10)
 
     assert not app.exception
-    assert [title.value for title in app.title] == ["SeatTrellis"]
+    assert [title.value for title in app.title] == ["🏫 SeatTrellis · 席序"]
     assert [tab.label for tab in app.tabs] == ["快速排座", "Project workspace"]
 
 
