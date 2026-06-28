@@ -238,8 +238,10 @@ def _render_exports(
 
     for output_format, mime in [
         ("html", "text/html"),
+        ("pdf", "application/pdf"),
         ("png", "image/png"),
         ("excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
     ]:
         try:
             if project_path is None:

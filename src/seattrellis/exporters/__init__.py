@@ -3,9 +3,18 @@
 from pathlib import Path
 
 from seattrellis.exporters.html import export_html
+from seattrellis.models.candidate import CandidatePlan
 from seattrellis.models.snapshot import SeatingSnapshot
 
-__all__ = ["export_excel", "export_html", "export_png", "export_snapshot"]
+__all__ = [
+    "export_docx",
+    "export_excel",
+    "export_html",
+    "export_pdf",
+    "export_png",
+    "export_print_html",
+    "export_snapshot",
+]
 
 
 def export_excel(snapshot: SeatingSnapshot, output: str | Path) -> Path:
@@ -20,7 +29,60 @@ def export_png(snapshot: SeatingSnapshot, output: str | Path) -> Path:
     return loaded_export_png(snapshot, output)
 
 
-def export_snapshot(snapshot: SeatingSnapshot, output_format: str, output: str | Path | None = None) -> Path:
+def export_pdf(
+    snapshot: SeatingSnapshot,
+    output: str | Path,
+    *,
+    template: str = "public",
+    privacy: "PrintPrivacyOptions | None" = None,
+    candidate: CandidatePlan | None = None,
+) -> Path:
+    from seattrellis.exporters.pdf import export_pdf as loaded_export_pdf
+
+    return loaded_export_pdf(
+        snapshot, output, template=template, privacy=privacy, candidate=candidate
+    )
+
+
+def export_docx(
+    snapshot: SeatingSnapshot,
+    output: str | Path,
+    *,
+    template: str = "public",
+    privacy: "PrintPrivacyOptions | None" = None,
+    candidate: CandidatePlan | None = None,
+) -> Path:
+    from seattrellis.exporters.docx_export import export_docx as loaded_export_docx
+
+    return loaded_export_docx(
+        snapshot, output, template=template, privacy=privacy, candidate=candidate
+    )
+
+
+def export_print_html(
+    snapshot: SeatingSnapshot,
+    output: str | Path,
+    *,
+    template: str = "public",
+    privacy: "PrintPrivacyOptions | None" = None,
+    candidate: CandidatePlan | None = None,
+) -> Path:
+    from seattrellis.exporters.print_html import export_print_html as loaded_export_print_html
+
+    return loaded_export_print_html(
+        snapshot, output, template=template, privacy=privacy, candidate=candidate
+    )
+
+
+def export_snapshot(
+    snapshot: SeatingSnapshot,
+    output_format: str,
+    output: str | Path | None = None,
+    *,
+    template: str = "public",
+    privacy: "PrintPrivacyOptions | None" = None,
+    candidate: CandidatePlan | None = None,
+) -> Path:
     output_format = output_format.lower()
     if output is None:
         output = Path("outputs") / f"seating.{_extension_for_format(output_format)}"
@@ -30,12 +92,24 @@ def export_snapshot(snapshot: SeatingSnapshot, output_format: str, output: str |
         return export_png(snapshot, output)
     if output_format == "html":
         return export_html(snapshot, output)
+    if output_format == "pdf":
+        return export_pdf(snapshot, output, template=template, privacy=privacy, candidate=candidate)
+    if output_format == "docx":
+        return export_docx(snapshot, output, template=template, privacy=privacy, candidate=candidate)
+    if output_format == "print-html":
+        return export_print_html(
+            snapshot, output, template=template, privacy=privacy, candidate=candidate
+        )
     raise ValueError(f"Unsupported export format: {output_format}")
 
 
 def _extension_for_format(output_format: str) -> str:
     if output_format in {"excel", "xlsx"}:
         return "xlsx"
-    if output_format in {"png", "html"}:
+    if output_format in {"png", "html", "pdf"}:
         return output_format
+    if output_format == "docx":
+        return "docx"
+    if output_format == "print-html":
+        return "html"
     return output_format
