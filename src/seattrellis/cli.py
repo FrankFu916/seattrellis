@@ -61,6 +61,26 @@ if typer is not None:
     )
     app.add_typer(presets_app, name="presets")
 
+    # --version callback
+    def _version_callback(value: bool) -> None:
+        if value:
+            from seattrellis import __version__
+            typer.echo(f"seattrellis {__version__}")
+            raise typer.Exit()
+
+    @app.callback()
+    def _main_callback(
+        version: bool = typer.Option(
+            False,
+            "--version",
+            "-V",
+            help="Show version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ) -> None:
+        pass
+
     @presets_app.command("list", help="List built-in seating scenario presets.")
     def presets_list_command() -> None:
         typer.echo(format_preset_list())
@@ -79,6 +99,10 @@ if typer is not None:
         _run_typer_action(
             lambda: typer.echo(f"Preset rules written to {export_preset(preset, output)}")
         )
+
+    @app.command("doctor", help="Check environment: Python, optional deps, examples, outputs.")
+    def doctor_command() -> None:
+        _run_typer_action(lambda: typer.echo(run_doctor()))
 
     @app.command("init-demo", help="Create fictional demo input files under examples/.")
     def init_demo_command(
@@ -424,6 +448,69 @@ def solve_with_report(
     return path, summary
 
 
+def run_doctor() -> str:
+    """Check the environment and return a diagnostic report."""
+    import sys
+    import os
+
+    from seattrellis import __version__
+
+    lines: list[str] = []
+    lines.append("=" * 52)
+    lines.append("  SeatTrellis Doctor")
+    lines.append("=" * 52)
+    lines.append(f"  Version:      {__version__}")
+    lines.append(f"  Python:       {sys.version.split()[0]}")
+    lines.append(f"  Executable:   {sys.executable}")
+    lines.append(f"  Platform:     {sys.platform}")
+
+    # Check optional dependencies
+    extras_status: list[tuple[str, str, str]] = []
+    for extra, import_name, pkg_name in [
+        ("solver", "ortools", "ortools"),
+        ("excel", "openpyxl", "openpyxl"),
+        ("image", "PIL", "Pillow"),
+        ("web", "streamlit", "streamlit"),
+        ("pdf", "weasyprint", "weasyprint"),
+        ("docx", "docx", "python-docx"),
+    ]:
+        try:
+            __import__(import_name)
+            extras_status.append((extra, "✅", pkg_name))
+        except Exception:
+            extras_status.append((extra, "❌", pkg_name))
+
+    lines.append("")
+    lines.append("  Optional extras:")
+    for extra, status, pkg in extras_status:
+        lines.append(f"    {status} {extra:8s} ({pkg})")
+
+    # Check examples
+    examples_dir = Path(__file__).resolve().parents[2] / "examples"
+    lines.append("")
+    lines.append("  Examples:")
+    for fname in ["students.csv", "classroom.json", "rules.json", "project.seattrellis.json"]:
+        path = examples_dir / fname
+        status = "✅" if path.exists() else "❌"
+        lines.append(f"    {status} {fname}")
+
+    # Check outputs dir
+    outputs_dir = Path.cwd() / "outputs"
+    lines.append("")
+    lines.append(f"  Outputs dir:  {outputs_dir}")
+    lines.append(f"    {'✅ exists' if outputs_dir.is_dir() else '⚠️  does not exist yet'}")
+
+    # Check env
+    ortools_env = os.environ.get("SEATTRELLIS_USE_ORTOOLS")
+    lines.append("")
+    lines.append(f"  SEATTRELLIS_USE_ORTOOLS: {ortools_env or '(not set)'}")
+
+    lines.append("")
+    lines.append("  Privacy: all examples/ use fictional data only.")
+    lines.append("=" * 52)
+    return "\n".join(lines)
+
+
 def export(
     *,
     snapshot_path: str | Path,
@@ -653,9 +740,17 @@ def main() -> None:
 
 
 def _run_argparse() -> None:
+    from seattrellis import __version__
+
     parser = argparse.ArgumentParser(prog="seattrellis", description="SeatTrellis classroom seating optimizer.")
+    parser.add_argument("--version", "-V", action="version", version=f"seattrellis {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # doctor
+    doctor_parser = subparsers.add_parser("doctor", help="Check environment.")
+    doctor_parser.set_defaults(func=lambda args: print(run_doctor()))
+
+    # init-demo
     init_parser = subparsers.add_parser("init-demo", help="Create fictional demo input files.")
     init_parser.add_argument("--output-dir", "-o", default=".")
     init_parser.add_argument("--force", "--overwrite", dest="overwrite", action="store_true")
@@ -747,7 +842,9 @@ def _run_argparse() -> None:
     project_export_parser.add_argument("--output", "-o", default=None)
 
     args = parser.parse_args()
-    if args.command == "init-demo":
+    if args.command == "doctor":
+        print(run_doctor())
+    elif args.command == "init-demo":
         paths = init_demo(output_dir=args.output_dir, overwrite=args.overwrite)
         print(f"Demo files ready in {paths['students_csv'].parent}")
         if not args.overwrite:
