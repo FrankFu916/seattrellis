@@ -70,6 +70,18 @@ def test_web_workflow_requires_rules_or_preset(tmp_path) -> None:
         )
 
 
+@pytest.mark.parametrize("time_limit", [float("nan"), float("inf"), float("-inf")])
+def test_web_workflow_rejects_non_finite_time_limit(tmp_path, time_limit) -> None:
+    with pytest.raises(ValueError, match="finite number"):
+        workflow.solve_for_web(
+            students_path="examples/students.csv",
+            layout_path="examples/classroom.json",
+            preset_name="random",
+            output_dir=tmp_path,
+            time_limit_seconds=time_limit,
+        )
+
+
 def test_web_export_uses_recommended_candidate(tmp_path) -> None:
     result = workflow.solve_for_web(
         students_path="examples/students.csv",

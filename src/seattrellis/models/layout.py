@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import isfinite
 from typing import Any
 
 try:
@@ -38,6 +39,12 @@ class SeatNode(BaseModel):
             raise ValueError("row and col must be positive integers.")
         return value
 
+    @validator("x", "y")
+    def finite_coordinates(cls, value: float | None, field: Any) -> float | None:
+        if value is not None and not isfinite(value):
+            raise ValueError(f"{field.name} must be a finite number.")
+        return value
+
     @root_validator(skip_on_failure=True)
     def default_coordinates(cls, values: dict[str, Any]) -> dict[str, Any]:
         if values.get("x") is None:
@@ -58,6 +65,18 @@ class AdjacencyConfig(BaseModel):
     max_distance: float | None = None
     use_xy_distance: bool = True
     custom_edges: list[tuple[str, str]] = Field(default_factory=list)
+
+    @validator("max_row_delta", "max_col_delta")
+    def non_negative_grid_delta(cls, value: int, field: Any) -> int:
+        if value < 0:
+            raise ValueError(f"{field.name} must be non-negative.")
+        return value
+
+    @validator("max_distance")
+    def positive_finite_distance(cls, value: float | None) -> float | None:
+        if value is not None and (not isfinite(value) or value <= 0):
+            raise ValueError("max_distance must be a positive finite number.")
+        return value
 
     @validator("custom_edges", pre=True)
     def normalize_edges(cls, value: Any) -> list[tuple[str, str]]:
@@ -92,6 +111,15 @@ class ClassroomLayout(BaseModel):
         duplicates = sorted({seat_id for seat_id in seat_ids if seat_ids.count(seat_id) > 1})
         if duplicates:
             raise ValueError(f"Duplicate seat_id: {', '.join(duplicates)}")
+        positions = [(seat.row, seat.col) for seat in seats]
+        duplicate_positions = sorted(
+            {position for position in positions if positions.count(position) > 1}
+        )
+        if duplicate_positions:
+            formatted = ", ".join(
+                f"(row={row}, col={col})" for row, col in duplicate_positions
+            )
+            raise ValueError(f"Duplicate seat grid position: {formatted}")
         enabled_ids = {seat.seat_id for seat in seats if seat.enabled}
         disabled_ids = {seat.seat_id for seat in seats if not seat.enabled}
         for first, second in values.get("adjacency", AdjacencyConfig()).custom_edges:

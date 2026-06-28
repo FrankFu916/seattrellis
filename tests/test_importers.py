@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import pytest
 from openpyxl import Workbook
 
+from seattrellis.io.json_files import InputFileError, read_json
 from seattrellis.io.students import read_students, students_from_records
 
 
@@ -34,3 +36,16 @@ def test_students_from_records_rejects_empty_data() -> None:
         assert "No valid students" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_read_json_reports_invalid_utf8_as_input_error(tmp_path) -> None:
+    path = tmp_path / "invalid.json"
+    path.write_bytes(b"\xff\xfe")
+
+    with pytest.raises(InputFileError, match="Invalid UTF-8"):
+        read_json(path)
+
+
+def test_read_json_reports_directory_as_input_error(tmp_path) -> None:
+    with pytest.raises(InputFileError, match="Could not read input file"):
+        read_json(tmp_path)

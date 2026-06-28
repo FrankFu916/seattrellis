@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import isfinite
 from typing import Literal
 
 try:
@@ -48,8 +49,8 @@ class MinDistanceRule(PairRule):
 
     @validator("distance")
     def positive_distance(cls, value: float) -> float:
-        if value <= 0:
-            raise ValueError("distance must be positive.")
+        if not isfinite(value) or value <= 0:
+            raise ValueError("distance must be a positive finite number.")
         return value
 
 

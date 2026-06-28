@@ -5,6 +5,7 @@ from pathlib import Path
 from seattrellis.exporters.html import export_html
 from seattrellis.models.candidate import CandidatePlan
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.service_types import export_extension
 
 __all__ = [
     "export_docx",
@@ -85,7 +86,7 @@ def export_snapshot(
 ) -> Path:
     output_format = output_format.lower()
     if output is None:
-        output = Path("outputs") / f"seating.{_extension_for_format(output_format)}"
+        output = Path("outputs") / f"seating.{export_extension(output_format)}"
     if output_format in {"excel", "xlsx"}:
         return export_excel(snapshot, output)
     if output_format == "png":
@@ -101,15 +102,3 @@ def export_snapshot(
             snapshot, output, template=template, privacy=privacy, candidate=candidate
         )
     raise ValueError(f"Unsupported export format: {output_format}")
-
-
-def _extension_for_format(output_format: str) -> str:
-    if output_format in {"excel", "xlsx"}:
-        return "xlsx"
-    if output_format in {"png", "html", "pdf"}:
-        return output_format
-    if output_format == "docx":
-        return "docx"
-    if output_format == "print-html":
-        return "html"
-    return output_format

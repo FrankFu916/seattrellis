@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from itertools import combinations
+from math import isfinite
 from statistics import mean
 from typing import Sequence
 
@@ -524,7 +525,10 @@ def _available_dimension(
     weight: float,
     details: dict[str, object],
 ) -> ScoreDimension:
-    score = round(max(0.0, min(100.0, float(score))), 2)
+    score = float(score)
+    if not isfinite(score):
+        raise ValueError("score dimension must be a finite number.")
+    score = round(max(0.0, min(100.0, score)), 2)
     return ScoreDimension(
         status="available",
         score=score,

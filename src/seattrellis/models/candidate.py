@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import isfinite
 from typing import Any, Literal
 
 try:
@@ -25,8 +26,20 @@ class ScoreDimension(BaseModel):
 
     @validator("score")
     def score_in_range(cls, value: float | None) -> float | None:
-        if value is not None and not 0 <= value <= 100:
+        if value is not None and (not isfinite(value) or not 0 <= value <= 100):
             raise ValueError("score must be between 0 and 100.")
+        return value
+
+    @validator("raw_value")
+    def raw_value_must_be_finite(cls, value: float | None) -> float | None:
+        if value is not None and not isfinite(value):
+            raise ValueError("raw_value must be a finite number.")
+        return value
+
+    @validator("weight")
+    def weight_must_be_non_negative_and_finite(cls, value: float) -> float:
+        if not isfinite(value) or value < 0:
+            raise ValueError("weight must be a non-negative finite number.")
         return value
 
 
@@ -58,6 +71,20 @@ class PlanScore(BaseModel):
         if not 0 <= value <= 100:
             raise ValueError("total score must be between 0 and 100.")
         return value
+
+    @property
+    def available_dimensions(self) -> int:
+        """Count of score dimensions whose status is 'available'."""
+        dims = [
+            self.breakdown.fair_rotation_score,
+            self.breakdown.avoid_recent_neighbors_score,
+            self.breakdown.score_balance_score,
+            self.breakdown.height_preference_score,
+            self.breakdown.vision_preference_score,
+            self.breakdown.diversity_score,
+            self.breakdown.stability_score,
+        ]
+        return sum(1 for d in dims if d.status == "available")
 
 
 class CandidatePlan(BaseModel):

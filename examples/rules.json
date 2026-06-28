@@ -55,6 +55,27 @@
         "near_ac"
       ],
       "lookback": 4
+    },
+    "avoid_recent_neighbors": {
+      "enabled": false,
+      "weight": 10,
+      "relation_types": [
+        "desk_mate",
+        "adjacent_any"
+      ],
+      "lookback": 4,
+      "max_recent_count": 1,
+      "within_distance": 2
+    },
+    "cooling": {
+      "enabled": false,
+      "weight": 5,
+      "cooling_period": 3,
+      "relation_types": [
+        "desk_mate",
+        "adjacent_any"
+      ]
     }
-  }
+  },
+  "groups": []
 }
