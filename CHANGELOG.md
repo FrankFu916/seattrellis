@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.0.0 - 2026-06-28 — Official Release 🎉
+
+### Release Conditions Met
+
+- ✅ CLI core commands stable: `solve`, `validate`, `export`, `presets`, `project-*`, `history-report`, `pair-report`, `doctor`
+- ✅ Web UI usable: seat map visualization, candidate switching, comparison, demo one-click, preset cards, error diagnosis, step wizard, privacy panel
+- ✅ Export formats: HTML, PDF, PNG, Excel, DOCX, print-HTML with three templates
+- ✅ Schema version stable for all file formats
+- ✅ 246 tests including property-based hard-constraint tests
+- ✅ Package builds (wheel + sdist), `pip install` verified
+- ✅ Documentation: README (zh/en), quickstart (zh/en), input formats, rules, web, project, export, font strategy, versioning, desktop research, release checklist
+- ✅ All examples fictional, zero real data
+- ✅ CI matrix: 3 platforms × 2 Python versions
+- ✅ Privacy statement complete
+- ✅ Release checklist reproducible
+- ✅ `--version` flag and `doctor` command
+- ✅ 8 built-in scenario presets
+- ✅ Multi-candidate generation with 7-dimension scoring
+- ✅ Student groups and cooling period rules
+
+### Version Summary (v0.3.2 → v1.0.0)
+
+| Version | Theme |
+|---------|-------|
+| v0.3.2 | Version consistency, English quickstart, issue templates |
+| v0.4.0 | Web usability: seat map, candidate switching, comparison, demo, preset cards, error diagnosis |
+| v0.5.0 | Export enhancement: PDF, print HTML, DOCX, privacy options, font strategy |
+| v0.6.0 | PyPI prep: --version, doctor, MkDocs, versioning policy, desktop research |
+| v0.7.0 | Real classroom: student groups, cooling periods |
+| v0.8.0 | Stability: property-based tests, edge-case tests, fuzz tests (246 total) |
+| v1.0.0 | Official release |
+
 ## 0.8.0 - 2026-06-28
 
 ### Added — Stability & Quality
