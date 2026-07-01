@@ -10,7 +10,7 @@ SeatTrellis processes data locally by default. Do not commit real student names,
 
 ![Demo seating chart](docs/assets/demo-seating.png)
 
-## Quick Start
+## Quick Setup
 
 The minimal install includes only the core models, CLI, and fallback solver:
 
