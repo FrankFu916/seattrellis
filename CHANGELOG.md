@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.1 - 2026-07-02
+
+### Fixed
+
+- Kept web solve artifacts available across Streamlit reruns and made download handling resilient to missing files.
+- Prevented partial uploads, invalid candidate selections, stale session state, and duplicate recommended-candidate entries from crashing or confusing the web UI.
+- Escaped student names and seat IDs before rendering seat-map HTML.
+- Validated candidate counts, time limits, and history path inputs at the service boundary.
+- Completed export extension handling and deduplicated overlapping history paths.
+
+### Changed
+
+- Extracted the reusable service layer and API contracts from the CLI while preserving CLI and web behavior.
+- Expanded regression coverage to 269 passing tests.
+
 ## 1.0.0 - 2026-06-28 — Official Release 🎉
 
 ### Release Conditions Met
