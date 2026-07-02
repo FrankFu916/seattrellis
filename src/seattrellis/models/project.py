@@ -8,12 +8,14 @@ try:
 except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import BaseModel, validator
 
+from seattrellis.schema import PROJECT_SCHEMA_VERSION, require_schema_version
+
 
 class SeatTrellisProject(BaseModel):
     """Portable configuration for a local SeatTrellis project workspace."""
 
     kind: Literal["seattrellis_project"] = "seattrellis_project"
-    schema_version: Literal[1] = 1
+    schema_version: int = PROJECT_SCHEMA_VERSION
     name: str = "SeatTrellis Project"
     students: str
     layout: str
@@ -23,6 +25,14 @@ class SeatTrellisProject(BaseModel):
     default_candidates: int = 5
     default_candidate: str = "recommended"
     default_export_format: Literal["html", "excel", "png"] = "html"
+
+    @validator("schema_version", pre=True)
+    def supported_schema_version(cls, value: object) -> int:
+        return require_schema_version(
+            value,
+            expected=PROJECT_SCHEMA_VERSION,
+            artifact="project",
+        )
 
     @validator("name", "default_candidate", pre=True)
     def clean_required_text(cls, value: object) -> str:

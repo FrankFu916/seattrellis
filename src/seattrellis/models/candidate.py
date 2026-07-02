@@ -10,6 +10,7 @@ except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import BaseModel, Field, root_validator, validator
 
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.schema import CANDIDATE_SCHEMA_VERSION, require_schema_version
 
 
 ScoreStatus = Literal["available", "not_available"]
@@ -105,13 +106,21 @@ class CandidatePlan(BaseModel):
 
 
 class CandidateSet(BaseModel):
-    schema_version: str = "0.2.2"
+    schema_version: str = CANDIDATE_SCHEMA_VERSION
     kind: Literal["candidate_set"] = "candidate_set"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict[str, Any] = Field(default_factory=dict)
     candidates: list[CandidatePlan]
     recommended_candidate_id: str
     warnings: list[str] = Field(default_factory=list)
+
+    @validator("schema_version", pre=True)
+    def supported_schema_version(cls, value: object) -> str:
+        return require_schema_version(
+            value,
+            expected=CANDIDATE_SCHEMA_VERSION,
+            artifact="candidate set",
+        )
 
     @root_validator(skip_on_failure=True)
     def validate_candidate_ids(cls, values: dict[str, Any]) -> dict[str, Any]:
@@ -145,7 +154,7 @@ class PlanComparisonEntry(BaseModel):
 
 
 class PlanComparisonReport(BaseModel):
-    schema_version: str = "0.2.2"
+    schema_version: str = CANDIDATE_SCHEMA_VERSION
     kind: Literal["plan_comparison_report"] = "plan_comparison_report"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     candidate_count: int
@@ -153,6 +162,14 @@ class PlanComparisonReport(BaseModel):
     candidates: list[PlanComparisonEntry]
     warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @validator("schema_version", pre=True)
+    def supported_schema_version(cls, value: object) -> str:
+        return require_schema_version(
+            value,
+            expected=CANDIDATE_SCHEMA_VERSION,
+            artifact="plan comparison report",
+        )
 
 
 class MultiSolveOptions(BaseModel):
