@@ -7,6 +7,8 @@ and ``web/components.py`` so this module stays thin.
 from __future__ import annotations
 
 import atexit
+import hashlib
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -25,6 +27,11 @@ from seattrellis.models.candidate import CandidateSet
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import list_presets
 from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.web.config import (
+    WebSessionConfig,
+    dump_web_config,
+    load_web_config,
+)
 from seattrellis.web.components import (
     PRIVACY_NOTICE_HTML,
     build_comparison_table,
@@ -35,7 +42,9 @@ from seattrellis.web.components import (
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
+    analyze_history_files,
     assignment_rows,
+    build_rules_preview,
     candidate_summary_rows,
     demo_paths,
     export_for_web,
@@ -45,6 +54,7 @@ from seattrellis.web.workflow import (
     project_info_for_web,
     project_solve_for_web,
     project_validate_for_web,
+    parse_rules_overlay,
     score_breakdown_rows,
     selected_candidate,
     selected_snapshot,
@@ -67,6 +77,11 @@ _SS_DEFAULTS = {
     "demo_loaded": False,
     "demo_students_path": None,
     "demo_layout_path": None,
+    "demo_history_dir": None,
+    "_qf_rules_data": None,
+    "_qf_rules_name": None,
+    "_qf_config_digest": None,
+    "_qf_history_quality": None,
 }
 
 # Persistent temp dirs that survive Streamlit re-runs.
@@ -101,6 +116,91 @@ def _reset_solve_state():
     for k in ("solved", "result", "artifact_json", "report_json",
               "output_dir", "project_path", "layout_loaded"):
         st.session_state[k] = _SS_DEFAULTS[k]
+
+
+def _restore_web_config(data: bytes) -> WebSessionConfig:
+    digest = hashlib.sha256(data).hexdigest()
+    config = load_web_config(data)
+    if config.rules_overlay is not None or config.preset_name is not None:
+        build_rules_preview(
+            rules_data=config.rules_overlay,
+            preset_name=config.preset_name,
+        )
+    if _ss("_qf_config_digest") == digest:
+        return config
+
+    preset_name = config.preset_name or ""
+    st.session_state["quick_preset"] = preset_name
+    if preset_name:
+        st.session_state["_qf_preset"] = preset_name
+    else:
+        st.session_state.pop("_qf_preset", None)
+    st.session_state["_qf_rules_data"] = config.rules_overlay
+    st.session_state["_qf_rules_name"] = (
+        "restored.rules.json" if config.rules_overlay is not None else None
+    )
+    st.session_state["quick_candidate_count"] = config.candidate_count
+    st.session_state["quick_seed_enabled"] = config.seed is not None
+    st.session_state["quick_seed"] = config.seed if config.seed is not None else 42
+    st.session_state["quick_time_limit"] = config.time_limit_seconds
+    st.session_state["_qf_config_digest"] = digest
+    st.session_state["_qf_history_quality"] = None
+    return config
+
+
+def _current_rules_data() -> dict | None:
+    uploaded = _ss("_qf_rules")
+    if uploaded is not None:
+        return parse_rules_overlay(uploaded.getvalue())
+    restored = _ss("_qf_rules_data")
+    return restored if isinstance(restored, dict) else None
+
+
+def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
+    input_root = Path(_make_persistent_tempdir())
+    students_file = _ss("_qf_students")
+    layout_file = _ss("_qf_layout")
+    demo_loaded = bool(_ss("demo_loaded"))
+
+    if students_file is not None and layout_file is not None:
+        students_path = input_root / Path(students_file.name).name
+        layout_path = input_root / Path(layout_file.name).name
+        students_path.write_bytes(students_file.getvalue())
+        layout_path.write_bytes(layout_file.getvalue())
+    elif demo_loaded:
+        students_path = Path(_ss("demo_students_path"))
+        layout_path = Path(_ss("demo_layout_path"))
+    else:
+        raise InputFileError(
+            "Upload both the student list and classroom layout, or load the Demo."
+        )
+
+    rules_path: Path | None = None
+    rules_file = _ss("_qf_rules")
+    if rules_file is not None:
+        rules_path = input_root / Path(rules_file.name).name
+        rules_path.write_bytes(rules_file.getvalue())
+    else:
+        restored_rules = _current_rules_data()
+        if restored_rules is not None:
+            rules_path = input_root / "restored.rules.json"
+            rules_path.write_text(
+                json.dumps(restored_rules, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+    history_paths: list[Path] = []
+    for index, history_file in enumerate(_ss("_qf_history") or [], start=1):
+        safe_name = Path(history_file.name).name
+        history_path = input_root / f"history-{index:02d}-{safe_name}"
+        history_path.write_bytes(history_file.getvalue())
+        history_paths.append(history_path)
+    if not history_paths and demo_loaded and _ss("demo_history_dir"):
+        history_paths = sorted(
+            Path(_ss("demo_history_dir")).glob("*.snapshot.json")
+        )
+
+    return students_path, layout_path, rules_path, history_paths
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +280,7 @@ def _render_candidate_detail(result: WebSolveResult, candidate_id: str) -> None:
     if hard.violations:
         st.warning(f"违规项: {hard.violations}")
 
-    st.dataframe(score_breakdown_rows(candidate), use_container_width=True)
+    st.dataframe(score_breakdown_rows(candidate), width="stretch")
 
 
 def _render_comparison_view(result: WebSolveResult) -> None:
@@ -189,7 +289,7 @@ def _render_comparison_view(result: WebSolveResult) -> None:
         return
     with st.expander("📊 候选方案对比", expanded=False):
         comp = build_comparison_table(result.artifact)
-        st.dataframe(comp["rows"], use_container_width=True)
+        st.dataframe(comp["rows"], width="stretch")
         st.caption(
             "各维度分数为 0–100 归一化值；n/a 表示该维度不可用。"
             "⭐ 标记为推荐方案。"
@@ -360,22 +460,57 @@ def _render_step_load_data() -> None:
     st.markdown("**快速体验**")
     demo_col1, demo_col2 = st.columns([1, 3])
     with demo_col1:
-        if st.button("🚀 一键加载 Demo", type="primary", use_container_width=True):
+        if st.button("🚀 一键加载 Demo", type="primary", width="stretch"):
             demo = demo_paths()
             if demo["students_csv"] and demo["layout"]:
                 st.session_state["demo_loaded"] = True
                 st.session_state["demo_students_path"] = str(demo["students_csv"])
                 st.session_state["demo_layout_path"] = str(demo["layout"])
+                st.session_state["demo_history_dir"] = (
+                    str(demo["history_dir"]) if demo["history_dir"] else None
+                )
                 # Auto-select the "daily" preset so the solve button is ready.
                 st.session_state["_qf_preset"] = "daily"
+                st.session_state["quick_preset"] = "daily"
                 # Clear any previously uploaded files so demo takes priority.
                 for k in ("_qf_students", "_qf_layout", "_qf_rules", "_qf_history"):
                     st.session_state.pop(k, None)
+                for k in (
+                    "quick_students",
+                    "quick_layout",
+                    "quick_rules",
+                    "quick_history",
+                ):
+                    st.session_state.pop(k, None)
+                st.session_state["_qf_rules_data"] = None
+                st.session_state["_qf_rules_name"] = None
+                st.session_state["_qf_history_quality"] = None
                 st.success("Demo 数据已就绪（已自动选择 daily 预设）！请切换到下一步。")
             else:
                 st.error("Demo 文件不存在。请先在终端运行 `seattrellis init-demo`。")
     with demo_col2:
         st.caption("一键加载虚构示例数据，无需准备任何文件即可体验完整流程。")
+
+    st.divider()
+    st.markdown("**恢复设置**")
+    config_file = st.file_uploader(
+        "Web 配置 JSON",
+        type=["json"],
+        key="quick_config",
+    )
+    if config_file is not None:
+        try:
+            restored = _restore_web_config(config_file.getvalue())
+            st.success(
+                "已恢复设置："
+                f"{restored.candidate_count} 个候选，"
+                f"preset={restored.preset_name or '无'}。"
+            )
+            st.caption("学生名单、layout 和 history 仍需单独加载。")
+            if restored.contains_student_references:
+                st.warning("此配置的 rules overlay 含有学生标识，请按敏感文件保管。")
+        except (InputFileError, ValueError) as exc:
+            _render_error(exc)
 
     st.divider()
     st.markdown("**或手动上传**")
@@ -418,6 +553,17 @@ def _render_step_load_data() -> None:
     st.session_state["_qf_layout"] = layout_file
     st.session_state["_qf_rules"] = rules_file
     st.session_state["_qf_history"] = history_files
+    if rules_file is not None:
+        st.session_state["_qf_rules_data"] = None
+        st.session_state["_qf_rules_name"] = rules_file.name
+    elif _ss("_qf_rules_data") is not None:
+        st.caption(
+            f"当前使用配置文件中的 rules overlay：{_ss('_qf_rules_name')}"
+        )
+        if st.button("清除已恢复的 rules overlay", key="clear_restored_rules"):
+            st.session_state["_qf_rules_data"] = None
+            st.session_state["_qf_rules_name"] = None
+            st.rerun()
     if preset_name:
         st.session_state["_qf_preset"] = preset_name
     else:
@@ -425,6 +571,7 @@ def _render_step_load_data() -> None:
     # If user manually uploads files, clear demo flag.
     if students_file is not None or layout_file is not None:
         st.session_state["demo_loaded"] = False
+        st.session_state["_qf_history_quality"] = None
 
 
 def _render_step_solve() -> None:
@@ -441,11 +588,88 @@ def _render_step_solve() -> None:
         demo_loaded = False
 
     has_files = has_uploaded_students and has_uploaded_layout or demo_loaded
-    has_rules = bool(_ss("_qf_rules") or _ss("_qf_preset"))
+    has_rules = bool(
+        _ss("_qf_rules")
+        or _ss("_qf_rules_data")
+        or _ss("_qf_preset")
+    )
 
     if not has_files:
         st.warning("请先在上一步上传学生名单和教室布局（两者都需要），或加载 Demo 数据。")
         return
+
+    rules_data = None
+    if has_rules:
+        try:
+            rules_data = _current_rules_data()
+            rules_preview = build_rules_preview(
+                rules_data=rules_data,
+                preset_name=_ss("_qf_preset") or None,
+            )
+        except (InputFileError, ValidationError, ValueError) as exc:
+            _render_error(exc)
+            return
+        with st.expander("最终生效的 rules", expanded=True):
+            source_parts = []
+            if rules_preview.preset_name:
+                source_parts.append(f"preset: {rules_preview.preset_name}")
+            if rules_preview.overlay_applied:
+                source_parts.append("rules overlay")
+            st.caption(" + ".join(source_parts))
+            st.code(rules_preview.json_bytes.decode("utf-8"), language="json")
+            st.download_button(
+                "下载合并后的 rules JSON",
+                data=rules_preview.json_bytes,
+                file_name="resolved.rules.json",
+                mime="application/json",
+                key="download_resolved_rules",
+            )
+    else:
+        st.warning("请选择 preset 或上传 rules JSON。")
+
+    has_history = bool(
+        _ss("_qf_history")
+        or (demo_loaded and _ss("demo_history_dir"))
+    )
+    if has_history:
+        with st.expander("History 质量检查", expanded=False):
+            if st.button("检查历史记录", key="inspect_history"):
+                try:
+                    (
+                        students_path,
+                        layout_path,
+                        _rules_path,
+                        history_paths,
+                    ) = _materialize_quick_inputs()
+                    st.session_state["_qf_history_quality"] = analyze_history_files(
+                        students_path=students_path,
+                        layout_path=layout_path,
+                        history_paths=history_paths,
+                    )
+                except (
+                    InputFileError,
+                    MissingOptionalDependencyError,
+                    ValidationError,
+                    ValueError,
+                ) as exc:
+                    _render_error(exc)
+            quality = _ss("_qf_history_quality")
+            if quality is not None:
+                metric_cols = st.columns(3)
+                metric_cols[0].metric("Snapshot 数量", quality.snapshot_count)
+                metric_cols[1].metric(
+                    "平均学生覆盖率",
+                    f"{quality.average_coverage_percent:.1f}%",
+                )
+                metric_cols[2].metric(
+                    "完全匹配",
+                    f"{quality.complete_snapshot_count}/{quality.snapshot_count}",
+                )
+                st.dataframe(quality.rows(), width="stretch")
+                if quality.warnings:
+                    st.warning("\n".join(quality.warnings))
+                else:
+                    st.success("历史记录与当前学生名单和 layout 一致。")
 
     # Solve settings
     candidate_count = st.number_input(
@@ -466,49 +690,51 @@ def _render_step_solve() -> None:
     )
     time_limit_seconds = st.number_input(
         "单次求解秒数",
-        min_value=0.5,
+        min_value=0.1,
         max_value=30.0,
         value=3.0,
         step=0.5,
         key="quick_time_limit",
     )
 
+    try:
+        config = WebSessionConfig(
+            preset_name=_ss("_qf_preset") or None,
+            rules_overlay=rules_data,
+            candidate_count=int(candidate_count),
+            seed=int(seed) if seed_enabled else None,
+            time_limit_seconds=float(time_limit_seconds),
+        )
+        if config.contains_student_references:
+            st.warning(
+                "当前 rules overlay 引用了学生标识；下载的配置文件应按敏感文件保管。"
+            )
+        st.download_button(
+            "下载当前 Web 配置",
+            data=dump_web_config(config),
+            file_name="seattrellis.web-config.json",
+            mime="application/json",
+            key="download_web_config",
+            help=(
+                "保存 preset、rules overlay 和求解参数，不包含学生名单、layout "
+                "或 history。rules overlay 可能引用学生标识。"
+            ),
+        )
+    except ValueError as exc:
+        _render_error(exc)
+
     ready = has_rules and has_files
     if st.button("生成座位表", type="primary", disabled=not ready):
         _reset_solve_state()
         try:
-            input_dir = _make_persistent_tempdir()
             output_dir = _make_persistent_tempdir()
-            input_root = Path(input_dir)
-
-            # Determine data source: uploaded files take priority over demo.
-            if has_uploaded_students and has_uploaded_layout:
-                sf = _ss("_qf_students")
-                lf = _ss("_qf_layout")
-                students_path = input_root / sf.name
-                students_path.write_bytes(sf.getvalue())
-                layout_path = input_root / lf.name
-                layout_path.write_bytes(lf.getvalue())
-            elif demo_loaded:
-                students_path = Path(_ss("demo_students_path"))
-                layout_path = Path(_ss("demo_layout_path"))
-            else:
-                st.error("请上传学生名单和教室布局文件。")
-                return
-
-            rules_file = _ss("_qf_rules")
-            rules_path = None
-            if rules_file is not None:
-                rules_path = input_root / rules_file.name
-                rules_path.write_bytes(rules_file.getvalue())
-
+            (
+                students_path,
+                layout_path,
+                rules_path,
+                history_paths,
+            ) = _materialize_quick_inputs()
             preset_name = _ss("_qf_preset") or None
-
-            history_paths = []
-            for i, hf in enumerate(_ss("_qf_history") or [], start=1):
-                hp = input_root / f"history-{i:02d}-{hf.name}"
-                hp.write_bytes(hf.getvalue())
-                history_paths.append(hp)
 
             result = solve_for_web(
                 students_path=students_path,
@@ -588,7 +814,7 @@ def _render_step_results() -> None:
 
     # --- Assignment table ---
     with st.expander("📋 分配明细表", expanded=False):
-        st.dataframe(assignment_rows(snapshot), use_container_width=True)
+        st.dataframe(assignment_rows(snapshot), width="stretch")
 
     # --- Exports ---
     _render_exports(result, output_dir, candidate_id)
@@ -749,7 +975,7 @@ def _render_project_tab() -> None:
         _render_comparison_view(result)
 
         with st.expander("📋 分配明细表", expanded=False):
-            st.dataframe(assignment_rows(snapshot), use_container_width=True)
+            st.dataframe(assignment_rows(snapshot), width="stretch")
 
         _render_exports(result, output_dir, candidate_id, Path(proj_path_str))
 

@@ -62,7 +62,12 @@ streamlit run src/seattrellis/web/app.py
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
 
-网页端支持分步加载数据、选择内置 preset 或上传 rules JSON overlay、加载 Demo、上传多份历史 snapshot、生成 1–20 个候选方案、切换和比较候选方案、查看座位图与评分，并下载 JSON、report、HTML、PDF、PNG、Excel 或 Word。也可以上传或读取本机 project 文件，复用 project-info、validate、solve 和 export 工作流。
+网页端支持分步加载数据、选择 preset 或 rules overlay、预览合并后的规则、
+检查 history 覆盖率与 layout 一致性，并保存或恢复 Web 配置。配置不包含学生
+名单，但 rules overlay 可能引用学生 ID，下载时页面会给出提示。
+求解后可以切换和比较候选方案、查看座位图与评分，并下载 JSON、report、
+HTML、PDF、PNG、Excel 或 Word。Project workspace 支持本机 project 路径；
+上传单个 project JSON 仅适合查看配置。
 
 ## CLI
 

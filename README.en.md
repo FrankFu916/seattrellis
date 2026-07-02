@@ -75,7 +75,13 @@ streamlit run src/seattrellis/web/app.py
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
 
-The guided web UI can load a demo, use a built-in preset or rules JSON overlay, accept multiple history snapshots, and generate 1-20 candidates. It supports candidate switching, comparison, seat-map previews, and downloads for JSON, reports, HTML, PDF, PNG, Excel, or Word. It can also upload or read a local project file and reuse the project-info, validate, solve, and export workflow.
+The guided web UI previews the resolved preset and rules overlay, checks history
+coverage and layout compatibility, and can save or restore settings. Config
+files do not include the roster, though a rules overlay may reference student
+IDs and is flagged when it does. The UI generates 1–20 candidates with switching,
+comparison, seat-map previews, and downloads for JSON, reports, HTML, PDF,
+PNG, Excel, or Word. The Project workspace uses a local project path for
+validation and solving; uploading a project JSON is intended for inspection.
 
 ## CLI
 

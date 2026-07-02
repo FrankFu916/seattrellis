@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The quick-solve page can preview and download the rules produced by a preset
+  and an optional overlay.
+- History checks report student coverage, stale references, disabled seats,
+  and layout differences before solving.
+- Web settings can be saved to JSON and restored later. The file excludes the
+  roster and layout; the page warns when rules contain student identifiers.
+
+### Changed
+
+- Loading the Demo now includes its three fictional history snapshots.
+- Updated Streamlit table and button sizing calls to the current `width` API.
+
 ## 1.0.1 - 2026-07-02
 
 ### Fixed

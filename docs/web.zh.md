@@ -14,6 +14,30 @@ Web 端提供两个标签页：
 - **快速排座**：按“加载数据 → 配置与求解 → 查看结果”三步完成排座。支持一键 Demo、CSV/XLSX 学生名单、layout、preset、rules overlay 和多份历史 snapshot。
 - **Project workspace**：通过本机路径或上传 project JSON，复用项目配置进行校验、求解和导出。
 
+## Rules 预览
+
+进入“设置与求解”后，页面会显示 preset 与 rules overlay 合并后的完整
+`RuleSet`。可以在求解前核对 hard rules、权重和 seed，也可以下载合并后的
+JSON 留档。
+
+## History 质量检查
+
+上传 history 后可以运行质量检查。报告按 snapshot 显示：
+
+- 当前学生覆盖率；
+- 缺失学生和不在当前名单中的学生；
+- 未知座位和已禁用座位；
+- snapshot layout 是否与当前 layout 一致。
+
+Demo 会自动加载 `examples/history/` 中的虚构历史记录。
+
+## 保存和恢复设置
+
+“下载当前 Web 配置”会保存 preset、rules overlay、候选数量、seed 和时间限制。
+该文件不包含学生名单、layout、history、路径或求解结果。需要注意，fixed
+seat、pair rule 和 group 等规则可能引用学生 ID；页面检测到这类字段时会显示
+隐私提示。恢复配置后仍需加载本次使用的数据文件。
+
 ## 结果与导出
 
 多候选结果可以切换预览，并在同一张表中比较总分、hard constraints 和七个评分维度。座位图、评分明细和分配表会随候选切换同步更新。
@@ -26,9 +50,9 @@ Web 端提供两个标签页：
 
 ## 当前限制
 
-- 尚未提供 rules overlay 合并结果预览。
-- 尚未提供 history 覆盖率与 layout 一致性报告。
-- 尚未提供配置下载恢复、多语言切换和拖拽 layout 编辑。
+- 尚未提供多语言切换。
+- 尚未提供拖拽 layout 编辑。
+- 小屏布局和键盘操作仍需继续检查。
 
 ## 相关文档
 

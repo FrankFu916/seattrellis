@@ -180,16 +180,32 @@ def load_rules_with_preset(
     rules_path: str | Path | None = None,
     preset_name: str | None = None,
 ) -> tuple[RuleSet, PresetDefinition | None]:
-    if rules_path is None and preset_name is None:
+    rules_data = read_json(rules_path) if rules_path is not None else None
+    return resolve_rules_with_preset(
+        rules_data=rules_data,
+        preset_name=preset_name,
+        source=rules_path or "<rules>",
+    )
+
+
+def resolve_rules_with_preset(
+    *,
+    rules_data: dict[str, Any] | None = None,
+    preset_name: str | None = None,
+    source: str | Path = "<rules overlay>",
+) -> tuple[RuleSet, PresetDefinition | None]:
+    """Resolve a preset and an optional in-memory rules overlay."""
+    if rules_data is None and preset_name is None:
         raise InputFileError("Provide --rules, --preset, or both.")
 
     preset = get_preset(preset_name) if preset_name is not None else None
     data = _model_to_data(preset.rules) if preset is not None else {}
-    source: str | Path = f"preset:{preset.name}" if preset is not None else "<rules>"
-    if rules_path is not None:
-        data = _deep_merge(data, read_json(rules_path))
-        source = rules_path
-    return parse_rules_data(data, source), preset
+    resolved_source: str | Path = (
+        f"preset:{preset.name}" if preset is not None and rules_data is None else source
+    )
+    if rules_data is not None:
+        data = _deep_merge(data, rules_data)
+    return parse_rules_data(data, resolved_source), preset
 
 
 def export_preset(name: str, output_path: str | Path | None = None) -> Path:

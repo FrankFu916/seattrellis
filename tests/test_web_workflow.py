@@ -9,9 +9,10 @@ import pytest
 
 from seattrellis import cli
 import seattrellis.web.workflow as workflow
-from seattrellis.io.json_files import InputFileError
+from seattrellis.io.json_files import InputFileError, load_layout, load_snapshot
+from seattrellis.io.students import read_students
 from seattrellis.models.candidate import CandidateSet
-from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 
 
@@ -68,6 +69,87 @@ def test_web_workflow_requires_rules_or_preset(tmp_path) -> None:
             layout_path="examples/classroom.json",
             output_dir=tmp_path,
         )
+
+
+def test_rules_preview_shows_preset_with_overlay_applied() -> None:
+    overlay = workflow.parse_rules_overlay(
+        b'{"soft":{"randomize":{"enabled":false}}}'
+    )
+
+    preview = workflow.build_rules_preview(
+        preset_name="daily",
+        rules_data=overlay,
+    )
+
+    assert preview.preset_name == "daily"
+    assert preview.overlay_applied is True
+    assert preview.rules.soft.randomize.enabled is False
+    assert preview.rules.soft.fair_rotation.enabled is True
+    assert b'"randomize"' in preview.json_bytes
+
+
+def test_rules_overlay_parser_reports_invalid_json() -> None:
+    with pytest.raises(InputFileError, match="Invalid rules JSON"):
+        workflow.parse_rules_overlay(b'{"soft":')
+
+
+def test_history_quality_accepts_consistent_demo_history() -> None:
+    students = read_students("examples/students.csv")
+    layout = load_layout("examples/classroom.json")
+    snapshots = [
+        load_snapshot(f"examples/history/week{week}.snapshot.json")
+        for week in range(1, 4)
+    ]
+
+    report = workflow.analyze_history_quality(students, layout, snapshots)
+
+    assert report.snapshot_count == 3
+    assert report.student_count == 8
+    assert report.average_coverage_percent == 100.0
+    assert report.complete_snapshot_count == 3
+    assert report.warnings == ()
+    assert all(row["layout_matches"] for row in report.rows())
+
+
+def test_history_quality_reports_missing_students_and_unknown_references() -> None:
+    students = read_students("examples/students.csv")
+    layout = load_layout("examples/classroom.json")
+    snapshot = load_snapshot("examples/history/week1.snapshot.json")
+    changed_assignments = list(snapshot.assignments[:-1])
+    changed_assignments.append(
+        SeatAssignment(
+            student_key="OLD-STUDENT",
+            student_name="Former Student",
+            seat_id="OLD-SEAT",
+        )
+    )
+    old_layout_seats = list(snapshot.layout.seats)
+    old_layout_seats[0] = old_layout_seats[0].copy(
+        update={"enabled": not old_layout_seats[0].enabled}
+    )
+    changed_snapshot = snapshot.copy(
+        update={
+            "assignments": changed_assignments,
+            "layout": snapshot.layout.copy(
+                update={"layout_id": "old-layout", "seats": old_layout_seats}
+            ),
+        }
+    )
+
+    report = workflow.analyze_history_quality(
+        students,
+        layout,
+        [changed_snapshot],
+    )
+    quality = report.snapshots[0]
+
+    assert quality.covered_students == 7
+    assert len(quality.missing_students) == 1
+    assert quality.unknown_students == ("OLD-STUDENT",)
+    assert quality.unknown_seats == ("OLD-SEAT",)
+    assert quality.layout_matches is False
+    assert report.complete_snapshot_count == 0
+    assert len(report.warnings) == 4
 
 
 @pytest.mark.parametrize("time_limit", [float("nan"), float("inf"), float("-inf")])
@@ -189,6 +271,39 @@ def test_streamlit_app_smoke() -> None:
     assert not app.exception
     assert [title.value for title in app.title] == ["🏫 SeatTrellis · 席序"]
     assert [tab.label for tab in app.tabs] == ["快速排座", "Project workspace"]
+    assert [uploader.label for uploader in app.file_uploader][0] == "Web 配置 JSON"
+
+
+def test_streamlit_demo_rules_and_history_preview() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    next(button for button in app.button if button.label == "🚀 一键加载 Demo").click()
+    app.run(timeout=10)
+    app.radio[0].set_value("2. 设置 & 求解")
+    app.run(timeout=10)
+
+    assert not app.exception
+    assert [expander.label for expander in app.expander] == [
+        "最终生效的 rules",
+        "History 质量检查",
+    ]
+
+    next(button for button in app.button if button.key == "inspect_history").click()
+    app.run(timeout=10)
+
+    assert not app.exception
+    metrics = {metric.label: metric.value for metric in app.metric}
+    assert metrics == {
+        "Snapshot 数量": "3",
+        "平均学生覆盖率": "100.0%",
+        "完全匹配": "3/3",
+    }
+    assert any(
+        message.value == "历史记录与当前学生名单和 layout 一致。"
+        for message in app.success
+    )
 
 
 def _block_import(monkeypatch, package_name: str) -> None:

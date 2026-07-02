@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
+import json
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from seattrellis.service import (
     export,
@@ -18,13 +18,19 @@ from seattrellis.service import (
 )
 from seattrellis.io.json_files import (
     InputFileError,
+    load_layout,
     load_plan_comparison_report,
     load_seating_artifact,
+    load_snapshot,
 )
 from seattrellis.io.project import load_project_paths
+from seattrellis.io.students import read_students
 from seattrellis.models.candidate import CandidatePlan, CandidateSet, PlanComparisonReport
 from seattrellis.models.layout import ClassroomLayout
+from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.models.student import Student
+from seattrellis.presets import resolve_rules_with_preset
 
 
 @dataclass(frozen=True)
@@ -47,6 +53,217 @@ class WebSolveResult:
         if isinstance(warnings, list):
             return tuple(str(warning) for warning in warnings)
         return ()
+
+
+@dataclass(frozen=True)
+class RulesPreview:
+    rules: RuleSet
+    preset_name: str | None
+    overlay_applied: bool
+    json_bytes: bytes
+
+
+@dataclass(frozen=True)
+class HistorySnapshotQuality:
+    snapshot: str
+    assignments: int
+    covered_students: int
+    coverage_percent: float
+    missing_students: tuple[str, ...]
+    unknown_students: tuple[str, ...]
+    unknown_seats: tuple[str, ...]
+    disabled_seats: tuple[str, ...]
+    layout_matches: bool
+
+
+@dataclass(frozen=True)
+class HistoryQualityReport:
+    snapshot_count: int
+    student_count: int
+    average_coverage_percent: float
+    complete_snapshot_count: int
+    snapshots: tuple[HistorySnapshotQuality, ...]
+    warnings: tuple[str, ...]
+
+    def rows(self) -> list[dict[str, object]]:
+        return [
+            {
+                "snapshot": item.snapshot,
+                "assignments": item.assignments,
+                "coverage": f"{item.coverage_percent:.1f}%",
+                "missing_students": len(item.missing_students),
+                "unknown_students": len(item.unknown_students),
+                "unknown_seats": len(item.unknown_seats),
+                "disabled_seats": len(item.disabled_seats),
+                "layout_matches": item.layout_matches,
+            }
+            for item in self.snapshots
+        ]
+
+
+def parse_rules_overlay(data: bytes | str) -> dict[str, Any]:
+    try:
+        text = data.decode("utf-8") if isinstance(data, bytes) else data
+    except UnicodeDecodeError as exc:
+        raise InputFileError(f"Rules overlay must be UTF-8 JSON: {exc}") from exc
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise InputFileError(
+            f"Invalid rules JSON: line {exc.lineno}, column {exc.colno}: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise InputFileError("Invalid rules JSON: top-level value must be an object.")
+    return payload
+
+
+def build_rules_preview(
+    *,
+    rules_data: dict[str, Any] | None = None,
+    preset_name: str | None = None,
+) -> RulesPreview:
+    rules, preset = resolve_rules_with_preset(
+        rules_data=rules_data,
+        preset_name=preset_name,
+        source="<Web rules overlay>",
+    )
+    if hasattr(rules, "model_dump"):
+        payload = rules.model_dump(mode="json")  # type: ignore[attr-defined]
+    else:
+        payload = json.loads(rules.json())
+    json_bytes = (
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    ).encode("utf-8")
+    return RulesPreview(
+        rules=rules,
+        preset_name=preset.name if preset is not None else None,
+        overlay_applied=rules_data is not None,
+        json_bytes=json_bytes,
+    )
+
+
+def analyze_history_files(
+    *,
+    students_path: str | Path,
+    layout_path: str | Path,
+    history_paths: Sequence[str | Path],
+) -> HistoryQualityReport:
+    students = read_students(students_path)
+    layout = load_layout(layout_path)
+    snapshots = [load_snapshot(path) for path in history_paths]
+    return analyze_history_quality(students, layout, snapshots)
+
+
+def analyze_history_quality(
+    students: Sequence[Student],
+    layout: ClassroomLayout,
+    snapshots: Sequence[SeatingSnapshot],
+) -> HistoryQualityReport:
+    current_students = {student.key for student in students}
+    current_seats = {seat.seat_id: seat for seat in layout.seats}
+    current_layout_signature = _layout_signature(layout)
+    rows: list[HistorySnapshotQuality] = []
+    warnings: list[str] = []
+
+    for index, snapshot in enumerate(snapshots, start=1):
+        snapshot_name = str(
+            snapshot.metadata.get("snapshot_id")
+            or snapshot.metadata.get("name")
+            or f"snapshot-{index}"
+        )
+        assigned_students = {
+            assignment.student_key for assignment in snapshot.assignments
+        }
+        covered = current_students & assigned_students
+        missing_students = tuple(sorted(current_students - assigned_students))
+        unknown_students = tuple(sorted(assigned_students - current_students))
+        unknown_seats = tuple(
+            sorted(
+                {
+                    assignment.seat_id
+                    for assignment in snapshot.assignments
+                    if assignment.seat_id not in current_seats
+                }
+            )
+        )
+        disabled_seats = tuple(
+            sorted(
+                {
+                    assignment.seat_id
+                    for assignment in snapshot.assignments
+                    if assignment.seat_id in current_seats
+                    and not current_seats[assignment.seat_id].enabled
+                }
+            )
+        )
+        snapshot_layout_signature = _layout_signature(snapshot.layout)
+        layout_matches = snapshot_layout_signature == current_layout_signature
+        coverage = (
+            100.0 * len(covered) / len(current_students)
+            if current_students
+            else 100.0
+        )
+        row = HistorySnapshotQuality(
+            snapshot=snapshot_name,
+            assignments=len(snapshot.assignments),
+            covered_students=len(covered),
+            coverage_percent=coverage,
+            missing_students=missing_students,
+            unknown_students=unknown_students,
+            unknown_seats=unknown_seats,
+            disabled_seats=disabled_seats,
+            layout_matches=layout_matches,
+        )
+        rows.append(row)
+        if missing_students:
+            warnings.append(
+                f"{snapshot_name}: missing {len(missing_students)} current students."
+            )
+        if unknown_students:
+            warnings.append(
+                f"{snapshot_name}: contains {len(unknown_students)} students "
+                "not in the current list."
+            )
+        if unknown_seats:
+            warnings.append(
+                f"{snapshot_name}: references unknown seats: "
+                f"{', '.join(unknown_seats)}."
+            )
+        if disabled_seats:
+            warnings.append(
+                f"{snapshot_name}: references disabled seats: "
+                f"{', '.join(disabled_seats)}."
+            )
+        if not layout_matches:
+            warnings.append(f"{snapshot_name}: layout differs from the current layout.")
+
+    average_coverage = (
+        sum(item.coverage_percent for item in rows) / len(rows) if rows else 0.0
+    )
+    complete_count = sum(
+        item.coverage_percent == 100.0
+        and not item.unknown_students
+        and not item.unknown_seats
+        and not item.disabled_seats
+        and item.layout_matches
+        for item in rows
+    )
+    return HistoryQualityReport(
+        snapshot_count=len(rows),
+        student_count=len(current_students),
+        average_coverage_percent=average_coverage,
+        complete_snapshot_count=complete_count,
+        snapshots=tuple(rows),
+        warnings=tuple(warnings),
+    )
+
+
+def _layout_signature(layout: ClassroomLayout) -> str:
+    if hasattr(layout, "model_dump"):
+        payload = layout.model_dump(mode="json")  # type: ignore[attr-defined]
+    else:
+        payload = json.loads(layout.json())
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
 def solve_for_web(
