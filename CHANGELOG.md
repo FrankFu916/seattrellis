@@ -15,25 +15,21 @@
 - Extracted the reusable service layer and API contracts from the CLI while preserving CLI and web behavior.
 - Expanded regression coverage to 269 passing tests.
 
-## 1.0.0 - 2026-06-28 — Official Release 🎉
+## 1.0.0 - 2026-06-28
 
-### Release Conditions Met
+### Release summary
 
-- ✅ CLI core commands stable: `solve`, `validate`, `export`, `presets`, `project-*`, `history-report`, `pair-report`, `doctor`
-- ✅ Web UI usable: seat map visualization, candidate switching, comparison, demo one-click, preset cards, error diagnosis, step wizard, privacy panel
-- ✅ Export formats: HTML, PDF, PNG, Excel, DOCX, print-HTML with three templates
-- ✅ Schema version stable for all file formats
-- ✅ 246 tests including property-based hard-constraint tests
-- ✅ Package builds (wheel + sdist), `pip install` verified
-- ✅ Documentation: README (zh/en), quickstart (zh/en), input formats, rules, web, project, export, font strategy, versioning, desktop research, release checklist
-- ✅ All examples fictional, zero real data
-- ✅ CI matrix: 3 platforms × 2 Python versions
-- ✅ Privacy statement complete
-- ✅ Release checklist reproducible
-- ✅ `--version` flag and `doctor` command
-- ✅ 8 built-in scenario presets
-- ✅ Multi-candidate generation with 7-dimension scoring
-- ✅ Student groups and cooling period rules
+- Stable CLI commands: `solve`, `validate`, `export`, `presets`, `project-*`,
+  `history-report`, `pair-report`, and `doctor`.
+- Local Web interface with seat maps, candidate comparison, Demo data, error
+  guidance, and downloads.
+- HTML, PDF, PNG, Excel, DOCX, and print-HTML exports.
+- Versioned snapshot, candidate, and project files.
+- 246 tests, including property tests for hard constraints.
+- Wheel and source distributions verified with a clean installation.
+- Test matrix for Python 3.11 and 3.12 on Linux, Windows, and macOS.
+- Eight rule presets, seven candidate score dimensions, student groups, and
+  relationship cooling periods.
 
 ### Version Summary (v0.3.2 → v1.0.0)
 
@@ -49,9 +45,7 @@
 
 ## 0.8.0 - 2026-06-28
 
-### Added — Stability & Quality
-
-**P0:**
+### Added
 - **Property-based tests** (73 new tests in `tests/test_property_based.py`): random-rule validation never crashes, fixed-seat conflicts always detected, must+cannot conflicts always detected across 20 random seeds each.
 - **Edge-case tests**: zero enabled seats, more students than seats, duplicate keys, fixed-to-disabled seat, unknown student refs, empty student list.
 - **Fuzz tests**: malformed JSON, empty CSV, headers-only CSV, extra rule fields, negative row/height/distance — all verify graceful failure without crashes.
@@ -61,9 +55,7 @@
 
 ## 0.7.0 - 2026-06-28
 
-### Added — Real Classroom Scenarios
-
-**P0:**
+### Added
 - **Student groups** (`GroupRule`): named groups of students with `separate` and `together` flags for group-level constraints. Groups stored in `RuleSet.groups`.
 - **Cooling periods** (`CoolingRule`): configurable desk-mate and neighbor cooling — prevent students from being desk-mates or neighbors within N consecutive seatings. Supports `desk_mate`, `adjacent_any`, `horizontal`, `vertical`, `diagonal` relation types.
 
@@ -73,34 +65,28 @@
 
 ## 0.6.0 - 2026-06-28
 
-### Added — PyPI Preparation & Developer Experience
-
-**P0:**
+### Added
 - **`--version` / `-V` flag**: displays `seattrellis x.y.z` and exits (Typer callback + argparse `action="version"`).
 - **`seattrellis doctor` command**: environment diagnostic checking Python version, platform, all six optional extras (solver/excel/image/web/pdf/docx) with status indicators, presence of example files, outputs directory state, and `SEATTRELLIS_USE_ORTOOLS` env var.
 - **MkDocs documentation site skeleton**: `mkdocs.yml` with Material theme, full navigation structure covering quickstart, CLI, Web, input formats, rules, presets, project workflow, candidates/scoring, export, font strategy, history, privacy, troubleshooting, architecture, API reference, and desktop research.
 - **`docs/versioning.md`**: SemVer policy, schema version strategy for all file formats, CLI/Python API deprecation policy, compatibility matrix.
 
-**P1:**
-- **`docs/desktop-research.zh.md`**: comprehensive desktop technology evaluation (Tauri vs PySide vs NiceGUI vs FastAPI+pywebview vs Electron), with recommendation for Tauri + embedded Python sidecar as primary direction.
+- **`docs/desktop-research.zh.md`**: compared Tauri, PySide, NiceGUI, FastAPI
+  with pywebview, and Electron for a possible desktop client.
 
 ### Changed
 - `cli.py`: added `--version` callback on Typer app, `doctor` command (Typer + argparse), `run_doctor()` reusable function.
 
 ## 0.5.0 - 2026-06-28
 
-### Added — Export Enhancement
-
-**P0:**
+### Added
 - **Print-friendly HTML templates**: three scenarios — public notice (class version), teacher internal (rules + warnings + fairness), explanation report (score breakdown + recommendation rationale). A4 portrait, print-optimised CSS.
 - **PDF export via WeasyPrint**: new `pdf` optional extra. Shares template logic with print HTML. `seattrellis export --format pdf`.
 - **`exporters/print_html.py`**: reusable print HTML renderer with `PrintPrivacyOptions` (hide scores, hide notes, hide special needs, anonymize).
 
-**P1:**
 - **Privacy options**: `PrintPrivacyOptions` dataclass controlling score/notes/special-needs/height/vision visibility per template.
 - **Three export templates**: `public` (names + seats), `teacher` (full detail table + warnings), `report` (score grid + recommendation text).
 
-**P2:**
 - **Word (.docx) export via python-docx**: new `docx` optional extra. Tables with student detail. `seattrellis export --format docx`.
 - **Chinese font strategy document**: `docs/font-strategy.zh.md` covering cross-platform CSS font-family fallback chains, WeasyPrint font configuration, and PNG font limitations.
 - **Candidate-aware report export**: `--template report` includes score breakdown grid and recommendation rationale for a specific candidate.
@@ -117,7 +103,7 @@
 
 ## 0.4.0 - 2026-06-28
 
-### Added — Web Usability
+### Added
 - **Seat map visualization**: HTML/CSS Grid rendering of the classroom layout with student names on seats, disabled-seat styling, and tag-based colour accents (window, door, platform, AC, corner).
 - **Candidate interactive switching**: dropdown selector to switch between candidates; seat map, score breakdown, and assignment table update synchronously.
 - **Candidate comparison view**: expandable table comparing all candidates across total score, hard constraints, and all seven scoring dimensions.
@@ -154,9 +140,8 @@
 
 ### Improved
 - Added duplicate student-key detection to file-level validation so the error surfaces at validate time rather than only at solve time.
-- Added comprehensive test coverage for scoring module (48 new tests covering all 7 dimensions, edge cases, hard-constraint evaluation, diversity scoring, recommendation logic, and `student_needs_front`).
+- Added 48 scoring tests covering all seven dimensions, edge cases, hard constraints, diversity, recommendation, and `student_needs_front`.
 - Removed unused `ProjectPaths` import in `cli.py` and unused `classify_seat_position` import in `scoring.py`.
-
 
 ## 0.3.0 - 2026-06-26
 

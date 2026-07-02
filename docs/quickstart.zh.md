@@ -177,7 +177,7 @@ candidate set 中每个方案包含 snapshot、seed、solver backend、总分、
 
 普通 snapshot 与 candidate set 是两种不同格式，旧 snapshot 仍可读取。`export` 收到 candidate set 时默认导出 recommended candidate，也可以用 `--candidate candidate_03` 指定。
 
-## 下一步
+## 继续阅读
 
 - [输入格式说明](input-format.zh.md)
 - [规则说明](rules.zh.md)

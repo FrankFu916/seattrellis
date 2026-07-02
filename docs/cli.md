@@ -21,5 +21,4 @@
 
 命令默认使用 deterministic fallback solver。安装 `solver` extra 并设置 `SEATTRELLIS_USE_ORTOOLS=1` 后才启用 OR-Tools。
 
-更多完整示例见 [快速开始](quickstart.zh.md)。
-
+命令示例见[快速开始](quickstart.zh.md)。

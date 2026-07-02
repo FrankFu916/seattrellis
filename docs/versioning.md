@@ -12,7 +12,7 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 
 ## Schema Version
 
-从 v0.6.0 开始，所有文件格式引入 `schema_version` 字段：
+需要长期保存或交换的产物带有 `schema_version`：
 
 | 文件类型 | schema_version | 首次引入 |
 |----------|---------------|---------|
@@ -21,10 +21,8 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 | `SeatTrellisProject` | `1` | v0.2.3 |
 | `RuleSet` (JSON) | 无独立版本 | — |
 
-schema_version 变更规则：
-- **PATCH 升级**（如 `1.0` → `1.1`）：新增可选字段，旧读取器忽略新字段即可。
-- **MINOR 升级**（如 `1.x` → `2.0`）：字段改名或语义变更；提供迁移路径或兼容读取。
-- **MAJOR 升级**：格式彻底重写；旧文件可能无法读取。
+当前读取器只接受表中的版本。新增可选字段时可以保留版本号；字段改名、类型
+变化或语义变化需要新的 schema 版本，并应同时提供迁移说明。
 
 ## 命令行接口 (CLI)
 
@@ -42,7 +40,7 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 
 | 弃用项 | 引入版本 | 移除计划 | 说明 |
 |--------|---------|---------|------|
-| `seatplanner` 别名 | v0.1.0 | 不早于 v1.0 | 旧命令名保留 |
+| `seatplanner` 别名 | v0.1.0 | 下一个 MAJOR 版本前不会移除 | 旧命令名保留 |
 
 弃用流程：
 1. **MINOR 版本 A**：文档标注 `(已弃用)`，运行时输出 warning（stderr）。
@@ -51,7 +49,8 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 
 ### Python API
 
-内部函数（`cli.py` 中以 `_` 开头的函数、`solver/` 内部实现）不承诺稳定性。公开函数（`cli.solve()`、`cli.export()` 等）的弃用遵循相同流程。
+以下划线开头的函数和 `solver/` 内部实现不承诺稳定性。`service.py` 中的公开
+函数如果需要弃用，会先在文档和运行时提示中说明替代接口。
 
 ### 文件格式
 
@@ -68,10 +67,9 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 | OR-Tools | 9.8–9.14 |
 | Streamlit | 1.30+ |
 
-## v1.0 承诺
+## v1.x 兼容范围
 
-达到 v1.0 后：
-- CLI 命令名和主要参数永久冻结
-- 文件格式 schema_version 永久冻结（后续只增不减）
-- 公开 Python API 冻结
-- `seatplanner` 别名可能移除（提前 2 个 MINOR 版本通知）
+- CLI 命令名和主要参数保持兼容；
+- 现有 schema 在 v1.x 期间继续可读；
+- 公开 service 函数不做无提示的破坏性改动；
+- 删除兼容别名前至少提前两个 MINOR 版本通知。

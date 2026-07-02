@@ -1,8 +1,4 @@
-"""Typed request/response contracts for the SeatTrellis service layer.
-
-These frozen dataclasses define the API boundary in a language-agnostic way.
-They use only plain Python types and Pydantic models — no file paths, no I/O.
-"""
+"""Request and response types for the in-memory service functions."""
 
 from __future__ import annotations
 
@@ -18,11 +14,6 @@ from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.io.validation import ValidationReport
-
-
-# ---------------------------------------------------------------------------
-# Solve
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -49,11 +40,6 @@ class SolveOutput:
     plan_comparison_report: PlanComparisonReport | None = None
 
 
-# ---------------------------------------------------------------------------
-# Validate
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class ValidateInput:
     """Pure in-memory validation request."""
@@ -72,11 +58,6 @@ class ValidateOutput:
     formatted: str
 
 
-# ---------------------------------------------------------------------------
-# History report
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class HistoryReportInput:
     """Pure in-memory history report request."""
@@ -92,11 +73,6 @@ class HistoryReportOutput:
 
     report: FairnessReport
     formatted: str
-
-
-# ---------------------------------------------------------------------------
-# Pair report
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -118,11 +94,6 @@ class PairReportOutput:
     formatted: str
 
 
-# ---------------------------------------------------------------------------
-# Project info
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class ProjectInfoInput:
     """Pure in-memory project info request."""
@@ -138,18 +109,8 @@ class ProjectInfoOutput:
     formatted: str
 
 
-# ---------------------------------------------------------------------------
-# Shared utilities (no internal deps — safe to import from anywhere)
-# ---------------------------------------------------------------------------
-
-
 def export_extension(output_format: str) -> str:
-    """Canonical format-to-file-extension mapping.
-
-    Consolidates the three previously-duplicated implementations in
-    ``cli._export_extension``, ``workflow._extension_for_format``, and
-    ``exporters._extension_for_format``.
-    """
+    """Return the usual file extension for an export format."""
     normalized = output_format.lower()
     if normalized in {"excel", "xlsx"}:
         return "xlsx"
@@ -161,8 +122,5 @@ def export_extension(output_format: str) -> str:
 
 
 def score_text(score: float | None) -> str:
-    """Canonical score display formatter.
-
-    Consolidates ``workflow._score_text`` and ``components._score_cell``.
-    """
+    """Format an optional score for display."""
     return "n/a" if score is None else f"{score:.1f}"

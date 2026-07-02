@@ -35,9 +35,12 @@ seattrellis project-export    # 导出
 
 ## Web 与 CLI
 
-CLI 适合可复现脚本，Web 端既可输入 project 路径，也可上传 project JSON。上传模式只上传 project 文件本身；其中引用的相对路径仍需在本机可访问，因此完整项目目录更适合使用路径模式。
+CLI 适合可复现脚本。Web 端既可输入 project 路径，也可上传 project JSON，
+但上传模式只收到这一份 JSON，无法同时取得它引用的相对路径文件。因此上传
+模式适合查看配置；校验、求解和导出应使用路径模式。
 
-Project 文件不嵌入学生名单、历史 snapshot 或导出结果。复制 project 文件时必须一并复制它引用的本地文件。
+Project 文件不嵌入学生名单、历史 snapshot 或导出结果。移动项目时，需要把
+这些文件和 project JSON 一起移动，并保留相对目录结构。
 
 ## 校验与输出
 

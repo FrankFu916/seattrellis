@@ -1,19 +1,7 @@
-"""SeatTrellis service layer — the single entry point for all business operations.
+"""Business operations shared by the CLI and Web interface.
 
-Architecture
-------------
-
-* **Category A — Pure compute functions** (in-memory models in/out, zero file I/O).
-  These are the functions intended for future Tauri / REST / programmatic use.
-
-* **Category B — Orchestration functions** (file paths in/out).
-  These combine file I/O with Category A functions.  Their signatures are
-  identical to the original ``cli.py`` public functions for full backward
-  compatibility.
-
-* **Category C — Shared utilities** (display formatting, format-to-extension
-  mapping).  Consolidated here to eliminate duplication across cli, web, and
-  exporters.
+``compute_*`` functions work with in-memory models. The remaining public
+functions handle file loading, output paths, and command-oriented formatting.
 """
 
 from __future__ import annotations
@@ -86,13 +74,11 @@ from seattrellis.service_types import (
 from seattrellis.solver import SeatTrellisSolveError
 
 
-# ============================================================================
-# Category A — Pure compute functions (no file I/O)
-# ============================================================================
+# In-memory operations
 
 
 def compute_solve(input: SolveInput) -> SolveOutput:
-    """Core solve logic — pure in-memory computation, no file I/O."""
+    """Solve from models already loaded in memory."""
     if not 1 <= input.candidate_count <= 20:
         raise ValueError("candidate_count must be between 1 and 20")
     if not isfinite(input.time_limit_seconds) or input.time_limit_seconds < 0.1:
@@ -159,21 +145,21 @@ def compute_solve(input: SolveInput) -> SolveOutput:
 
 
 def compute_validate(input: ValidateInput) -> ValidateOutput:
-    """Core validation logic — pure in-memory computation, no file I/O."""
+    """Validate models already loaded in memory."""
     report = validate_loaded_inputs(input.students, input.layout, input.rules)
     report.raise_for_errors(strict=input.strict)
     return ValidateOutput(report=report, formatted=report.format_success())
 
 
 def compute_history_report(input: HistoryReportInput) -> HistoryReportOutput:
-    """Core history report — pure computation from in-memory models."""
+    """Build a seating-history report from loaded snapshots."""
     history = build_seat_history(input.students, input.layout, input.history_snapshots)
     report = build_fairness_report(history)
     return HistoryReportOutput(report=report, formatted=format_history_report(report))
 
 
 def compute_pair_report(input: PairReportInput) -> PairReportOutput:
-    """Core pair report — pure computation from in-memory models."""
+    """Build a pair-history report from loaded snapshots."""
     if input.top <= 0:
         raise ValueError("top must be positive.")
     if input.within_distance <= 0:
@@ -192,7 +178,7 @@ def compute_pair_report(input: PairReportInput) -> PairReportOutput:
 
 
 def compute_project_info(input: ProjectInfoInput) -> ProjectInfoOutput:
-    """Core project info — pure formatting from in-memory models."""
+    """Format project information from a loaded project and resolved paths."""
     lines = [
         f"Project: {input.project.name}",
         f"Project file: {input.paths.project_file}",
@@ -226,9 +212,7 @@ def compute_project_info(input: ProjectInfoInput) -> ProjectInfoOutput:
     return ProjectInfoOutput(formatted="\n".join(lines))
 
 
-# ============================================================================
-# Category B — Orchestration functions (file paths, backward-compatible)
-# ============================================================================
+# File-oriented operations
 
 
 def solve(
@@ -617,9 +601,7 @@ def project_export(
     )
 
 
-# ============================================================================
-# Category C — Shared utilities
-# ============================================================================
+# Shared formatting helpers
 
 
 # ---------------------------------------------------------------------------
