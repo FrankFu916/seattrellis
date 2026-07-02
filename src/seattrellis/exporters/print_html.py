@@ -19,6 +19,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from seattrellis.models.candidate import CandidatePlan
     from seattrellis.models.snapshot import SeatingSnapshot
+    from seattrellis.models.student import Student
+
+
+PRINT_TEMPLATES = ("public", "teacher", "report")
 
 
 @dataclass
@@ -71,9 +75,15 @@ def export_print_html(
 
 
 def _default_privacy(template: str) -> PrintPrivacyOptions:
+    template = _validate_template(template)
     if template == "public":
         return PrintPrivacyOptions(
-            hide_scores=True, hide_notes=True, hide_special_needs=True, anonymize=False
+            hide_scores=True,
+            hide_notes=True,
+            hide_special_needs=True,
+            anonymize=False,
+            show_height=False,
+            show_vision=False,
         )
     if template == "teacher":
         return PrintPrivacyOptions(
@@ -81,7 +91,12 @@ def _default_privacy(template: str) -> PrintPrivacyOptions:
         )
     # report
     return PrintPrivacyOptions(
-        hide_scores=False, hide_notes=True, hide_special_needs=True, anonymize=False
+        hide_scores=False,
+        hide_notes=True,
+        hide_special_needs=True,
+        anonymize=False,
+        show_height=False,
+        show_vision=False,
     )
 
 
@@ -92,9 +107,21 @@ def _render_print_html(
     privacy: PrintPrivacyOptions,
     candidate: "CandidatePlan | None" = None,
 ) -> str:
+    template = _validate_template(template)
+    if template == "report" and candidate is None:
+        raise ValueError("The report template requires a candidate plan.")
+
     min_row, max_row, min_col, max_col = _bounds(snapshot)
     seat_by_pos = {(s.row, s.col): s for s in snapshot.layout.seats}
     assign_by_seat = {a.seat_id: a for a in snapshot.assignments}
+    display_names = {
+        assignment.student_key: (
+            f"学生 {index:02d}"
+            if privacy.anonymize
+            else assignment.student_name or assignment.student_key
+        )
+        for index, assignment in enumerate(snapshot.assignments, start=1)
+    }
 
     rows_html: list[str] = []
     for r in range(min_row, max_row + 1):
@@ -106,7 +133,7 @@ def _render_print_html(
                 continue
             cls = "seat disabled" if not seat.enabled else "seat"
             a = assign_by_seat.get(seat.seat_id)
-            name = escape(a.student_name if a else "") if not privacy.anonymize else ""
+            name = escape(display_names.get(a.student_key, "")) if a else ""
             label = name if (name and seat.enabled) else escape(seat.seat_id)
             cells.append(
                 f'<td class="{cls}">'
@@ -194,29 +221,26 @@ def _render_teacher_section(snapshot: "SeatingSnapshot", privacy: PrintPrivacyOp
         parts.append("</ul></div>")
 
     # Student detail table
+    detail_headers = [
+        header for header, _value in _student_detail_fields(None, privacy)
+    ]
     parts.append("<h3>学生明细</h3>")
     parts.append('<table class="student-table"><tr><th>座位</th><th>姓名</th>')
-    if not privacy.hide_scores:
-        parts.append("<th>成绩</th>")
-    if privacy.show_height:
-        parts.append("<th>身高</th>")
-    if privacy.show_vision:
-        parts.append("<th>视力需求</th>")
+    parts.extend(f"<th>{escape(header)}</th>" for header in detail_headers)
     parts.append("</tr>")
 
-    for a in snapshot.assignments:
+    for index, a in enumerate(snapshot.assignments, start=1):
         stu = student_by_key.get(a.student_key)
-        parts.append(f"<tr><td>{escape(a.seat_id)}</td><td>{escape(a.student_name or a.student_key)}</td>")
-        if not privacy.hide_scores:
-            score = stu.score if stu and stu.score is not None else "-"
-            parts.append(f"<td>{escape(str(score))}</td>")
-        if privacy.show_height:
-            h = stu.height_cm if stu and stu.height_cm is not None else "-"
-            parts.append(f"<td>{escape(str(h))}</td>")
-        if privacy.show_vision:
-            from seattrellis.models.student import student_needs_front
-            needs = "是" if (stu and student_needs_front(stu)) else "-"
-            parts.append(f"<td>{needs}</td>")
+        display_name = (
+            f"学生 {index:02d}"
+            if privacy.anonymize
+            else a.student_name or a.student_key
+        )
+        parts.append(
+            f"<tr><td>{escape(a.seat_id)}</td><td>{escape(display_name)}</td>"
+        )
+        for _header, value in _student_detail_fields(stu, privacy):
+            parts.append(f"<td>{escape(value)}</td>")
         parts.append("</tr>")
 
     parts.append("</table></div>")
@@ -290,3 +314,46 @@ def _bounds(snapshot: "SeatingSnapshot") -> tuple[int, int, int, int]:
     rows = [s.row for s in snapshot.layout.seats]
     cols = [s.col for s in snapshot.layout.seats]
     return min(rows), max(rows), min(cols), max(cols)
+
+
+def _validate_template(template: str) -> str:
+    normalized = str(template).strip().lower()
+    if normalized not in PRINT_TEMPLATES:
+        supported = ", ".join(PRINT_TEMPLATES)
+        raise ValueError(
+            f"Unsupported print template {template!r}. Supported templates: {supported}."
+        )
+    return normalized
+
+
+def _student_detail_fields(
+    student: "Student | None",
+    privacy: PrintPrivacyOptions,
+) -> list[tuple[str, str]]:
+    fields: list[tuple[str, str]] = []
+    if not privacy.hide_scores:
+        fields.append(
+            ("成绩", str(student.score) if student and student.score is not None else "-")
+        )
+    if privacy.show_height:
+        fields.append(
+            (
+                "身高",
+                str(student.height_cm)
+                if student and student.height_cm is not None
+                else "-",
+            )
+        )
+    if privacy.show_vision:
+        fields.append(
+            (
+                "视力需求",
+                str(student.vision) if student and student.vision is not None else "-",
+            )
+        )
+    if not privacy.hide_special_needs:
+        needs = list(student.needs) + list(student.tags) if student else []
+        fields.append(("特殊需求", "、".join(needs) if needs else "-"))
+    if not privacy.hide_notes:
+        fields.append(("备注", student.notes if student and student.notes else "-"))
+    return fields

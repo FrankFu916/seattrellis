@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from seattrellis.exporters.print_html import PrintPrivacyOptions
+from seattrellis.exporters.print_html import (
+    PrintPrivacyOptions,
+    _default_privacy,
+    _student_detail_fields,
+    _validate_template,
+)
 from seattrellis.models.candidate import CandidatePlan
 from seattrellis.models.snapshot import SeatingSnapshot
 
@@ -36,6 +41,10 @@ def export_docx(
     candidate:
         Candidate plan for the ``"report"`` template.
     """
+    template = _validate_template(template)
+    if template == "report" and candidate is None:
+        raise ValueError("The report template requires a candidate plan.")
+
     try:
         from docx import Document  # type: ignore[import-untyped]
         from docx.shared import Inches, Pt  # type: ignore[import-untyped]
@@ -46,7 +55,7 @@ def export_docx(
         raise MissingOptionalDependencyError("Word export", "docx") from exc
 
     if privacy is None:
-        privacy = PrintPrivacyOptions()
+        privacy = _default_privacy(template)
 
     doc = Document()
 
@@ -81,6 +90,15 @@ def export_docx(
     table = doc.add_table(rows=max_row - min_row + 1, cols=max_col - min_col + 1)
     table.style = "Table Grid"
 
+    display_names = {
+        assignment.student_key: (
+            f"学生 {index:02d}"
+            if privacy.anonymize
+            else assignment.student_name or assignment.student_key
+        )
+        for index, assignment in enumerate(snapshot.assignments, start=1)
+    }
+
     for r in range(min_row, max_row + 1):
         for c in range(min_col, max_col + 1):
             cell = table.cell(r - min_row, c - min_col)
@@ -89,9 +107,7 @@ def export_docx(
                 cell.text = ""
                 continue
             a = assign_by_seat.get(seat.seat_id)
-            name = a.student_name if a else ""
-            if privacy.anonymize:
-                name = ""
+            name = display_names.get(a.student_key, "") if a else ""
             cell.text = name if (name and seat.enabled) else seat.seat_id
             for para in cell.paragraphs:
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -99,18 +115,27 @@ def export_docx(
     # Teacher section
     if template == "teacher":
         student_by_key = {s.key: s for s in snapshot.students}
+        detail_headers = [
+            header for header, _value in _student_detail_fields(None, privacy)
+        ]
         doc.add_heading("学生明细", level=2)
-        detail_table = doc.add_table(rows=len(snapshot.assignments) + 1, cols=4)
+        detail_table = doc.add_table(
+            rows=len(snapshot.assignments) + 1,
+            cols=2 + len(detail_headers),
+        )
         detail_table.style = "Table Grid"
-        headers = ["座位", "姓名", "成绩", "身高"]
+        headers = ["座位", "姓名", *detail_headers]
         for i, h in enumerate(headers):
             detail_table.cell(0, i).text = h
         for i, a in enumerate(snapshot.assignments):
             stu = student_by_key.get(a.student_key)
             detail_table.cell(i + 1, 0).text = a.seat_id
-            detail_table.cell(i + 1, 1).text = a.student_name or a.student_key
-            detail_table.cell(i + 1, 2).text = str(stu.score) if stu and stu.score is not None else "-"
-            detail_table.cell(i + 1, 3).text = str(stu.height_cm) if stu and stu.height_cm is not None else "-"
+            detail_table.cell(i + 1, 1).text = display_names[a.student_key]
+            for column, (_header, value) in enumerate(
+                _student_detail_fields(stu, privacy),
+                start=2,
+            ):
+                detail_table.cell(i + 1, column).text = value
 
     # Report section
     if template == "report" and candidate is not None:

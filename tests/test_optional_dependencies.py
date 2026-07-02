@@ -63,6 +63,28 @@ def test_missing_image_extra_for_png_export_is_friendly(monkeypatch, tmp_path) -
     assert 'python -m pip install "seattrellis[image]"' in message
 
 
+def test_missing_pdf_native_library_is_friendly(monkeypatch, tmp_path) -> None:
+    original_import = builtins.__import__
+
+    def fail_weasyprint(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "weasyprint":
+            raise OSError("native Pango library not found")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fail_weasyprint)
+
+    try:
+        export_snapshot(_snapshot(), "pdf", tmp_path / "seating.pdf")
+    except MissingOptionalDependencyError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected MissingOptionalDependencyError")
+
+    assert "PDF export requires the pdf extra." in message
+    assert "native rendering library" in message
+    assert "docs/font-strategy.zh.md" in message
+
+
 def test_cli_missing_image_extra_exits_without_traceback(monkeypatch, tmp_path) -> None:
     _block_import(monkeypatch, "PIL")
     snapshot_path = write_json_model(_snapshot(), tmp_path / "snapshot.json")
