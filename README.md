@@ -4,7 +4,7 @@
 
 **简体中文 | [English](README.en.md)**
 
-席序 SeatTrellis 是一个本地优先的课堂排座工具，用虚构示例数据展示可复现的座位安排流程。它可以生成单个 JSON snapshot，也可以一次生成多个带可解释评分的 candidate plans，并导出 Excel、PNG、HTML。
+席序 SeatTrellis 是一个本地优先的课堂排座工具，用虚构示例数据展示可复现的座位安排流程。它可以生成单个 JSON snapshot，也可以一次生成多个带可解释评分的 candidate plans，并导出 HTML、Excel、PNG、PDF、Word 和打印版 HTML。
 
 项目默认在本机处理数据。不要把真实学生名单、学号、成绩、班级、学校、座位偏好或历史座位快照提交到公开仓库。
 
@@ -51,7 +51,7 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-`all` extra 包含 OR-Tools、Excel、PNG 和 Streamlit 相关依赖；`dev` extra 包含测试和构建工具。
+`all` extra 包含 OR-Tools、Excel、PNG、PDF、Word 和 Streamlit 相关依赖；`dev` extra 包含测试和构建工具，`docs` extra 用于构建文档站。
 
 ### 网页端
 
@@ -62,7 +62,7 @@ streamlit run src/seattrellis/web/app.py
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
 
-网页端支持选择内置 preset，也可以上传 rules JSON 作为覆盖；可上传多份历史 snapshot，生成 1–20 个候选方案，查看推荐方案、评分明细和 hard rule 检查，并下载 JSON、report、HTML、PNG 或 Excel。也可以读取本机 project 文件，复用 project-info、validate、solve 和 export 工作流。
+网页端支持分步加载数据、选择内置 preset 或上传 rules JSON overlay、加载 Demo、上传多份历史 snapshot、生成 1–20 个候选方案、切换和比较候选方案、查看座位图与评分，并下载 JSON、report、HTML、PDF、PNG、Excel 或 Word。也可以上传或读取本机 project 文件，复用 project-info、validate、solve 和 export 工作流。
 
 ## CLI
 
@@ -89,7 +89,7 @@ seattrellis export --snapshot outputs/daily.snapshot.json --format html
 
 `solve` 支持 `--history` 或 `--history-dir` 加载历史 snapshot。`history-report` 输出每个学生的座位分类历史统计，`pair-report` 输出两两学生的同桌/邻座关系历史。详见 [快速开始指南](docs/quickstart.zh.md)。
 
-导出支持 HTML（无需 extras）、Excel（需 `excel` extra）、PNG（需 `image` extra）。详见 [导出格式说明](docs/export.zh.md)。
+导出支持 HTML 和打印版 HTML（无需 extras）、Excel（需 `excel` extra）、PNG（需 `image` extra）、PDF（需 `pdf` extra）和 Word（需 `docx` extra）。详见 [导出格式说明](docs/export.zh.md)。
 
 ## 多方案与评分
 
@@ -130,7 +130,7 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 - 历史 snapshot 统计、`history-report` 本地公平性摘要和 `pair-report` 关系历史摘要；
 - 多方案生成、可解释评分、comparison report 和 recommended candidate；
 - 可移植的相对路径 project 配置，以及 `project-init` / `project-info` / `project-validate` / `project-solve` / `project-export`；
-- HTML 导出，安装 `excel` / `image` extras 后支持 Excel / PNG 导出；
+- HTML 与打印版 HTML 导出，安装对应 extras 后支持 Excel、PNG、PDF 和 Word 导出；
 - 输入预检与冲突诊断、CLI、本地 Streamlit UI、虚构示例数据、pytest 和 GitHub Actions。
 
 ## 隐私说明

@@ -7,6 +7,7 @@
 .venv/
 venv/
 dist/
+site/
 build/
 outputs/
 exports/

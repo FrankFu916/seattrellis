@@ -8,7 +8,7 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 - **次版本号 (MINOR)**：向后兼容的新功能。
 - **修订号 (PATCH)**：向后兼容的 Bug 修复。
 
-当前 MAJOR 版本为 0（`0.x.y`），处于快速迭代期。0.x 期间 MINOR 版本可能包含有限的 breaking change，但会尽力保持兼容。
+当前稳定版本为 `1.0.1`。从 v1.0 起，公开 CLI、文件格式和 service API 的不兼容变更必须通过新的 MAJOR 版本发布。
 
 ## Schema Version
 
@@ -17,8 +17,8 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 | 文件类型 | schema_version | 首次引入 |
 |----------|---------------|---------|
 | `SeatingSnapshot` | `"1.0"` | v0.1.0 |
-| `CandidateSet` | `"1.0"` | v0.6.0 |
-| `SeatTrellisProject` | `"1.0"` | v0.6.0 |
+| `CandidateSet` / `PlanComparisonReport` | `"0.2.2"` | v0.2.2 |
+| `SeatTrellisProject` | `1` | v0.2.3 |
 | `RuleSet` (JSON) | 无独立版本 | — |
 
 schema_version 变更规则：
@@ -34,7 +34,7 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 - `--students`、`--layout`、`--rules`、`--preset`、`--output`、`--history-dir` 参数名不变
 - exit code 0 = 成功，非 0 = 失败
 
-内部 Python API（如 `cli.solve()`、`cli.solve_with_report()`）在 1.0 前可能调整。
+`service.py` 与 `service_types.py` 中的公开入口是 CLI、Web 和未来桌面端共享的稳定边界。以下划线开头的函数仍属于内部实现。
 
 ## 弃用策略 (Deprecation Policy)
 

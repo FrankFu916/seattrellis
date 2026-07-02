@@ -12,7 +12,7 @@ license = "Apache-2.0"
 authors = [{ name = "Frank Fu" }]
 keywords = ["classroom", "seating", "optimization", "privacy", "fairness", "ortools", "streamlit"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Education",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
@@ -32,6 +32,7 @@ web = ["streamlit>=1.30"]
 pdf = ["weasyprint>=60"]
 docx = ["python-docx>=1.0"]
 dev = ["pytest>=7.0", "build>=1.2"]
+docs = ["mkdocs-material==9.*"]
 all = [
   "ortools>=9.8,<9.15",
   "openpyxl>=3.1",

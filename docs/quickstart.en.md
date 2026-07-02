@@ -1,6 +1,6 @@
 # Quick Start
 
-This document provides detailed installation and CLI usage guidance for SeatTrellis. For a brief project overview, see the [README](../README.en.md).
+This document provides detailed installation and CLI usage guidance for SeatTrellis. For a brief project overview, see the [documentation home](index.md).
 
 ## Installation
 

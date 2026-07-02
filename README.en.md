@@ -4,7 +4,7 @@
 
 **[简体中文](README.md) | English**
 
-SeatTrellis is a local-first classroom seating planner for reproducible seating workflows with fictional demo data. It can write one JSON snapshot or generate multiple explainably scored candidate plans, then export Excel, PNG, or HTML.
+SeatTrellis is a local-first classroom seating planner for reproducible seating workflows with fictional demo data. It can write one JSON snapshot or generate multiple explainably scored candidate plans, then export HTML, Excel, PNG, PDF, Word, or print-friendly HTML.
 
 SeatTrellis processes data locally by default. Do not commit real student names, IDs, grades, class names, school names, seating preferences, or historical seating snapshots to a public repository.
 
@@ -64,7 +64,7 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-The `all` extra includes OR-Tools, Excel, PNG, and Streamlit dependencies. The `dev` extra includes test and build tools.
+The `all` extra includes OR-Tools, Excel, PNG, PDF, Word, and Streamlit dependencies. The `dev` extra includes test and build tools; the `docs` extra builds the documentation site.
 
 ### Web UI
 
@@ -75,7 +75,7 @@ streamlit run src/seattrellis/web/app.py
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
 
-The web UI can use a built-in preset, optional rules JSON overlay, multiple history snapshots, and 1-20 generated candidates. It shows the recommended plan, score details, hard-rule checks, and downloads for JSON, reports, HTML, PNG, or Excel. It can also read a local project file and reuse the project-info, validate, solve, and export workflow.
+The guided web UI can load a demo, use a built-in preset or rules JSON overlay, accept multiple history snapshots, and generate 1-20 candidates. It supports candidate switching, comparison, seat-map previews, and downloads for JSON, reports, HTML, PDF, PNG, Excel, or Word. It can also upload or read a local project file and reuse the project-info, validate, solve, and export workflow.
 
 ## CLI
 
@@ -171,7 +171,7 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 - historical snapshot statistics, the local `history-report` fairness summary, and `pair-report` relationship-history summary;
 - multi-candidate generation, explainable scoring, comparison reports, and recommended-candidate selection;
 - portable relative-path project configuration with `project-init`, `project-info`, `project-validate`, `project-solve`, and `project-export`;
-- HTML export, with Excel / PNG export available through the `excel` / `image` extras;
+- HTML and print-friendly HTML export, with Excel, PNG, PDF, and Word available through their optional extras;
 - validation preflight and conflict diagnostics, CLI, local Streamlit UI, fictional examples, pytest, and GitHub Actions.
 
 ## Privacy
