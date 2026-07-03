@@ -13,12 +13,14 @@ from typing import Any
 from seattrellis.models.candidate import CandidatePlan, CandidateSet
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.web.i18n import normalize_locale, translate
 
 
 def build_seat_grid_html(
     layout: ClassroomLayout,
     snapshot: SeatingSnapshot | None = None,
     highlight_seat_id: str | None = None,
+    locale: str = "zh",
 ) -> str:
     """Build an HTML/CSS Grid rendering of the classroom seat map.
 
@@ -37,8 +39,9 @@ def build_seat_grid_html(
     str
         An inline HTML string suitable for ``st.markdown(..., unsafe_allow_html=True)``.
     """
+    locale = normalize_locale(locale)
     if not layout.seats:
-        return "<p><em>No seats defined in layout.</em></p>"
+        return f"<p><em>{html_escape(translate('empty_layout', locale))}</em></p>"
 
     # Determine grid dimensions from max row/col.
     max_row = max(seat.row for seat in layout.seats)
@@ -47,7 +50,7 @@ def build_seat_grid_html(
     assignment_map: dict[str, str] = {}
     if snapshot is not None:
         for a in snapshot.assignments:
-            assignment_map[a.seat_id] = html_escape(a.student_name or a.student_key)
+            assignment_map[a.seat_id] = a.student_name or a.student_key
 
     rows_html: list[str] = []
     for r in range(1, max_row + 1):
@@ -70,21 +73,26 @@ def build_seat_grid_html(
                 seat_class += " " + tag_classes
 
             student_name = assignment_map.get(seat.seat_id, "")
-            label = student_name if student_name else html_escape(seat.seat_id)
+            label = html_escape(student_name or seat.seat_id)
 
+            tooltip = _seat_tooltip(seat, student_name, locale)
             cells.append(
-                f'<div class="{seat_class}" title="{_seat_tooltip(seat, student_name)}">'
+                f'<div class="{seat_class}" role="gridcell" '
+                f'tabindex="{"0" if seat.enabled else "-1"}" '
+                f'aria-disabled="{"false" if seat.enabled else "true"}" '
+                f'aria-label="{tooltip}" title="{tooltip}">'
                 f'<span class="seat-label">{label}</span>'
                 f"</div>"
             )
         rows_html.append(
-            '<div class="seat-row">' + "".join(cells) + "</div>"
+            '<div class="seat-row" role="row">' + "".join(cells) + "</div>"
         )
 
     css = _seat_grid_css()
     return (
         f"<style>{css}</style>"
-        f'<div class="seat-grid">'
+        f'<div class="seat-grid" role="grid" '
+        f'aria-label="{html_escape(translate("seat_grid_label", locale), quote=True)}">'
         + "".join(rows_html)
         + "</div>"
     )
@@ -93,6 +101,7 @@ def build_seat_grid_html(
 def build_candidate_selector(
     candidate_set: CandidateSet,
     current_id: str = "recommended",
+    locale: str = "zh",
 ) -> list[dict[str, object]]:
     """Build a list of candidate options for a select-box / radio group.
 
@@ -105,10 +114,11 @@ def build_candidate_selector(
     options.append(
         {
             "id": "recommended",
-            "label": f"⭐ 推荐 — {candidate_set.recommended_candidate_id}"
+            "label": f"{translate('recommended', locale)} — "
+            f"{candidate_set.recommended_candidate_id}"
             f" ({rec.total_score:.1f})"
             if rec
-            else "⭐ 推荐",
+            else translate("recommended", locale),
             "is_recommended": True,
         }
     )
@@ -178,13 +188,13 @@ def build_comparison_table(
     return {"columns": columns, "rows": rows}
 
 
-def build_preset_cards() -> list[dict[str, str]]:
+def build_preset_cards(locale: str = "zh") -> list[dict[str, str]]:
     """Return metadata cards for each built-in preset.
 
     Each card has ``name``, ``description``, ``scenario``, ``requires``,
     and ``degradation`` keys suitable for rendering as expandable cards.
     """
-    return [
+    zh_cards = [
         {
             "name": "random",
             "description": "使用种子随机排列，不启用任何数据依赖偏好。",
@@ -242,13 +252,75 @@ def build_preset_cards() -> list[dict[str, str]]:
             "degradation": "无 vision/needs_front 字段时降级为普通随机排座。",
         },
     ]
+    if normalize_locale(locale) == "zh":
+        return zh_cards
+    english = {
+        "random": (
+            "Seeded random placement with no data-dependent preferences.",
+            "A quick plan without history or special requirements.",
+            "No additional fields.",
+            "No fallback is needed.",
+        ),
+        "exam": (
+            "Reproducible shuffling; spacing and fixed seats come from explicit hard rules.",
+            "Exams and quizzes where social preferences are not needed.",
+            "No extra fields; use hard rules to control spacing.",
+            "No fallback is needed.",
+        ),
+        "daily": (
+            "Combines accessibility, height, score mixing, fair rotation, and relationship avoidance.",
+            "Everyday classes, especially when seating history is available.",
+            "Optional vision, height, and score fields; history is recommended.",
+            "Preferences without matching data are skipped. History-based preferences do nothing without history.",
+        ),
+        "fair-rotation": (
+            "Moves students away from seat categories they have used repeatedly.",
+            "Regular seat rotations with an emphasis on fairness.",
+            "History snapshots.",
+            "Without history, it behaves like a regular random plan.",
+        ),
+        "neighbor-aware": (
+            "Reduces recently repeated desk-mate and neighboring pairs.",
+            "Breaking up recurring groups or reducing classroom chatter.",
+            "History snapshots.",
+            "Without history, it behaves like a regular random plan.",
+        ),
+        "balanced": (
+            "Prefers neighbors with different score levels to support peer learning.",
+            "Classes with score data that want mixed-ability seating.",
+            "The student score field.",
+            "Without scores, it behaves like a regular random plan.",
+        ),
+        "height-aware": (
+            "Prefers taller students farther back and shorter students nearer the front.",
+            "Height-aware seating with reproducible randomness.",
+            "The student height field.",
+            "Without heights, it behaves like a regular random plan.",
+        ),
+        "vision-friendly": (
+            "Prioritizes front seats for students marked as needing them.",
+            "Students who need the front for vision, attention, or another reason.",
+            "The vision or needs_front field.",
+            "Without either field, it behaves like a regular random plan.",
+        ),
+    }
+    return [
+        {
+            "name": card["name"],
+            "description": english[card["name"]][0],
+            "scenario": english[card["name"]][1],
+            "requires": english[card["name"]][2],
+            "degradation": english[card["name"]][3],
+        }
+        for card in zh_cards
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Error diagnosis helpers
 # ---------------------------------------------------------------------------
 
-def diagnose_error(exc: Exception) -> dict[str, str]:
+def diagnose_error(exc: Exception, locale: str = "zh") -> dict[str, str]:
     """Categorise a Python exception into a user-readable diagnosis.
 
     Returns a dict with ``category``, ``title``, and ``detail`` keys.
@@ -264,67 +336,48 @@ def diagnose_error(exc: Exception) -> dict[str, str]:
     if "ValidationError" in name or "validation" in msg.lower():
         return {
             "category": "validation",
-            "title": "数据格式错误",
-            "detail": (
-                f"输入文件的格式不符合要求。请检查：\n"
-                f"1. JSON 文件是否为合法 JSON；\n"
-                f"2. 字段名和类型是否与文档一致；\n"
-                f"3. 必填字段是否缺失。\n\n"
-                f"原始错误：{msg}"
-            ),
+            "title": translate("format_error_title", locale),
+            "detail": translate("format_error_detail", locale, error=msg),
         }
 
     if isinstance(exc, InputFileError):
         return {
             "category": "file_error",
-            "title": "文件读取失败",
-            "detail": (
-                f"无法读取输入文件。请确认：\n"
-                f"1. 文件路径是否正确；\n"
-                f"2. 文件格式是否受支持（CSV / XLSX / JSON）；\n"
-                f"3. 文件编码是否为 UTF-8。\n\n"
-                f"原始错误：{msg}"
-            ),
+            "title": translate("file_error_title", locale),
+            "detail": translate("file_error_detail", locale, error=msg),
         }
 
     if isinstance(exc, SeatTrellisSolveError):
         return {
             "category": "solve_error",
-            "title": "求解失败",
-            "detail": (
-                f"无法生成座位方案。可能原因：\n"
-                f"1. **规则冲突**：fixed seats 与 pair rules 矛盾；\n"
-                f"2. **座位不足**：启用座位数 < 学生数；\n"
-                f"3. **不可行约束**：must-adjacent 与 cannot-adjacent 冲突，"
-                f"或 min-distance 要求无法满足。\n\n"
-                f"建议：先用 `seattrellis validate` 检查输入。\n\n"
-                f"原始错误：{msg}"
-            ),
+            "title": translate("solve_error_title", locale),
+            "detail": translate("solve_error_detail", locale, error=msg),
         }
 
     if isinstance(exc, MissingOptionalDependencyError):
         return {
             "category": "missing_dependency",
-            "title": "缺少可选依赖",
-            "detail": (
-                f"此功能需要额外的 Python 包。\n\n"
-                f"{msg}\n\n"
-                f"请在终端运行对应的安装命令后重试。"
-            ),
+            "title": translate("dependency_error_title", locale),
+            "detail": translate("dependency_error_detail", locale, error=msg),
         }
 
     if isinstance(exc, ValueError):
         return {
             "category": "value_error",
-            "title": "参数错误",
-            "detail": f"输入参数不符合要求。\n\n原始错误：{msg}",
+            "title": translate("value_error_title", locale),
+            "detail": translate("value_error_detail", locale, error=msg),
         }
 
     # Generic fallback.
     return {
         "category": "unknown",
-        "title": "未知错误",
-        "detail": f"发生未预期的错误：{name}\n\n{msg}",
+        "title": translate("unknown_error_title", locale),
+        "detail": translate(
+            "unknown_error_detail",
+            locale,
+            name=name,
+            error=msg,
+        ),
     }
 
 
@@ -332,14 +385,69 @@ def diagnose_error(exc: Exception) -> dict[str, str]:
 # Privacy notice
 # ---------------------------------------------------------------------------
 
-PRIVACY_NOTICE_HTML = """
+def build_privacy_notice_html(locale: str = "zh") -> str:
+    """Build the localized privacy notice shown above each workflow."""
+    return f"""
 <div style="background:#f0f8f4;border:1px solid #c3e6cb;border-radius:8px;
-padding:12px 16px;margin:8px 0;font-size:0.9rem;color:#155724;">
-<strong>🔒 隐私提示</strong><br>
-SeatTrellis 在您的电脑上本地处理数据，不会上传任何学生信息到云端。
-临时文件存放在系统临时目录，关闭浏览器后自动清除。
-导出的座位表文件请妥善保管，不要将包含真实学生信息的文件分享到公开平台。
+padding:12px 16px;margin:8px 0;font-size:0.9rem;color:#155724;"
+role="note" aria-label="{html_escape(translate('privacy_title', locale), quote=True)}">
+<strong>{html_escape(translate('privacy_title', locale))}</strong><br>
+{html_escape(translate('privacy_body', locale))}
 </div>
+"""
+
+
+PRIVACY_NOTICE_HTML = build_privacy_notice_html()
+
+
+def accessibility_styles() -> str:
+    """Return focus, touch-target, small-screen, and reduced-motion styles."""
+    return """
+<style>
+.seattrellis-skip-link {
+    position: fixed;
+    left: 0.75rem;
+    top: -4rem;
+    z-index: 1000000;
+    padding: 0.7rem 1rem;
+    border-radius: 0.4rem;
+    background: #ffffff;
+    color: #0b57d0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.seattrellis-skip-link:focus { top: 0.75rem; }
+:where(button, a, input, textarea, select, [tabindex="0"]):focus-visible {
+    outline: 3px solid #0b57d0 !important;
+    outline-offset: 2px !important;
+}
+div[data-testid="stButton"] button,
+div[data-testid="stDownloadButton"] button {
+    min-height: 44px;
+}
+@media (max-width: 768px) {
+    .main .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+        padding-top: 2rem;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    div[data-testid="column"] { width: 100% !important; }
+    .seat-cell {
+        width: clamp(54px, 18vw, 78px);
+        min-width: 54px;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+}
+</style>
 """
 
 
@@ -370,24 +478,26 @@ def _tag_color_classes(seat: SeatNode) -> str:
     return " ".join(classes)
 
 
-def _seat_tooltip(seat: SeatNode, student_name: str) -> str:
-    parts = [f"座位 {html_escape(seat.seat_id)}"]
+def _seat_tooltip(seat: SeatNode, student_name: str, locale: str) -> str:
+    parts = [
+        translate("seat", locale, seat_id=seat.seat_id)
+    ]
     if student_name:
-        parts.append(f"学生: {student_name}")
+        parts.append(translate("student", locale, name=student_name))
     if not seat.enabled:
-        parts.append("(禁用)")
+        parts.append(translate("disabled", locale))
     tags = []
     if seat.near_window:
-        tags.append("靠窗")
+        tags.append(translate("near_window", locale))
     if seat.near_door:
-        tags.append("靠门")
+        tags.append(translate("near_door", locale))
     if seat.near_platform:
-        tags.append("讲台侧")
+        tags.append(translate("near_platform", locale))
     if seat.near_ac:
-        tags.append("空调下")
+        tags.append(translate("near_ac", locale))
     if tags:
-        parts.append("标签: " + ", ".join(tags))
-    return " | ".join(parts)
+        parts.append(translate("tags", locale, tags=", ".join(tags)))
+    return html_escape(" | ".join(parts), quote=True)
 
 
 def _seat_grid_css() -> str:
@@ -423,6 +533,12 @@ def _seat_grid_css() -> str:
 }
 .seat-cell:hover {
     transform: scale(1.05);
+    z-index: 1;
+}
+.seat-cell:focus-visible {
+    outline: 3px solid #0b57d0;
+    outline-offset: 1px;
+    transform: scale(1.03);
     z-index: 1;
 }
 .seat-label {

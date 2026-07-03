@@ -10,11 +10,19 @@ from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.web.components import (
+    accessibility_styles,
     build_candidate_selector,
     build_comparison_table,
     build_preset_cards,
+    build_privacy_notice_html,
     build_seat_grid_html,
     diagnose_error,
+)
+from seattrellis.web.i18n import (
+    LANGUAGE_OPTIONS,
+    available_translation_keys,
+    table_column_labels,
+    translate,
 )
 from seattrellis.web.workflow import solve_for_web
 
@@ -58,6 +66,35 @@ def test_seat_grid_escapes_student_names_and_seat_ids() -> None:
     assert "</span><script>" not in html
     assert "&lt;/span&gt;&lt;script&gt;&quot;student&quot;&lt;/script&gt;" in html
     assert 'title="座位 R1&lt;&quot;&amp;' in html
+    assert 'role="grid"' in html
+    assert 'role="gridcell"' in html
+    assert 'tabindex="0"' in html
+    assert 'aria-label="座位 R1&lt;&quot;&amp;' in html
+
+
+def test_seat_grid_and_privacy_notice_support_english() -> None:
+    layout = ClassroomLayout(
+        seats=[
+            SeatNode(
+                seat_id="R1C1",
+                row=1,
+                col=1,
+                enabled=False,
+                near_window=True,
+            ),
+            SeatNode(seat_id="R1C2", row=1, col=2),
+        ],
+    )
+
+    html = build_seat_grid_html(layout, locale="en")
+    notice = build_privacy_notice_html("en")
+
+    assert 'aria-label="Classroom seating map"' in html
+    assert 'aria-label="Seat R1C1 | disabled | Tags: near window"' in html
+    assert 'tabindex="-1"' in html
+    assert 'aria-disabled="true"' in html
+    assert "Privacy" in notice
+    assert "does not upload student information" in notice
 
 
 def test_candidate_selector_contains_recommended_only_once(
@@ -70,6 +107,9 @@ def test_candidate_selector_contains_recommended_only_once(
     assert ids.count("recommended") == 1
     assert candidate_set.recommended_candidate_id not in ids[1:]
     assert len(options) == len(candidate_set.candidates)
+
+    english = build_candidate_selector(candidate_set, locale="en")
+    assert english[0]["label"].startswith("⭐ Recommended")
 
 
 def test_candidate_comparison_has_one_ranked_row_per_candidate(
@@ -118,6 +158,10 @@ def test_error_diagnosis_uses_stable_user_facing_categories(
     assert diagnosis["title"]
     assert str(error) in diagnosis["detail"]
 
+    english = diagnose_error(error, locale="en")
+    assert english["category"] == category
+    assert str(error) in english["detail"]
+
 
 def test_preset_cards_cover_every_builtin_preset() -> None:
     cards = build_preset_cards()
@@ -136,3 +180,25 @@ def test_preset_cards_cover_every_builtin_preset() -> None:
         {"description", "scenario", "requires", "degradation"} <= card.keys()
         for card in cards
     )
+    english = build_preset_cards("en")
+    assert len(english) == len(cards)
+    assert english[0]["description"] != cards[0]["description"]
+
+
+def test_translation_catalog_and_accessibility_styles() -> None:
+    assert LANGUAGE_OPTIONS == {"简体中文": "zh", "English": "en"}
+    assert translate("generate", "zh") == "生成座位表"
+    assert translate("generate", "en") == "Generate seating plan"
+    assert translate("candidate_result", "en", count=3, candidate_id="c-1") == (
+        "Generated 3 candidates. Recommended: c-1."
+    )
+    assert {"generate", "privacy_body", "seat_grid_label"} <= (
+        available_translation_keys()
+    )
+    assert table_column_labels("en")["student_name"] == "Name"
+
+    css = accessibility_styles()
+    assert ":focus-visible" in css
+    assert "min-height: 44px" in css
+    assert "@media (max-width: 768px)" in css
+    assert "prefers-reduced-motion" in css

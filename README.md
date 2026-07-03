@@ -66,8 +66,9 @@ streamlit run src/seattrellis/web/app.py
 检查 history 覆盖率与 layout 一致性，并保存或恢复 Web 配置。配置不包含学生
 名单，但 rules overlay 可能引用学生 ID，下载时页面会给出提示。
 求解后可以切换和比较候选方案、查看座位图与评分，并下载 JSON、report、
-HTML、PDF、PNG、Excel 或 Word。Project workspace 支持本机 project 路径；
-上传单个 project JSON 仅适合查看配置。
+HTML、PDF、PNG、Excel 或 Word。侧边栏可切换简体中文和英文；页面支持清晰
+的键盘焦点、跳转到主要内容、小屏纵向布局和减少动画偏好。Project workspace
+支持本机 project 路径；上传单个 project JSON 仅适合查看配置。
 
 ## CLI
 

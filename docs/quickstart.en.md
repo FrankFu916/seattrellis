@@ -181,6 +181,6 @@ Snapshots and candidate sets are different formats, and old snapshots remain rea
 
 - [Input Formats](input-format.en.md)
 - [Rules](rules.en.md)
-- [Web UI Guide](web.zh.md)
+- [Web UI Guide](web.en.md)
 - [Project Workflow Details](project.zh.md)
 - [Export Formats](export.zh.md)

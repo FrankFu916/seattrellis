@@ -65,7 +65,8 @@ nav:
       - 命令参考: cli.md
       - 版本与兼容: versioning.md
   - Web 端:
-      - 使用指南: web.zh.md
+      - 中文: web.zh.md
+      - English: web.en.md
   - 输入格式:
       - 中文: input-format.zh.md
       - English: input-format.en.md

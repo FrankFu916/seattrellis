@@ -270,7 +270,7 @@ def test_streamlit_app_smoke() -> None:
 
     assert not app.exception
     assert [title.value for title in app.title] == ["🏫 SeatTrellis · 席序"]
-    assert [tab.label for tab in app.tabs] == ["快速排座", "Project workspace"]
+    assert [tab.label for tab in app.tabs] == ["快速排座", "Project 工作区"]
     assert [uploader.label for uploader in app.file_uploader][0] == "Web 配置 JSON"
 
 
@@ -281,7 +281,7 @@ def test_streamlit_demo_rules_and_history_preview() -> None:
     app.run(timeout=10)
     next(button for button in app.button if button.label == "🚀 一键加载 Demo").click()
     app.run(timeout=10)
-    app.radio[0].set_value("2. 设置 & 求解")
+    app.radio[0].set_value("solve")
     app.run(timeout=10)
 
     assert not app.exception
@@ -304,6 +304,38 @@ def test_streamlit_demo_rules_and_history_preview() -> None:
         message.value == "历史记录与当前学生名单和 layout 一致。"
         for message in app.success
     )
+
+
+def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    language = next(
+        selectbox
+        for selectbox in app.selectbox
+        if selectbox.label == "语言 / Language"
+    )
+    language.set_value("English")
+    app.run(timeout=10)
+
+    assert not app.exception
+    assert [title.value for title in app.title] == ["🏫 SeatTrellis"]
+    assert [tab.label for tab in app.tabs] == ["Quick solve", "Project workspace"]
+    assert app.radio[0].label == "Steps"
+    assert app.radio[0].options == [
+        "1. Load data",
+        "2. Configure & solve",
+        "3. Review & export",
+    ]
+    assert [uploader.label for uploader in app.file_uploader][0] == (
+        "Web settings JSON"
+    )
+
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    assert not app.exception
+    assert any(message.value.startswith("Upload both") for message in app.warning)
 
 
 def _block_import(monkeypatch, package_name: str) -> None:

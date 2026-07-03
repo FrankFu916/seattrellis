@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- The Web interface can switch between Simplified Chinese and English without
+  resetting the current workflow.
+- Added a skip link, visible keyboard focus, semantic keyboard-accessible seat
+  maps, responsive small-screen layout, and reduced-motion support.
+- Added an English Web guide and localized table headings, preset descriptions,
+  error guidance, history checks, and privacy notices.
+
 ## 1.1.0 - 2026-07-03
 
 ### Added

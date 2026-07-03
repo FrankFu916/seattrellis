@@ -80,8 +80,11 @@ coverage and layout compatibility, and can save or restore settings. Config
 files do not include the roster, though a rules overlay may reference student
 IDs and is flagged when it does. The UI generates 1–20 candidates with switching,
 comparison, seat-map previews, and downloads for JSON, reports, HTML, PDF,
-PNG, Excel, or Word. The Project workspace uses a local project path for
-validation and solving; uploading a project JSON is intended for inspection.
+PNG, Excel, or Word. A sidebar switch changes the interface between Simplified
+Chinese and English. Keyboard focus indicators, a skip link, responsive
+small-screen layout, and reduced-motion support are built in. The Project
+workspace uses a local project path for validation and solving; uploading a
+project JSON is intended for inspection.
 
 ## CLI
 

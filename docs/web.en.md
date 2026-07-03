@@ -1,0 +1,65 @@
+# Web UI Guide
+
+## Start the app
+
+```bash
+python -m pip install -e ".[web,excel,image,pdf,docx]"
+streamlit run src/seattrellis/web/app.py
+```
+
+The sidebar language switch changes the interface between Simplified Chinese
+and English. It does not clear loaded data, the current step, or solve results.
+
+## Quick solve
+
+The Quick solve tab follows three steps:
+
+1. Load the fictional Demo or upload a student list and classroom layout.
+2. Choose a preset, optionally add a rules overlay, inspect history, and set
+   candidate count, seed, and time limit.
+3. Compare candidates, inspect the seating map and scores, then download the
+   result.
+
+The resolved rules panel shows the exact `RuleSet` used by the solver. History
+inspection reports student coverage, stale references, disabled seats, and
+layout differences before a solve begins.
+
+Web settings can be downloaded and restored later. They include the preset,
+rules overlay, candidate count, seed, and time limit, but not the student list,
+layout, history, paths, or results. A rules overlay can still contain student
+identifiers, so the page warns when the settings file should be treated as
+sensitive.
+
+## Project workspace
+
+The Project workspace can open a local project path or accept an uploaded
+project JSON file. A local path supports validation, solving, and export because
+its referenced files remain available. A standalone uploaded JSON file is most
+useful for inspecting the project configuration.
+
+## Downloads
+
+The page can download snapshot or candidate-set JSON, plan reports, HTML, PDF,
+PNG, Excel, and Word files. If an optional export dependency is missing, its
+installation hint appears without blocking other formats.
+
+## Keyboard and small screens
+
+- Tab reaches upload, selection, solve, and download controls in order, with a
+  visible focus outline.
+- A skip link at the start of the page moves directly to the main content.
+- Enabled seats in the seating map are keyboard-focusable and expose seat,
+  student, and location details to assistive technology.
+- Side-by-side controls stack vertically on narrow screens. Buttons keep a
+  touch target of at least 44 pixels.
+- Non-essential motion is disabled when the operating system requests reduced
+  motion.
+
+Streamlit tables may still need horizontal scrolling on very narrow phones.
+The interface currently supports Simplified Chinese and English.
+
+## Privacy
+
+Solving happens on the local computer. Temporary working files use the system
+temporary directory and are cleaned up when the app exits. Do not commit real
+student data, screenshots, or exports to a public repository.

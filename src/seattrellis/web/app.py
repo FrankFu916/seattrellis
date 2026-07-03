@@ -33,12 +33,19 @@ from seattrellis.web.config import (
     load_web_config,
 )
 from seattrellis.web.components import (
-    PRIVACY_NOTICE_HTML,
+    accessibility_styles,
     build_comparison_table,
     build_candidate_selector,
     build_preset_cards,
+    build_privacy_notice_html,
     build_seat_grid_html,
     diagnose_error,
+)
+from seattrellis.web.i18n import (
+    LANGUAGE_OPTIONS,
+    normalize_locale,
+    table_column_labels,
+    translate,
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
@@ -82,6 +89,9 @@ _SS_DEFAULTS = {
     "_qf_rules_name": None,
     "_qf_config_digest": None,
     "_qf_history_quality": None,
+    "ui_locale": "zh",
+    "quick_step_value": "load",
+    "project_mode_value": "path",
 }
 
 # Persistent temp dirs that survive Streamlit re-runs.
@@ -112,6 +122,70 @@ def _ss(key: str):
     return st.session_state[key]
 
 
+def _locale() -> str:
+    return normalize_locale(_ss("ui_locale"))
+
+
+def _t(key: str, **values: object) -> str:
+    return translate(key, _locale(), **values)
+
+
+def _localized_columns(rows: list[dict[str, object]]) -> dict[str, str]:
+    if not rows:
+        return {}
+    labels = table_column_labels(_locale())
+    return {
+        key: labels[key]
+        for key in rows[0]
+        if key in labels
+    }
+
+
+def _history_warnings(report) -> list[str]:
+    messages: list[str] = []
+    for snapshot in report.snapshots:
+        if snapshot.missing_students:
+            messages.append(
+                _t(
+                    "history_missing_students",
+                    snapshot=snapshot.snapshot,
+                    count=len(snapshot.missing_students),
+                )
+            )
+        if snapshot.unknown_students:
+            messages.append(
+                _t(
+                    "history_unknown_students",
+                    snapshot=snapshot.snapshot,
+                    count=len(snapshot.unknown_students),
+                )
+            )
+        if snapshot.unknown_seats:
+            messages.append(
+                _t(
+                    "history_unknown_seats",
+                    snapshot=snapshot.snapshot,
+                    seats=", ".join(snapshot.unknown_seats),
+                )
+            )
+        if snapshot.disabled_seats:
+            messages.append(
+                _t(
+                    "history_disabled_seats",
+                    snapshot=snapshot.snapshot,
+                    seats=", ".join(snapshot.disabled_seats),
+                )
+            )
+        if not snapshot.layout_matches:
+            messages.append(
+                _t(
+                    "history_layout_differs",
+                    snapshot=snapshot.snapshot,
+                )
+            )
+    return messages
+
+
 def _reset_solve_state():
     for k in ("solved", "result", "artifact_json", "report_json",
               "output_dir", "project_path", "layout_loaded"):
@@ -130,7 +204,7 @@ def _restore_web_config(data: bytes) -> WebSessionConfig:
         return config
 
     preset_name = config.preset_name or ""
-    st.session_state["quick_preset"] = preset_name
+    st.session_state[f"quick_preset_{_locale()}"] = preset_name
     if preset_name:
         st.session_state["_qf_preset"] = preset_name
     else:
@@ -209,11 +283,11 @@ def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
 
 
 def _render_privacy_banner() -> None:
-    st.markdown(PRIVACY_NOTICE_HTML, unsafe_allow_html=True)
+    st.markdown(build_privacy_notice_html(_locale()), unsafe_allow_html=True)
 
 
 def _render_error(exc: Exception) -> None:
-    diag = diagnose_error(exc)
+    diag = diagnose_error(exc, _locale())
     st.error(f"**{diag['title']}**\n\n{diag['detail']}")
 
 
@@ -223,9 +297,9 @@ def _render_seat_map(snapshot, layout) -> None:
         try:
             layout = load_demo_layout()
         except Exception:
-            st.info("上传教室布局 JSON 后可预览座位图。")
+            st.info(_t("seat_map_unavailable"))
             return
-    html = build_seat_grid_html(layout, snapshot)
+    html = build_seat_grid_html(layout, snapshot, locale=_locale())
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -234,7 +308,7 @@ def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candid
     if not result.is_candidate_set:
         return "recommended"
 
-    options = build_candidate_selector(result.artifact)
+    options = build_candidate_selector(result.artifact, locale=_locale())
     labels = [opt["label"] for opt in options]
     ids = [opt["id"] for opt in options]
 
@@ -245,10 +319,10 @@ def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candid
         idx = 0
 
     selected_label = st.selectbox(
-        "选择候选方案",
+        _t("candidate_choice"),
         labels,
         index=idx,
-        key=widget_key,
+        key=f"{widget_key}_{_locale()}",
     )
     try:
         selected_idx = labels.index(selected_label)
@@ -269,69 +343,65 @@ def _render_candidate_detail(result: WebSolveResult, candidate_id: str) -> None:
     hard = b.hard_constraint_summary
 
     cols = st.columns(4)
-    cols[0].metric("总分", f"{candidate.total_score:.1f}")
+    cols[0].metric(_t("total_score"), f"{candidate.total_score:.1f}")
     cols[1].metric(
-        "Hard Constraints",
-        "✅ 通过" if hard.satisfied else f"❌ {hard.violation_count} 违规",
+        _t("hard_constraints"),
+        _t("passed")
+        if hard.satisfied
+        else _t("violations", count=hard.violation_count),
     )
-    cols[2].metric("可用维度", str(candidate.score.available_dimensions))
-    cols[3].metric("方案ID", candidate.candidate_id)
+    cols[2].metric(
+        _t("available_dimensions"),
+        str(candidate.score.available_dimensions),
+    )
+    cols[3].metric(_t("candidate_id"), candidate.candidate_id)
 
     if hard.violations:
-        st.warning(f"违规项: {hard.violations}")
+        st.warning(_t("violation_items", items=hard.violations))
 
-    st.dataframe(score_breakdown_rows(candidate), width="stretch")
+    rows = score_breakdown_rows(candidate)
+    st.dataframe(
+        rows,
+        width="stretch",
+        column_config=_localized_columns(rows),
+    )
 
 
 def _render_comparison_view(result: WebSolveResult) -> None:
     """Render the multi-candidate comparison table."""
     if not result.is_candidate_set:
         return
-    with st.expander("📊 候选方案对比", expanded=False):
+    with st.expander(_t("candidate_comparison"), expanded=False):
         comp = build_comparison_table(result.artifact)
-        st.dataframe(comp["rows"], width="stretch")
-        st.caption(
-            "各维度分数为 0–100 归一化值；n/a 表示该维度不可用。"
-            "⭐ 标记为推荐方案。"
+        st.dataframe(
+            comp["rows"],
+            width="stretch",
+            column_config=_localized_columns(comp["rows"]),
         )
+        st.caption(_t("comparison_caption"))
 
 
 def _render_preset_cards() -> None:
     """Render expandable preset explanation cards."""
-    with st.expander("📋 场景 Preset 说明", expanded=False):
-        cards = build_preset_cards()
+    with st.expander(_t("preset_help"), expanded=False):
+        cards = build_preset_cards(_locale())
         cols = st.columns(2)
         for i, card in enumerate(cards):
             with cols[i % 2]:
                 st.markdown(
                     f"**{card['name']}**\n"
                     f"{card['description']}\n\n"
-                    f"*场景:* {card['scenario']}\n\n"
-                    f"*需要:* {card['requires']}\n\n"
-                    f"*降级:* {card['degradation']}"
+                    f"*{_t('scenario')}:* {card['scenario']}\n\n"
+                    f"*{_t('requires')}:* {card['requires']}\n\n"
+                    f"*{_t('degradation')}:* {card['degradation']}"
                 )
                 st.divider()
 
 
 def _render_file_hints() -> None:
     """Render file format and size hints."""
-    with st.expander("📎 文件格式说明", expanded=False):
-        st.markdown(
-            """
-        **支持的文件格式：**
-
-        | 文件 | 格式 | 大小限制 |
-        |------|------|----------|
-        | 学生名单 | `.csv` / `.xlsx` / `.xlsm` | 建议 < 1 MB |
-        | 教室布局 | `.json` | 建议 < 500 KB |
-        | 规则 JSON | `.json` | 建议 < 100 KB |
-        | 历史快照 | `.json` | 建议 < 1 MB / 文件 |
-
-        **不支持：** `.xls`（旧版 Excel），请先另存为 `.xlsx` 或 CSV。
-
-        **编码：** 所有文本文件请使用 UTF-8 编码。
-        """
-        )
+    with st.expander(_t("file_help"), expanded=False):
+        st.markdown(_t("file_help_body"))
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +416,7 @@ def _render_exports(
     project_path: Path | None = None,
 ) -> None:
     """Render download buttons for all export formats."""
-    st.subheader("📥 导出")
+    st.subheader(_t("exports"))
 
     # Use in-memory bytes when available (quick-solve tab); fall back to
     # reading from disk (project tab where files live in project outputs).
@@ -357,13 +427,13 @@ def _render_exports(
         try:
             artifact_bytes = result.artifact_path.read_bytes()
         except (FileNotFoundError, OSError):
-            st.warning("Artifact file is no longer available. Please re-run the solve.")
+            st.warning(_t("artifact_missing"))
             return
 
     # JSON artifact download
     artifact_label = "candidate set JSON" if result.is_candidate_set else "snapshot JSON"
     st.download_button(
-        f"下载 {artifact_label}",
+        _t("download", label=artifact_label),
         data=artifact_bytes,
         file_name=result.artifact_path.name,
         mime="application/json",
@@ -376,7 +446,7 @@ def _render_exports(
                 report_bytes = None
         if report_bytes is not None:
             st.download_button(
-                "下载 plan report JSON",
+                _t("download", label="plan report JSON"),
                 data=report_bytes,
                 file_name=result.report_path.name,
                 mime="application/json",
@@ -409,17 +479,23 @@ def _render_exports(
             st.info(str(exc))
             continue
         except Exception as exc:
-            st.warning(f"导出 {output_format.upper()} 失败：{exc}")
+            st.warning(
+                _t(
+                    "export_failed",
+                    format=output_format.upper(),
+                    error=exc,
+                )
+            )
             continue
         try:
             st.download_button(
-                f"下载 {output_format.upper()}",
+                _t("download", label=output_format.upper()),
                 data=output_path.read_bytes(),
                 file_name=output_path.name,
                 mime=mime,
             )
         except (FileNotFoundError, OSError) as exc:
-            st.warning(f"导出文件不可用：{exc}")
+            st.warning(_t("export_unavailable", error=exc))
 
 
 # ---------------------------------------------------------------------------
@@ -431,36 +507,47 @@ def _render_quick_solve_tab() -> None:
     _render_privacy_banner()
 
     # --- Step wizard indicators ---
+    step_labels = {
+        "load": _t("step_load"),
+        "solve": _t("step_solve"),
+        "results": _t("step_results"),
+    }
+    current_step = _ss("quick_step_value")
+    if current_step not in step_labels:
+        current_step = "load"
     step = st.radio(
-        "步骤",
-        ["1. 加载数据", "2. 设置 & 求解", "3. 查看结果 & 导出"],
+        _t("steps"),
+        ["load", "solve", "results"],
+        index=["load", "solve", "results"].index(current_step),
+        format_func=step_labels.__getitem__,
         horizontal=True,
-        key="quick_step",
+        key=f"quick_step_{_locale()}",
     )
+    st.session_state["quick_step_value"] = step
 
     # --- Step 1: Load data ---
-    if step.startswith("1"):
+    if step == "load":
         _render_step_load_data()
         return
 
     # --- Step 2: Solve ---
-    if step.startswith("2"):
+    if step == "solve":
         _render_step_solve()
         return
 
     # --- Step 3: Results ---
-    if step.startswith("3"):
+    if step == "results":
         _render_step_results()
 
 
 def _render_step_load_data() -> None:
-    st.subheader("📂 加载数据")
+    st.subheader(_t("load_data"))
 
     # Demo one-click
-    st.markdown("**快速体验**")
+    st.markdown(_t("quick_start"))
     demo_col1, demo_col2 = st.columns([1, 3])
     with demo_col1:
-        if st.button("🚀 一键加载 Demo", type="primary", width="stretch"):
+        if st.button(_t("load_demo"), type="primary", width="stretch"):
             demo = demo_paths()
             if demo["students_csv"] and demo["layout"]:
                 st.session_state["demo_loaded"] = True
@@ -471,7 +558,7 @@ def _render_step_load_data() -> None:
                 )
                 # Auto-select the "daily" preset so the solve button is ready.
                 st.session_state["_qf_preset"] = "daily"
-                st.session_state["quick_preset"] = "daily"
+                st.session_state[f"quick_preset_{_locale()}"] = "daily"
                 # Clear any previously uploaded files so demo takes priority.
                 for k in ("_qf_students", "_qf_layout", "_qf_rules", "_qf_history"):
                     st.session_state.pop(k, None)
@@ -485,16 +572,16 @@ def _render_step_load_data() -> None:
                 st.session_state["_qf_rules_data"] = None
                 st.session_state["_qf_rules_name"] = None
                 st.session_state["_qf_history_quality"] = None
-                st.success("Demo 数据已就绪（已自动选择 daily 预设）！请切换到下一步。")
+                st.success(_t("demo_ready"))
             else:
-                st.error("Demo 文件不存在。请先在终端运行 `seattrellis init-demo`。")
+                st.error(_t("demo_missing"))
     with demo_col2:
-        st.caption("一键加载虚构示例数据，无需准备任何文件即可体验完整流程。")
+        st.caption(_t("demo_caption"))
 
     st.divider()
-    st.markdown("**恢复设置**")
+    st.markdown(_t("restore_settings"))
     config_file = st.file_uploader(
-        "Web 配置 JSON",
+        _t("web_config"),
         type=["json"],
         key="quick_config",
     )
@@ -502,46 +589,60 @@ def _render_step_load_data() -> None:
         try:
             restored = _restore_web_config(config_file.getvalue())
             st.success(
-                "已恢复设置："
-                f"{restored.candidate_count} 个候选，"
-                f"preset={restored.preset_name or '无'}。"
+                _t(
+                    "settings_restored",
+                    count=restored.candidate_count,
+                    preset=restored.preset_name or _t("none"),
+                )
             )
-            st.caption("学生名单、layout 和 history 仍需单独加载。")
+            st.caption(_t("inputs_still_needed"))
             if restored.contains_student_references:
-                st.warning("此配置的 rules overlay 含有学生标识，请按敏感文件保管。")
+                st.warning(_t("sensitive_restored_rules"))
         except (InputFileError, ValueError) as exc:
             _render_error(exc)
 
     st.divider()
-    st.markdown("**或手动上传**")
+    st.markdown(_t("manual_upload"))
 
     _render_file_hints()
 
     preset_options = [""] + [preset.name for preset in list_presets()]
+    no_preset_label = _t("no_preset")
+    current_preset = _ss("_qf_preset") or ""
+    preset_index = (
+        preset_options.index(current_preset)
+        if current_preset in preset_options
+        else 0
+    )
+    preset_widget_key = f"quick_preset_{_locale()}"
+    preset_widget_index = (
+        None if preset_widget_key in st.session_state else preset_index
+    )
     students_file = st.file_uploader(
-        "学生名单 CSV / Excel",
+        _t("students_file"),
         type=["csv", "xlsx", "xlsm"],
         key="quick_students",
     )
     layout_file = st.file_uploader(
-        "教室布局 JSON",
+        _t("layout_file"),
         type=["json"],
         key="quick_layout",
     )
     preset_name = st.selectbox(
-        "内置场景 preset",
+        _t("preset"),
         preset_options,
-        format_func=lambda v: v or "不使用 preset",
-        key="quick_preset",
+        index=preset_widget_index,
+        format_func=lambda value: value or no_preset_label,
+        key=preset_widget_key,
     )
     _render_preset_cards()
     rules_file = st.file_uploader(
-        "规则 JSON（可选，选择 preset 时作为 overlay）",
+        _t("rules_file"),
         type=["json"],
         key="quick_rules",
     )
     history_files = st.file_uploader(
-        "历史 snapshot JSON（可选，可多选）",
+        _t("history_files"),
         type=["json"],
         accept_multiple_files=True,
         key="quick_history",
@@ -557,10 +658,8 @@ def _render_step_load_data() -> None:
         st.session_state["_qf_rules_data"] = None
         st.session_state["_qf_rules_name"] = rules_file.name
     elif _ss("_qf_rules_data") is not None:
-        st.caption(
-            f"当前使用配置文件中的 rules overlay：{_ss('_qf_rules_name')}"
-        )
-        if st.button("清除已恢复的 rules overlay", key="clear_restored_rules"):
+        st.caption(_t("restored_rules_in_use", name=_ss("_qf_rules_name")))
+        if st.button(_t("clear_restored_rules"), key="clear_restored_rules"):
             st.session_state["_qf_rules_data"] = None
             st.session_state["_qf_rules_name"] = None
             st.rerun()
@@ -575,7 +674,7 @@ def _render_step_load_data() -> None:
 
 
 def _render_step_solve() -> None:
-    st.subheader("⚙️ 求解设置")
+    st.subheader(_t("solve_settings"))
 
     # Check data availability
     has_uploaded_students = bool(_ss("_qf_students"))
@@ -595,7 +694,7 @@ def _render_step_solve() -> None:
     )
 
     if not has_files:
-        st.warning("请先在上一步上传学生名单和教室布局（两者都需要），或加载 Demo 数据。")
+        st.warning(_t("inputs_required"))
         return
 
     rules_data = None
@@ -609,31 +708,31 @@ def _render_step_solve() -> None:
         except (InputFileError, ValidationError, ValueError) as exc:
             _render_error(exc)
             return
-        with st.expander("最终生效的 rules", expanded=True):
+        with st.expander(_t("resolved_rules"), expanded=True):
             source_parts = []
             if rules_preview.preset_name:
                 source_parts.append(f"preset: {rules_preview.preset_name}")
             if rules_preview.overlay_applied:
-                source_parts.append("rules overlay")
+                source_parts.append(_t("rules_overlay"))
             st.caption(" + ".join(source_parts))
             st.code(rules_preview.json_bytes.decode("utf-8"), language="json")
             st.download_button(
-                "下载合并后的 rules JSON",
+                _t("download_resolved_rules"),
                 data=rules_preview.json_bytes,
                 file_name="resolved.rules.json",
                 mime="application/json",
                 key="download_resolved_rules",
             )
     else:
-        st.warning("请选择 preset 或上传 rules JSON。")
+        st.warning(_t("rules_required"))
 
     has_history = bool(
         _ss("_qf_history")
         or (demo_loaded and _ss("demo_history_dir"))
     )
     if has_history:
-        with st.expander("History 质量检查", expanded=False):
-            if st.button("检查历史记录", key="inspect_history"):
+        with st.expander(_t("history_quality"), expanded=False):
+            if st.button(_t("inspect_history"), key="inspect_history"):
                 try:
                     (
                         students_path,
@@ -656,31 +755,39 @@ def _render_step_solve() -> None:
             quality = _ss("_qf_history_quality")
             if quality is not None:
                 metric_cols = st.columns(3)
-                metric_cols[0].metric("Snapshot 数量", quality.snapshot_count)
+                metric_cols[0].metric(
+                    _t("snapshot_count"),
+                    quality.snapshot_count,
+                )
                 metric_cols[1].metric(
-                    "平均学生覆盖率",
+                    _t("average_coverage"),
                     f"{quality.average_coverage_percent:.1f}%",
                 )
                 metric_cols[2].metric(
-                    "完全匹配",
+                    _t("complete_match"),
                     f"{quality.complete_snapshot_count}/{quality.snapshot_count}",
                 )
-                st.dataframe(quality.rows(), width="stretch")
+                quality_rows = quality.rows()
+                st.dataframe(
+                    quality_rows,
+                    width="stretch",
+                    column_config=_localized_columns(quality_rows),
+                )
                 if quality.warnings:
-                    st.warning("\n".join(quality.warnings))
+                    st.warning("\n".join(_history_warnings(quality)))
                 else:
-                    st.success("历史记录与当前学生名单和 layout 一致。")
+                    st.success(_t("history_consistent"))
 
     # Solve settings
     candidate_count = st.number_input(
-        "候选方案数量",
+        _t("candidate_count"),
         min_value=1,
         max_value=20,
         value=3,
         step=1,
         key="quick_candidate_count",
     )
-    seed_enabled = st.checkbox("自定义 seed", key="quick_seed_enabled")
+    seed_enabled = st.checkbox(_t("custom_seed"), key="quick_seed_enabled")
     seed = st.number_input(
         "seed",
         value=42,
@@ -689,7 +796,7 @@ def _render_step_solve() -> None:
         key="quick_seed",
     )
     time_limit_seconds = st.number_input(
-        "单次求解秒数",
+        _t("time_limit"),
         min_value=0.1,
         max_value=30.0,
         value=3.0,
@@ -706,25 +813,20 @@ def _render_step_solve() -> None:
             time_limit_seconds=float(time_limit_seconds),
         )
         if config.contains_student_references:
-            st.warning(
-                "当前 rules overlay 引用了学生标识；下载的配置文件应按敏感文件保管。"
-            )
+            st.warning(_t("sensitive_current_rules"))
         st.download_button(
-            "下载当前 Web 配置",
+            _t("download_web_config"),
             data=dump_web_config(config),
             file_name="seattrellis.web-config.json",
             mime="application/json",
             key="download_web_config",
-            help=(
-                "保存 preset、rules overlay 和求解参数，不包含学生名单、layout "
-                "或 history。rules overlay 可能引用学生标识。"
-            ),
+            help=_t("web_config_help"),
         )
     except ValueError as exc:
         _render_error(exc)
 
     ready = has_rules and has_files
-    if st.button("生成座位表", type="primary", disabled=not ready):
+    if st.button(_t("generate"), type="primary", disabled=not ready):
         _reset_solve_state()
         try:
             output_dir = _make_persistent_tempdir()
@@ -763,7 +865,7 @@ def _render_step_solve() -> None:
 
             st.session_state["layout_loaded"] = load_layout(layout_path)
 
-            st.success("求解完成！请切换到「查看结果 & 导出」步骤。")
+            st.success(_t("solve_complete_next"))
         except (
             InputFileError,
             MissingOptionalDependencyError,
@@ -775,11 +877,11 @@ def _render_step_solve() -> None:
 
 
 def _render_step_results() -> None:
-    st.subheader("📋 结果")
+    st.subheader(_t("results"))
 
     result: WebSolveResult | None = _ss("result")
     if result is None:
-        st.info('请先在「设置 & 求解」步骤中点击"生成座位表"。')
+        st.info(_t("solve_first"))
         return
 
     output_dir = Path(_ss("output_dir"))
@@ -788,11 +890,14 @@ def _render_step_results() -> None:
     # --- Success / warnings ---
     if result.is_candidate_set:
         st.success(
-            f"生成 {len(result.artifact.candidates)} 个候选方案，"
-            f"推荐 {result.artifact.recommended_candidate_id}"
+            _t(
+                "candidate_result",
+                count=len(result.artifact.candidates),
+                candidate_id=result.artifact.recommended_candidate_id,
+            )
         )
     else:
-        st.success(f"求解完成：{result.artifact.solver_status}")
+        st.success(_t("single_result", status=result.artifact.solver_status))
 
     if result.warnings:
         st.warning("\n".join(result.warnings))
@@ -801,20 +906,25 @@ def _render_step_results() -> None:
     candidate_id = _render_candidate_switcher(result) or "recommended"
 
     # --- Seat map ---
-    st.subheader("🏫 座位图")
+    st.subheader(_t("seat_map"))
     snapshot = selected_snapshot(result, candidate_id)
     _render_seat_map(snapshot, layout)
 
     # --- Candidate detail ---
-    st.subheader("📊 方案详情")
+    st.subheader(_t("plan_detail"))
     _render_candidate_detail(result, candidate_id)
 
     # --- Comparison view ---
     _render_comparison_view(result)
 
     # --- Assignment table ---
-    with st.expander("📋 分配明细表", expanded=False):
-        st.dataframe(assignment_rows(snapshot), width="stretch")
+    with st.expander(_t("assignment_table"), expanded=False):
+        rows = assignment_rows(snapshot)
+        st.dataframe(
+            rows,
+            width="stretch",
+            column_config=_localized_columns(rows),
+        )
 
     # --- Exports ---
     _render_exports(result, output_dir, candidate_id)
@@ -828,20 +938,30 @@ def _render_step_results() -> None:
 def _render_project_tab() -> None:
     _render_privacy_banner()
 
-    st.markdown("**Project 文件**")
+    st.markdown(_t("project_file"))
 
+    project_method_labels = {
+        "path": _t("path"),
+        "upload": _t("upload"),
+    }
+    current_project_mode = _ss("project_mode_value")
+    if current_project_mode not in project_method_labels:
+        current_project_mode = "path"
     tab_mode = st.radio(
-        "选择方式",
-        ["输入路径", "上传文件"],
+        _t("project_method"),
+        ["path", "upload"],
+        index=["path", "upload"].index(current_project_mode),
+        format_func=project_method_labels.__getitem__,
         horizontal=True,
-        key="project_mode",
+        key=f"project_mode_{_locale()}",
     )
+    st.session_state["project_mode_value"] = tab_mode
 
     project_path: Path | None = None
 
-    if tab_mode == "输入路径":
+    if tab_mode == "path":
         project_path_text = st.text_input(
-            "Project 文件路径",
+            _t("project_path"),
             value="examples/project.seattrellis.json",
             key="project_path_text",
         )
@@ -849,7 +969,7 @@ def _render_project_tab() -> None:
             project_path = Path(project_path_text).expanduser()
     else:
         uploaded_project = st.file_uploader(
-            "上传 Project 文件 (.seattrellis.json)",
+            _t("project_upload"),
             type=["json"],
             key="project_upload",
         )
@@ -858,7 +978,7 @@ def _render_project_tab() -> None:
             tmp.write(uploaded_project.getvalue())
             tmp.close()
             project_path = Path(tmp.name)
-            st.success(f"已上传: {uploaded_project.name}")
+            st.success(_t("uploaded", name=uploaded_project.name))
 
     if project_path is None:
         return
@@ -866,14 +986,14 @@ def _render_project_tab() -> None:
     # --- Info & Validate ---
     info_col, validate_col = st.columns(2)
     with info_col:
-        if st.button("读取 project-info", key="proj_info_btn"):
+        if st.button(_t("read_project"), key="proj_info_btn"):
             try:
                 st.code(project_info_for_web(project_path=project_path))
             except (InputFileError, ValidationError, ValueError) as exc:
                 _render_error(exc)
     with validate_col:
-        strict = st.checkbox("严格校验 warnings", key="proj_strict")
-        if st.button("校验 project", key="proj_validate_btn"):
+        strict = st.checkbox(_t("strict_warnings"), key="proj_strict")
+        if st.button(_t("validate_project"), key="proj_validate_btn"):
             try:
                 st.success(
                     project_validate_for_web(project_path=project_path, strict=strict)
@@ -882,12 +1002,14 @@ def _render_project_tab() -> None:
                 _render_error(exc)
 
     # --- Solve ---
-    st.subheader("Project 求解")
+    st.subheader(_t("project_solve"))
     use_project_candidates = st.checkbox(
-        "使用 project 默认候选数量", value=True, key="proj_use_default"
+        _t("project_default_candidates"),
+        value=True,
+        key="proj_use_default",
     )
     project_candidate_count = st.number_input(
-        "候选方案数量",
+        _t("candidate_count"),
         min_value=1,
         max_value=20,
         value=3,
@@ -895,7 +1017,10 @@ def _render_project_tab() -> None:
         disabled=use_project_candidates,
         key="project_candidate_count",
     )
-    project_seed_enabled = st.checkbox("自定义 project seed", key="proj_seed_enabled")
+    project_seed_enabled = st.checkbox(
+        _t("project_custom_seed"),
+        key="proj_seed_enabled",
+    )
     project_seed = st.number_input(
         "project seed",
         value=42,
@@ -904,7 +1029,7 @@ def _render_project_tab() -> None:
         key="proj_seed",
     )
     project_time_limit = st.number_input(
-        "project 单次求解秒数",
+        _t("project_time_limit"),
         min_value=0.5,
         max_value=30.0,
         value=3.0,
@@ -912,7 +1037,7 @@ def _render_project_tab() -> None:
         key="proj_time_limit",
     )
 
-    if st.button("按 project 求解", type="primary", key="proj_solve_btn"):
+    if st.button(_t("solve_project"), type="primary", key="proj_solve_btn"):
         _reset_solve_state()
         try:
             # Project output goes to the project's own output dir (persistent),
@@ -945,7 +1070,7 @@ def _render_project_tab() -> None:
 
             st.session_state["layout_loaded"] = load_layout(paths.layout)
 
-            st.success("求解完成！")
+            st.success(_t("solve_complete"))
         except (
             InputFileError,
             MissingOptionalDependencyError,
@@ -963,19 +1088,24 @@ def _render_project_tab() -> None:
         layout = _ss("layout_loaded")
 
         st.divider()
-        st.subheader("📋 Project 结果")
+        st.subheader(_t("project_results"))
 
         candidate_id = _render_candidate_switcher(result, widget_key="project_candidate_selector") or "recommended"
         snapshot = selected_snapshot(result, candidate_id)
 
-        st.subheader("🏫 座位图")
+        st.subheader(_t("seat_map"))
         _render_seat_map(snapshot, layout)
 
         _render_candidate_detail(result, candidate_id)
         _render_comparison_view(result)
 
-        with st.expander("📋 分配明细表", expanded=False):
-            st.dataframe(assignment_rows(snapshot), width="stretch")
+        with st.expander(_t("assignment_table"), expanded=False):
+            rows = assignment_rows(snapshot)
+            st.dataframe(
+                rows,
+                width="stretch",
+                column_config=_localized_columns(rows),
+            )
 
         _render_exports(result, output_dir, candidate_id, Path(proj_path_str))
 
@@ -986,17 +1116,27 @@ def _render_project_tab() -> None:
 
 
 st.set_page_config(
-    page_title="SeatTrellis · 席序",
+    page_title="SeatTrellis",
     page_icon="🏫",
     layout="wide",
 )
-st.title("🏫 SeatTrellis · 席序")
-st.caption(
-    "本地处理学生名单、规则和历史座位记录；"
-    "不要把真实班级数据提交到公开仓库。"
+language_label = st.sidebar.selectbox(
+    "语言 / Language",
+    list(LANGUAGE_OPTIONS),
+    key="ui_language_choice",
 )
+st.session_state["ui_locale"] = LANGUAGE_OPTIONS[language_label]
+st.markdown(accessibility_styles(), unsafe_allow_html=True)
+st.markdown(
+    f'<a class="seattrellis-skip-link" href="#seattrellis-main">'
+    f'{_t("skip_to_content")}</a>'
+    f'<span id="seattrellis-main" tabindex="-1"></span>',
+    unsafe_allow_html=True,
+)
+st.title(_t("app_title"))
+st.caption(_t("app_caption"))
 
-quick_tab, project_tab = st.tabs(["快速排座", "Project workspace"])
+quick_tab, project_tab = st.tabs([_t("quick_tab"), _t("project_tab")])
 with quick_tab:
     _render_quick_solve_tab()
 with project_tab:
