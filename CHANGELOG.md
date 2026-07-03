@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- macOS dynamic-library paths now use the required colon separator even when
+  the path setup is exercised by cross-platform tests.
+
 ## 1.2.1 - 2026-07-03
 
 ### Fixed

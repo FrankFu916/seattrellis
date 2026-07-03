@@ -57,12 +57,12 @@ def _configure_macos_library_path(
     variable = "DYLD_FALLBACK_LIBRARY_PATH"
     current = [
         item
-        for item in os.environ.get(variable, "").split(os.pathsep)
+        for item in os.environ.get(variable, "").split(":")
         if item
     ]
     library_text = str(library_dir)
     if library_text not in current:
-        os.environ[variable] = os.pathsep.join([library_text, *current])
+        os.environ[variable] = ":".join([library_text, *current])
     return True
 
 
