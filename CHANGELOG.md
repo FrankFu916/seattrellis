@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.3 - 2026-07-03
+
 ### Fixed
 
 - The macOS library-path regression test now uses a platform-neutral mock path,
