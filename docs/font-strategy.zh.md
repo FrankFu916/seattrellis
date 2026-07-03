@@ -54,7 +54,29 @@ font-family:
 
 ## PDF 导出（WeasyPrint）
 
-WeasyPrint 依赖系统字体。如果 PDF 中文显示为方块或空白：
+WeasyPrint 除了 Python 包，还需要系统 Pango。macOS 可通过 Homebrew 安装：
+
+```bash
+brew install pango
+python -m pip install -e ".[pdf]"
+```
+
+Apple Silicon 的 Homebrew 库通常位于 `/opt/homebrew/lib`。SeatTrellis 会在导出
+前自动检查这个目录，也兼容 Intel Homebrew 的 `/usr/local/lib` 和 MacPorts 的
+`/opt/local/lib`。如果使用自定义安装位置，可以在启动前设置：
+
+```bash
+export DYLD_FALLBACK_LIBRARY_PATH="/your/pango/lib:$DYLD_FALLBACK_LIBRARY_PATH"
+```
+
+Linux 应使用发行版包管理器安装 Pango；Windows 建议按照 WeasyPrint 官方文档
+安装对应运行库。Pango 安装完成后可运行下面的命令确认版本：
+
+```bash
+pango-view --version
+```
+
+系统库可加载但 PDF 中文显示为方块或空白时，再检查字体：
 
 1. **macOS**：通常无需配置，PingFang SC 自动可用。
 2. **Windows**：确保微软雅黑已安装（默认已安装）。

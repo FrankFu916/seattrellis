@@ -29,7 +29,7 @@ solver = ["ortools>=9.8,<9.15"]
 excel = ["openpyxl>=3.1"]
 image = ["Pillow>=9.4"]
 web = ["streamlit>=1.30"]
-pdf = ["weasyprint>=60"]
+pdf = ["weasyprint>=60", "cffi>=2.0"]
 docx = ["python-docx>=1.0"]
 dev = ["pytest>=7.0", "build>=1.2"]
 docs = ["mkdocs-material==9.*"]
@@ -39,6 +39,7 @@ all = [
   "Pillow>=9.4",
   "streamlit>=1.30",
   "weasyprint>=60",
+  "cffi>=2.0",
   "python-docx>=1.0",
 ]
 

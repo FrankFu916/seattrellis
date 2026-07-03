@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from zipfile import ZipFile
 
 import pytest
@@ -11,6 +12,7 @@ from seattrellis.exporters import (
     export_snapshot,
 )
 from seattrellis.exporters.print_html import PrintPrivacyOptions
+from seattrellis.exporters.pdf import _configure_macos_library_path
 from seattrellis.io.json_files import load_layout, load_rules
 from seattrellis.io.students import read_students
 from seattrellis.models.candidate import CandidatePlan
@@ -221,6 +223,28 @@ def test_pdf_has_valid_header_and_nonempty_content(tmp_path) -> None:
     data = output.read_bytes()
     assert data.startswith(b"%PDF-")
     assert len(data) > 1_000
+
+
+def test_pdf_configures_homebrew_library_path_on_macos(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    library_dir = tmp_path / "lib"
+    library_dir.mkdir()
+    (library_dir / "libpango-1.0.dylib").touch()
+    monkeypatch.setattr("seattrellis.exporters.pdf.sys.platform", "darwin")
+    monkeypatch.setenv("DYLD_FALLBACK_LIBRARY_PATH", "/existing/lib")
+
+    assert _configure_macos_library_path((library_dir,)) is True
+    assert os.environ["DYLD_FALLBACK_LIBRARY_PATH"] == (
+        f"{library_dir}:/existing/lib"
+    )
+
+    assert _configure_macos_library_path((library_dir,)) is True
+    assert (
+        os.environ["DYLD_FALLBACK_LIBRARY_PATH"].count(str(library_dir))
+        == 1
+    )
 
 
 @pytest.mark.parametrize("exporter,extension", [

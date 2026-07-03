@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- PDF export now discovers Homebrew and MacPorts Pango libraries automatically
+  on macOS, including Apple Silicon installations under `/opt/homebrew/lib`.
+- The PDF extra now installs CFFI 2 or newer, avoiding native-library cleanup
+  warnings seen with older Anaconda environments.
+
+### Documentation
+
+- Added macOS Pango installation and manual dynamic-library path guidance.
+
 ## 1.2.0 - 2026-07-03
 
 ### Added

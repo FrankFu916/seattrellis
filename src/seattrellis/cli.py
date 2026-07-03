@@ -149,7 +149,10 @@ if typer is not None:
             )
         )
 
-    @app.command("export", help="Export a snapshot to Excel, PNG, or HTML.")
+    @app.command(
+        "export",
+        help="Export a snapshot or candidate to a supported output format.",
+    )
     def export_command(
         snapshot: Path = typer.Option(..., "--snapshot", help="Snapshot JSON path."),
         output_format: str = typer.Option(..., "--format", help="Export format: excel, png, html, pdf, docx, print-html."),
