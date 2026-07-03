@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.1 - 2026-07-03
+
 ### Fixed
 
 - PDF export now discovers Homebrew and MacPorts Pango libraries automatically
