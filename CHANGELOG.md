@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.0 - 2026-07-03
+
 ### Added
 
 - The quick-solve page can preview and download the rules produced by a preset
