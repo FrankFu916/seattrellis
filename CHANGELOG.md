@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- The macOS library-path regression test now uses a platform-neutral mock path,
+  avoiding Windows drive-letter semantics.
+
 ## 1.2.2 - 2026-07-03
 
 ### Fixed

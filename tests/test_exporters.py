@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
@@ -227,12 +228,15 @@ def test_pdf_has_valid_header_and_nonempty_content(tmp_path) -> None:
 
 def test_pdf_configures_homebrew_library_path_on_macos(
     monkeypatch,
-    tmp_path,
 ) -> None:
-    library_dir = tmp_path / "lib"
-    library_dir.mkdir()
-    (library_dir / "libpango-1.0.dylib").touch()
+    library_dir = Path("mock-homebrew/lib")
+    pango_library = library_dir / "libpango-1.0.dylib"
     monkeypatch.setattr("seattrellis.exporters.pdf.sys.platform", "darwin")
+    monkeypatch.setattr(
+        Path,
+        "exists",
+        lambda path: path == pango_library,
+    )
     monkeypatch.setenv("DYLD_FALLBACK_LIBRARY_PATH", "/existing/lib")
 
     assert _configure_macos_library_path((library_dir,)) is True
