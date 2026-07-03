@@ -1,4 +1,4 @@
-# v1.1.0 Release Checklist
+# v1.2.0 Release Checklist
 
 ## Local Verification
 
@@ -65,7 +65,7 @@
 - [ ] Confirm no real candidate reports or candidate-set snapshots are tracked.
 - [ ] Confirm built-in preset definitions contain rules and metadata only, with no student or classroom records.
 - [ ] Confirm project files contain relative paths and defaults only, with no embedded real student data.
-- [ ] Confirm `pyproject.toml` version is `1.1.0`.
+- [ ] Confirm `pyproject.toml` version is `1.2.0`.
 - [ ] Confirm `git status --short` has no suspicious generated files.
 - [ ] Confirm `git ls-files` does not include ignored real-data directories.
 - [ ] Confirm CI passes on GitHub Actions.
@@ -76,9 +76,9 @@
 - [ ] Create and push the tag:
 
 ```bash
-git tag -a v1.1.0 -m "SeatTrellis v1.1.0"
-git push origin v1.1.0
+git tag -a v1.2.0 -m "SeatTrellis v1.2.0"
+git push origin v1.2.0
 ```
 
-- [ ] Create a GitHub Release for `v1.1.0`.
+- [ ] Create a GitHub Release for `v1.2.0`.
 - [ ] Include a short privacy note in the release description.

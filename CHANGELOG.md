@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.0 - 2026-07-03
+
 ### Added
 
 - The Web interface can switch between Simplified Chinese and English without
