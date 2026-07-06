@@ -21,4 +21,30 @@
 
 命令默认使用 deterministic fallback solver。安装 `solver` extra 并设置 `SEATTRELLIS_USE_ORTOOLS=1` 后才启用 OR-Tools。
 
+## 导出模板与隐私
+
+`export` 支持 `public`、`teacher` 和 `report` 模板，以及细粒度隐藏参数：
+
+```bash
+seattrellis export \
+  --snapshot outputs/candidates.json \
+  --candidate recommended \
+  --format print-html \
+  --template teacher \
+  --hide-score \
+  --hide-notes \
+  --hide-special-needs \
+  --hide-height \
+  --hide-vision \
+  --anonymize \
+  --orientation landscape \
+  --page-scale 0.8 \
+  --locale en \
+  --output outputs/private-print.html
+```
+
+`public` 的安全默认字段不能通过这些参数放宽；CLI 参数只能进一步隐藏信息。
+页面和模板参数当前适用于 `print-html`、`pdf` 和 `docx`。其他格式收到非默认
+配置时会明确报错，避免设置被静默忽略。
+
 命令示例见[快速开始](quickstart.zh.md)。

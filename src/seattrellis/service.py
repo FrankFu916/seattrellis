@@ -58,6 +58,7 @@ from seattrellis.presets import (
 )
 from seattrellis.scoring import build_plan_comparison_report
 from seattrellis.service_types import (
+    ExportRequest,
     HistoryReportInput,
     HistoryReportOutput,
     PairReportInput,
@@ -322,22 +323,52 @@ def solve_with_report(
 def export(
     *,
     snapshot_path: str | Path,
-    output_format: str,
+    output_format: str | None = None,
     output_path: str | Path | None = None,
     candidate_id: str | None = None,
     default_candidate_id: str = "recommended",
+    request: ExportRequest | None = None,
 ) -> Path:
-    artifact = load_seating_artifact(snapshot_path)
-    if isinstance(artifact, CandidateSet):
-        candidate = artifact.get_candidate(candidate_id or default_candidate_id)
-        snapshot = _snapshot_with_candidate_metadata(candidate)
+    if request is None:
+        if output_format is None:
+            raise ValueError("output_format is required when request is not provided.")
+        request = ExportRequest(
+            output_format=output_format,
+            output_path=output_path,
+            candidate_id=candidate_id,
+        )
     else:
-        if candidate_id is not None:
+        if output_format is not None and output_format.lower() != request.output_format:
+            raise ValueError("output_format conflicts with request.output_format.")
+        if output_path is not None and Path(output_path) != request.resolved_output_path:
+            raise ValueError("output_path conflicts with request.output_path.")
+        if candidate_id is not None and candidate_id != request.candidate_id:
+            raise ValueError("candidate_id conflicts with request.candidate_id.")
+
+    if request.candidate_scope == "all":
+        raise ValueError(
+            "candidate_scope='all' is reserved for candidate-set reports and is "
+            "not supported by single-plan export yet."
+        )
+
+    artifact = load_seating_artifact(snapshot_path)
+    selected_candidate: CandidatePlan | None = None
+    if isinstance(artifact, CandidateSet):
+        selected_candidate = artifact.get_candidate(
+            request.candidate_id or default_candidate_id
+        )
+        snapshot = _snapshot_with_candidate_metadata(selected_candidate)
+    else:
+        if request.candidate_id is not None:
             raise ValueError(
                 "--candidate can only be used when --snapshot is a candidate set."
             )
         snapshot = artifact
-    return export_snapshot(snapshot, output_format, output_path)
+    return export_snapshot(
+        snapshot,
+        candidate=selected_candidate,
+        request=request,
+    )
 
 
 def run_doctor() -> str:

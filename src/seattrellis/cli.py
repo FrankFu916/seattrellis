@@ -11,12 +11,62 @@ from seattrellis.presets import (
     format_preset_list,
     get_preset,
 )
+from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.solver import SeatTrellisSolveError
 
 try:
     import typer
 except Exception:  # pragma: no cover - used only when Typer is not installed.
     typer = None  # type: ignore[assignment]
+
+
+def _build_export_request(
+    *,
+    output_format: str,
+    output_path: str | Path | None,
+    candidate_id: str | None,
+    template: str,
+    hide_score: bool,
+    hide_notes: bool,
+    hide_special_needs: bool,
+    hide_height: bool,
+    hide_vision: bool,
+    anonymize: bool,
+    orientation: str,
+    scale: float,
+    locale: str,
+) -> ExportRequest:
+    privacy = None
+    if any(
+        [
+            hide_score,
+            hide_notes,
+            hide_special_needs,
+            hide_height,
+            hide_vision,
+            anonymize,
+        ]
+    ):
+        defaults = PrivacyOptions.for_template(template)
+        privacy = PrivacyOptions(
+            hide_scores=defaults.hide_scores or hide_score,
+            hide_notes=defaults.hide_notes or hide_notes,
+            hide_special_needs=(
+                defaults.hide_special_needs or hide_special_needs
+            ),
+            anonymize=anonymize,
+            show_height=defaults.show_height and not hide_height,
+            show_vision=defaults.show_vision and not hide_vision,
+        )
+    return ExportRequest(
+        output_format=output_format,
+        output_path=output_path,
+        template=template,
+        privacy=privacy,
+        page=PageOptions(orientation=orientation, scale=scale),
+        locale=locale,
+        candidate_id=candidate_id,
+    )
 
 
 if typer is not None:
@@ -162,11 +212,66 @@ if typer is not None:
             "--candidate",
             help="Candidate ID for a candidate set, or 'recommended'.",
         ),
+        template: str = typer.Option(
+            "public",
+            "--template",
+            help="Print template: public, teacher, or report.",
+        ),
+        hide_score: bool = typer.Option(
+            False, "--hide-score", help="Hide student scores."
+        ),
+        hide_notes: bool = typer.Option(
+            False, "--hide-notes", help="Hide student notes."
+        ),
+        hide_special_needs: bool = typer.Option(
+            False,
+            "--hide-special-needs",
+            help="Hide student needs and tags.",
+        ),
+        hide_height: bool = typer.Option(
+            False, "--hide-height", help="Hide student height."
+        ),
+        hide_vision: bool = typer.Option(
+            False, "--hide-vision", help="Hide student vision information."
+        ),
+        anonymize: bool = typer.Option(
+            False, "--anonymize", help="Replace student names with stable labels."
+        ),
+        orientation: str = typer.Option(
+            "portrait",
+            "--orientation",
+            help="A4 page orientation: portrait or landscape.",
+        ),
+        scale: float = typer.Option(
+            1.0, "--page-scale", help="Print scale from 0.5 to 2.0."
+        ),
+        locale: str = typer.Option(
+            "zh", "--locale", help="Export locale: zh or en."
+        ),
     ) -> None:
         _run_typer_action(
             lambda: typer.echo(
                 "Export written to "
-                f"{export(snapshot_path=snapshot, output_format=output_format, output_path=output, candidate_id=candidate)}"
+                + str(
+                    export(
+                        snapshot_path=snapshot,
+                        request=_build_export_request(
+                            output_format=output_format,
+                            output_path=output,
+                            candidate_id=candidate,
+                            template=template,
+                            hide_score=hide_score,
+                            hide_notes=hide_notes,
+                            hide_special_needs=hide_special_needs,
+                            hide_height=hide_height,
+                            hide_vision=hide_vision,
+                            anonymize=anonymize,
+                            orientation=orientation,
+                            scale=scale,
+                            locale=locale,
+                        ),
+                    )
+                )
             )
         )
 
@@ -401,6 +506,24 @@ def _run_argparse() -> None:
     export_parser.add_argument("--format", required=True)
     export_parser.add_argument("--output", "-o", default=None)
     export_parser.add_argument("--candidate", default=None)
+    export_parser.add_argument(
+        "--template",
+        choices=["public", "teacher", "report"],
+        default="public",
+    )
+    export_parser.add_argument("--hide-score", action="store_true")
+    export_parser.add_argument("--hide-notes", action="store_true")
+    export_parser.add_argument("--hide-special-needs", action="store_true")
+    export_parser.add_argument("--hide-height", action="store_true")
+    export_parser.add_argument("--hide-vision", action="store_true")
+    export_parser.add_argument("--anonymize", action="store_true")
+    export_parser.add_argument(
+        "--orientation",
+        choices=["portrait", "landscape"],
+        default="portrait",
+    )
+    export_parser.add_argument("--page-scale", type=float, default=1.0)
+    export_parser.add_argument("--locale", choices=["zh", "en"], default="zh")
 
     history_parser = subparsers.add_parser("history-report", help="Summarize historical seating snapshots.")
     history_parser.add_argument("--students", required=True)
@@ -498,9 +621,21 @@ def _run_argparse() -> None:
     elif args.command == "export":
         path = export(
             snapshot_path=args.snapshot,
-            output_format=args.format,
-            output_path=args.output,
-            candidate_id=args.candidate,
+            request=_build_export_request(
+                output_format=args.format,
+                output_path=args.output,
+                candidate_id=args.candidate,
+                template=args.template,
+                hide_score=args.hide_score,
+                hide_notes=args.hide_notes,
+                hide_special_needs=args.hide_special_needs,
+                hide_height=args.hide_height,
+                hide_vision=args.hide_vision,
+                anonymize=args.anonymize,
+                orientation=args.orientation,
+                scale=args.page_scale,
+                locale=args.locale,
+            ),
         )
         print(f"Export written to {path}")
     elif args.command == "history-report":

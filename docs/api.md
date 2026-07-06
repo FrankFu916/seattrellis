@@ -17,7 +17,29 @@
 
 `solve`、`solve_with_report`、`run_validate`、`run_history_report`、
 `run_pair_report` 和 `project_*` 函数接受文件路径，供 CLI 和 Web 共用。
-导出使用 `seattrellis.exporters.export_snapshot`。
+导出使用 `seattrellis.service.export` 或
+`seattrellis.exporters.export_snapshot`。新的适配器应构造
+`ExportRequest`，而不是自行组合模板和页面参数：
+
+```python
+from seattrellis.service import export
+from seattrellis.service_types import ExportRequest, PageOptions
+
+export(
+    snapshot_path="outputs/candidates.json",
+    request=ExportRequest(
+        output_format="print-html",
+        output_path="outputs/report.html",
+        template="report",
+        candidate_id="recommended",
+        page=PageOptions(orientation="landscape", scale=0.9),
+    ),
+)
+```
+
+`PrivacyOptions.for_template("public")` 默认隐藏成绩、备注、特殊需求、身高和
+视力。`candidate_scope="all"` 已保留给 v1.4 的候选集报告；当前单方案导出会
+明确拒绝该值，不会静默只导出一个方案。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
 单独测试。

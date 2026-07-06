@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite
 from pathlib import Path
 from typing import Any, Sequence
@@ -31,6 +31,7 @@ from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.presets import resolve_rules_with_preset
+from seattrellis.service_types import ExportRequest
 
 
 @dataclass(frozen=True)
@@ -387,11 +388,30 @@ def project_export_for_web(
     output_format: str,
     output_dir: str | Path,
     candidate_id: str | None = None,
+    request: ExportRequest | None = None,
 ) -> Path:
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_format = output_format.lower()
-    output_path = output_root / f"project-seating.{export_extension(normalized_format)}"
+    output_name = (
+        "project-seating.print.html"
+        if normalized_format == "print-html"
+        else f"project-seating.{export_extension(normalized_format)}"
+    )
+    output_path = output_root / output_name
+    if request is not None:
+        if request.output_format != normalized_format:
+            raise ValueError("request output format does not match output_format.")
+        return export(
+            snapshot_path=result.artifact_path,
+            request=replace(
+                request,
+                output_path=output_path,
+                candidate_id=(
+                    candidate_id if result.is_candidate_set else None
+                ),
+            ),
+        )
     return project_export(
         project_path=project_path,
         snapshot_path=result.artifact_path,
@@ -431,11 +451,29 @@ def export_for_web(
     output_format: str,
     output_dir: str | Path,
     candidate_id: str = "recommended",
+    request: ExportRequest | None = None,
 ) -> Path:
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_format = output_format.lower()
-    output_path = output_root / f"seating.{export_extension(normalized_format)}"
+    output_name = (
+        "seating.print.html"
+        if normalized_format == "print-html"
+        else f"seating.{export_extension(normalized_format)}"
+    )
+    output_path = output_root / output_name
+    if request is not None:
+        if request.output_format != normalized_format:
+            raise ValueError("request output format does not match output_format.")
+        request = replace(
+            request,
+            output_path=output_path,
+            candidate_id=candidate_id if result.is_candidate_set else None,
+        )
+        return export(
+            snapshot_path=result.artifact_path,
+            request=request,
+        )
     return export(
         snapshot_path=result.artifact_path,
         output_format=normalized_format,

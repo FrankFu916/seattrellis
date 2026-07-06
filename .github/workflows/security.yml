@@ -1,0 +1,64 @@
+name: Security and package hygiene
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install package and audit tool
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install ".[all,dev]" pip-audit
+      - name: Audit installed dependencies
+        run: python -m pip_audit
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  package-hygiene:
+    name: Repository and package hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check tracked files
+        run: python scripts/check_repository_hygiene.py
+      - name: Check package version consistency
+        run: python scripts/check_release_version.py
+      - name: Build and validate distributions
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Check distribution contents
+        run: |
+          for archive in dist/*; do
+            python scripts/check_repository_hygiene.py --archive "$archive"
+          done

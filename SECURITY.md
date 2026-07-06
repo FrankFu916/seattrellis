@@ -19,3 +19,16 @@ Do not include any of the following in public Issues, Pull Requests, screenshots
 ## Local-First Design
 
 SeatTrellis processes data locally by default and does not upload classroom data to a cloud service. Users are responsible for keeping real data in ignored private folders such as `private/`, `data/`, `outputs/`, `exports/`, or `snapshots/`.
+
+## Automated Checks
+
+Pull requests and the default branch run:
+
+- dependency vulnerability auditing;
+- secret scanning;
+- tracked-file and package-content hygiene checks;
+- wheel and source-distribution metadata validation.
+
+These checks reduce accidental disclosure risk but do not prove that a fixture
+is fictional. Contributors must still inspect every example, screenshot, log,
+and generated artifact before publishing it.

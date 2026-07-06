@@ -13,13 +13,13 @@ import tempfile
 from pathlib import Path
 
 from seattrellis.exporters.print_html import (
-    PrintPrivacyOptions,
     _default_privacy,
     _render_print_html,
     _validate_template,
 )
 from seattrellis.models.candidate import CandidatePlan
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.service_types import PageOptions, PrivacyOptions
 
 
 def _configure_macos_library_path(
@@ -71,8 +71,10 @@ def export_pdf(
     output: str | Path,
     *,
     template: str = "public",
-    privacy: PrintPrivacyOptions | None = None,
+    privacy: PrivacyOptions | None = None,
     candidate: CandidatePlan | None = None,
+    page: PageOptions | None = None,
+    locale: str = "zh",
 ) -> Path:
     """Export a seating snapshot as PDF via WeasyPrint.
 
@@ -120,6 +122,8 @@ def export_pdf(
         template=template,
         privacy=resolved_privacy,
         candidate=candidate,
+        page=page or PageOptions(),
+        locale=locale,
     )
 
     path = Path(output)
