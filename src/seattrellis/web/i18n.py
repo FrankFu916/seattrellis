@@ -225,6 +225,20 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
     "orientation_landscape": ("横向", "Landscape"),
     "page_scale": ("页面缩放", "Page scale"),
     "export_locale": ("导出语言", "Export language"),
+    "export_format": ("导出格式", "Export format"),
+    "export_on_demand": (
+        "非 JSON 文件会在点击生成后再创建，避免页面加载时触发可选导出依赖。",
+        "Non-JSON files are created only after you click prepare, so optional "
+        "export dependencies are not loaded during page rendering.",
+    ),
+    "prepare_export": (
+        "生成 {label} 导出文件",
+        "Prepare {label} export",
+    ),
+    "export_ready": (
+        "{label} 已生成，可以下载。",
+        "{label} export is ready to download.",
+    ),
     "artifact_missing": (
         "结果文件已不可用，请重新求解。",
         "The result file is no longer available. Run the solve again.",

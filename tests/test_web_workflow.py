@@ -5,6 +5,7 @@ import importlib
 import py_compile
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -223,6 +224,86 @@ def test_web_export_applies_shared_privacy_and_page_options(tmp_path) -> None:
     assert "Student 01" in html
     assert "Teacher information" in html
     assert result.artifact.candidates[0].snapshot.students[0].name not in html
+
+
+def test_web_pdf_export_runs_in_isolated_subprocess(monkeypatch, tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=2,
+    )
+    request = ExportRequest(
+        output_format="pdf",
+        template="teacher",
+        privacy=PrivacyOptions(
+            hide_scores=True,
+            hide_notes=True,
+            hide_special_needs=True,
+            anonymize=True,
+            show_height=False,
+            show_vision=False,
+        ),
+        page=PageOptions(orientation="landscape", scale=0.9),
+        locale="en",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        output = Path(cmd[cmd.index("--output") + 1])
+        output.write_bytes(b"%PDF-1.7\n")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(workflow.subprocess, "run", fake_run)
+
+    output = workflow.export_for_web(
+        result,
+        output_format="pdf",
+        output_dir=tmp_path / "exports",
+        candidate_id="recommended",
+        request=request,
+    )
+
+    cmd = captured["cmd"]
+    assert output.read_bytes().startswith(b"%PDF")
+    assert cmd[:4] == [sys.executable, "-m", "seattrellis.cli", "export"]
+    assert ["--candidate", "recommended"] == cmd[
+        cmd.index("--candidate") : cmd.index("--candidate") + 2
+    ]
+    assert "--hide-score" in cmd
+    assert "--hide-notes" in cmd
+    assert "--hide-special-needs" in cmd
+    assert "--hide-height" in cmd
+    assert "--hide-vision" in cmd
+    assert "--anonymize" in cmd
+    assert captured["kwargs"]["timeout"] == 60
+
+
+def test_web_pdf_export_reports_worker_crash(monkeypatch, tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=1,
+    )
+    request = ExportRequest(output_format="pdf")
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, -5, stdout="", stderr="glib failed")
+
+    monkeypatch.setattr(workflow.subprocess, "run", fake_run)
+
+    with pytest.raises(MissingOptionalDependencyError, match="signal 5"):
+        workflow.export_for_web(
+            result,
+            output_format="pdf",
+            output_dir=tmp_path / "exports",
+            request=request,
+        )
 
 
 def test_web_export_rejects_request_format_mismatch(tmp_path) -> None:
@@ -451,7 +532,7 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
 
     assert not app.exception
     labels = {control.label for control in app.selectbox}
-    assert {"模板", "A4 方向", "导出语言"} <= labels
+    assert {"模板", "A4 方向", "导出语言", "导出格式"} <= labels
     checkbox_labels = {control.label for control in app.checkbox}
     assert {
         "隐藏成绩",
@@ -461,6 +542,8 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
         "隐藏视力信息",
         "匿名化姓名",
     } <= checkbox_labels
+    assert any(button.label == "生成 HTML 导出文件" for button in app.button)
+    assert not any("PDF export requires" in message.value for message in app.info)
 
 
 def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:

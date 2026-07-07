@@ -554,14 +554,52 @@ def _render_exports(
                 mime="application/json",
             )
 
-    for output_format, mime in [
-        ("html", "text/html"),
-        ("print-html", "text/html"),
-        ("pdf", "application/pdf"),
-        ("png", "image/png"),
-        ("excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-        ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-    ]:
+    export_formats = {
+        "html": ("HTML", "text/html"),
+        "print-html": ("Print HTML", "text/html"),
+        "pdf": ("PDF", "application/pdf"),
+        "png": ("PNG", "image/png"),
+        "excel": (
+            "Excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+        "docx": (
+            "DOCX",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+    }
+    output_format = st.selectbox(
+        _t("export_format"),
+        list(export_formats),
+        format_func=lambda value: export_formats[value][0],
+        key=f"{export_key}_format",
+    )
+    export_label, mime = export_formats[output_format]
+    st.caption(_t("export_on_demand"))
+
+    export_signature = (
+        str(result.artifact_path),
+        str(result.report_path) if result.report_path is not None else "",
+        str(project_path) if project_path is not None else "",
+        output_format,
+        candidate_id,
+        template,
+        privacy.hide_scores,
+        privacy.hide_notes,
+        privacy.hide_special_needs,
+        privacy.anonymize,
+        privacy.show_height,
+        privacy.show_vision,
+        page.orientation,
+        page.scale,
+        export_locale,
+    )
+    prepared_key = f"{export_key}_prepared_download"
+    if st.button(
+        _t("prepare_export", label=export_label),
+        key=f"{export_key}_prepare_{output_format}",
+    ):
+        st.session_state.pop(prepared_key, None)
         try:
             request = None
             if output_format in {"print-html", "pdf", "docx"}:
@@ -594,7 +632,6 @@ def _render_exports(
                 )
         except MissingOptionalDependencyError as exc:
             st.info(str(exc))
-            continue
         except Exception as exc:
             st.warning(
                 _t(
@@ -603,15 +640,30 @@ def _render_exports(
                     error=exc,
                 )
             )
-            continue
+        else:
+            try:
+                st.session_state[prepared_key] = {
+                    "signature": export_signature,
+                    "label": export_label,
+                    "data": output_path.read_bytes(),
+                    "file_name": output_path.name,
+                    "mime": mime,
+                }
+            except (FileNotFoundError, OSError) as exc:
+                st.warning(_t("export_unavailable", error=exc))
+
+    prepared = st.session_state.get(prepared_key)
+    if prepared and prepared.get("signature") == export_signature:
+        st.success(_t("export_ready", label=prepared["label"]))
         try:
             st.download_button(
-                _t("download", label=output_format.upper()),
-                data=output_path.read_bytes(),
-                file_name=output_path.name,
-                mime=mime,
+                _t("download", label=prepared["label"]),
+                data=prepared["data"],
+                file_name=prepared["file_name"],
+                mime=prepared["mime"],
+                key=f"{export_key}_download_prepared",
             )
-        except (FileNotFoundError, OSError) as exc:
+        except (KeyError, TypeError) as exc:
             st.warning(_t("export_unavailable", error=exc))
 
 

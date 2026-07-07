@@ -30,7 +30,7 @@ jobs:
       - name: CLI help smoke test
         run: seattrellis --help
       - name: Run minimal install tests
-        run: pytest tests/test_minimal_install.py
+        run: python -m pytest tests/test_minimal_install.py
 
   full:
     name: Full / ${{ matrix.os }} / Python ${{ matrix.python-version }}
@@ -53,7 +53,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[all,dev]"
       - name: Run tests
-        run: pytest
+        run: python -m pytest
       - name: Build package
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: python -m build
