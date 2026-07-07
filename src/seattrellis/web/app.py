@@ -419,12 +419,39 @@ def _render_exports(
     """Render download buttons for all export formats."""
     st.subheader(_t("exports"))
     export_key = "project_export" if project_path is not None else "quick_export"
+    export_formats = {
+        "print-html": ("Print HTML", "text/html"),
+        "pdf": ("PDF", "application/pdf"),
+        "docx": (
+            "DOCX",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        "html": ("HTML", "text/html"),
+        "png": ("PNG", "image/png"),
+        "excel": (
+            "Excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    }
+    configurable_formats = {"print-html", "pdf", "docx"}
     with st.expander(_t("export_settings"), expanded=True):
+        output_format = st.selectbox(
+            _t("export_format"),
+            list(export_formats),
+            format_func=lambda value: export_formats[value][0],
+            key=f"{export_key}_format",
+        )
+        export_label, mime = export_formats[output_format]
+        st.caption(_t("export_on_demand"))
+
         template_labels = {
             "public": _t("template_public"),
             "teacher": _t("template_teacher"),
             "report": _t("template_report"),
         }
+        supports_privacy_options = output_format in configurable_formats
+        if not supports_privacy_options:
+            st.info(_t("export_privacy_unsupported"))
         template_options = ["public", "teacher"]
         if result.is_candidate_set:
             template_options.append("report")
@@ -439,6 +466,7 @@ def _render_exports(
             template_options,
             format_func=template_labels.__getitem__,
             key=template_key,
+            disabled=not supports_privacy_options,
         )
         defaults = PrivacyOptions.for_template(template)
         st.caption(_t("privacy_defaults"))
@@ -447,37 +475,40 @@ def _render_exports(
             hide_scores = st.checkbox(
                 _t("hide_scores"),
                 value=defaults.hide_scores,
-                disabled=defaults.hide_scores,
+                disabled=defaults.hide_scores or not supports_privacy_options,
                 key=f"{export_key}_hide_scores_{template}",
             )
             hide_notes = st.checkbox(
                 _t("hide_notes"),
                 value=defaults.hide_notes,
-                disabled=defaults.hide_notes,
+                disabled=defaults.hide_notes or not supports_privacy_options,
                 key=f"{export_key}_hide_notes_{template}",
             )
             hide_special_needs = st.checkbox(
                 _t("hide_special_needs"),
                 value=defaults.hide_special_needs,
-                disabled=defaults.hide_special_needs,
+                disabled=(
+                    defaults.hide_special_needs or not supports_privacy_options
+                ),
                 key=f"{export_key}_hide_needs_{template}",
             )
         with privacy_columns[1]:
             hide_height = st.checkbox(
                 _t("hide_height"),
                 value=not defaults.show_height,
-                disabled=not defaults.show_height,
+                disabled=not defaults.show_height or not supports_privacy_options,
                 key=f"{export_key}_hide_height_{template}",
             )
             hide_vision = st.checkbox(
                 _t("hide_vision"),
                 value=not defaults.show_vision,
-                disabled=not defaults.show_vision,
+                disabled=not defaults.show_vision or not supports_privacy_options,
                 key=f"{export_key}_hide_vision_{template}",
             )
             anonymize = st.checkbox(
                 _t("anonymize_names"),
                 value=False,
+                disabled=not supports_privacy_options,
                 key=f"{export_key}_anonymize_{template}",
             )
 
@@ -488,6 +519,7 @@ def _render_exports(
                 ["portrait", "landscape"],
                 format_func=lambda value: _t(f"orientation_{value}"),
                 key=f"{export_key}_orientation",
+                disabled=not supports_privacy_options,
             )
         with page_columns[1]:
             page_scale = st.number_input(
@@ -497,6 +529,7 @@ def _render_exports(
                 value=1.0,
                 step=0.1,
                 key=f"{export_key}_page_scale",
+                disabled=not supports_privacy_options,
             )
         with page_columns[2]:
             export_locale = st.selectbox(
@@ -505,6 +538,7 @@ def _render_exports(
                 index=0 if _locale() == "zh" else 1,
                 format_func=lambda value: "简体中文" if value == "zh" else "English",
                 key=f"{export_key}_locale",
+                disabled=not supports_privacy_options,
             )
 
     privacy = PrivacyOptions(
@@ -554,29 +588,6 @@ def _render_exports(
                 mime="application/json",
             )
 
-    export_formats = {
-        "html": ("HTML", "text/html"),
-        "print-html": ("Print HTML", "text/html"),
-        "pdf": ("PDF", "application/pdf"),
-        "png": ("PNG", "image/png"),
-        "excel": (
-            "Excel",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ),
-        "docx": (
-            "DOCX",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ),
-    }
-    output_format = st.selectbox(
-        _t("export_format"),
-        list(export_formats),
-        format_func=lambda value: export_formats[value][0],
-        key=f"{export_key}_format",
-    )
-    export_label, mime = export_formats[output_format]
-    st.caption(_t("export_on_demand"))
-
     export_signature = (
         str(result.artifact_path),
         str(result.report_path) if result.report_path is not None else "",
@@ -602,7 +613,7 @@ def _render_exports(
         st.session_state.pop(prepared_key, None)
         try:
             request = None
-            if output_format in {"print-html", "pdf", "docx"}:
+            if output_format in configurable_formats:
                 request = ExportRequest(
                     output_format=output_format,
                     template=template,

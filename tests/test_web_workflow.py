@@ -542,8 +542,20 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
         "隐藏视力信息",
         "匿名化姓名",
     } <= checkbox_labels
-    assert any(button.label == "生成 HTML 导出文件" for button in app.button)
+    assert any(button.label == "生成 Print HTML 导出文件" for button in app.button)
     assert not any("PDF export requires" in message.value for message in app.info)
+
+    export_format = next(
+        control for control in app.selectbox if control.label == "导出格式"
+    )
+    export_format.set_value("html")
+    app.run(timeout=30)
+
+    assert not app.exception
+    assert any(
+        "不会应用匿名化或隐藏字段选项" in message.value
+        for message in app.info
+    )
 
 
 def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:
