@@ -76,7 +76,7 @@ def find_problems(paths: list[str]) -> list[str]:
 
 def workspace_metadata(root: Path) -> list[str]:
     return [
-        str(path.relative_to(root))
+        path.relative_to(root).as_posix()
         for path in root.rglob(".DS_Store")
         if ".git" not in path.relative_to(root).parts
     ]
