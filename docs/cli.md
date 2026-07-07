@@ -19,7 +19,31 @@
 - `0`：命令成功；
 - 非 `0`：输入、依赖、校验、求解或导出失败。
 
-命令默认使用 deterministic fallback solver。安装 `solver` extra 并设置 `SEATTRELLIS_USE_ORTOOLS=1` 后才启用 OR-Tools。
+命令默认使用 deterministic fallback solver。`solve` 和 `project-solve` 支持
+`--backend auto|fallback|ortools`：
+
+- `auto`：保持兼容行为；默认使用 fallback，若设置旧环境变量
+  `SEATTRELLIS_USE_ORTOOLS=1` 或 `SEATTRELLIS_BACKEND=ortools` 则使用 OR-Tools；
+- `fallback`：显式使用内置启发式求解器；
+- `ortools`：显式使用 OR-Tools，不需要再设置旧环境变量。
+
+`doctor` 会显示当前 backend 默认解析结果。OR-Tools 超时或返回 `UNKNOWN`
+时会提示“未在时间限制内找到方案”，不会再误报为确认无解。
+
+## 性能基准
+
+发布前可运行固定虚构数据集基准：
+
+```bash
+python scripts/benchmark_solver.py \
+  --sizes 40,50,60 \
+  --backends fallback,ortools \
+  --candidates 1 \
+  --time-limit 10 \
+  --output outputs/benchmark-solver.json
+```
+
+详见[性能基准](benchmarks.md)。
 
 ## 导出模板与隐私
 

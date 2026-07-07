@@ -91,10 +91,10 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 
 ```bash
 python -m pip install -e ".[solver]"
-SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --backend ortools
 ```
 
-只有设置 `SEATTRELLIS_USE_ORTOOLS=1` 时才会尝试导入 OR-Tools。若未安装 `solver` extra，CLI 会提示安装命令并以非零退出码结束。
+`--backend ortools` 会显式尝试导入 OR-Tools。若未安装 `solver` extra，CLI 会提示安装命令并以非零退出码结束。旧的 `SEATTRELLIS_USE_ORTOOLS=1` 仍然兼容。
 
 ## 验证
 

@@ -1,8 +1,16 @@
 """Solver APIs."""
 
 from seattrellis.solver.result import SeatingSolution
+from seattrellis.solver.backend import SolverBackend, normalize_solver_backend, resolve_solver_backend
 
-__all__ = ["SeatTrellisSolveError", "SeatingSolution", "solve_seating"]
+__all__ = [
+    "SeatTrellisSolveError",
+    "SeatingSolution",
+    "SolverBackend",
+    "normalize_solver_backend",
+    "resolve_solver_backend",
+    "solve_seating",
+]
 
 
 def __getattr__(name: str):

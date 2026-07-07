@@ -6,7 +6,8 @@ functions handle file loading, output paths, and command-oriented formatting.
 
 from __future__ import annotations
 
-import os
+import contextlib
+import io
 import sys
 from math import isfinite
 from pathlib import Path
@@ -73,6 +74,12 @@ from seattrellis.service_types import (
     score_text,
 )
 from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.solver.backend import (
+    SOLVER_BACKENDS,
+    normalize_solver_backend,
+    resolve_solver_backend,
+    solver_backend_environment_summary,
+)
 
 
 # In-memory operations
@@ -119,6 +126,7 @@ def compute_solve(input: SolveInput) -> SolveOutput:
         history_snapshots=snapshots,
         options=options,
         time_limit_seconds=input.time_limit_seconds,
+        backend=input.backend,
     )
 
     _apply_preset_metadata(
@@ -229,6 +237,7 @@ def solve(
     candidate_count: int = 1,
     seed: int | None = None,
     report_path: str | Path | None = None,
+    backend: str = "auto",
 ) -> Path:
     path, _summary = solve_with_report(
         students_path=students_path,
@@ -242,6 +251,7 @@ def solve(
         candidate_count=candidate_count,
         seed=seed,
         report_path=report_path,
+        backend=backend,
     )
     return path
 
@@ -259,11 +269,13 @@ def solve_with_report(
     candidate_count: int = 1,
     seed: int | None = None,
     report_path: str | Path | None = None,
+    backend: str = "auto",
 ) -> tuple[Path, str | None]:
     if not 1 <= candidate_count <= 20:
         raise ValueError("candidate_count must be between 1 and 20")
     if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
         raise ValueError("time_limit_seconds must be a finite number >= 0.1")
+    backend = normalize_solver_backend(backend)
 
     students = read_students(students_path)
     layout = load_layout(layout_path)
@@ -285,6 +297,7 @@ def solve_with_report(
             candidate_count=candidate_count,
             seed=seed,
             time_limit_seconds=time_limit_seconds,
+            backend=backend,
         )
     )
     candidate_set = result.candidate_set
@@ -392,7 +405,11 @@ def run_doctor() -> str:
         ("docx", "docx", "python-docx"),
     ]:
         try:
-            __import__(import_name)
+            with (
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                __import__(import_name)
             extras_status.append((extra, "✅", pkg_name))
         except Exception:
             extras_status.append((extra, "❌", pkg_name))
@@ -422,9 +439,16 @@ def run_doctor() -> str:
         f"    {'✅ exists' if outputs_dir.is_dir() else '⚠️  does not exist yet'}"
     )
 
-    ortools_env = os.environ.get("SEATTRELLIS_USE_ORTOOLS")
+    backend_env = solver_backend_environment_summary()
+    requested_backend = "auto"
+    effective_backend = resolve_solver_backend(requested_backend)
     lines.append("")
-    lines.append(f"  SEATTRELLIS_USE_ORTOOLS: {ortools_env or '(not set)'}")
+    lines.append("  Solver backend:")
+    lines.append(f"    Default request: {requested_backend}")
+    lines.append(f"    Effective default: {effective_backend}")
+    lines.append(f"    Supported: {', '.join(SOLVER_BACKENDS)}")
+    lines.append(f"    SEATTRELLIS_BACKEND: {backend_env['SEATTRELLIS_BACKEND']}")
+    lines.append(f"    SEATTRELLIS_USE_ORTOOLS: {backend_env['SEATTRELLIS_USE_ORTOOLS']}")
 
     lines.append("")
     lines.append("  Privacy: all examples/ use fictional data only.")
@@ -576,6 +600,7 @@ def project_solve(
     time_limit_seconds: float = 3.0,
     output_path: str | Path | None = None,
     report_path: str | Path | None = None,
+    backend: str = "auto",
 ) -> tuple[Path, str | None]:
     project, paths = load_project_paths(
         project_path,
@@ -601,6 +626,7 @@ def project_solve(
         candidate_count=count,
         seed=seed,
         report_path=report_path,
+        backend=backend,
     )
 
 

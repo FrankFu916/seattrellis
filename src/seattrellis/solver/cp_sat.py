@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import random
+import time
 from dataclasses import dataclass
 from math import inf, isfinite
 from typing import Any, Mapping, Sequence
@@ -22,6 +22,7 @@ from seattrellis.solver.adjacency import (
 from seattrellis.io.validation import format_infeasible_diagnostic, validate_loaded_inputs
 from seattrellis.solver.result import SeatingSolution
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.solver.backend import normalize_solver_backend, resolve_solver_backend
 
 cp_model = None
 _cp_model_unavailable = False
@@ -49,6 +50,7 @@ def solve_seating(
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
     excluded_assignments: Sequence[Mapping[str, str]] | None = None,
+    backend: str = "auto",
 ) -> SeatingSolution:
     """Solve a seating plan using CP-SAT, with a small deterministic fallback."""
 
@@ -72,8 +74,10 @@ def solve_seating(
     compiled = _compile_rules(students, seats, layout, rules, edges)
     excluded = _compile_excluded_assignments(students, seats, excluded_assignments or [])
 
-    cp_sat = _load_cp_model()
-    if cp_sat is not None:
+    requested_backend = normalize_solver_backend(backend)
+    effective_backend = resolve_solver_backend(requested_backend)
+    if effective_backend == "ortools":
+        _load_cp_model()
         return _solve_with_ortools(
             students,
             seats,
@@ -86,6 +90,7 @@ def solve_seating(
             seed,
             time_limit_seconds,
             excluded,
+            requested_backend,
         )
     return _solve_with_fallback(
         students,
@@ -98,6 +103,8 @@ def solve_seating(
         pair_history,
         seed,
         excluded,
+        time_limit_seconds,
+        requested_backend,
     )
 
 
@@ -107,9 +114,6 @@ def _load_cp_model():
         return cp_model
     if _cp_model_unavailable:
         return None
-    if os.environ.get("SEATTRELLIS_USE_ORTOOLS") not in {"1", "true", "TRUE", "yes", "YES"}:
-        return None
-
     try:  # pragma: no cover - exercised when OR-Tools is installed and enabled.
         from ortools.sat.python import cp_model as loaded_cp_model
     except Exception as exc:  # pragma: no cover - local fallback path is tested.
@@ -131,6 +135,7 @@ def _solve_with_ortools(
     seed: int,
     time_limit_seconds: float,
     excluded_assignments: list[dict[int, int]],
+    requested_backend: str,
 ) -> SeatingSolution:
     model = cp_model.CpModel()
     x: dict[tuple[int, int], Any] = {}
@@ -161,7 +166,15 @@ def _solve_with_ortools(
     solver.parameters.num_search_workers = 1
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        raise SeatTrellisSolveError(format_infeasible_diagnostic(students, layout, rules))
+        raise SeatTrellisSolveError(
+            _format_ortools_failure(
+                status=status,
+                students=students,
+                layout=layout,
+                rules=rules,
+                time_limit_seconds=time_limit_seconds,
+            )
+        )
 
     assignment_by_student: dict[int, int] = {}
     for student_index in range(len(students)):
@@ -176,7 +189,12 @@ def _solve_with_ortools(
         assignment_by_student,
         "OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE",
         float(solver.ObjectiveValue()) if objective_terms else None,
-        {"solver": "ortools-cp-sat"},
+        {
+            "solver": "ortools-cp-sat",
+            "solver_backend_requested": requested_backend,
+            "solver_backend_effective": "ortools",
+            "time_limit_seconds": time_limit_seconds,
+        },
         layout,
         rules,
         history,
@@ -346,18 +364,30 @@ def _solve_with_fallback(
     pair_history: PairHistory | None,
     seed: int,
     excluded_assignments: list[dict[int, int]],
+    time_limit_seconds: float,
+    requested_backend: str,
 ) -> SeatingSolution:
     rng = random.Random(seed)
     attempts = max(40, len(students) * 12)
+    deadline = time.monotonic() + time_limit_seconds
     best_assignment: dict[int, int] | None = None
     best_cost: float = inf
+    completed_attempts = 0
+    stopped_by_time_limit = False
 
     for attempt in range(attempts):
+        if attempt > 0 and time.monotonic() >= deadline:
+            stopped_by_time_limit = True
+            break
         assignment: dict[int, int] = {}
         used_seats: set[int] = set()
         success = True
 
         while len(assignment) < len(students):
+            if attempt > 0 and time.monotonic() >= deadline:
+                stopped_by_time_limit = True
+                success = False
+                break
             choice = _choose_next_student(students, seats, layout, compiled, edges, assignment, used_seats)
             if choice is None:
                 success = False
@@ -407,12 +437,20 @@ def _solve_with_fallback(
             or _assignment_is_excluded(assignment, excluded_assignments)
         ):
             continue
+        completed_attempts += 1
         cost = _fallback_total_cost(assignment, students, seats, layout, rules, edges, history, pair_history)
         if cost < best_cost:
             best_assignment = dict(assignment)
             best_cost = cost
 
     if best_assignment is None:
+        if stopped_by_time_limit:
+            raise SeatTrellisSolveError(
+                "Fallback solver did not find a feasible seating plan within "
+                f"{time_limit_seconds:g} seconds. This is not proof that the "
+                "problem is infeasible; try increasing --time-limit, reducing "
+                "candidate count, or relaxing hard constraints."
+            )
         raise SeatTrellisSolveError(format_infeasible_diagnostic(students, layout, rules))
 
     return _solution_from_assignment(
@@ -421,12 +459,52 @@ def _solve_with_fallback(
         best_assignment,
         "FEASIBLE",
         best_cost,
-        {"solver": "fallback-heuristic", "attempts": attempts},
+        {
+            "solver": "fallback-heuristic",
+            "solver_backend_requested": requested_backend,
+            "solver_backend_effective": "fallback",
+            "attempts": completed_attempts,
+            "attempt_limit": attempts,
+            "stopped_by_time_limit": stopped_by_time_limit,
+            "time_limit_seconds": time_limit_seconds,
+        },
         layout,
         rules,
         history,
         pair_history,
     )
+
+
+def _format_ortools_failure(
+    *,
+    status: int,
+    students: list[Student],
+    layout: ClassroomLayout,
+    rules: RuleSet,
+    time_limit_seconds: float,
+) -> str:
+    status_name = _ortools_status_name(status)
+    if status_name == "INFEASIBLE":
+        return format_infeasible_diagnostic(students, layout, rules)
+    if status_name == "MODEL_INVALID":
+        return (
+            "OR-Tools rejected the internal CP-SAT model as invalid. "
+            "Please report this with the input files that reproduce it."
+        )
+    return (
+        "OR-Tools did not find a feasible seating plan within "
+        f"{time_limit_seconds:g} seconds (status: {status_name}). "
+        "This is not proof that the problem is infeasible. Try increasing "
+        "--time-limit, using --backend fallback, reducing candidate count, "
+        "or relaxing soft rules that make the model large."
+    )
+
+
+def _ortools_status_name(status: int) -> str:
+    for name in ("OPTIMAL", "FEASIBLE", "INFEASIBLE", "MODEL_INVALID", "UNKNOWN"):
+        if getattr(cp_model, name, None) == status:
+            return name
+    return f"status {status}"
 
 
 def _choose_next_student(

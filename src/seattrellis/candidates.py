@@ -25,6 +25,7 @@ def generate_candidate_set(
     history_snapshots: Sequence[SeatingSnapshot] | None = None,
     options: MultiSolveOptions | None = None,
     time_limit_seconds: float = 3.0,
+    backend: str = "auto",
 ) -> CandidateSet:
     options = options or MultiSolveOptions(seed=rules.seed)
     snapshots = list(history_snapshots or [])
@@ -48,6 +49,7 @@ def generate_candidate_set(
                 seed=candidate_seed,
                 time_limit_seconds=time_limit_seconds,
                 excluded_assignments=excluded_assignments,
+                backend=backend,
             )
         except (SeatTrellisSolveError, MissingOptionalDependencyError):
             if not candidates:

@@ -93,6 +93,7 @@ nav:
   - 开发者:
       - 架构: architecture.md
       - 路线图: roadmap.md
+      - 性能基准: benchmarks.md
       - 规则能力审计: rule-capability-audit.md
       - 架构决策:
           - 原生内核语言: adr/0001-rust-native-core.md

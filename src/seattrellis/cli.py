@@ -13,6 +13,7 @@ from seattrellis.presets import (
 )
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.solver.backend import SOLVER_BACKENDS
 
 try:
     import typer
@@ -149,6 +150,11 @@ if typer is not None:
         history: list[Path] = typer.Option([], "--history", help="Historical snapshot JSON path. Can be repeated."),
         history_dir: Path | None = typer.Option(None, "--history-dir", help="Directory containing historical *.snapshot.json files."),
         time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit in seconds."),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help="Solver backend: auto, fallback, or ortools.",
+        ),
         candidates: int = typer.Option(1, "--candidates", help="Number of distinct candidate plans to generate (1-20)."),
         seed: int | None = typer.Option(None, "--seed", help="Override the rules-file seed."),
         report: Path | None = typer.Option(None, "--report", help="Optional plan comparison report JSON path."),
@@ -164,6 +170,7 @@ if typer is not None:
                     history_paths=history,
                     history_dir=history_dir,
                     time_limit_seconds=time_limit_seconds,
+                    backend=backend,
                     candidate_count=candidates,
                     seed=seed,
                     report_path=report,
@@ -373,6 +380,11 @@ if typer is not None:
         candidates: int | None = typer.Option(None, "--candidates", help="Override the default candidate count."),
         seed: int | None = typer.Option(None, "--seed", help="Override the rules-file seed."),
         time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit in seconds."),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help="Solver backend: auto, fallback, or ortools.",
+        ),
         output: Path | None = typer.Option(None, "--output", "-o", help="Override the output JSON path."),
         report: Path | None = typer.Option(None, "--report", help="Optional plan comparison report JSON path."),
     ) -> None:
@@ -383,6 +395,7 @@ if typer is not None:
                     candidate_count=candidates,
                     seed=seed,
                     time_limit_seconds=time_limit_seconds,
+                    backend=backend,
                     output_path=output,
                     report_path=report,
                 )
@@ -488,6 +501,7 @@ def _run_argparse() -> None:
     solve_parser.add_argument("--history", action="append", default=[])
     solve_parser.add_argument("--history-dir", default=None)
     solve_parser.add_argument("--time-limit", type=float, default=3.0)
+    solve_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
     solve_parser.add_argument("--candidates", type=int, default=1)
     solve_parser.add_argument("--seed", type=int, default=None)
     solve_parser.add_argument("--report", default=None)
@@ -564,6 +578,7 @@ def _run_argparse() -> None:
     project_solve_parser.add_argument("--candidates", type=int, default=None)
     project_solve_parser.add_argument("--seed", type=int, default=None)
     project_solve_parser.add_argument("--time-limit", type=float, default=3.0)
+    project_solve_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
     project_solve_parser.add_argument("--output", "-o", default=None)
     project_solve_parser.add_argument("--report", default=None)
 
@@ -599,6 +614,7 @@ def _run_argparse() -> None:
             history_paths=args.history,
             history_dir=args.history_dir,
             time_limit_seconds=args.time_limit,
+            backend=args.backend,
             candidate_count=args.candidates,
             seed=args.seed,
             report_path=args.report,
@@ -683,6 +699,7 @@ def _run_argparse() -> None:
             candidate_count=args.candidates,
             seed=args.seed,
             time_limit_seconds=args.time_limit,
+            backend=args.backend,
             output_path=args.output,
             report_path=args.report,
         )

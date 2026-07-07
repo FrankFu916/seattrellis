@@ -91,10 +91,10 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 
 ```bash
 python -m pip install -e ".[solver]"
-SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --backend ortools
 ```
 
-SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is set. If the `solver` extra is missing, the CLI prints the install command and exits with a non-zero status.
+`--backend ortools` explicitly asks SeatTrellis to import OR-Tools. If the `solver` extra is missing, the CLI prints the install command and exits with a non-zero status. The legacy `SEATTRELLIS_USE_ORTOOLS=1` environment variable remains supported.
 
 ## Validation
 

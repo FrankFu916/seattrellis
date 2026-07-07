@@ -15,6 +15,7 @@
 ## 跨版本工程要求
 
 - v1.x 保持既有 CLI、service API 和文件格式兼容；
+- v1.4 起 solver backend 必须可显式选择，并清楚区分超时、未知状态和真正无解；
 - RuleSet 在增加复杂规则前获得独立 schema version 和迁移命令；
 - Python 与 Rust 后端通过同一契约测试；
 - 任何默认 backend 变更必须由真实基准和结果质量数据支持；
