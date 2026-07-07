@@ -26,6 +26,7 @@ from seattrellis.io.json_files import InputFileError
 from seattrellis.models.candidate import CandidateSet
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import list_presets
+from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.solver import SeatTrellisSolveError
 from seattrellis.web.config import (
     WebSessionConfig,
@@ -417,6 +418,141 @@ def _render_exports(
 ) -> None:
     """Render download buttons for all export formats."""
     st.subheader(_t("exports"))
+    export_key = "project_export" if project_path is not None else "quick_export"
+    export_formats = {
+        "print-html": ("Print HTML", "text/html"),
+        "pdf": ("PDF", "application/pdf"),
+        "docx": (
+            "DOCX",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        "html": ("HTML", "text/html"),
+        "png": ("PNG", "image/png"),
+        "excel": (
+            "Excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    }
+    configurable_formats = {"print-html", "pdf", "docx"}
+    with st.expander(_t("export_settings"), expanded=True):
+        output_format = st.selectbox(
+            _t("export_format"),
+            list(export_formats),
+            format_func=lambda value: export_formats[value][0],
+            key=f"{export_key}_format",
+        )
+        export_label, mime = export_formats[output_format]
+        st.caption(_t("export_on_demand"))
+
+        template_labels = {
+            "public": _t("template_public"),
+            "teacher": _t("template_teacher"),
+            "report": _t("template_report"),
+        }
+        supports_privacy_options = output_format in configurable_formats
+        if not supports_privacy_options:
+            st.info(_t("export_privacy_unsupported"))
+        template_options = ["public", "teacher"]
+        if result.is_candidate_set:
+            template_options.append("report")
+        template_key = f"{export_key}_template"
+        if (
+            template_key in st.session_state
+            and st.session_state[template_key] not in template_options
+        ):
+            st.session_state[template_key] = "public"
+        template = st.selectbox(
+            _t("export_template"),
+            template_options,
+            format_func=template_labels.__getitem__,
+            key=template_key,
+            disabled=not supports_privacy_options,
+        )
+        defaults = PrivacyOptions.for_template(template)
+        st.caption(_t("privacy_defaults"))
+        privacy_columns = st.columns(2)
+        with privacy_columns[0]:
+            hide_scores = st.checkbox(
+                _t("hide_scores"),
+                value=defaults.hide_scores,
+                disabled=defaults.hide_scores or not supports_privacy_options,
+                key=f"{export_key}_hide_scores_{template}",
+            )
+            hide_notes = st.checkbox(
+                _t("hide_notes"),
+                value=defaults.hide_notes,
+                disabled=defaults.hide_notes or not supports_privacy_options,
+                key=f"{export_key}_hide_notes_{template}",
+            )
+            hide_special_needs = st.checkbox(
+                _t("hide_special_needs"),
+                value=defaults.hide_special_needs,
+                disabled=(
+                    defaults.hide_special_needs or not supports_privacy_options
+                ),
+                key=f"{export_key}_hide_needs_{template}",
+            )
+        with privacy_columns[1]:
+            hide_height = st.checkbox(
+                _t("hide_height"),
+                value=not defaults.show_height,
+                disabled=not defaults.show_height or not supports_privacy_options,
+                key=f"{export_key}_hide_height_{template}",
+            )
+            hide_vision = st.checkbox(
+                _t("hide_vision"),
+                value=not defaults.show_vision,
+                disabled=not defaults.show_vision or not supports_privacy_options,
+                key=f"{export_key}_hide_vision_{template}",
+            )
+            anonymize = st.checkbox(
+                _t("anonymize_names"),
+                value=False,
+                disabled=not supports_privacy_options,
+                key=f"{export_key}_anonymize_{template}",
+            )
+
+        page_columns = st.columns(3)
+        with page_columns[0]:
+            orientation = st.selectbox(
+                _t("page_orientation"),
+                ["portrait", "landscape"],
+                format_func=lambda value: _t(f"orientation_{value}"),
+                key=f"{export_key}_orientation",
+                disabled=not supports_privacy_options,
+            )
+        with page_columns[1]:
+            page_scale = st.number_input(
+                _t("page_scale"),
+                min_value=0.5,
+                max_value=2.0,
+                value=1.0,
+                step=0.1,
+                key=f"{export_key}_page_scale",
+                disabled=not supports_privacy_options,
+            )
+        with page_columns[2]:
+            export_locale = st.selectbox(
+                _t("export_locale"),
+                ["zh", "en"],
+                index=0 if _locale() == "zh" else 1,
+                format_func=lambda value: "简体中文" if value == "zh" else "English",
+                key=f"{export_key}_locale",
+                disabled=not supports_privacy_options,
+            )
+
+    privacy = PrivacyOptions(
+        hide_scores=hide_scores,
+        hide_notes=hide_notes,
+        hide_special_needs=hide_special_needs,
+        anonymize=anonymize,
+        show_height=not hide_height,
+        show_vision=not hide_vision,
+    )
+    page = PageOptions(
+        orientation=orientation,
+        scale=float(page_scale),
+    )
 
     # Use in-memory bytes when available (quick-solve tab); fall back to
     # reading from disk (project tab where files live in project outputs).
@@ -452,20 +588,49 @@ def _render_exports(
                 mime="application/json",
             )
 
-    for output_format, mime in [
-        ("html", "text/html"),
-        ("pdf", "application/pdf"),
-        ("png", "image/png"),
-        ("excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-        ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-    ]:
+    export_signature = (
+        str(result.artifact_path),
+        str(result.report_path) if result.report_path is not None else "",
+        str(project_path) if project_path is not None else "",
+        output_format,
+        candidate_id,
+        template,
+        privacy.hide_scores,
+        privacy.hide_notes,
+        privacy.hide_special_needs,
+        privacy.anonymize,
+        privacy.show_height,
+        privacy.show_vision,
+        page.orientation,
+        page.scale,
+        export_locale,
+    )
+    prepared_key = f"{export_key}_prepared_download"
+    if st.button(
+        _t("prepare_export", label=export_label),
+        key=f"{export_key}_prepare_{output_format}",
+    ):
+        st.session_state.pop(prepared_key, None)
         try:
+            request = None
+            if output_format in configurable_formats:
+                request = ExportRequest(
+                    output_format=output_format,
+                    template=template,
+                    privacy=privacy,
+                    page=page,
+                    locale=export_locale,
+                    candidate_id=(
+                        candidate_id if result.is_candidate_set else None
+                    ),
+                )
             if project_path is None:
                 output_path = export_for_web(
                     result,
                     output_format=output_format,
                     output_dir=output_dir,
                     candidate_id=candidate_id,
+                    request=request,
                 )
             else:
                 output_path = project_export_for_web(
@@ -474,10 +639,10 @@ def _render_exports(
                     output_format=output_format,
                     output_dir=output_dir,
                     candidate_id=candidate_id if result.is_candidate_set else None,
+                    request=request,
                 )
         except MissingOptionalDependencyError as exc:
             st.info(str(exc))
-            continue
         except Exception as exc:
             st.warning(
                 _t(
@@ -486,15 +651,30 @@ def _render_exports(
                     error=exc,
                 )
             )
-            continue
+        else:
+            try:
+                st.session_state[prepared_key] = {
+                    "signature": export_signature,
+                    "label": export_label,
+                    "data": output_path.read_bytes(),
+                    "file_name": output_path.name,
+                    "mime": mime,
+                }
+            except (FileNotFoundError, OSError) as exc:
+                st.warning(_t("export_unavailable", error=exc))
+
+    prepared = st.session_state.get(prepared_key)
+    if prepared and prepared.get("signature") == export_signature:
+        st.success(_t("export_ready", label=prepared["label"]))
         try:
             st.download_button(
-                _t("download", label=output_format.upper()),
-                data=output_path.read_bytes(),
-                file_name=output_path.name,
-                mime=mime,
+                _t("download", label=prepared["label"]),
+                data=prepared["data"],
+                file_name=prepared["file_name"],
+                mime=prepared["mime"],
+                key=f"{export_key}_download_prepared",
             )
-        except (FileNotFoundError, OSError) as exc:
+        except (KeyError, TypeError) as exc:
             st.warning(_t("export_unavailable", error=exc))
 
 

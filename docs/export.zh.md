@@ -32,7 +32,14 @@ seattrellis export --snapshot outputs/candidates.json --candidate candidate_03 -
 - `teacher`：教师内部版，可包含学生字段、规则和 warnings；
 - `report`：解释报告版，包含候选评分和 hard constraint 摘要。
 
-程序接口可通过 `PrintPrivacyOptions` 隐藏成绩、备注、特殊需求、身高和视力，或匿名化姓名。CLI/Web 的细粒度模板与隐私选择仍在后续计划中；当前默认使用公示版。
+程序接口统一使用 `ExportRequest`、`PrivacyOptions` 和 `PageOptions`。
+旧的 `PrintPrivacyOptions` 名称作为兼容别名保留。`public` 默认隐藏成绩、
+备注、特殊需求、身高和视力；`teacher` 默认显示教师内部字段；`report` 默认
+显示评分但隐藏学生备注和健康相关字段。
+
+打印 HTML、PDF 和 Word 已支持 A4 横向/纵向、5–30 mm 页边距和
+0.5–2.0 缩放。CLI 和 Web 均可选择模板、隐私字段、方向、缩放与中英文内容，
+原有命令行和 Python 调用保持兼容。
 
 PDF 依赖系统中文字体与 WeasyPrint 运行库，具体见 [字体策略](font-strategy.zh.md)。异形或超大教室可能需要使用浏览器打印功能手动调整缩放。
 

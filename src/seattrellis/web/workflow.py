@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import os
+import subprocess
+import sys
+from dataclasses import dataclass, replace
 from math import isfinite
 from pathlib import Path
 from typing import Any, Sequence
@@ -30,7 +33,9 @@ from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
+from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import resolve_rules_with_preset
+from seattrellis.service_types import ExportRequest
 
 
 @dataclass(frozen=True)
@@ -387,11 +392,37 @@ def project_export_for_web(
     output_format: str,
     output_dir: str | Path,
     candidate_id: str | None = None,
+    request: ExportRequest | None = None,
 ) -> Path:
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_format = output_format.lower()
-    output_path = output_root / f"project-seating.{export_extension(normalized_format)}"
+    output_name = (
+        "project-seating.print.html"
+        if normalized_format == "print-html"
+        else f"project-seating.{export_extension(normalized_format)}"
+    )
+    output_path = output_root / output_name
+    if request is not None:
+        if request.output_format != normalized_format:
+            raise ValueError("request output format does not match output_format.")
+        if normalized_format == "pdf":
+            return _export_pdf_in_subprocess(
+                snapshot_path=result.artifact_path,
+                output_path=output_path,
+                candidate_id=candidate_id if result.is_candidate_set else None,
+                request=request,
+            )
+        return export(
+            snapshot_path=result.artifact_path,
+            request=replace(
+                request,
+                output_path=output_path,
+                candidate_id=(
+                    candidate_id if result.is_candidate_set else None
+                ),
+            ),
+        )
     return project_export(
         project_path=project_path,
         snapshot_path=result.artifact_path,
@@ -431,17 +462,135 @@ def export_for_web(
     output_format: str,
     output_dir: str | Path,
     candidate_id: str = "recommended",
+    request: ExportRequest | None = None,
 ) -> Path:
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_format = output_format.lower()
-    output_path = output_root / f"seating.{export_extension(normalized_format)}"
+    output_name = (
+        "seating.print.html"
+        if normalized_format == "print-html"
+        else f"seating.{export_extension(normalized_format)}"
+    )
+    output_path = output_root / output_name
+    if request is not None:
+        if request.output_format != normalized_format:
+            raise ValueError("request output format does not match output_format.")
+        if normalized_format == "pdf":
+            return _export_pdf_in_subprocess(
+                snapshot_path=result.artifact_path,
+                output_path=output_path,
+                candidate_id=candidate_id if result.is_candidate_set else None,
+                request=request,
+            )
+        request = replace(
+            request,
+            output_path=output_path,
+            candidate_id=candidate_id if result.is_candidate_set else None,
+        )
+        return export(
+            snapshot_path=result.artifact_path,
+            request=request,
+        )
     return export(
         snapshot_path=result.artifact_path,
         output_format=normalized_format,
         output_path=output_path,
         candidate_id=candidate_id if result.is_candidate_set else None,
     )
+
+
+def _export_pdf_in_subprocess(
+    *,
+    snapshot_path: Path,
+    output_path: Path,
+    candidate_id: str | None,
+    request: ExportRequest,
+) -> Path:
+    """Run Web PDF export out-of-process to isolate native Pango/Cairo crashes."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    privacy = request.resolved_privacy
+    cmd = [
+        sys.executable,
+        "-m",
+        "seattrellis.cli",
+        "export",
+        "--snapshot",
+        str(snapshot_path),
+        "--format",
+        "pdf",
+        "--output",
+        str(output_path),
+        "--template",
+        request.template,
+        "--orientation",
+        request.page.orientation,
+        "--page-scale",
+        str(request.page.scale),
+        "--locale",
+        request.locale,
+    ]
+    if candidate_id is not None:
+        cmd.extend(["--candidate", candidate_id])
+    if privacy.hide_scores:
+        cmd.append("--hide-score")
+    if privacy.hide_notes:
+        cmd.append("--hide-notes")
+    if privacy.hide_special_needs:
+        cmd.append("--hide-special-needs")
+    if not privacy.show_height:
+        cmd.append("--hide-height")
+    if not privacy.show_vision:
+        cmd.append("--hide-vision")
+    if privacy.anonymize:
+        cmd.append("--anonymize")
+
+    src_dir = Path(__file__).resolve().parents[2]
+    repo_dir = src_dir.parent
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        str(src_dir)
+        if not existing_pythonpath
+        else f"{src_dir}{os.pathsep}{existing_pythonpath}"
+    )
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=repo_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise MissingOptionalDependencyError(
+            "PDF export",
+            "pdf",
+            detail="PDF export did not finish within 60 seconds.",
+        ) from exc
+
+    if result.returncode != 0:
+        output = (result.stderr or result.stdout or "").strip()
+        if result.returncode < 0:
+            output = (
+                f"The PDF worker exited after signal {-result.returncode}."
+                + (f"\n{output}" if output else "")
+            )
+        raise MissingOptionalDependencyError(
+            "PDF export",
+            "pdf",
+            detail=output or "The PDF worker exited without producing a file.",
+        )
+    if not output_path.exists():
+        raise MissingOptionalDependencyError(
+            "PDF export",
+            "pdf",
+            detail="The PDF worker finished but did not create the expected file.",
+        )
+    return output_path
 
 
 def candidate_summary_rows(candidate_set: CandidateSet) -> list[dict[str, object]]:

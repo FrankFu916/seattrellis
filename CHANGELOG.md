@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Added
+
+- Added the shared `ExportRequest`, `PrivacyOptions`, and `PageOptions`
+  application contract, including safe public defaults and A4 page settings.
+- Added CLI and Web controls for print templates, field hiding, anonymization,
+  page orientation, scaling, and Chinese or English export content.
+- Added PDF page-orientation and bilingual exporter regression coverage.
+- Added architecture decision records for the Rust native core, the Python
+  OR-Tools integration, and the command-log editing model.
+- Added a rule capability audit that distinguishes implemented rules from
+  model-only declarations.
+- Added repository hygiene, dependency-audit, secret-scan, package-validation,
+  and Trusted Publishing workflows.
+- Added release-tag/package-version consistency checks and an automated
+  TestPyPI installation smoke test.
+- Added deterministic export regression fixtures and documented failed-publish
+  and rollback handling.
+- Added a public roadmap for the v1.3–v1.8 milestones.
+
+### Changed
+
+- Print HTML, PDF, and Word exporters now consume the shared export options
+  while preserving the legacy exporter arguments.
+- Updated the optional OR-Tools range to 9.15.x so its protobuf dependency
+  resolves to a release that fixes CVE-2026-0994.
+- Documented the release environments and the TestPyPI/PyPI Trusted Publishing
+  process.
+
 ## 1.2.3 - 2026-07-03
 
 ### Fixed

@@ -45,7 +45,12 @@ seat、pair rule 和 group 等规则可能引用学生 ID；页面检测到这�
 
 多候选结果可以切换预览，并在同一张表中比较总分、hard constraints 和七个评分维度。座位图、评分明细和分配表会随候选切换同步更新。
 
-页面可下载 snapshot/candidate set、plan report、HTML、PDF、PNG、Excel 和 Word。缺少 optional extra 时会显示对应安装提示，不影响其他格式。
+页面提供导出模板与隐私设置面板，可以选择公示版、教师内部版或候选解释报告，
+并配置匿名化、字段隐藏、A4 横纵向、缩放和中英文内容。模板的安全默认值只能
+进一步收紧；公示版不会因取消某个选项而暴露敏感字段。
+
+页面可下载 snapshot/candidate set、plan report、HTML、打印 HTML、PDF、PNG、
+Excel 和 Word。缺少 optional extra 时会显示对应安装提示，不影响其他格式。
 
 ## 隐私与临时文件
 

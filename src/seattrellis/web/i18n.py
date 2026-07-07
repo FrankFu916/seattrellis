@@ -205,6 +205,47 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
     ),
     "assignment_table": ("📋 分配明细表", "📋 Assignment details"),
     "exports": ("📥 导出", "📥 Exports"),
+    "export_settings": ("导出模板与隐私设置", "Export template and privacy"),
+    "export_template": ("模板", "Template"),
+    "template_public": ("班级公示版", "Public notice"),
+    "template_teacher": ("教师内部版", "Teacher internal"),
+    "template_report": ("方案解释报告", "Explanation report"),
+    "privacy_defaults": (
+        "模板的安全默认项只能进一步隐藏，不能在此处放宽。",
+        "Safe template defaults can be tightened here, but not loosened.",
+    ),
+    "hide_scores": ("隐藏成绩", "Hide scores"),
+    "hide_notes": ("隐藏备注", "Hide notes"),
+    "hide_special_needs": ("隐藏特殊需求", "Hide special needs"),
+    "hide_height": ("隐藏身高", "Hide height"),
+    "hide_vision": ("隐藏视力信息", "Hide vision information"),
+    "anonymize_names": ("匿名化姓名", "Anonymize names"),
+    "page_orientation": ("A4 方向", "A4 orientation"),
+    "orientation_portrait": ("纵向", "Portrait"),
+    "orientation_landscape": ("横向", "Landscape"),
+    "page_scale": ("页面缩放", "Page scale"),
+    "export_locale": ("导出语言", "Export language"),
+    "export_format": ("导出格式", "Export format"),
+    "export_on_demand": (
+        "非 JSON 文件会在点击生成后再创建，避免页面加载时触发可选导出依赖。",
+        "Non-JSON files are created only after you click prepare, so optional "
+        "export dependencies are not loaded during page rendering.",
+    ),
+    "export_privacy_unsupported": (
+        "模板与隐私设置仅适用于 Print HTML、PDF 和 DOCX。当前格式使用基础导出，"
+        "不会应用匿名化或隐藏字段选项。",
+        "Template and privacy settings apply only to Print HTML, PDF, and DOCX. "
+        "The selected format uses the basic exporter and does not apply "
+        "anonymization or hidden-field options.",
+    ),
+    "prepare_export": (
+        "生成 {label} 导出文件",
+        "Prepare {label} export",
+    ),
+    "export_ready": (
+        "{label} 已生成，可以下载。",
+        "{label} export is ready to download.",
+    ),
     "artifact_missing": (
         "结果文件已不可用，请重新求解。",
         "The result file is no longer available. Run the solve again.",

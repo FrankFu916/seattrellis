@@ -180,7 +180,7 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 - historical snapshot statistics, the local `history-report` fairness summary, and `pair-report` relationship-history summary;
 - multi-candidate generation, explainable scoring, comparison reports, and recommended-candidate selection;
 - portable relative-path project configuration with `project-init`, `project-info`, `project-validate`, `project-solve`, and `project-export`;
-- HTML and print-friendly HTML export, with Excel, PNG, PDF, and Word available through their optional extras;
+- HTML and print-friendly HTML export, with Excel, PNG, PDF, and Word available through their optional extras; print-oriented formats support public, teacher, and report templates with privacy, A4 layout, scaling, and bilingual content;
 - validation preflight and conflict diagnostics, CLI, local Streamlit UI, fictional examples, pytest, and GitHub Actions.
 
 ## Privacy

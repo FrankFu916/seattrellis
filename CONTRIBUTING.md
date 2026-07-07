@@ -24,9 +24,18 @@ python -m pip install -e ".[dev,web]"
 
 ```bash
 pytest
+python scripts/check_repository_hygiene.py
 ```
 
 Please add or update tests for any new rule, importer, exporter, or CLI behavior.
+
+Changes to solver behavior must update the
+[rule capability audit](docs/rule-capability-audit.md). A rule is considered
+implemented only when validation, solving, scoring (where applicable), tests,
+and documentation agree.
+
+Architecture-level decisions should be recorded in `docs/adr/` before two
+independent implementations or public interfaces depend on them.
 
 ## Issues
 
@@ -46,6 +55,7 @@ Before opening a Pull Request:
 - update README or examples if user-facing behavior changes;
 - keep examples fictional;
 - do not commit generated outputs, snapshots, `.env` files, or private classroom data.
+- run the repository hygiene check before pushing.
 
 ## Privacy
 

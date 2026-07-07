@@ -92,6 +92,13 @@ nav:
       - 常见问题: troubleshooting.md
   - 开发者:
       - 架构: architecture.md
+      - 路线图: roadmap.md
+      - 规则能力审计: rule-capability-audit.md
+      - 架构决策:
+          - 原生内核语言: adr/0001-rust-native-core.md
+          - OR-Tools 边界: adr/0002-keep-ortools-in-python.md
+          - 编辑操作模型: adr/0003-command-log-editing.md
       - API 参考: api.md
+      - 发布与可信发布: publishing.md
       - 发布检查: release-checklist.md
   - 桌面端调研: desktop-research.zh.md

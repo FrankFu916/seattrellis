@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -15,15 +16,21 @@ from seattrellis.exporters import (
 from seattrellis.exporters.print_html import PrintPrivacyOptions
 from seattrellis.exporters.pdf import _configure_macos_library_path
 from seattrellis.io.json_files import load_layout, load_rules
+from seattrellis.io.json_files import write_json_model
 from seattrellis.io.students import read_students
-from seattrellis.models.candidate import CandidatePlan
+from seattrellis.models.candidate import CandidatePlan, CandidateSet
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.scoring import score_snapshot
+from seattrellis.service import export as service_export
+from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.solver import solve_seating
+
+
+FIXED_CREATED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
 
 
 def _fixture_snapshot() -> SeatingSnapshot:
@@ -31,12 +38,14 @@ def _fixture_snapshot() -> SeatingSnapshot:
     layout = load_layout("tests/fixtures/classroom.json")
     rules = load_rules("tests/fixtures/rules.json")
     solution = solve_seating(students, layout, rules, seed=rules.seed)
-    return solution.to_snapshot(
+    snapshot = solution.to_snapshot(
         students=students,
         layout=layout,
         rules=rules,
         seed=rules.seed,
     )
+    snapshot.created_at = FIXED_CREATED_AT
+    return snapshot
 
 
 def _sensitive_snapshot() -> SeatingSnapshot:
@@ -55,6 +64,7 @@ def _sensitive_snapshot() -> SeatingSnapshot:
         seats=[SeatNode(seat_id='S<1>"', row=1, col=1)],
     )
     return SeatingSnapshot(
+        created_at=FIXED_CREATED_AT,
         students=[student],
         layout=layout,
         rules=RuleSet(),
@@ -118,6 +128,19 @@ def test_print_html_templates_render_expected_sections_and_escape_html(
         template="report",
         candidate=candidate,
     ).read_text(encoding="utf-8")
+    english_teacher_html = export_print_html(
+        snapshot,
+        tmp_path / "teacher.en.html",
+        template="teacher",
+        locale="en",
+    ).read_text(encoding="utf-8")
+    english_report_html = export_print_html(
+        snapshot,
+        tmp_path / "report.en.html",
+        template="report",
+        candidate=candidate,
+        locale="en",
+    ).read_text(encoding="utf-8")
 
     assert "&lt;script&gt;alert(&quot;student&quot;)&lt;/script&gt;" in public_html
     assert "<script>" not in public_html
@@ -133,7 +156,16 @@ def test_print_html_templates_render_expected_sections_and_escape_html(
 
     assert "方案解释报告" in report_html
     assert "candidate_&lt;01&gt;" in report_html
-    assert "Hard Constraints" in report_html
+    assert "硬约束" in report_html
+
+    assert "Teacher information" in english_teacher_html
+    assert "Student details" in english_teacher_html
+    assert ">Score<" in english_teacher_html
+    assert ">Vision<" in english_teacher_html
+    assert "教师信息" not in english_teacher_html
+    assert "Plan explanation" in english_report_html
+    assert "Fair rotation" in english_report_html
+    assert "Recommendation" in english_report_html
 
 
 def test_teacher_html_privacy_options_hide_every_sensitive_field(
@@ -168,6 +200,113 @@ def test_teacher_html_privacy_options_hide_every_sensitive_field(
     ]:
         assert secret not in html
     assert "学生 01" in html
+
+
+def test_export_request_public_defaults_are_safe() -> None:
+    request = ExportRequest(output_format="print-html")
+
+    assert request.template == "public"
+    assert request.candidate_scope == "selected"
+    assert request.locale == "zh"
+    assert request.page == PageOptions()
+    assert request.resolved_privacy == PrivacyOptions(
+        hide_scores=True,
+        hide_notes=True,
+        hide_special_needs=True,
+        anonymize=False,
+        show_height=False,
+        show_vision=False,
+    )
+
+
+def test_export_request_applies_page_options_to_print_html(tmp_path) -> None:
+    request = ExportRequest(
+        output_format="print-html",
+        output_path=tmp_path / "landscape.html",
+        page=PageOptions(orientation="landscape", scale=0.8, margin_mm=10),
+        locale="en",
+    )
+
+    html = export_snapshot(
+        _sensitive_snapshot(),
+        request=request,
+    ).read_text(encoding="utf-8")
+
+    assert '<html lang="en">' in html
+    assert "@page { size: A4 landscape; margin: 10mm; }" in html
+    assert "font-size: 10.4px" in html
+    assert "width: 80px" in html
+    for secret in [
+        "SECRET_NOTE",
+        "SECRET_NEED",
+        "SECRET_TAG",
+        "SECRET_VISION",
+        "88.0",
+        "172.0",
+    ]:
+        assert secret not in html
+
+
+@pytest.mark.parametrize(
+    ("factory", "message"),
+    [
+        (lambda: PageOptions(orientation="diagonal"), "orientation"),
+        (lambda: PageOptions(scale=0.1), "scale"),
+        (lambda: PageOptions(paper_size="Letter"), "A4"),
+        (
+            lambda: ExportRequest(output_format="print-html", template="unknown"),
+            "template",
+        ),
+        (
+            lambda: ExportRequest(output_format="print-html", locale="fr"),
+            "locale",
+        ),
+        (
+            lambda: ExportRequest(
+                output_format="print-html", candidate_scope="unknown"
+            ),
+            "candidate scope",
+        ),
+    ],
+)
+def test_export_request_rejects_invalid_options(factory, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        factory()
+
+
+def test_non_print_export_rejects_silently_ignored_options(tmp_path) -> None:
+    request = ExportRequest(
+        output_format="html",
+        output_path=tmp_path / "seating.html",
+        privacy=PrivacyOptions(anonymize=True),
+    )
+
+    with pytest.raises(ValueError, match="does not yet support"):
+        export_snapshot(_sensitive_snapshot(), request=request)
+
+
+def test_service_export_passes_candidate_to_report_template(tmp_path) -> None:
+    snapshot = _sensitive_snapshot()
+    candidate = _candidate(snapshot)
+    artifact_path = write_json_model(
+        CandidateSet(
+            candidates=[candidate],
+            recommended_candidate_id=candidate.candidate_id,
+        ),
+        tmp_path / "candidates.json",
+    )
+    request = ExportRequest(
+        output_format="print-html",
+        output_path=tmp_path / "report.html",
+        template="report",
+        candidate_id="recommended",
+    )
+
+    report_path = service_export(snapshot_path=artifact_path, request=request)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "方案解释报告" in report
+    assert "candidate_&lt;01&gt;" in report
 
 
 def test_docx_respects_teacher_defaults_and_privacy_options(tmp_path) -> None:
@@ -214,6 +353,50 @@ def test_docx_respects_teacher_defaults_and_privacy_options(tmp_path) -> None:
         assert secret not in private_xml
 
 
+def test_docx_applies_landscape_page_options(tmp_path) -> None:
+    pytest.importorskip("docx")
+    output = export_docx(
+        _sensitive_snapshot(),
+        tmp_path / "landscape.docx",
+        page=PageOptions(orientation="landscape", scale=0.8, margin_mm=10),
+    )
+
+    document_xml = _docx_xml(output)
+    assert 'w:orient="landscape"' in document_xml
+    assert "<w:pgMar" in document_xml
+
+
+def test_docx_renders_english_teacher_labels(tmp_path) -> None:
+    pytest.importorskip("docx")
+    output = export_docx(
+        _sensitive_snapshot(),
+        tmp_path / "teacher.en.docx",
+        template="teacher",
+        locale="en",
+    )
+
+    document_xml = _docx_xml(output)
+    assert "Student details" in document_xml
+    assert ">Score<" in document_xml
+    assert ">Vision<" in document_xml
+    assert "学生明细" not in document_xml
+
+
+def test_service_export_rejects_unimplemented_all_candidate_scope(tmp_path) -> None:
+    snapshot_path = write_json_model(
+        _sensitive_snapshot(),
+        tmp_path / "snapshot.json",
+    )
+    request = ExportRequest(
+        output_format="print-html",
+        output_path=tmp_path / "all.html",
+        candidate_scope="all",
+    )
+
+    with pytest.raises(ValueError, match="candidate-set reports"):
+        service_export(snapshot_path=snapshot_path, request=request)
+
+
 def test_pdf_has_valid_header_and_nonempty_content(tmp_path) -> None:
     snapshot = _sensitive_snapshot()
     try:
@@ -224,6 +407,29 @@ def test_pdf_has_valid_header_and_nonempty_content(tmp_path) -> None:
     data = output.read_bytes()
     assert data.startswith(b"%PDF-")
     assert len(data) > 1_000
+
+
+def test_pdf_page_orientation_regression(tmp_path) -> None:
+    pypdf = pytest.importorskip("pypdf")
+    snapshot = _sensitive_snapshot()
+    try:
+        portrait = export_pdf(
+            snapshot,
+            tmp_path / "portrait.pdf",
+            page=PageOptions(orientation="portrait"),
+        )
+        landscape = export_pdf(
+            snapshot,
+            tmp_path / "landscape.pdf",
+            page=PageOptions(orientation="landscape"),
+        )
+    except MissingOptionalDependencyError as exc:
+        pytest.skip(str(exc))
+
+    portrait_box = pypdf.PdfReader(portrait).pages[0].mediabox
+    landscape_box = pypdf.PdfReader(landscape).pages[0].mediabox
+    assert float(portrait_box.width) < float(portrait_box.height)
+    assert float(landscape_box.width) > float(landscape_box.height)
 
 
 def test_pdf_configures_homebrew_library_path_on_macos(

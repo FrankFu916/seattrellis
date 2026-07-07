@@ -3,7 +3,9 @@ from __future__ import annotations
 import builtins
 import importlib
 import py_compile
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +16,7 @@ from seattrellis.io.students import read_students
 from seattrellis.models.candidate import CandidateSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 
 
 def test_web_workflow_generates_candidates_with_preset_overlay_and_history(tmp_path) -> None:
@@ -184,6 +187,208 @@ def test_web_export_uses_recommended_candidate(tmp_path) -> None:
     assert result.artifact.recommended_candidate_id in html_path.read_text(encoding="utf-8")
 
 
+def test_web_export_applies_shared_privacy_and_page_options(tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=2,
+    )
+    request = ExportRequest(
+        output_format="print-html",
+        template="teacher",
+        privacy=PrivacyOptions(
+            hide_scores=True,
+            hide_notes=True,
+            hide_special_needs=True,
+            anonymize=True,
+            show_height=False,
+            show_vision=False,
+        ),
+        page=PageOptions(orientation="landscape", scale=0.8),
+        locale="en",
+    )
+
+    output = workflow.export_for_web(
+        result,
+        output_format="print-html",
+        output_dir=tmp_path / "exports",
+        request=request,
+    )
+    html = output.read_text(encoding="utf-8")
+
+    assert output.name == "seating.print.html"
+    assert '<html lang="en">' in html
+    assert "A4 landscape" in html
+    assert "Student 01" in html
+    assert "Teacher information" in html
+    assert result.artifact.candidates[0].snapshot.students[0].name not in html
+
+
+def test_web_pdf_export_runs_in_isolated_subprocess(monkeypatch, tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=2,
+    )
+    request = ExportRequest(
+        output_format="pdf",
+        template="teacher",
+        privacy=PrivacyOptions(
+            hide_scores=True,
+            hide_notes=True,
+            hide_special_needs=True,
+            anonymize=True,
+            show_height=False,
+            show_vision=False,
+        ),
+        page=PageOptions(orientation="landscape", scale=0.9),
+        locale="en",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        output = Path(cmd[cmd.index("--output") + 1])
+        output.write_bytes(b"%PDF-1.7\n")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(workflow.subprocess, "run", fake_run)
+
+    output = workflow.export_for_web(
+        result,
+        output_format="pdf",
+        output_dir=tmp_path / "exports",
+        candidate_id="recommended",
+        request=request,
+    )
+
+    cmd = captured["cmd"]
+    assert output.read_bytes().startswith(b"%PDF")
+    assert cmd[:4] == [sys.executable, "-m", "seattrellis.cli", "export"]
+    assert ["--candidate", "recommended"] == cmd[
+        cmd.index("--candidate") : cmd.index("--candidate") + 2
+    ]
+    assert "--hide-score" in cmd
+    assert "--hide-notes" in cmd
+    assert "--hide-special-needs" in cmd
+    assert "--hide-height" in cmd
+    assert "--hide-vision" in cmd
+    assert "--anonymize" in cmd
+    assert captured["kwargs"]["timeout"] == 60
+
+
+def test_web_pdf_export_reports_worker_crash(monkeypatch, tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=1,
+    )
+    request = ExportRequest(output_format="pdf")
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, -5, stdout="", stderr="glib failed")
+
+    monkeypatch.setattr(workflow.subprocess, "run", fake_run)
+
+    with pytest.raises(MissingOptionalDependencyError, match="signal 5"):
+        workflow.export_for_web(
+            result,
+            output_format="pdf",
+            output_dir=tmp_path / "exports",
+            request=request,
+        )
+
+
+def test_web_export_rejects_request_format_mismatch(tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=1,
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        workflow.export_for_web(
+            result,
+            output_format="pdf",
+            output_dir=tmp_path / "exports",
+            request=ExportRequest(output_format="print-html"),
+        )
+
+
+def test_cli_and_web_export_options_produce_equivalent_output(tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=2,
+    )
+    request = ExportRequest(
+        output_format="print-html",
+        template="teacher",
+        privacy=PrivacyOptions(
+            hide_scores=True,
+            hide_notes=True,
+            hide_special_needs=True,
+            anonymize=True,
+            show_height=False,
+            show_vision=False,
+        ),
+        page=PageOptions(orientation="landscape", scale=0.8),
+        locale="en",
+    )
+    web_path = workflow.export_for_web(
+        result,
+        output_format="print-html",
+        output_dir=tmp_path / "web",
+        request=request,
+    )
+    cli_path = tmp_path / "cli" / "seating.html"
+    cli_result = subprocess.run(
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
+            str(result.artifact_path),
+            "--candidate",
+            "recommended",
+            "--format",
+            "print-html",
+            "--template",
+            "teacher",
+            "--hide-score",
+            "--hide-notes",
+            "--hide-special-needs",
+            "--hide-height",
+            "--hide-vision",
+            "--anonymize",
+            "--orientation",
+            "landscape",
+            "--page-scale",
+            "0.8",
+            "--locale",
+            "en",
+            "--output",
+            str(cli_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert cli_result.returncode == 0, cli_result.stderr
+    assert cli_path.read_bytes() == web_path.read_bytes()
+
+
 def test_web_export_missing_image_extra_is_friendly(monkeypatch, tmp_path) -> None:
     result = workflow.solve_for_web(
         students_path="examples/students.csv",
@@ -303,6 +508,53 @@ def test_streamlit_demo_rules_and_history_preview() -> None:
     assert any(
         message.value == "历史记录与当前学生名单和 layout 一致。"
         for message in app.success
+    )
+
+
+def test_streamlit_results_expose_export_privacy_controls() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    next(button for button in app.button if button.label == "🚀 一键加载 Demo").click()
+    app.run(timeout=10)
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    next(
+        control
+        for control in app.number_input
+        if control.label == "候选方案数量"
+    ).set_value(1)
+    next(button for button in app.button if button.label == "生成座位表").click()
+    app.run(timeout=30)
+    app.radio[0].set_value("results")
+    app.run(timeout=30)
+
+    assert not app.exception
+    labels = {control.label for control in app.selectbox}
+    assert {"模板", "A4 方向", "导出语言", "导出格式"} <= labels
+    checkbox_labels = {control.label for control in app.checkbox}
+    assert {
+        "隐藏成绩",
+        "隐藏备注",
+        "隐藏特殊需求",
+        "隐藏身高",
+        "隐藏视力信息",
+        "匿名化姓名",
+    } <= checkbox_labels
+    assert any(button.label == "生成 Print HTML 导出文件" for button in app.button)
+    assert not any("PDF export requires" in message.value for message in app.info)
+
+    export_format = next(
+        control for control in app.selectbox if control.label == "导出格式"
+    )
+    export_format.set_value("html")
+    app.run(timeout=30)
+
+    assert not app.exception
+    assert any(
+        "不会应用匿名化或隐藏字段选项" in message.value
+        for message in app.info
     )
 
 

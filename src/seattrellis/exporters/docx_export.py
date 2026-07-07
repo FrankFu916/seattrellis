@@ -9,13 +9,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from seattrellis.exporters.print_html import (
-    PrintPrivacyOptions,
     _default_privacy,
+    _recommendation_text,
     _student_detail_fields,
+    _text,
     _validate_template,
 )
 from seattrellis.models.candidate import CandidatePlan
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.service_types import PageOptions, PrivacyOptions, normalize_export_locale
 
 
 def export_docx(
@@ -23,8 +25,10 @@ def export_docx(
     output: str | Path,
     *,
     template: str = "public",
-    privacy: PrintPrivacyOptions | None = None,
+    privacy: PrivacyOptions | None = None,
     candidate: CandidatePlan | None = None,
+    page: PageOptions | None = None,
+    locale: str = "zh",
 ) -> Path:
     """Export a seating snapshot as a .docx file.
 
@@ -42,6 +46,7 @@ def export_docx(
         Candidate plan for the ``"report"`` template.
     """
     template = _validate_template(template)
+    locale = normalize_export_locale(locale)
     if template == "report" and candidate is None:
         raise ValueError("The report template requires a candidate plan.")
 
@@ -57,17 +62,35 @@ def export_docx(
     if privacy is None:
         privacy = _default_privacy(template)
 
+    page = page or PageOptions()
     doc = Document()
+    section = doc.sections[0]
+    if page.orientation == "landscape":
+        from docx.enum.section import WD_ORIENT  # type: ignore[import-untyped]
+
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width, section.page_height = (
+            section.page_height,
+            section.page_width,
+        )
+    section.top_margin = Inches(page.margin_mm / 25.4)
+    section.bottom_margin = Inches(page.margin_mm / 25.4)
+    section.left_margin = Inches(page.margin_mm / 25.4)
+    section.right_margin = Inches(page.margin_mm / 25.4)
 
     # Title
     title = doc.add_heading(snapshot.layout.name, level=1)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in title.runs:
+        run.font.size = Pt(24 * page.scale)
 
     # Meta
     meta = doc.add_paragraph()
     meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    meta_run = meta.add_run(f"生成时间: {snapshot.created_at}")
-    meta_run.font.size = Pt(9)
+    meta_run = meta.add_run(
+        f"{_text('generated_at', locale)}: {snapshot.created_at}"
+    )
+    meta_run.font.size = Pt(9 * page.scale)
     meta_run.font.color.rgb = None  # default
 
     # Candidate info if available
@@ -75,9 +98,10 @@ def export_docx(
         cand_para = doc.add_paragraph()
         cand_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cand_run = cand_para.add_run(
-            f"方案: {candidate.candidate_id}  |  总分: {candidate.total_score:.1f}"
+            f"{_text('candidate', locale)}: {candidate.candidate_id}  |  "
+            f"{_text('total_score', locale)}: {candidate.total_score:.1f}"
         )
-        cand_run.font.size = Pt(10)
+        cand_run.font.size = Pt(10 * page.scale)
         cand_run.bold = True
 
     doc.add_paragraph()  # spacer
@@ -92,7 +116,7 @@ def export_docx(
 
     display_names = {
         assignment.student_key: (
-            f"学生 {index:02d}"
+            _text("anonymous_student", locale, index=index)
             if privacy.anonymize
             else assignment.student_name or assignment.student_key
         )
@@ -111,50 +135,75 @@ def export_docx(
             cell.text = name if (name and seat.enabled) else seat.seat_id
             for para in cell.paragraphs:
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in para.runs:
+                    run.font.size = Pt(10 * page.scale)
 
     # Teacher section
     if template == "teacher":
         student_by_key = {s.key: s for s in snapshot.students}
         detail_headers = [
-            header for header, _value in _student_detail_fields(None, privacy)
+            header
+            for header, _value in _student_detail_fields(None, privacy, locale)
         ]
-        doc.add_heading("学生明细", level=2)
+        doc.add_heading(_text("student_details", locale), level=2)
         detail_table = doc.add_table(
             rows=len(snapshot.assignments) + 1,
             cols=2 + len(detail_headers),
         )
         detail_table.style = "Table Grid"
-        headers = ["座位", "姓名", *detail_headers]
+        headers = [
+            _text("seat", locale),
+            _text("name", locale),
+            *detail_headers,
+        ]
         for i, h in enumerate(headers):
             detail_table.cell(0, i).text = h
+            _set_cell_font_size(detail_table.cell(0, i), Pt(10 * page.scale))
         for i, a in enumerate(snapshot.assignments):
             stu = student_by_key.get(a.student_key)
             detail_table.cell(i + 1, 0).text = a.seat_id
             detail_table.cell(i + 1, 1).text = display_names[a.student_key]
+            _set_cell_font_size(
+                detail_table.cell(i + 1, 0), Pt(10 * page.scale)
+            )
+            _set_cell_font_size(
+                detail_table.cell(i + 1, 1), Pt(10 * page.scale)
+            )
             for column, (_header, value) in enumerate(
-                _student_detail_fields(stu, privacy),
+                _student_detail_fields(stu, privacy, locale),
                 start=2,
             ):
                 detail_table.cell(i + 1, column).text = value
+                _set_cell_font_size(
+                    detail_table.cell(i + 1, column), Pt(10 * page.scale)
+                )
 
     # Report section
     if template == "report" and candidate is not None:
-        doc.add_heading("评分明细", level=2)
+        doc.add_heading(_text("report_title", locale), level=2)
         b = candidate.score.breakdown
         for dim_name, dim_score in [
-            ("公平轮换", b.fair_rotation_score),
-            ("关系回避", b.avoid_recent_neighbors_score),
-            ("成绩均衡", b.score_balance_score),
-            ("身高偏好", b.height_preference_score),
-            ("视力偏好", b.vision_preference_score),
-            ("多样性", b.diversity_score),
-            ("稳定性", b.stability_score),
+            (_text("fair_rotation", locale), b.fair_rotation_score),
+            (_text("neighbor_avoidance", locale), b.avoid_recent_neighbors_score),
+            (_text("score_mixing", locale), b.score_balance_score),
+            (_text("height_preference", locale), b.height_preference_score),
+            (_text("vision_preference", locale), b.vision_preference_score),
+            (_text("diversity", locale), b.diversity_score),
+            (_text("stability", locale), b.stability_score),
         ]:
             score_str = f"{dim_score.score:.1f}" if dim_score.score is not None else "n/a"
-            doc.add_paragraph(
+            paragraph = doc.add_paragraph(
                 f"{dim_name}: {score_str} (weight={dim_score.weight})",
                 style="List Bullet",
             )
+            for run in paragraph.runs:
+                run.font.size = Pt(10 * page.scale)
+        recommendation = doc.add_paragraph(
+            f"{_text('recommendation', locale)}: "
+            f"{_recommendation_text(candidate, locale)}"
+        )
+        for run in recommendation.runs:
+            run.font.size = Pt(10 * page.scale)
 
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -166,3 +215,9 @@ def _bounds(snapshot: SeatingSnapshot) -> tuple[int, int, int, int]:
     rows = [s.row for s in snapshot.layout.seats]
     cols = [s.col for s in snapshot.layout.seats]
     return min(rows), max(rows), min(cols), max(cols)
+
+
+def _set_cell_font_size(cell, size) -> None:
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.size = size

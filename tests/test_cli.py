@@ -167,6 +167,32 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
             "seattrellis",
             "export",
             "--snapshot",
+            "outputs/candidates.json",
+            "--candidate",
+            "recommended",
+            "--format",
+            "print-html",
+            "--template",
+            "teacher",
+            "--hide-score",
+            "--hide-notes",
+            "--hide-special-needs",
+            "--hide-height",
+            "--hide-vision",
+            "--anonymize",
+            "--orientation",
+            "landscape",
+            "--page-scale",
+            "0.8",
+            "--locale",
+            "en",
+            "--output",
+            "outputs/private-print.html",
+        ],
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
             "outputs/neighbor-aware.snapshot.json",
             "--format",
             "html",
@@ -203,6 +229,14 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "candidates.json").exists()
     assert (tmp_path / "outputs" / "plan-report.json").exists()
     assert (tmp_path / "outputs" / "recommended.html").exists()
+    private_print = (tmp_path / "outputs" / "private-print.html").read_text(
+        encoding="utf-8"
+    )
+    assert '<html lang="en">' in private_print
+    assert "A4 landscape" in private_print
+    assert "Student 01" in private_print
+    assert "Teacher information" in private_print
+    assert "Student001" not in private_print
     assert (tmp_path / "outputs" / "daily.rules.json").exists()
     assert (tmp_path / "outputs" / "daily.snapshot.json").exists()
     assert (tmp_path / "outputs" / "project.candidates.json").exists()

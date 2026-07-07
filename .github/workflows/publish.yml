@@ -1,0 +1,132 @@
+name: Publish distributions
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Package index
+        required: true
+        type: choice
+        options:
+          - testpypi
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.package-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check package version consistency
+        id: package-version
+        run: |
+          version="$(python scripts/check_release_version.py --print-version)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Check release tag
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python scripts/check_release_version.py --tag "$RELEASE_TAG"
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Check distribution contents
+        run: |
+          for archive in dist/*; do
+            python scripts/check_repository_hygiene.py --archive "$archive"
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/seattrellis
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  verify-testpypi:
+    name: Verify TestPyPI installation
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    needs:
+      - build
+      - publish-testpypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Download the published wheel from TestPyPI
+        env:
+          PACKAGE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          mkdir -p /tmp/testpypi
+          for attempt in {1..12}; do
+            if python -m pip download \
+              --no-deps \
+              --dest /tmp/testpypi \
+              --index-url https://test.pypi.org/simple/ \
+              "seattrellis==${PACKAGE_VERSION}"; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "TestPyPI did not expose seattrellis ${PACKAGE_VERSION} in time."
+              exit 1
+            fi
+            sleep 10
+          done
+      - name: Install and run the published wheel
+        env:
+          PACKAGE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          python -m pip install \
+            "/tmp/testpypi/seattrellis-${PACKAGE_VERSION}-py3-none-any.whl"
+          seattrellis --version | grep -Fx "seattrellis ${PACKAGE_VERSION}"
+          seattrellis --help
+
+  publish-pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/seattrellis
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

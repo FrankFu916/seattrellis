@@ -1,4 +1,4 @@
-# v1.2.3 Release Checklist
+# v1.3.0 Release Checklist
 
 ## Local Verification
 
@@ -29,6 +29,7 @@
 - [ ] Run `pytest tests/test_web_workflow.py`.
 - [ ] Launch `streamlit run src/seattrellis/web/app.py` and confirm the quick-solve and project tabs load.
 - [ ] Run `python -m build`.
+- [ ] Run `python scripts/check_release_version.py`.
 
 ## README Command Verification
 
@@ -58,6 +59,10 @@
 
 ## Privacy And Packaging
 
+- [ ] Run `python scripts/check_repository_hygiene.py`.
+- [ ] Run `python -m build` and `python -m twine check dist/*`.
+- [ ] Run the hygiene check once for every file in `dist/` with `--archive`.
+- [ ] Confirm the dependency audit, secret scan, and package hygiene workflows pass.
 - [ ] Confirm `examples/` contains fictional data only.
 - [ ] Confirm `examples/history/` contains fictional snapshots only.
 - [ ] Confirm no real student names, IDs, school names, class names, grades, notes, historical snapshots, API keys, `.env`, or private exports are tracked.
@@ -65,7 +70,7 @@
 - [ ] Confirm no real candidate reports or candidate-set snapshots are tracked.
 - [ ] Confirm built-in preset definitions contain rules and metadata only, with no student or classroom records.
 - [ ] Confirm project files contain relative paths and defaults only, with no embedded real student data.
-- [ ] Confirm `pyproject.toml` version is `1.2.3`.
+- [ ] Confirm `pyproject.toml` version is `1.3.0`.
 - [ ] Confirm `git status --short` has no suspicious generated files.
 - [ ] Confirm `git ls-files` does not include ignored real-data directories.
 - [ ] Confirm CI passes on GitHub Actions.
@@ -73,12 +78,18 @@
 ## Release
 
 - [ ] Review `CHANGELOG.md`.
+- [ ] For the first release, confirm the TestPyPI and PyPI Trusted Publishers
+      described in `docs/publishing.md` are configured.
+- [ ] Manually publish the candidate build to TestPyPI and verify installation
+      in a clean environment.
 - [ ] Create and push the tag:
 
 ```bash
-git tag -a v1.2.3 -m "SeatTrellis v1.2.3"
-git push origin v1.2.3
+git tag -a v1.3.0 -m "SeatTrellis v1.3.0"
+git push origin v1.3.0
 ```
 
-- [ ] Create a GitHub Release for `v1.2.3`.
+- [ ] Create a GitHub Release for `v1.3.0`.
+- [ ] Confirm the `Publish distributions` workflow passed for the GitHub Release.
+- [ ] Confirm the TestPyPI installation verification job passed.
 - [ ] Include a short privacy note in the release description.

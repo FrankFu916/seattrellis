@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Reject private/generated files in git and built distributions."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+import tarfile
+import zipfile
+from pathlib import Path, PurePosixPath
+
+
+PRIVATE_COMPONENTS = {
+    "data",
+    "exports",
+    "outputs",
+    "private",
+    "real_classes",
+    "real_students",
+    "snapshots",
+}
+FORBIDDEN_NAMES = {".DS_Store", ".env"}
+
+
+def _is_allowed_example_snapshot(path: PurePosixPath) -> bool:
+    parts = path.parts
+    for index in range(len(parts) - 2):
+        if parts[index : index + 2] == ("examples", "history"):
+            return True
+    return False
+
+
+def _path_problem(raw_path: str) -> str | None:
+    normalized = raw_path.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    path = PurePosixPath(normalized)
+    if path.name in FORBIDDEN_NAMES:
+        return f"forbidden file name: {normalized}"
+    if any(part in PRIVATE_COMPONENTS for part in path.parts):
+        if not _is_allowed_example_snapshot(path):
+            return f"private/generated directory: {normalized}"
+    if path.name.endswith(".snapshot.json") and not _is_allowed_example_snapshot(path):
+        return f"non-example snapshot: {normalized}"
+    return None
+
+
+def tracked_paths(root: Path) -> list[str]:
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    return [
+        value.decode("utf-8", errors="surrogateescape")
+        for value in result.stdout.split(b"\0")
+        if value
+    ]
+
+
+def archive_paths(path: Path) -> list[str]:
+    if path.suffix == ".whl" or zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            return archive.namelist()
+    if tarfile.is_tarfile(path):
+        with tarfile.open(path) as archive:
+            return archive.getnames()
+    raise ValueError(f"Unsupported archive format: {path}")
+
+
+def find_problems(paths: list[str]) -> list[str]:
+    return [problem for path in paths if (problem := _path_problem(path)) is not None]
+
+
+def workspace_metadata(root: Path) -> list[str]:
+    return [
+        path.relative_to(root).as_posix()
+        for path in root.rglob(".DS_Store")
+        if ".git" not in path.relative_to(root).parts
+    ]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--archive",
+        action="append",
+        default=[],
+        type=Path,
+        help="Also inspect a wheel, zip, or source distribution.",
+    )
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[1]
+
+    problems = [
+        *(f"tracked: {item}" for item in find_problems(tracked_paths(root))),
+        *(f"workspace metadata: {item}" for item in workspace_metadata(root)),
+    ]
+    for archive in args.archive:
+        problems.extend(
+            f"{archive}: {item}" for item in find_problems(archive_paths(archive))
+        )
+
+    if problems:
+        print("Repository hygiene check failed:", file=sys.stderr)
+        for problem in problems:
+            print(f"- {problem}", file=sys.stderr)
+        return 1
+
+    checked = len(args.archive)
+    suffix = f" and {checked} archive(s)" if checked else ""
+    print(f"Repository hygiene check passed for tracked files{suffix}.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

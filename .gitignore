@@ -22,16 +22,3 @@ real_classes/
 .DS_Store
 .idea/
 .vscode/
-
-# Local coding-assistant settings
-CLAUDE.md
-CLAUDE.local.md
-AGENTS.md
-AGENTS.local.md
-GEMINI.md
-.claude/
-.codex/
-.cursor/
-.cursorrules
-.aider*
-.github/copilot-instructions.md

@@ -95,7 +95,7 @@ seattrellis export --snapshot outputs/daily.snapshot.json --format html
 
 `solve` 支持 `--history` 或 `--history-dir` 加载历史 snapshot。`history-report` 输出每个学生的座位分类历史统计，`pair-report` 输出两两学生的同桌/邻座关系历史。详见 [快速开始指南](docs/quickstart.zh.md)。
 
-导出支持 HTML 和打印版 HTML（无需 extras）、Excel（需 `excel` extra）、PNG（需 `image` extra）、PDF（需 `pdf` extra）和 Word（需 `docx` extra）。详见 [导出格式说明](docs/export.zh.md)。
+导出支持 HTML 和打印版 HTML（无需 extras）、Excel（需 `excel` extra）、PNG（需 `image` extra）、PDF（需 `pdf` extra）和 Word（需 `docx` extra）。打印 HTML、PDF 和 Word 可选择 `public`、`teacher`、`report` 模板，设置字段隐藏、姓名匿名化、A4 横纵向、页面缩放和中英文内容。详见 [导出格式说明](docs/export.zh.md)。
 
 ## 多方案与评分
 

@@ -39,9 +39,15 @@ useful for inspecting the project configuration.
 
 ## Downloads
 
-The page can download snapshot or candidate-set JSON, plan reports, HTML, PDF,
-PNG, Excel, and Word files. If an optional export dependency is missing, its
-installation hint appears without blocking other formats.
+The page includes export template and privacy controls for public,
+teacher-internal, and candidate explanation output. It also supports
+anonymization, field hiding, A4 orientation, scaling, and Chinese or English
+content. Safe template defaults can be tightened but not loosened.
+
+The page can download snapshot or candidate-set JSON, plan reports, HTML,
+print-friendly HTML, PDF, PNG, Excel, and Word files. If an optional export
+dependency is missing, its installation hint appears without blocking other
+formats.
 
 ## Keyboard and small screens
 
