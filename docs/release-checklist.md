@@ -26,6 +26,7 @@
 - [ ] Run `pytest tests/test_minimal_install.py`.
 - [ ] Run `python -m pip install -e ".[all,dev]"`.
 - [ ] Run `pytest`.
+- [ ] Run `cargo test --manifest-path native/Cargo.toml`.
 - [ ] Run `pytest tests/test_web_workflow.py`.
 - [ ] Launch `streamlit run src/seattrellis/web/app.py` and confirm the quick-solve and project tabs load.
 - [ ] Run `python -m build`.
