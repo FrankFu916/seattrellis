@@ -12,6 +12,7 @@
 | `history-report` | 汇总学生座位类别历史 |
 | `pair-report` | 汇总同桌和邻座历史 |
 | `project-init/info/validate/solve/export` | 管理本地 project 工作流 |
+| `schema list/export/migrate` | 查看 JSON Schema、导出 schema 文件、规范化版本化 JSON |
 | `doctor` | 检查 Python、optional extras 和示例文件 |
 
 ## 退出状态
@@ -75,3 +76,22 @@ seattrellis export \
 配置时会明确报错，避免设置被静默忽略。
 
 命令示例见[快速开始](quickstart.zh.md)。
+
+## Schema 工具
+
+公开 JSON Schema 文件位于仓库的 `schemas/` 目录。需要重新生成时运行：
+
+```bash
+seattrellis schema export --output-dir schemas
+```
+
+当前迁移命令支持对现行版本 snapshot、candidate set、plan comparison report 和
+project JSON 做验证与规范化写回：
+
+```bash
+seattrellis schema migrate \
+  --input examples/history/week1.snapshot.json \
+  --output outputs/week1.migrated.snapshot.json
+```
+
+旧版本迁移会在未来 schema 版本变更时加入；未知版本仍会明确报错。

@@ -8,7 +8,8 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 - **次版本号 (MINOR)**：向后兼容的新功能。
 - **修订号 (PATCH)**：向后兼容的 Bug 修复。
 
-当前稳定版本为 `1.2.3`。从 v1.0 起，公开 CLI、文件格式和 service API 的不兼容变更必须通过新的 MAJOR 版本发布。
+当前包版本以 `pyproject.toml` 为准。从 v1.0 起，公开 CLI、文件格式和 service
+API 的不兼容变更必须通过新的 MAJOR 版本发布。
 
 ## Schema Version
 
@@ -23,6 +24,19 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 
 当前读取器只接受表中的版本。新增可选字段时可以保留版本号；字段改名、类型
 变化或语义变化需要新的 schema 版本，并应同时提供迁移说明。
+
+公开 JSON Schema 文件位于 `schemas/`。重新生成：
+
+```bash
+seattrellis schema export --output-dir schemas
+```
+
+当前 `schema migrate` 命令对现行版本执行验证与规范化写回，为未来旧版本迁移保留
+稳定入口：
+
+```bash
+seattrellis schema migrate --input input.json --output output.json
+```
 
 ## 命令行接口 (CLI)
 

@@ -142,6 +142,27 @@ def _commands(
             ["presets", "export", "daily", "--output", "outputs/daily.rules.json"],
             ["outputs/daily.rules.json"],
         ),
+        SmokeCommand("list JSON Schemas", ["schema", "list"], []),
+        SmokeCommand(
+            "export JSON Schemas",
+            ["schema", "export", "--output-dir", "outputs/schemas"],
+            [
+                "outputs/schemas/project.schema.json",
+                "outputs/schemas/seating-snapshot.schema.json",
+            ],
+        ),
+        SmokeCommand(
+            "migrate snapshot schema",
+            [
+                "schema",
+                "migrate",
+                "--input",
+                "examples/history/week1.snapshot.json",
+                "--output",
+                "outputs/week1.migrated.snapshot.json",
+            ],
+            ["outputs/week1.migrated.snapshot.json"],
+        ),
         SmokeCommand(
             "validate daily preset",
             [

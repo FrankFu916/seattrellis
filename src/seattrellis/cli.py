@@ -11,6 +11,11 @@ from seattrellis.presets import (
     format_preset_list,
     get_preset,
 )
+from seattrellis.schema import (
+    format_json_schema_artifacts,
+    write_json_schema_files,
+)
+from seattrellis.schema_migration import migrate_json_file
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.solver import SeatTrellisSolveError
 from seattrellis.solver.backend import SOLVER_BACKENDS
@@ -79,7 +84,12 @@ if typer is not None:
         help="List, inspect, and export built-in rules presets.",
         no_args_is_help=True,
     )
+    schema_app = typer.Typer(
+        help="Export JSON Schemas and normalize versioned JSON artifacts.",
+        no_args_is_help=True,
+    )
     app.add_typer(presets_app, name="presets")
+    app.add_typer(schema_app, name="schema")
 
     # --version callback
     def _version_callback(value: bool) -> None:
@@ -118,6 +128,38 @@ if typer is not None:
     ) -> None:
         _run_typer_action(
             lambda: typer.echo(f"Preset rules written to {export_preset(preset, output)}")
+        )
+
+    @schema_app.command("list", help="List public JSON Schema documents.")
+    def schema_list_command() -> None:
+        typer.echo(format_json_schema_artifacts())
+
+    @schema_app.command("export", help="Write public JSON Schema files.")
+    def schema_export_command(
+        output_dir: Path = typer.Option(
+            Path("schemas"),
+            "--output-dir",
+            "-o",
+            help="Directory for generated schema files.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                "JSON Schema files written:\n"
+                + "\n".join(str(path) for path in write_json_schema_files(output_dir))
+            )
+        )
+
+    @schema_app.command("migrate", help="Validate and rewrite a versioned JSON artifact.")
+    def schema_migrate_command(
+        input_path: Path = typer.Option(..., "--input", "-i", help="Artifact JSON path."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Migrated JSON path."),
+        in_place: bool = typer.Option(False, "--in-place", help="Rewrite the input file in place."),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_schema_migration(
+                migrate_json_file(input_path, output=output, in_place=in_place)
+            )
         )
 
     @app.command("doctor", help="Check environment: Python, optional deps, examples, outputs.")
@@ -492,6 +534,16 @@ def _run_argparse() -> None:
     preset_export_parser.add_argument("preset")
     preset_export_parser.add_argument("--output", "-o", default=None)
 
+    schema_parser = subparsers.add_parser("schema", help="Manage JSON Schemas and migrations.")
+    schema_subparsers = schema_parser.add_subparsers(dest="schema_command", required=True)
+    schema_subparsers.add_parser("list", help="List public JSON Schema documents.")
+    schema_export_parser = schema_subparsers.add_parser("export", help="Write public JSON Schema files.")
+    schema_export_parser.add_argument("--output-dir", "-o", default="schemas")
+    schema_migrate_parser = schema_subparsers.add_parser("migrate", help="Validate and rewrite a versioned JSON artifact.")
+    schema_migrate_parser.add_argument("--input", "-i", required=True)
+    schema_migrate_parser.add_argument("--output", "-o", default=None)
+    schema_migrate_parser.add_argument("--in-place", action="store_true")
+
     solve_parser = subparsers.add_parser("solve", help="Generate a seating snapshot.")
     solve_parser.add_argument("--students", required=True)
     solve_parser.add_argument("--layout", required=True)
@@ -604,6 +656,22 @@ def _run_argparse() -> None:
             print(format_preset(get_preset(args.preset)))
         elif args.preset_command == "export":
             print(f"Preset rules written to {export_preset(args.preset, args.output)}")
+    elif args.command == "schema":
+        if args.schema_command == "list":
+            print(format_json_schema_artifacts())
+        elif args.schema_command == "export":
+            paths = write_json_schema_files(args.output_dir)
+            print("JSON Schema files written:")
+            for path in paths:
+                print(path)
+        elif args.schema_command == "migrate":
+            _print_schema_migration(
+                migrate_json_file(
+                    args.input,
+                    output=args.output,
+                    in_place=args.in_place,
+                )
+            )
     elif args.command == "solve":
         path, summary = solve_with_report(
             students_path=args.students,
@@ -736,6 +804,17 @@ def _print_solve_result(result: tuple[Path, str | None]) -> None:
     typer.echo(f"{_solve_output_label(summary)} written to {path}")
     if summary:
         typer.echo(summary)
+
+
+def _print_schema_migration(result) -> None:
+    message = (
+        f"{result.artifact} schema_version {result.schema_version!r} "
+        f"written to {result.output_path}"
+    )
+    if typer is not None:
+        typer.echo(message)
+    else:
+        print(message)
 
 
 if __name__ == "__main__":

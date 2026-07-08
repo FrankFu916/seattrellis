@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -17,7 +19,11 @@ from seattrellis.schema import (
     CANDIDATE_SCHEMA_VERSION,
     PROJECT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
+    json_schema_artifact_names,
+    json_schema_documents,
+    write_json_schema_files,
 )
+from seattrellis.schema_migration import migrate_json_file
 from seattrellis.web.workflow import solve_for_web
 
 
@@ -106,3 +112,111 @@ def test_unknown_or_wrongly_typed_project_schema_is_rejected(
 
     with pytest.raises(InputFileError, match="Unsupported project schema_version"):
         load_project(path)
+
+
+def test_json_schema_files_match_registry() -> None:
+    documents = json_schema_documents()
+
+    assert json_schema_artifact_names() == [
+        "student",
+        "classroom-layout",
+        "ruleset",
+        "seating-snapshot",
+        "candidate-set",
+        "plan-comparison-report",
+        "project",
+    ]
+    assert set(documents) == {
+        "student.schema.json",
+        "classroom-layout.schema.json",
+        "ruleset.schema.json",
+        "seating-snapshot.schema.json",
+        "candidate-set.schema.json",
+        "plan-comparison-report.schema.json",
+        "project.schema.json",
+    }
+    assert documents["seating-snapshot.schema.json"]["$schema"]
+    assert documents["seating-snapshot.schema.json"]["x-seattrellis-schema-version"] == (
+        SNAPSHOT_SCHEMA_VERSION
+    )
+    assert documents["candidate-set.schema.json"]["x-seattrellis-schema-version"] == (
+        CANDIDATE_SCHEMA_VERSION
+    )
+    assert documents["project.schema.json"]["x-seattrellis-schema-version"] == (
+        PROJECT_SCHEMA_VERSION
+    )
+    for file_name, document in documents.items():
+        committed = json.loads(Path("schemas", file_name).read_text(encoding="utf-8"))
+        assert committed == document
+
+
+def test_json_schema_export_command(tmp_path) -> None:
+    output_dir = tmp_path / "schemas"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "seattrellis.cli",
+            "schema",
+            "export",
+            "--output-dir",
+            str(output_dir),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(path.name for path in output_dir.iterdir()) == sorted(
+        json_schema_documents()
+    )
+
+
+def test_write_json_schema_files_returns_created_paths(tmp_path) -> None:
+    paths = write_json_schema_files(tmp_path)
+
+    assert sorted(path.name for path in paths) == sorted(json_schema_documents())
+    assert all(path.exists() for path in paths)
+
+
+def test_schema_migrate_current_snapshot_and_project(tmp_path) -> None:
+    snapshot_output = tmp_path / "week1.migrated.json"
+    project_output = tmp_path / "project.migrated.json"
+
+    snapshot_result = migrate_json_file(
+        "examples/history/week1.snapshot.json",
+        output=snapshot_output,
+    )
+    project_result = migrate_json_file(
+        "examples/project.seattrellis.json",
+        output=project_output,
+    )
+
+    assert snapshot_result.artifact == "snapshot"
+    assert snapshot_result.schema_version == SNAPSHOT_SCHEMA_VERSION
+    assert load_snapshot(snapshot_output).schema_version == SNAPSHOT_SCHEMA_VERSION
+    assert project_result.artifact == "project"
+    assert project_result.schema_version == PROJECT_SCHEMA_VERSION
+    assert load_project(project_output).schema_version == PROJECT_SCHEMA_VERSION
+
+
+def test_schema_migrate_command_requires_output_or_in_place(tmp_path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "seattrellis.cli",
+            "schema",
+            "migrate",
+            "--input",
+            "examples/history/week1.snapshot.json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "requires --output unless --in-place is set" in result.stderr

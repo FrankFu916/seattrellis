@@ -28,6 +28,8 @@
 - [ ] Run `pytest`.
 - [ ] Run `cargo test --manifest-path native/Cargo.toml`.
 - [ ] Run `python scripts/smoke_cli.py --optional auto --time-limit 3 --json-report outputs/cli-smoke.json`.
+- [ ] Run `seattrellis schema export --output-dir schemas` and confirm `git diff -- schemas` is empty.
+- [ ] Run `seattrellis schema migrate --input examples/history/week1.snapshot.json --output outputs/week1.migrated.snapshot.json`.
 - [ ] Run `python scripts/benchmark_solver.py --sizes 40,50,60 --backends fallback --candidates 1 --time-limit 10 --output outputs/benchmark-solver.json --markdown-output outputs/benchmark-solver.md`.
 - [ ] Run `pytest tests/test_web_workflow.py`.
 - [ ] Launch `streamlit run src/seattrellis/web/app.py` and confirm the quick-solve and project tabs load.
