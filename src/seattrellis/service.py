@@ -16,6 +16,7 @@ from typing import Sequence
 from seattrellis import __version__
 from seattrellis.candidates import generate_candidate_set
 from seattrellis.demo import create_demo_files
+from seattrellis.editing import EditingSession
 from seattrellis.exporters import export_candidate_report_html, export_snapshot
 from seattrellis.history import (
     build_fairness_report,
@@ -59,6 +60,8 @@ from seattrellis.presets import (
 )
 from seattrellis.scoring import build_plan_comparison_report
 from seattrellis.service_types import (
+    EditInput,
+    EditOutput,
     ExportRequest,
     HistoryReportInput,
     HistoryReportOutput,
@@ -161,6 +164,27 @@ def compute_validate(input: ValidateInput) -> ValidateOutput:
     report = validate_loaded_inputs(input.students, input.layout, input.rules)
     report.raise_for_errors(strict=input.strict)
     return ValidateOutput(report=report, formatted=report.format_success())
+
+
+def compute_edit(input: EditInput) -> EditOutput:
+    """Apply manual editing commands to a loaded snapshot."""
+    session = EditingSession.from_snapshot(
+        input.snapshot,
+        locked_students=tuple(input.locked_students),
+        locked_seats=tuple(input.locked_seats),
+    )
+    summary = session.hard_constraint_summary()
+    for operation in input.operations:
+        summary = session.apply(operation)
+
+    return EditOutput(
+        snapshot=session.current_snapshot(),
+        hard_constraints=summary,
+        unseated_students=session.unseated_students(),
+        locked_students=sorted(session.locked_students),
+        locked_seats=sorted(session.locked_seats),
+        operation_log=session.operation_log,
+    )
 
 
 def compute_history_report(input: HistoryReportInput) -> HistoryReportOutput:

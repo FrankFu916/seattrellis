@@ -5,9 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
-from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
+from seattrellis.models.candidate import (
+    CandidateSet,
+    HardConstraintSummary,
+    PlanComparisonReport,
+)
 from seattrellis.models.history import FairnessReport, PairHistoryReport
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.io.project import ProjectPaths
@@ -17,6 +21,9 @@ from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.io.validation import ValidationReport
 from seattrellis.solver.backend import SolverBackend, normalize_solver_backend
+
+if TYPE_CHECKING:
+    from seattrellis.editing import EditingOperation, EditingRecord
 
 
 ExportTemplate = Literal["public", "teacher", "report"]
@@ -213,6 +220,28 @@ class ValidateOutput:
 
     report: ValidationReport
     formatted: str
+
+
+@dataclass(frozen=True)
+class EditInput:
+    """Pure in-memory manual editing request."""
+
+    snapshot: SeatingSnapshot
+    operations: Sequence[EditingOperation] = field(default_factory=tuple)
+    locked_students: Sequence[str] = field(default_factory=tuple)
+    locked_seats: Sequence[str] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class EditOutput:
+    """Pure in-memory manual editing result."""
+
+    snapshot: SeatingSnapshot
+    hard_constraints: HardConstraintSummary
+    unseated_students: list[str]
+    locked_students: list[str]
+    locked_seats: list[str]
+    operation_log: tuple[EditingRecord, ...]
 
 
 @dataclass(frozen=True)

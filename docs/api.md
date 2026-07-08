@@ -9,6 +9,7 @@
 
 - `compute_solve(SolveInput) -> SolveOutput`
 - `compute_validate(ValidateInput) -> ValidateOutput`
+- `compute_edit(EditInput) -> EditOutput`
 - `compute_history_report(HistoryReportInput) -> HistoryReportOutput`
 - `compute_pair_report(PairReportInput) -> PairReportOutput`
 - `compute_project_info(ProjectInfoInput) -> ProjectInfoOutput`
@@ -61,6 +62,30 @@ if not summary.satisfied:
 编辑草稿允许临时出现未入座学生，但会拒绝重复座位、重复学生、未知学生和禁用座位。
 每次成功操作都会返回 hard constraint 诊断；局部自动修复仍属于后续 solver/service
 功能，不在编辑层直接实现。
+
+适配器如果已经把 UI 操作整理成命令序列，可以直接调用服务层：
+
+```python
+from seattrellis.editing import EditingOperation
+from seattrellis.service import compute_edit
+from seattrellis.service_types import EditInput
+
+result = compute_edit(
+    EditInput(
+        snapshot=snapshot,
+        operations=[
+            EditingOperation(
+                kind="swap_students",
+                payload={"first_student": "S001", "second_student": "S018"},
+            ),
+            EditingOperation(kind="lock_seat", payload={"seat_id": "R1C1"}),
+        ],
+    )
+)
+```
+
+`EditOutput.snapshot` 是新的草稿 snapshot；`locked_students`、`locked_seats`、
+`unseated_students` 和 `hard_constraints` 可直接用于界面状态和实时诊断。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
 单独测试。
