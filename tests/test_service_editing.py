@@ -4,6 +4,7 @@ import pytest
 
 from seattrellis.editing import EditingError, EditingOperation
 from seattrellis.io.json_files import load_snapshot, write_json_model
+from seattrellis.io.project import write_project
 from seattrellis.models.candidate import (
     CandidatePlan,
     CandidateSet,
@@ -15,8 +16,9 @@ from seattrellis.models.candidate import (
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import HardRules, PairRule, RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
+from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.student import Student
-from seattrellis.service import compute_edit, edit_snapshot
+from seattrellis.service import compute_edit, edit_snapshot, project_edit
 from seattrellis.service_types import EditInput
 
 
@@ -218,6 +220,39 @@ def test_edit_snapshot_can_select_candidate_and_rejects_candidate_for_snapshot(t
                 EditingOperation(kind="unseat_student", payload={"student_key": "s1"})
             ],
         )
+
+
+def test_project_edit_uses_latest_project_artifact_by_default(tmp_path) -> None:
+    project_dir = tmp_path / "class-a"
+    outputs_dir = project_dir / "outputs"
+    outputs_dir.mkdir(parents=True)
+    project_path = write_project(
+        SeatTrellisProject(
+            name="Class A",
+            students="students.csv",
+            layout="classroom.json",
+            rules="rules.json",
+            outputs_dir="outputs",
+        ),
+        project_dir / "project.seattrellis.json",
+    )
+    write_json_model(_candidate_set(), outputs_dir / "latest.candidates.json")
+
+    path, summary = project_edit(
+        project_path=project_path,
+        operations=[
+            EditingOperation(
+                kind="swap_students",
+                payload={"first_student": "s1", "second_student": "s2"},
+            )
+        ],
+    )
+
+    edited = load_snapshot(path)
+    assert path == outputs_dir / "latest.edited.snapshot.json"
+    assert "hard constraints: satisfied" in summary
+    assert edited.metadata["candidate"]["candidate_id"] == "candidate_02"
+    assert edited.metadata["manual_edit"]["operation_count"] == 1
 
 
 def _snapshot(

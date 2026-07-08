@@ -177,11 +177,17 @@ seattrellis project-validate --project examples/project.seattrellis.json
 # 求解
 seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
 
+# 微调
+seattrellis project-edit --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --operation swap:STU001:STU002 --output outputs/project-edited.snapshot.json
+
 # 导出
-seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html
+seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project-edited.snapshot.json --format html --output outputs/project-edited.html
 ```
 
-`project-init` 创建轻量的本地项目文件；`project-info` 检查配置和路径状态；`project-validate`、`project-solve`、`project-export` 分别复用现有校验、求解和导出逻辑。project 文件只保存相对路径和默认配置，不嵌入学生名单或座位数据；其中的相对路径始终相对于 project 文件所在目录解析。
+`project-init` 创建轻量的本地项目文件；`project-info` 检查配置和路径状态；
+`project-validate`、`project-solve`、`project-edit`、`project-export` 分别复用现有校验、
+求解、人工调整和导出逻辑。project 文件只保存相对路径和默认配置，不嵌入学生名单
+或座位数据；其中的相对路径始终相对于 project 文件所在目录解析。
 
 ## 多方案评分维度
 

@@ -179,11 +179,14 @@ seattrellis project-validate --project examples/project.seattrellis.json
 # Solve
 seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
 
+# Edit
+seattrellis project-edit --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --operation swap:STU001:STU002 --output outputs/project-edited.snapshot.json
+
 # Export
-seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html
+seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project-edited.snapshot.json --format html --output outputs/project-edited.html
 ```
 
-`project-init` creates a lightweight local project file; `project-info` checks its settings and path status; `project-validate`, `project-solve`, and `project-export` reuse the existing validation, solving, and export logic. A project file stores relative paths and defaults only — it does not embed student lists or seating data. Relative paths are resolved from the project file's directory.
+`project-init` creates a lightweight local project file; `project-info` checks its settings and path status; `project-validate`, `project-solve`, `project-edit`, and `project-export` reuse the existing validation, solving, manual editing, and export logic. A project file stores relative paths and defaults only — it does not embed student lists or seating data. Relative paths are resolved from the project file's directory.
 
 ## Multi-Candidate Scoring Dimensions
 

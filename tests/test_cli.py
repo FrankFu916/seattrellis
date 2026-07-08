@@ -91,6 +91,32 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ],
         [
             "seattrellis",
+            "project-edit",
+            "--project",
+            "examples/project.seattrellis.json",
+            "--snapshot",
+            "outputs/project.candidates.json",
+            "--candidate",
+            "recommended",
+            "--operation",
+            "swap:STU001:STU002",
+            "--output",
+            "outputs/project-edited.snapshot.json",
+        ],
+        [
+            "seattrellis",
+            "project-export",
+            "--project",
+            "examples/project.seattrellis.json",
+            "--snapshot",
+            "outputs/project-edited.snapshot.json",
+            "--format",
+            "html",
+            "--output",
+            "outputs/project-edited.html",
+        ],
+        [
+            "seattrellis",
             "validate",
             "--students",
             "examples/students.csv",
@@ -298,6 +324,11 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "project.candidates.json").exists()
     assert (tmp_path / "outputs" / "project-plan-report.json").exists()
     assert (tmp_path / "outputs" / "project-recommended.html").exists()
+    assert (tmp_path / "outputs" / "project-edited.snapshot.json").exists()
+    assert (tmp_path / "outputs" / "project-edited.html").exists()
+    project_edited = load_snapshot(tmp_path / "outputs" / "project-edited.snapshot.json")
+    assert project_edited.metadata["candidate"]["candidate_id"]
+    assert project_edited.metadata["manual_edit"]["operation_count"] == 1
     assert len(load_candidate_set(tmp_path / "outputs" / "candidates.json").candidates) == 5
 
 

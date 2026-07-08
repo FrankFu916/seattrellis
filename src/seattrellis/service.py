@@ -721,6 +721,33 @@ def project_solve(
     )
 
 
+def project_edit(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    snapshot_path: str | Path | None = None,
+    candidate_id: str | None = None,
+    operations: Sequence[EditingOperation],
+    output_path: str | Path | None = None,
+    strict: bool = False,
+) -> tuple[Path, str]:
+    project, paths = load_project_paths(project_path, create_outputs=True)
+    selected_snapshot = (
+        Path(snapshot_path)
+        if snapshot_path is not None
+        else find_latest_project_artifact(paths.outputs_dir)
+    )
+    if output_path is None:
+        output_path = _edited_snapshot_output_path(selected_snapshot, paths.outputs_dir)
+    return edit_snapshot(
+        snapshot_path=selected_snapshot,
+        output_path=output_path,
+        operations=operations,
+        candidate_id=candidate_id,
+        default_candidate_id=project.default_candidate,
+        strict=strict,
+    )
+
+
 def project_export(
     *,
     project_path: str | Path = "seattrellis.project.json",
@@ -888,6 +915,14 @@ def _snapshot_with_edit_metadata(
     if hasattr(snapshot, "model_copy"):
         return snapshot.model_copy(update={"metadata": metadata})  # type: ignore[attr-defined,return-value]
     return snapshot.copy(update={"metadata": metadata})
+
+
+def _edited_snapshot_output_path(selected_snapshot: Path, outputs_dir: Path) -> Path:
+    name = selected_snapshot.name
+    for suffix in (".candidates.json", ".snapshot.json", ".json"):
+        if name.endswith(suffix):
+            return outputs_dir / f"{name.removesuffix(suffix)}.edited.snapshot.json"
+    return outputs_dir / f"{selected_snapshot.stem}.edited.snapshot.json"
 
 
 def _format_solve_fairness_summary(fairness: object) -> str | None:

@@ -498,6 +498,49 @@ if typer is not None:
             )
         )
 
+    @app.command("project-edit", help="Apply manual edits to a project seating artifact.")
+    def project_edit_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        snapshot: Path | None = typer.Option(
+            None,
+            "--snapshot",
+            help="Snapshot or candidate-set JSON path. Defaults to latest project artifact.",
+        ),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID, or 'recommended'.",
+        ),
+        operation: list[str] = typer.Option(
+            [],
+            "--operation",
+            "--op",
+            help="Operation to apply, repeatable and ordered.",
+        ),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Edited snapshot output path."),
+        strict: bool = typer.Option(
+            False,
+            "--strict",
+            help="Fail instead of writing when hard constraints are not satisfied.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_edit_result(
+                project_edit(
+                    project_path=project,
+                    snapshot_path=snapshot,
+                    candidate_id=candidate,
+                    operations=_parse_edit_operations(operation),
+                    output_path=output,
+                    strict=strict,
+                )
+            )
+        )
+
     @app.command("project-export", help="Export the latest or selected project seating artifact.")
     def project_export_command(
         project: Path = typer.Option(
@@ -536,6 +579,7 @@ from seattrellis.service import (  # noqa: E402, F401
     edit_snapshot,
     export,
     init_demo,
+    project_edit,
     project_export,
     project_info,
     project_init,
@@ -704,6 +748,14 @@ def _run_argparse() -> None:
     project_solve_parser.add_argument("--output", "-o", default=None)
     project_solve_parser.add_argument("--report", default=None)
 
+    project_edit_parser = subparsers.add_parser("project-edit", help="Edit a project artifact.")
+    project_edit_parser.add_argument("--project", default="seattrellis.project.json")
+    project_edit_parser.add_argument("--snapshot", default=None)
+    project_edit_parser.add_argument("--candidate", default=None)
+    project_edit_parser.add_argument("--operation", "--op", dest="operations", action="append", default=[])
+    project_edit_parser.add_argument("--output", "-o", default=None)
+    project_edit_parser.add_argument("--strict", action="store_true")
+
     project_export_parser = subparsers.add_parser("project-export", help="Export a project artifact.")
     project_export_parser.add_argument("--project", default="seattrellis.project.json")
     project_export_parser.add_argument("--snapshot", default=None)
@@ -855,6 +907,17 @@ def _run_argparse() -> None:
         print(f"{_solve_output_label(summary)} written to {path}")
         if summary:
             print(summary)
+    elif args.command == "project-edit":
+        path, summary = project_edit(
+            project_path=args.project,
+            snapshot_path=args.snapshot,
+            candidate_id=args.candidate,
+            operations=_parse_edit_operations(args.operations),
+            output_path=args.output,
+            strict=args.strict,
+        )
+        print(f"Edited snapshot written to {path}")
+        print(summary)
     elif args.command == "project-export":
         path = project_export(
             project_path=args.project,

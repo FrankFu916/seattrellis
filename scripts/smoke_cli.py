@@ -252,6 +252,38 @@ def _commands(
                 ["outputs/project-recommended.html"],
             ),
             SmokeCommand(
+                "edit project candidate",
+                [
+                    "project-edit",
+                    "--project",
+                    "examples/project.seattrellis.json",
+                    "--snapshot",
+                    "outputs/project.candidates.json",
+                    "--candidate",
+                    "recommended",
+                    "--operation",
+                    "swap:STU001:STU002",
+                    "--output",
+                    "outputs/project-edited.snapshot.json",
+                ],
+                ["outputs/project-edited.snapshot.json"],
+            ),
+            SmokeCommand(
+                "export edited project html",
+                [
+                    "project-export",
+                    "--project",
+                    "examples/project.seattrellis.json",
+                    "--snapshot",
+                    "outputs/project-edited.snapshot.json",
+                    "--format",
+                    "html",
+                    "--output",
+                    "outputs/project-edited.html",
+                ],
+                ["outputs/project-edited.html"],
+            ),
+            SmokeCommand(
                 "validate explicit rules",
                 [
                     "validate",

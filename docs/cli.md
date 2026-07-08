@@ -12,7 +12,7 @@
 | `export` | 导出选定方案 |
 | `history-report` | 汇总学生座位类别历史 |
 | `pair-report` | 汇总同桌和邻座历史 |
-| `project-init/info/validate/solve/export` | 管理本地 project 工作流 |
+| `project-init/info/validate/solve/edit/export` | 管理本地 project 工作流 |
 | `schema list/export/migrate` | 查看 JSON Schema、导出 schema 文件、规范化版本化 JSON |
 | `doctor` | 检查 Python、optional extras 和示例文件 |
 
@@ -129,6 +129,10 @@ constraints 不满足，也会写出草稿并在终端列出违反项；加 `--s
 若 hard constraints 不满足则命令失败且不写出 snapshot。锁定状态目前只用于本次
 命令序列；本次操作摘要会记录在 `metadata.manual_edit`，但锁定状态还不是后续
 命令自动继承的正式 schema 字段。
+
+Project 工作流可使用 `project-edit` 复用相同语义。未指定 `--snapshot` 时，它会在
+project outputs 目录中查找最新 snapshot 或 candidate set；输入 candidate set 时默认
+使用 project 的 `default_candidate`。
 
 ## Schema 工具
 
