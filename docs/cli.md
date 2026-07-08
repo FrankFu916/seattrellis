@@ -8,7 +8,7 @@
 | `presets list/show/export` | 查看或导出内置规则 preset |
 | `validate` | 校验输入、字段和明显规则冲突 |
 | `solve` | 生成 snapshot 或 candidate set |
-| `edit` | 对已有 snapshot 执行人工调整命令 |
+| `edit` | 对已有 snapshot 或候选方案执行人工调整命令 |
 | `export` | 导出选定方案 |
 | `history-report` | 汇总学生座位类别历史 |
 | `pair-report` | 汇总同桌和邻座历史 |
@@ -91,9 +91,9 @@ seattrellis export \
 
 ## 人工调整
 
-`edit` 对普通 snapshot 执行一组按顺序排列的人工操作，并写出新的草稿
-snapshot。它适合在可视化编辑器完成前验收“自动生成 → 手动微调 → 重新导出”
-流程：
+`edit` 对普通 snapshot 或 candidate set 中的某个候选方案执行一组按顺序排列的
+人工操作，并写出新的草稿 snapshot。它适合在可视化编辑器完成前验收
+“自动生成 → 手动微调 → 重新导出”流程：
 
 ```bash
 seattrellis edit \
@@ -101,6 +101,16 @@ seattrellis edit \
   --operation swap:STU001:STU002 \
   --operation lock-seat:R4C3 \
   --output outputs/neighbor-aware-edited.snapshot.json
+```
+
+输入 candidate set 时默认编辑 recommended candidate，也可以显式指定：
+
+```bash
+seattrellis edit \
+  --snapshot outputs/candidates.json \
+  --candidate candidate_02 \
+  --operation swap:STU001:STU002 \
+  --output outputs/candidate-02-edited.snapshot.json
 ```
 
 支持的 operation 格式：

@@ -333,9 +333,17 @@ if typer is not None:
             )
         )
 
-    @app.command("edit", help="Apply manual edit operations to a snapshot JSON file.")
+    @app.command(
+        "edit",
+        help="Apply manual edit operations to a snapshot or candidate set.",
+    )
     def edit_command(
-        snapshot: Path = typer.Option(..., "--snapshot", help="Snapshot JSON path."),
+        snapshot: Path = typer.Option(..., "--snapshot", help="Snapshot or candidate-set JSON path."),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID for a candidate set, or 'recommended'.",
+        ),
         operation: list[str] = typer.Option(
             [],
             "--operation",
@@ -364,6 +372,7 @@ if typer is not None:
                     snapshot_path=snapshot,
                     output_path=output,
                     operations=_parse_edit_operations(operation),
+                    candidate_id=candidate,
                     strict=strict,
                 )
             )
@@ -642,8 +651,12 @@ def _run_argparse() -> None:
     export_parser.add_argument("--page-scale", type=float, default=1.0)
     export_parser.add_argument("--locale", choices=["zh", "en"], default="zh")
 
-    edit_parser = subparsers.add_parser("edit", help="Apply manual edits to a snapshot.")
+    edit_parser = subparsers.add_parser(
+        "edit",
+        help="Apply manual edits to a snapshot or candidate set.",
+    )
     edit_parser.add_argument("--snapshot", required=True)
+    edit_parser.add_argument("--candidate", default=None)
     edit_parser.add_argument("--operation", "--op", dest="operations", action="append", default=[])
     edit_parser.add_argument("--output", "-o", default="outputs/edited.snapshot.json")
     edit_parser.add_argument("--strict", action="store_true")
@@ -785,6 +798,7 @@ def _run_argparse() -> None:
             snapshot_path=args.snapshot,
             output_path=args.output,
             operations=_parse_edit_operations(args.operations),
+            candidate_id=args.candidate,
             strict=args.strict,
         )
         print(f"Edited snapshot written to {path}")

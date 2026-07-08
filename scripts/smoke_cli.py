@@ -378,6 +378,34 @@ def _commands(
                 ["outputs/candidates.json", "outputs/plan-report.json"],
             ),
             SmokeCommand(
+                "edit recommended candidate",
+                [
+                    "edit",
+                    "--snapshot",
+                    "outputs/candidates.json",
+                    "--candidate",
+                    "recommended",
+                    "--operation",
+                    "swap:STU001:STU002",
+                    "--output",
+                    "outputs/recommended-edited.snapshot.json",
+                ],
+                ["outputs/recommended-edited.snapshot.json"],
+            ),
+            SmokeCommand(
+                "export edited candidate html",
+                [
+                    "export",
+                    "--snapshot",
+                    "outputs/recommended-edited.snapshot.json",
+                    "--format",
+                    "html",
+                    "--output",
+                    "outputs/recommended-edited.html",
+                ],
+                ["outputs/recommended-edited.html"],
+            ),
+            SmokeCommand(
                 "export print html with privacy options",
                 [
                     "export",

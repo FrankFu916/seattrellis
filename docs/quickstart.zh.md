@@ -159,6 +159,8 @@ seattrellis export \
 
 多次 `--operation` 会按顺序执行。默认会保存草稿并显示 hard constraint 诊断；
 加 `--strict` 后，若调整违反 hard constraints 则不会写出文件。
+如果输入的是 candidate set，`edit` 默认选择 recommended candidate，也可以用
+`--candidate candidate_02` 指定候选。
 
 ## Project 工作流
 

@@ -4,6 +4,14 @@ import pytest
 
 from seattrellis.editing import EditingError, EditingOperation
 from seattrellis.io.json_files import load_snapshot, write_json_model
+from seattrellis.models.candidate import (
+    CandidatePlan,
+    CandidateSet,
+    HardConstraintSummary,
+    PlanScore,
+    ScoreBreakdown,
+    ScoreDimension,
+)
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import HardRules, PairRule, RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
@@ -156,6 +164,62 @@ def test_edit_snapshot_writes_draft_and_strict_rejects_violations(tmp_path) -> N
     assert not strict_path.exists()
 
 
+def test_edit_snapshot_selects_recommended_candidate_by_default(tmp_path) -> None:
+    candidate_path = write_json_model(_candidate_set(), tmp_path / "candidates.json")
+    output_path = tmp_path / "recommended-edited.snapshot.json"
+
+    path, summary = edit_snapshot(
+        snapshot_path=candidate_path,
+        output_path=output_path,
+        operations=[
+            EditingOperation(
+                kind="swap_students",
+                payload={"first_student": "s1", "second_student": "s2"},
+            )
+        ],
+    )
+
+    edited = load_snapshot(path)
+    assert path == output_path
+    assert "hard constraints: satisfied" in summary
+    assert edited.metadata["candidate"]["candidate_id"] == "candidate_02"
+    assert edited.metadata["manual_edit"]["operation_count"] == 1
+    assert _seat_for(edited, "s1") == "A2"
+    assert _seat_for(edited, "s2") == "B1"
+
+
+def test_edit_snapshot_can_select_candidate_and_rejects_candidate_for_snapshot(tmp_path) -> None:
+    candidate_path = write_json_model(_candidate_set(), tmp_path / "candidates.json")
+    snapshot_path = write_json_model(_snapshot(), tmp_path / "input.snapshot.json")
+
+    selected_path, _summary = edit_snapshot(
+        snapshot_path=candidate_path,
+        output_path=tmp_path / "candidate-01-edited.snapshot.json",
+        candidate_id="candidate_01",
+        operations=[
+            EditingOperation(
+                kind="swap_students",
+                payload={"first_student": "s1", "second_student": "s2"},
+            )
+        ],
+    )
+
+    selected = load_snapshot(selected_path)
+    assert selected.metadata["candidate"]["candidate_id"] == "candidate_01"
+    assert _seat_for(selected, "s1") == "A2"
+    assert _seat_for(selected, "s2") == "A1"
+
+    with pytest.raises(ValueError, match="candidate set"):
+        edit_snapshot(
+            snapshot_path=snapshot_path,
+            output_path=tmp_path / "invalid.snapshot.json",
+            candidate_id="recommended",
+            operations=[
+                EditingOperation(kind="unseat_student", payload={"student_key": "s1"})
+            ],
+        )
+
+
 def _snapshot(
     *,
     assignments: list[SeatAssignment] | None = None,
@@ -194,3 +258,52 @@ def _seat_for(snapshot: SeatingSnapshot, student_key: str) -> str:
         assignment.student_key: assignment.seat_id
         for assignment in snapshot.assignments
     }[student_key]
+
+
+def _candidate_set() -> CandidateSet:
+    first = _snapshot()
+    second = _snapshot(
+        assignments=[
+            SeatAssignment(student_key="s1", student_name="林安", seat_id="B1"),
+            SeatAssignment(student_key="s2", student_name="周雨", seat_id="A2"),
+            SeatAssignment(student_key="s3", student_name="许然", seat_id="A1"),
+        ]
+    )
+    return CandidateSet(
+        candidates=[
+            CandidatePlan(
+                candidate_id="candidate_01",
+                snapshot=first,
+                score=_plan_score(80),
+                hard_constraints_satisfied=True,
+            ),
+            CandidatePlan(
+                candidate_id="candidate_02",
+                snapshot=second,
+                score=_plan_score(90),
+                hard_constraints_satisfied=True,
+            ),
+        ],
+        recommended_candidate_id="candidate_02",
+    )
+
+
+def _plan_score(total: float) -> PlanScore:
+    dimension = ScoreDimension(status="not_available")
+    return PlanScore(
+        total=total,
+        breakdown=ScoreBreakdown(
+            fair_rotation_score=dimension,
+            avoid_recent_neighbors_score=dimension,
+            score_balance_score=dimension,
+            height_preference_score=dimension,
+            vision_preference_score=dimension,
+            diversity_score=dimension,
+            stability_score=dimension,
+            hard_constraint_summary=HardConstraintSummary(
+                satisfied=True,
+                checked_rule_count=0,
+                violation_count=0,
+            ),
+        ),
+    )

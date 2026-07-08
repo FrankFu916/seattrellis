@@ -429,22 +429,32 @@ def edit_snapshot(
     snapshot_path: str | Path,
     output_path: str | Path = "outputs/edited.snapshot.json",
     operations: Sequence[EditingOperation],
+    candidate_id: str | None = None,
+    default_candidate_id: str = "recommended",
     locked_students: Sequence[str] | None = None,
     locked_seats: Sequence[str] | None = None,
     strict: bool = False,
 ) -> tuple[Path, str]:
-    """Apply manual edit commands to a snapshot file and write a draft snapshot."""
+    """Apply manual edit commands to a snapshot or selected candidate."""
     operations = list(operations)
     if not operations:
         raise ValueError("At least one editing operation is required.")
+    candidate_id = str(candidate_id).strip() if candidate_id is not None else None
+    if candidate_id == "":
+        raise ValueError("candidate_id cannot be empty.")
 
     artifact = load_seating_artifact(snapshot_path)
     if isinstance(artifact, CandidateSet):
-        raise ValueError("Manual editing currently requires a snapshot JSON, not a candidate set.")
+        selected_candidate = artifact.get_candidate(candidate_id or default_candidate_id)
+        snapshot = _snapshot_with_candidate_metadata(selected_candidate)
+    else:
+        if candidate_id is not None:
+            raise ValueError("--candidate can only be used when editing a candidate set.")
+        snapshot = artifact
 
     result = compute_edit(
         EditInput(
-            snapshot=artifact,
+            snapshot=snapshot,
             operations=operations,
             locked_students=tuple(locked_students or ()),
             locked_seats=tuple(locked_seats or ()),

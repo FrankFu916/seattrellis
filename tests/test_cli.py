@@ -153,6 +153,18 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ],
         [
             "seattrellis",
+            "edit",
+            "--snapshot",
+            "outputs/candidates.json",
+            "--candidate",
+            "recommended",
+            "--operation",
+            "swap:STU001:STU002",
+            "--output",
+            "outputs/recommended-edited.snapshot.json",
+        ],
+        [
+            "seattrellis",
             "export",
             "--snapshot",
             "outputs/candidates.json",
@@ -266,6 +278,12 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert edited_by_student["STU002"] == original_by_student["STU001"]
     assert (tmp_path / "outputs" / "candidates.json").exists()
     assert (tmp_path / "outputs" / "plan-report.json").exists()
+    assert (tmp_path / "outputs" / "recommended-edited.snapshot.json").exists()
+    recommended_edited = load_snapshot(
+        tmp_path / "outputs" / "recommended-edited.snapshot.json"
+    )
+    assert recommended_edited.metadata["candidate"]["candidate_id"]
+    assert recommended_edited.metadata["manual_edit"]["operation_count"] == 1
     assert (tmp_path / "outputs" / "recommended.html").exists()
     private_print = (tmp_path / "outputs" / "private-print.html").read_text(
         encoding="utf-8"

@@ -161,6 +161,8 @@ seattrellis export \
 Repeated `--operation` values run in order. By default the command writes a
 draft and prints hard-constraint diagnostics; with `--strict`, a hard-constraint
 violation fails the command and leaves the output file unwritten.
+When the input is a candidate set, `edit` selects the recommended candidate by
+default; pass `--candidate candidate_02` to choose a specific candidate.
 
 ## Project Workflow
 

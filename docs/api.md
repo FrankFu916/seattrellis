@@ -16,8 +16,9 @@
 
 ## 文件接口
 
-`solve`、`solve_with_report`、`run_validate`、`run_history_report`、
-`run_pair_report` 和 `project_*` 函数接受文件路径，供 CLI 和 Web 共用。
+`solve`、`solve_with_report`、`edit_snapshot`、`run_validate`、
+`run_history_report`、`run_pair_report` 和 `project_*` 函数接受文件路径，
+供 CLI 和 Web 共用。
 导出使用 `seattrellis.service.export` 或
 `seattrellis.exporters.export_snapshot`。新的适配器应构造
 `ExportRequest`，而不是自行组合模板和页面参数：
@@ -86,6 +87,9 @@ result = compute_edit(
 
 `EditOutput.snapshot` 是新的草稿 snapshot；`locked_students`、`locked_seats`、
 `unseated_students` 和 `hard_constraints` 可直接用于界面状态和实时诊断。
+文件接口 `edit_snapshot` 可直接读取普通 snapshot；如果输入是 candidate set，
+默认选择 recommended candidate，也可以传入 `candidate_id` 指定候选。输出始终是
+普通草稿 snapshot，并在 `metadata.manual_edit` 记录本次操作摘要。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
 单独测试。
