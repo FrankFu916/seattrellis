@@ -41,6 +41,27 @@ export(
 视力。`candidate_scope="all"` 可把 candidate set 导出为完整候选比较 HTML
 报告；snapshot 或非 HTML 格式会明确拒绝该值，不会静默只导出一个方案。
 
+## 人工调整草稿
+
+`seattrellis.editing` 提供 UI 无关的人工调整模型。Web、桌面端或未来的
+React 编辑器应通过 `EditingSession` 执行交换、移动、移出座位、锁定和撤销/重做，
+不要把这些规则散落在界面状态中：
+
+```python
+from seattrellis.editing import EditingSession
+
+session = EditingSession.from_snapshot(snapshot)
+session.lock_seat("R1C1")
+summary = session.swap_students("S001", "S018")
+
+if not summary.satisfied:
+    print(summary.violations)
+```
+
+编辑草稿允许临时出现未入座学生，但会拒绝重复座位、重复学生、未知学生和禁用座位。
+每次成功操作都会返回 hard constraint 诊断；局部自动修复仍属于后续 solver/service
+功能，不在编辑层直接实现。
+
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
 单独测试。
 
