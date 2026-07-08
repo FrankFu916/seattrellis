@@ -19,6 +19,7 @@ from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.web.keys import (
     QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_GENERATE_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
@@ -526,7 +527,7 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
     app.run(timeout=10)
     app.radio[0].set_value("solve")
     app.run(timeout=10)
-    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(2)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
     app.radio[0].set_value("results")
@@ -543,6 +544,7 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
         "隐藏身高",
         "隐藏视力信息",
         "匿名化姓名",
+        "导出完整候选集比较报告",
     } <= checkbox_labels
     assert any(button.label == "生成 Print HTML 导出文件" for button in app.button)
     assert not any("PDF export requires" in message.value for message in app.info)
@@ -556,6 +558,14 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
         "不会应用匿名化或隐藏字段选项" in message.value
         for message in app.info
     )
+
+    _control_by_key(app.checkbox, QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX).set_value(True)
+    app.run(timeout=30)
+    _control_by_key(app.button, "quick_export_prepare_html").click()
+    app.run(timeout=30)
+
+    assert not app.exception
+    assert any("HTML 已生成" in message.value for message in app.success)
 
 
 def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:

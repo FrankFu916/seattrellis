@@ -231,6 +231,14 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "Non-JSON files are created only after you click prepare, so optional "
         "export dependencies are not loaded during page rendering.",
     ),
+    "export_all_candidates": (
+        "导出完整候选集比较报告",
+        "Export full candidate comparison report",
+    ),
+    "export_all_candidates_help": (
+        "仅适用于 candidate set 的 HTML 和 Print HTML 导出。",
+        "Available only for candidate-set HTML and Print HTML exports.",
+    ),
     "export_privacy_unsupported": (
         "模板与隐私设置仅适用于 Print HTML、PDF 和 DOCX。当前格式使用基础导出，"
         "不会应用匿名化或隐藏字段选项。",

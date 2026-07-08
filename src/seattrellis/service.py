@@ -16,7 +16,7 @@ from typing import Sequence
 from seattrellis import __version__
 from seattrellis.candidates import generate_candidate_set
 from seattrellis.demo import create_demo_files
-from seattrellis.exporters import export_snapshot
+from seattrellis.exporters import export_candidate_report_html, export_snapshot
 from seattrellis.history import (
     build_fairness_report,
     build_pair_history,
@@ -362,13 +362,25 @@ def export(
         if candidate_id is not None and candidate_id != request.candidate_id:
             raise ValueError("candidate_id conflicts with request.candidate_id.")
 
+    artifact = load_seating_artifact(snapshot_path)
     if request.candidate_scope == "all":
-        raise ValueError(
-            "candidate_scope='all' is reserved for candidate-set reports and is "
-            "not supported by single-plan export yet."
+        if not isinstance(artifact, CandidateSet):
+            raise ValueError("candidate_scope='all' requires a candidate set artifact.")
+        if request.candidate_id is not None:
+            raise ValueError("candidate_id cannot be combined with candidate_scope='all'.")
+        if request.output_format not in {"html", "print-html"}:
+            raise ValueError(
+                "candidate_scope='all' currently supports only html and print-html exports."
+            )
+        report = build_plan_comparison_report(artifact)
+        return export_candidate_report_html(
+            artifact,
+            report,
+            request.resolved_output_path,
+            page=request.page,
+            locale=request.locale,
         )
 
-    artifact = load_seating_artifact(snapshot_path)
     selected_candidate: CandidatePlan | None = None
     if isinstance(artifact, CandidateSet):
         selected_candidate = artifact.get_candidate(

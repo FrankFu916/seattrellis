@@ -52,6 +52,7 @@ from seattrellis.web.keys import (
     PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
     PROJECT_EXPORT_DOWNLOAD_REPORT,
     QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_DOWNLOAD_ARTIFACT,
     QUICK_EXPORT_DOWNLOAD_REPORT,
     QUICK_EXPORT_FORMAT_SELECT,
@@ -458,6 +459,24 @@ def _render_exports(
         )
         export_label, mime = export_formats[output_format]
         st.caption(_t("export_on_demand"))
+        supports_candidate_report = (
+            result.is_candidate_set and output_format in {"html", "print-html"}
+        )
+        candidate_scope = "selected"
+        if result.is_candidate_set:
+            all_candidates_key = (
+                f"{export_key}_all_candidates"
+                if project_path is not None
+                else QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX
+            )
+            all_candidates = st.checkbox(
+                _t("export_all_candidates"),
+                value=False,
+                disabled=not supports_candidate_report,
+                key=all_candidates_key,
+                help=_t("export_all_candidates_help"),
+            )
+            candidate_scope = "all" if all_candidates and supports_candidate_report else "selected"
 
         template_labels = {
             "public": _t("template_public"),
@@ -621,6 +640,7 @@ def _render_exports(
         str(project_path) if project_path is not None else "",
         output_format,
         candidate_id,
+        candidate_scope,
         template,
         privacy.hide_scores,
         privacy.hide_notes,
@@ -640,16 +660,19 @@ def _render_exports(
         st.session_state.pop(prepared_key, None)
         try:
             request = None
-            if output_format in configurable_formats:
+            if output_format in configurable_formats or candidate_scope == "all":
                 request = ExportRequest(
                     output_format=output_format,
                     template=template,
-                    privacy=privacy,
+                    privacy=privacy if output_format in configurable_formats else None,
                     page=page,
                     locale=export_locale,
                     candidate_id=(
-                        candidate_id if result.is_candidate_set else None
+                        candidate_id
+                        if result.is_candidate_set and candidate_scope == "selected"
+                        else None
                     ),
+                    candidate_scope=candidate_scope,
                 )
             if project_path is None:
                 output_path = export_for_web(

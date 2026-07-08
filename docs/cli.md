@@ -75,6 +75,17 @@ seattrellis export \
 页面和模板参数当前适用于 `print-html`、`pdf` 和 `docx`。其他格式收到非默认
 配置时会明确报错，避免设置被静默忽略。
 
+完整候选集比较报告可用 `--candidate-scope all` 导出，目前支持 `html` 和
+`print-html`：
+
+```bash
+seattrellis export \
+  --snapshot outputs/candidates.json \
+  --candidate-scope all \
+  --format html \
+  --output outputs/candidate-comparison.html
+```
+
 命令示例见[快速开始](quickstart.zh.md)。
 
 ## Schema 工具

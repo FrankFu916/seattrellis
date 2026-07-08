@@ -374,6 +374,21 @@ def _commands(
                 ],
                 ["outputs/recommended-print.html"],
             ),
+            SmokeCommand(
+                "export candidate comparison html",
+                [
+                    "export",
+                    "--snapshot",
+                    "outputs/candidates.json",
+                    "--candidate-scope",
+                    "all",
+                    "--format",
+                    "html",
+                    "--output",
+                    "outputs/candidate-comparison.html",
+                ],
+                ["outputs/candidate-comparison.html"],
+            ),
         ]
     )
     commands.extend(_optional_commands(optional=optional, include_pdf=include_pdf))

@@ -4,6 +4,7 @@ QUICK_LOAD_DEMO_BUTTON = "quick_load_demo"
 QUICK_GENERATE_BUTTON = "quick_generate"
 QUICK_CANDIDATE_COUNT_INPUT = "quick_candidate_count"
 QUICK_EXPORT_FORMAT_SELECT = "quick_export_format"
+QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX = "quick_export_all_candidates"
 QUICK_EXPORT_DOWNLOAD_ARTIFACT = "quick_export_download_artifact"
 QUICK_EXPORT_DOWNLOAD_REPORT = "quick_export_download_report"
 

@@ -175,7 +175,11 @@ candidate set 中每个方案包含 snapshot、seed、solver backend、总分、
 
 缺少历史、规则未启用或字段不足时，相关维度明确标记为 `not_available`，不会虚构分数。总分是可用维度按规则权重计算的 0–100 加权平均；推荐方案是在满足 hard constraints 的候选中总分最高者，同分时按 `candidate_id` 稳定排序。评分用于比较和解释，不代表全局最优。
 
-普通 snapshot 与 candidate set 是两种不同格式，旧 snapshot 仍可读取。`export` 收到 candidate set 时默认导出 recommended candidate，也可以用 `--candidate candidate_03` 指定。
+普通 snapshot 与 candidate set 是两种不同格式，旧 snapshot 仍可读取。`export` 收到 candidate set 时默认导出 recommended candidate，也可以用 `--candidate candidate_03` 指定。若要导出完整候选集比较报告，使用：
+
+```bash
+seattrellis export --snapshot outputs/candidates.json --candidate-scope all --format html --output outputs/candidate-comparison.html
+```
 
 ## 继续阅读
 

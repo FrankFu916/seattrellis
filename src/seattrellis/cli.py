@@ -41,6 +41,7 @@ def _build_export_request(
     orientation: str,
     scale: float,
     locale: str,
+    candidate_scope: str = "selected",
 ) -> ExportRequest:
     privacy = None
     if any(
@@ -72,6 +73,7 @@ def _build_export_request(
         page=PageOptions(orientation=orientation, scale=scale),
         locale=locale,
         candidate_id=candidate_id,
+        candidate_scope=candidate_scope,
     )
 
 
@@ -261,6 +263,11 @@ if typer is not None:
             "--candidate",
             help="Candidate ID for a candidate set, or 'recommended'.",
         ),
+        candidate_scope: str = typer.Option(
+            "selected",
+            "--candidate-scope",
+            help="Candidate scope: selected or all.",
+        ),
         template: str = typer.Option(
             "public",
             "--template",
@@ -318,6 +325,7 @@ if typer is not None:
                             orientation=orientation,
                             scale=scale,
                             locale=locale,
+                            candidate_scope=candidate_scope,
                         ),
                     )
                 )
@@ -573,6 +581,11 @@ def _run_argparse() -> None:
     export_parser.add_argument("--output", "-o", default=None)
     export_parser.add_argument("--candidate", default=None)
     export_parser.add_argument(
+        "--candidate-scope",
+        choices=["selected", "all"],
+        default="selected",
+    )
+    export_parser.add_argument(
         "--template",
         choices=["public", "teacher", "report"],
         default="public",
@@ -719,6 +732,7 @@ def _run_argparse() -> None:
                 orientation=args.orientation,
                 scale=args.page_scale,
                 locale=args.locale,
+                candidate_scope=args.candidate_scope,
             ),
         )
         print(f"Export written to {path}")

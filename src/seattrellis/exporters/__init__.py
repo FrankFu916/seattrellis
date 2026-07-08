@@ -4,6 +4,7 @@ from pathlib import Path
 
 from seattrellis.exporters.html import export_html
 from seattrellis.models.candidate import CandidatePlan
+from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.service_types import (
     ExportRequest,
@@ -18,6 +19,7 @@ __all__ = [
     "export_html",
     "export_pdf",
     "export_png",
+    "export_candidate_report_html",
     "export_print_html",
     "export_snapshot",
 ]
@@ -104,6 +106,27 @@ def export_print_html(
     )
 
 
+def export_candidate_report_html(
+    candidate_set: CandidateSet,
+    report: PlanComparisonReport,
+    output: str | Path,
+    *,
+    page: PageOptions | None = None,
+    locale: str = "zh",
+) -> Path:
+    from seattrellis.exporters.candidate_report import (
+        export_candidate_report_html as loaded_export_candidate_report_html,
+    )
+
+    return loaded_export_candidate_report_html(
+        candidate_set,
+        report,
+        output,
+        page=page,
+        locale=locale,
+    )
+
+
 def export_snapshot(
     snapshot: SeatingSnapshot,
     output_format: str | None = None,
@@ -131,6 +154,10 @@ def export_snapshot(
         raise ValueError("output_format conflicts with request.output_format.")
 
     output_format = request.output_format
+    if request.candidate_scope == "all":
+        raise ValueError(
+            "candidate_scope='all' requires a candidate set; use the service export entrypoint."
+        )
     output = request.resolved_output_path
     privacy = request.resolved_privacy
     configurable_formats = {"pdf", "docx", "print-html"}

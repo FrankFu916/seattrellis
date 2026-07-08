@@ -175,7 +175,11 @@ Each candidate in a candidate set contains its snapshot, seed, solver backend, t
 
 Missing history, disabled rules, or insufficient fields produce `not_available` instead of an invented score. The total is a 0–100 weighted average of available dimensions using rule weights. The recommended candidate is the highest-scoring hard-valid plan, with `candidate_id` as a deterministic tie-breaker. Scores support comparison and explanation; they do not claim global optimality.
 
-Snapshots and candidate sets are different formats, and old snapshots remain readable. When `export` receives a candidate set, it exports the recommended candidate by default or a selected ID such as `--candidate candidate_03`.
+Snapshots and candidate sets are different formats, and old snapshots remain readable. When `export` receives a candidate set, it exports the recommended candidate by default or a selected ID such as `--candidate candidate_03`. To export the full candidate comparison report, use:
+
+```bash
+seattrellis export --snapshot outputs/candidates.json --candidate-scope all --format html --output outputs/candidate-comparison.html
+```
 
 ## Next Steps
 

@@ -406,11 +406,16 @@ def project_export_for_web(
     if request is not None:
         if request.output_format != normalized_format:
             raise ValueError("request output format does not match output_format.")
+        request_candidate_id = (
+            None
+            if request.candidate_scope == "all"
+            else candidate_id if result.is_candidate_set else None
+        )
         if normalized_format == "pdf":
             return _export_pdf_in_subprocess(
                 snapshot_path=result.artifact_path,
                 output_path=output_path,
-                candidate_id=candidate_id if result.is_candidate_set else None,
+                candidate_id=request_candidate_id,
                 request=request,
             )
         return export(
@@ -418,9 +423,7 @@ def project_export_for_web(
             request=replace(
                 request,
                 output_path=output_path,
-                candidate_id=(
-                    candidate_id if result.is_candidate_set else None
-                ),
+                candidate_id=request_candidate_id,
             ),
         )
     return project_export(
@@ -476,17 +479,22 @@ def export_for_web(
     if request is not None:
         if request.output_format != normalized_format:
             raise ValueError("request output format does not match output_format.")
+        request_candidate_id = (
+            None
+            if request.candidate_scope == "all"
+            else candidate_id if result.is_candidate_set else None
+        )
         if normalized_format == "pdf":
             return _export_pdf_in_subprocess(
                 snapshot_path=result.artifact_path,
                 output_path=output_path,
-                candidate_id=candidate_id if result.is_candidate_set else None,
+                candidate_id=request_candidate_id,
                 request=request,
             )
         request = replace(
             request,
             output_path=output_path,
-            candidate_id=candidate_id if result.is_candidate_set else None,
+            candidate_id=request_candidate_id,
         )
         return export(
             snapshot_path=result.artifact_path,

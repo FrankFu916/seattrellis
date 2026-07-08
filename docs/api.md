@@ -38,8 +38,8 @@ export(
 ```
 
 `PrivacyOptions.for_template("public")` 默认隐藏成绩、备注、特殊需求、身高和
-视力。`candidate_scope="all"` 已保留给 v1.4 的候选集报告；当前单方案导出会
-明确拒绝该值，不会静默只导出一个方案。
+视力。`candidate_scope="all"` 可把 candidate set 导出为完整候选比较 HTML
+报告；snapshot 或非 HTML 格式会明确拒绝该值，不会静默只导出一个方案。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
 单独测试。
