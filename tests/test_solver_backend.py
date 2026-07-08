@@ -104,6 +104,7 @@ def test_doctor_reports_solver_backend(monkeypatch) -> None:
 
 def test_benchmark_script_smoke(tmp_path) -> None:
     output = tmp_path / "benchmark.json"
+    markdown_output = tmp_path / "benchmark.md"
     result = subprocess.run(
         [
             sys.executable,
@@ -118,6 +119,8 @@ def test_benchmark_script_smoke(tmp_path) -> None:
             "1",
             "--output",
             str(output),
+            "--markdown-output",
+            str(markdown_output),
         ],
         check=False,
         text=True,
@@ -136,9 +139,18 @@ def test_benchmark_script_smoke(tmp_path) -> None:
     assert payload["results"][0]["backend"] == "fallback"
     assert payload["benchmark_version"] == 1
     assert payload["environment"]["seattrellis_version"]
+    assert payload["summary"]["total_cases"] == 1
+    assert payload["summary"]["successful_cases"] == 1
+    assert payload["summary"]["failed_cases"] == 0
+    assert payload["summary"]["by_backend"][0]["backend"] == "fallback"
+    assert payload["summary"]["by_size"][0]["fastest_backend"] == "fallback"
     assert payload["results"][0]["case_id"] == "synthetic-v1-4-students-5x8"
     assert payload["results"][0]["dataset_version"] == "synthetic-v1"
     assert payload["results"][0]["solver_backend_effective"] == "fallback"
+    markdown = markdown_output.read_text(encoding="utf-8")
+    assert "# SeatTrellis benchmark report" in markdown
+    assert "| Backend | Success | Avg elapsed | Max elapsed | Effective backend |" in markdown
+    assert "synthetic-v1-4-students-5x8" in markdown
 
 
 def test_benchmark_script_rejects_unknown_backend() -> None:

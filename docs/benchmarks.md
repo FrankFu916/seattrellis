@@ -12,7 +12,8 @@ python scripts/benchmark_solver.py \
   --backends fallback,ortools \
   --candidates 1 \
   --time-limit 10 \
-  --output outputs/benchmark-solver.json
+  --output outputs/benchmark-solver.json \
+  --markdown-output outputs/benchmark-solver.md
 ```
 
 基准报告记录：
@@ -28,7 +29,11 @@ python scripts/benchmark_solver.py \
 - 推荐 candidate；
 - 实际 solver backend、effective backend 和 solver status；
 - SeatTrellis、Python 与平台版本；
+- 按 backend 和班级人数汇总的成功率、耗时和最快 backend；
 - 失败时的错误类型和错误信息。
+
+JSON 文件适合机器比较和长期归档。Markdown 文件适合放入 release notes、PR
+说明或人工验收记录。
 
 当前默认用例固定为：
 

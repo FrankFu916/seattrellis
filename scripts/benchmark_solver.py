@@ -72,11 +72,27 @@ def main() -> None:
             time_limit_seconds=args.time_limit,
         )
     ]
-    payload = {
+    payload = build_payload(results=results, preset_name=args.preset)
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    if args.output:
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text + "\n", encoding="utf-8")
+    if args.markdown_output:
+        markdown_output = Path(args.markdown_output)
+        markdown_output.parent.mkdir(parents=True, exist_ok=True)
+        markdown_output.write_text(render_markdown_report(payload) + "\n", encoding="utf-8")
+    print(text)
+
+
+def build_payload(*, results: list[BenchmarkResult], preset_name: str) -> dict[str, object]:
+    """Build the JSON benchmark report payload."""
+
+    return {
         "benchmark_version": 1,
         "description": "Synthetic SeatTrellis solver benchmark. Data is fictional.",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "preset": args.preset,
+        "preset": preset_name,
         "dataset": {
             "name": BENCHMARK_DATASET_NAME,
             "version": BENCHMARK_DATASET_VERSION,
@@ -88,14 +104,177 @@ def main() -> None:
             "python": sys.version.split()[0],
             "platform": platform.platform(),
         },
+        "summary": summarize_results(results),
         "results": [asdict(result) for result in results],
     }
-    text = json.dumps(payload, ensure_ascii=False, indent=2)
-    if args.output:
-        output = Path(args.output)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(text + "\n", encoding="utf-8")
-    print(text)
+
+
+def summarize_results(results: list[BenchmarkResult]) -> dict[str, object]:
+    """Summarize benchmark results for dashboards and release notes."""
+
+    total_cases = len(results)
+    successful_cases = sum(1 for result in results if result.ok)
+    return {
+        "total_cases": total_cases,
+        "successful_cases": successful_cases,
+        "failed_cases": total_cases - successful_cases,
+        "success_rate": _ratio(successful_cases, total_cases),
+        "by_backend": [
+            _summarize_backend(backend, [result for result in results if result.backend == backend])
+            for backend in sorted({result.backend for result in results})
+        ],
+        "by_size": [
+            _summarize_size(size, [result for result in results if result.size == size])
+            for size in sorted({result.size for result in results})
+        ],
+    }
+
+
+def render_markdown_report(payload: dict[str, object]) -> str:
+    """Render a compact human-readable benchmark report."""
+
+    dataset = payload["dataset"]
+    environment = payload["environment"]
+    summary = payload["summary"]
+    results = payload["results"]
+    assert isinstance(dataset, dict)
+    assert isinstance(environment, dict)
+    assert isinstance(summary, dict)
+    assert isinstance(results, list)
+    lines = [
+        "# SeatTrellis benchmark report",
+        "",
+        f"- Dataset: `{dataset['name']}` / `{dataset['version']}`",
+        f"- Preset: `{payload['preset']}`",
+        f"- SeatTrellis: `{environment['seattrellis_version']}`",
+        f"- Python: `{environment['python']}`",
+        f"- Platform: `{environment['platform']}`",
+        (
+            f"- Cases: {summary['successful_cases']}/{summary['total_cases']} succeeded "
+            f"({summary['success_rate']:.0%})"
+        ),
+        "",
+        "## Backend summary",
+        "",
+        "| Backend | Success | Avg elapsed | Max elapsed | Effective backend |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for item in summary["by_backend"]:
+        assert isinstance(item, dict)
+        lines.append(
+            "| {backend} | {successful}/{total} | {average} | {maximum} | {effective} |".format(
+                backend=item["backend"],
+                successful=item["successful_cases"],
+                total=item["total_cases"],
+                average=_format_seconds(item["average_elapsed_seconds"]),
+                maximum=_format_seconds(item["max_elapsed_seconds"]),
+                effective=", ".join(item["effective_backends"]) or "n/a",
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "## Case results",
+            "",
+            "| Case | Size | Layout | Backend | Status | Elapsed | Candidates |",
+            "|---|---:|---|---|---|---:|---:|",
+        ]
+    )
+    for item in sorted(results, key=lambda value: (value["size"], value["backend"])):
+        assert isinstance(item, dict)
+        status = item["solver_status"] if item["ok"] else f"ERROR:{item['error_type']}"
+        lines.append(
+            "| {case_id} | {size} | {rows}×{cols} | {backend} | {status} | {elapsed} | {candidates} |".format(
+                case_id=item["case_id"],
+                size=item["size"],
+                rows=item["rows"],
+                cols=item["cols"],
+                backend=item["backend"],
+                status=status,
+                elapsed=_format_seconds(item["elapsed_seconds"]),
+                candidates=item["generated_candidates"],
+            )
+        )
+    return "\n".join(lines)
+
+
+def _summarize_backend(backend: str, results: list[BenchmarkResult]) -> dict[str, object]:
+    successful = [result for result in results if result.ok]
+    failed = [result for result in results if not result.ok]
+    elapsed = [result.elapsed_seconds for result in successful]
+    return {
+        "backend": backend,
+        "total_cases": len(results),
+        "successful_cases": len(successful),
+        "failed_cases": len(failed),
+        "success_rate": _ratio(len(successful), len(results)),
+        "total_elapsed_seconds": round(sum(result.elapsed_seconds for result in results), 3),
+        "average_elapsed_seconds": _average(elapsed),
+        "min_elapsed_seconds": min(elapsed) if elapsed else None,
+        "max_elapsed_seconds": max(elapsed) if elapsed else None,
+        "generated_candidates_total": sum(result.generated_candidates for result in successful),
+        "solver_statuses": sorted(
+            {result.solver_status for result in successful if result.solver_status}
+        ),
+        "effective_backends": sorted(
+            {
+                result.solver_backend_effective
+                for result in successful
+                if result.solver_backend_effective
+            }
+        ),
+        "failures": [
+            {
+                "case_id": result.case_id,
+                "error_type": result.error_type,
+                "error": result.error,
+            }
+            for result in failed
+        ],
+    }
+
+
+def _summarize_size(size: int, results: list[BenchmarkResult]) -> dict[str, object]:
+    successful = [result for result in results if result.ok]
+    fastest = min(successful, key=lambda result: result.elapsed_seconds) if successful else None
+    first = results[0]
+    return {
+        "size": size,
+        "rows": first.rows,
+        "cols": first.cols,
+        "total_cases": len(results),
+        "successful_cases": len(successful),
+        "failed_cases": len(results) - len(successful),
+        "success_rate": _ratio(len(successful), len(results)),
+        "fastest_backend": fastest.backend if fastest else None,
+        "fastest_elapsed_seconds": fastest.elapsed_seconds if fastest else None,
+        "successful_backends": sorted({result.backend for result in successful}),
+        "backend_elapsed_seconds": {
+            result.backend: result.elapsed_seconds if result.ok else None for result in results
+        },
+        "backend_statuses": {
+            result.backend: result.solver_status if result.ok else f"ERROR:{result.error_type}"
+            for result in results
+        },
+    }
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    if denominator == 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
+def _average(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 3)
+
+
+def _format_seconds(value: object) -> str:
+    if value is None:
+        return "n/a"
+    return f"{float(value):.3f}s"
 
 
 def run_case(case: BenchmarkCase, *, preset_name: str = "daily") -> BenchmarkResult:
@@ -200,6 +379,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--time-limit", type=float, default=10.0, help="Seconds per solve.")
     parser.add_argument("--preset", default="daily", help="Preset name. Currently daily is used.")
     parser.add_argument("--output", default=None, help="Optional JSON report path.")
+    parser.add_argument("--markdown-output", default=None, help="Optional Markdown summary path.")
     args = parser.parse_args()
     if args.candidates < 1:
         raise SystemExit("--candidates must be at least 1.")

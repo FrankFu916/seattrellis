@@ -42,7 +42,8 @@ python scripts/benchmark_solver.py \
   --backends fallback,ortools \
   --candidates 1 \
   --time-limit 10 \
-  --output outputs/benchmark-solver.json
+  --output outputs/benchmark-solver.json \
+  --markdown-output outputs/benchmark-solver.md
 ```
 
 详见[性能基准](benchmarks.md)。
