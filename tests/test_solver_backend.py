@@ -53,6 +53,17 @@ def test_explicit_ortools_reports_missing_extra_without_env(monkeypatch) -> None
         solve_seating(students, layout, RuleSet(), backend="ortools")
 
 
+def test_explicit_native_reports_missing_extension(monkeypatch) -> None:
+    monkeypatch.setattr(cp_sat, "require_native_core", lambda: (_ for _ in ()).throw(
+        MissingOptionalDependencyError("Rust native backend", "native")
+    ))
+    students = [Student(student_id="S1")]
+    layout = ClassroomLayout(seats=[SeatNode(seat_id="A1", row=1, col=1)])
+
+    with pytest.raises(MissingOptionalDependencyError, match="Rust native backend"):
+        solve_seating(students, layout, RuleSet(), backend="native")
+
+
 def test_ortools_unknown_status_is_not_reported_as_infeasible(monkeypatch) -> None:
     class FakeCpModel:
         OPTIMAL = 4
@@ -86,8 +97,9 @@ def test_doctor_reports_solver_backend(monkeypatch) -> None:
 
     assert "Solver backend:" in output
     assert "Effective default: fallback" in output
-    assert "Supported: auto, fallback, ortools" in output
+    assert "Supported: auto, fallback, ortools, native" in output
     assert "SEATTRELLIS_BACKEND: (not set)" in output
+    assert "Native core:" in output
 
 
 def test_benchmark_script_smoke(tmp_path) -> None:
@@ -116,6 +128,28 @@ def test_benchmark_script_smoke(tmp_path) -> None:
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["results"][0]["ok"] is True
     assert payload["results"][0]["backend"] == "fallback"
+    assert payload["benchmark_version"] == 1
+    assert payload["environment"]["seattrellis_version"]
+    assert payload["results"][0]["solver_backend_effective"] == "fallback"
+
+
+def test_benchmark_script_rejects_unknown_backend() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark_solver.py",
+            "--sizes",
+            "4",
+            "--backends",
+            "made-up",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "Unsupported solver backend" in result.stderr
 
 
 def _block_import(monkeypatch, blocked_root: str) -> None:

@@ -1,0 +1,4 @@
+[workspace]
+members = ["seattrellis_core", "seattrellis_native"]
+default-members = ["seattrellis_core"]
+resolver = "2"

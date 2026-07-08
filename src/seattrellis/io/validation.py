@@ -154,6 +154,8 @@ def validate_loaded_inputs(students: list[Student], layout: ClassroomLayout, rul
             f"Students without student_id will use name as the stable internal identifier: {shown}{suffix}."
         )
 
+    _add_rule_capability_warnings(report, rules)
+
     refs, ambiguous_refs = _student_reference_map(students)
 
     keys = [student.key for student in students]
@@ -224,6 +226,20 @@ def count_hard_constraints(rules: RuleSet) -> int:
         + len(rules.hard.cannot_be_adjacent)
         + len(rules.hard.min_distance)
     )
+
+
+def _add_rule_capability_warnings(report: ValidationReport, rules: RuleSet) -> None:
+    if rules.groups:
+        report.add_warning(
+            "rules.groups is currently model-only: group definitions are parsed and preserved, "
+            "but they do not affect validation, solving, or scoring yet."
+        )
+    if rules.soft.cooling.enabled:
+        report.add_warning(
+            "rules.soft.cooling is currently model-only: use soft.avoid_recent_neighbors for "
+            "active recent-neighbor penalties. Cooling settings are parsed and preserved, but "
+            "do not affect solving or scoring yet."
+        )
 
 
 def format_infeasible_diagnostic(

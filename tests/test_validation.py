@@ -8,8 +8,11 @@ import pytest
 from seattrellis import cli
 from seattrellis.io.json_files import InputFileError, load_snapshot, write_json_model
 from seattrellis.io.students import students_from_records
+from seattrellis.io.validation import validate_loaded_inputs
 from seattrellis.models import ClassroomLayout, SeatNode, Student
-from seattrellis.models.rules import FixedSeatRule, HardRules, PairRule, RuleSet, SoftRules, WeightedRule
+from seattrellis.models.rules import FixedSeatRule, GroupRule, HardRules, PairRule, RuleSet, SoftRules, WeightedRule
+from seattrellis.service import compute_solve
+from seattrellis.service_types import SolveInput
 from seattrellis.solver import SeatTrellisSolveError, solve_seating
 from seattrellis.solver.adjacency import build_adjacency_edges, normalize_edge
 
@@ -237,6 +240,42 @@ def test_validate_reports_unknown_rule_field(tmp_path) -> None:
     message = _validation_error(tmp_path, hard={"fixed_seatz": []})
 
     assert "extra fields not permitted" in message
+
+
+def test_validate_warns_for_model_only_groups_and_cooling() -> None:
+    rules = _quiet_rules()
+    rules.groups = [GroupRule(name="Team A", students=["S1", "S2"], separate=True)]
+    rules.soft.cooling.enabled = True
+
+    report = validate_loaded_inputs(
+        [Student(student_id="S1"), Student(student_id="S2")],
+        _line_layout(2),
+        rules,
+    )
+
+    assert any("rules.groups is currently model-only" in warning for warning in report.warnings)
+    assert any("rules.soft.cooling is currently model-only" in warning for warning in report.warnings)
+    with pytest.raises(InputFileError, match="Warnings treated as errors"):
+        report.raise_for_errors(strict=True)
+
+
+def test_solve_output_carries_model_only_warnings() -> None:
+    rules = _quiet_rules()
+    rules.groups = [GroupRule(name="Team A", students=["S1", "S2"], together=True)]
+
+    result = compute_solve(
+        SolveInput(
+            students=[Student(student_id="S1"), Student(student_id="S2")],
+            layout=_line_layout(2),
+            rules=rules,
+            backend="fallback",
+        )
+    )
+
+    assert result.warnings
+    assert any("rules.groups is currently model-only" in warning for warning in result.warnings)
+    assert result.candidate_set.warnings == result.warnings
+    assert result.candidate_set.candidates[0].snapshot.metadata["warnings"] == result.warnings
 
 
 def test_fixed_seat_is_enforced() -> None:

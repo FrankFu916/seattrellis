@@ -3,15 +3,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
+import sys
 import time
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from seattrellis import __version__
 from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
 from seattrellis.presets import get_preset
 from seattrellis.service import compute_solve
 from seattrellis.service_types import SolveInput
+from seattrellis.solver.backend import normalize_solver_backend
 
 
 @dataclass(frozen=True)
@@ -37,6 +42,9 @@ class BenchmarkResult:
     generated_candidates: int = 0
     recommended_candidate_id: str | None = None
     solver_backend: str | None = None
+    solver_backend_effective: str | None = None
+    solver_status: str | None = None
+    error_type: str | None = None
     error: str | None = None
 
 
@@ -54,8 +62,15 @@ def main() -> None:
         )
     ]
     payload = {
+        "benchmark_version": 1,
         "description": "Synthetic SeatTrellis solver benchmark. Data is fictional.",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "preset": args.preset,
+        "environment": {
+            "seattrellis_version": __version__,
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+        },
         "results": [asdict(result) for result in results],
     }
     text = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -92,12 +107,15 @@ def run_case(case: BenchmarkCase, *, preset_name: str = "daily") -> BenchmarkRes
             time_limit_seconds=case.time_limit_seconds,
             ok=False,
             elapsed_seconds=round(time.perf_counter() - started, 3),
+            error_type=exc.__class__.__name__,
             error=str(exc),
         )
 
     elapsed = round(time.perf_counter() - started, 3)
     candidate_set = output.candidate_set
+    first_candidate = candidate_set.candidates[0]
     solver_backend = str(candidate_set.metadata.get("solver_backend", "unknown"))
+    solver_backend_effective = first_candidate.snapshot.metrics.get("solver_backend_effective")
     return BenchmarkResult(
         size=case.size,
         rows=case.rows,
@@ -110,6 +128,8 @@ def run_case(case: BenchmarkCase, *, preset_name: str = "daily") -> BenchmarkRes
         generated_candidates=len(candidate_set.candidates),
         recommended_candidate_id=candidate_set.recommended_candidate_id,
         solver_backend=solver_backend,
+        solver_backend_effective=str(solver_backend_effective) if solver_backend_effective else None,
+        solver_status=first_candidate.snapshot.solver_status,
     )
 
 
@@ -187,7 +207,10 @@ def _parse_sizes(value: str) -> list[int]:
 
 
 def _parse_backends(value: str) -> list[str]:
-    backends = [item.strip().lower() for item in value.split(",") if item.strip()]
+    try:
+        backends = [normalize_solver_backend(item) for item in value.split(",") if item.strip()]
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if not backends:
         raise SystemExit("At least one backend is required.")
     return backends
@@ -201,7 +224,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--time-limit", type=float, default=10.0, help="Seconds per solve.")
     parser.add_argument("--preset", default="daily", help="Preset name. Currently daily is used.")
     parser.add_argument("--output", default=None, help="Optional JSON report path.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.candidates < 1:
+        raise SystemExit("--candidates must be at least 1.")
+    if args.time_limit < 0.1:
+        raise SystemExit("--time-limit must be at least 0.1 seconds.")
+    return args
 
 
 if __name__ == "__main__":

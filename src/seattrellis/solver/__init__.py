@@ -2,11 +2,16 @@
 
 from seattrellis.solver.result import SeatingSolution
 from seattrellis.solver.backend import SolverBackend, normalize_solver_backend, resolve_solver_backend
+from seattrellis.solver.errors import SeatTrellisSolveError
+from seattrellis.solver.problem import CompiledProblem, CompiledRules, compile_problem
 
 __all__ = [
+    "CompiledProblem",
+    "CompiledRules",
     "SeatTrellisSolveError",
     "SeatingSolution",
     "SolverBackend",
+    "compile_problem",
     "normalize_solver_backend",
     "resolve_solver_backend",
     "solve_seating",
@@ -14,8 +19,8 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    if name in {"SeatTrellisSolveError", "solve_seating"}:
-        from seattrellis.solver.cp_sat import SeatTrellisSolveError, solve_seating
+    if name == "solve_seating":
+        from seattrellis.solver.cp_sat import solve_seating
 
-        return {"SeatTrellisSolveError": SeatTrellisSolveError, "solve_seating": solve_seating}[name]
+        return solve_seating
     raise AttributeError(f"module 'seattrellis.solver' has no attribute {name!r}")

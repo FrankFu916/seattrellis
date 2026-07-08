@@ -31,6 +31,7 @@ image = ["Pillow>=9.4"]
 web = ["streamlit>=1.30"]
 pdf = ["weasyprint>=60", "cffi>=2.0"]
 docx = ["python-docx>=1.0"]
+native = ["maturin>=1.8"]
 dev = ["pytest>=7.0", "build>=1.2", "pypdf>=5"]
 docs = ["mkdocs-material==9.*"]
 all = [

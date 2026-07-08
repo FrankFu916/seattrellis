@@ -80,6 +80,7 @@ from seattrellis.solver.backend import (
     resolve_solver_backend,
     solver_backend_environment_summary,
 )
+from seattrellis.solver.native import native_core_status
 
 
 # In-memory operations
@@ -102,6 +103,7 @@ def compute_solve(input: SolveInput) -> SolveOutput:
         history_count=len(snapshots),
         rules=input.rules,
     )
+    runtime_warnings = _dedupe_warnings([*validation.warnings, *preset_warnings])
 
     seat_history = build_seat_history(input.students, input.layout, snapshots)
     pair_rule = input.rules.soft.avoid_recent_neighbors
@@ -133,13 +135,13 @@ def compute_solve(input: SolveInput) -> SolveOutput:
         candidate_set,
         preset_name=input.preset_name,
         rules_overlay=False,
-        warnings=preset_warnings,
+        warnings=runtime_warnings,
     )
 
     if input.candidate_count == 1:
         fairness = candidate_set.candidates[0].snapshot.metrics.get("fairness", {})
         summary = _format_solve_fairness_summary(fairness) if fairness else None
-        summary = _append_warnings(summary, preset_warnings)
+        summary = _append_warnings(summary, runtime_warnings)
     else:
         summary = _format_candidate_set_summary(candidate_set)
 
@@ -148,6 +150,7 @@ def compute_solve(input: SolveInput) -> SolveOutput:
     return SolveOutput(
         candidate_set=candidate_set,
         preset_warnings=preset_warnings,
+        warnings=runtime_warnings,
         summary=summary,
         plan_comparison_report=report,
     )
@@ -302,6 +305,7 @@ def solve_with_report(
     )
     candidate_set = result.candidate_set
     preset_warnings = result.preset_warnings or []
+    runtime_warnings = result.warnings or preset_warnings
     summary = result.summary
 
     # Re-apply preset metadata with full context (rules_overlay, etc.)
@@ -309,7 +313,7 @@ def solve_with_report(
         candidate_set,
         preset_name=preset.name if preset is not None else None,
         rules_overlay=rules_path is not None and preset is not None,
-        warnings=preset_warnings,
+        warnings=runtime_warnings,
     )
 
     if candidate_count == 1:
@@ -317,7 +321,7 @@ def solve_with_report(
         path = write_json_model(snapshot, output_path)
         fairness = snapshot.metrics.get("fairness", {})
         summary = _format_solve_fairness_summary(fairness) if fairness else None
-        summary = _append_warnings(summary, preset_warnings)
+        summary = _append_warnings(summary, runtime_warnings)
     else:
         path = write_json_model(candidate_set, output_path)
         summary = _format_candidate_set_summary(candidate_set)
@@ -449,6 +453,13 @@ def run_doctor() -> str:
     lines.append(f"    Supported: {', '.join(SOLVER_BACKENDS)}")
     lines.append(f"    SEATTRELLIS_BACKEND: {backend_env['SEATTRELLIS_BACKEND']}")
     lines.append(f"    SEATTRELLIS_USE_ORTOOLS: {backend_env['SEATTRELLIS_USE_ORTOOLS']}")
+    native_status = native_core_status()
+    native_line = "available"
+    if native_status.version:
+        native_line = f"available ({native_status.version})"
+    elif not native_status.available:
+        native_line = "not installed"
+    lines.append(f"    Native core: {native_line}")
 
     lines.append("")
     lines.append("  Privacy: all examples/ use fictional data only.")
@@ -705,18 +716,19 @@ def _apply_preset_metadata(
     rules_overlay: bool,
     warnings: Sequence[str],
 ) -> None:
-    if preset_name is None:
-        return
-    metadata = {
-        "name": preset_name,
-        "user_rules_overlay": rules_overlay,
-    }
-    candidate_set.metadata["preset"] = metadata
+    metadata = None
+    if preset_name is not None:
+        metadata = {
+            "name": preset_name,
+            "user_rules_overlay": rules_overlay,
+        }
+        candidate_set.metadata["preset"] = metadata
     for warning in warnings:
         if warning not in candidate_set.warnings:
             candidate_set.warnings.append(warning)
     for candidate in candidate_set.candidates:
-        candidate.snapshot.metadata["preset"] = metadata
+        if metadata is not None:
+            candidate.snapshot.metadata["preset"] = metadata
         if warnings:
             candidate.snapshot.metadata["warnings"] = list(warnings)
 
@@ -730,6 +742,14 @@ def _append_warnings(
         ["Warnings:", *(f"- {warning}" for warning in warnings)]
     )
     return f"{summary}\n\n{warning_text}" if summary else warning_text
+
+
+def _dedupe_warnings(warnings: Sequence[str]) -> list[str]:
+    deduped: list[str] = []
+    for warning in warnings:
+        if warning not in deduped:
+            deduped.append(warning)
+    return deduped
 
 
 def _dimension_rating(rating: str) -> str:

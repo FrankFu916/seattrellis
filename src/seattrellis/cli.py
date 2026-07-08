@@ -153,7 +153,7 @@ if typer is not None:
         backend: str = typer.Option(
             "auto",
             "--backend",
-            help="Solver backend: auto, fallback, or ortools.",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
         ),
         candidates: int = typer.Option(1, "--candidates", help="Number of distinct candidate plans to generate (1-20)."),
         seed: int | None = typer.Option(None, "--seed", help="Override the rules-file seed."),
@@ -383,7 +383,7 @@ if typer is not None:
         backend: str = typer.Option(
             "auto",
             "--backend",
-            help="Solver backend: auto, fallback, or ortools.",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
         ),
         output: Path | None = typer.Option(None, "--output", "-o", help="Override the output JSON path."),
         report: Path | None = typer.Option(None, "--report", help="Optional plan comparison report JSON path."),

@@ -9,6 +9,7 @@ venv/
 dist/
 site/
 build/
+target/
 outputs/
 exports/
 snapshots/

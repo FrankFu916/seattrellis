@@ -3,9 +3,9 @@ from __future__ import annotations
 import os
 from typing import Mapping, Literal
 
-SolverBackend = Literal["auto", "fallback", "ortools"]
+SolverBackend = Literal["auto", "fallback", "ortools", "native"]
 
-SOLVER_BACKENDS: tuple[SolverBackend, ...] = ("auto", "fallback", "ortools")
+SOLVER_BACKENDS: tuple[SolverBackend, ...] = ("auto", "fallback", "ortools", "native")
 _TRUE_VALUES = {"1", "true", "TRUE", "yes", "YES"}
 
 

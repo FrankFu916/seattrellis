@@ -192,6 +192,7 @@ class SolveOutput:
 
     candidate_set: CandidateSet
     preset_warnings: list[str] | None = None
+    warnings: list[str] | None = None
     summary: str | None = None
     plan_comparison_report: PlanComparisonReport | None = None
 

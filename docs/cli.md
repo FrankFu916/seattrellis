@@ -20,12 +20,14 @@
 - 非 `0`：输入、依赖、校验、求解或导出失败。
 
 命令默认使用 deterministic fallback solver。`solve` 和 `project-solve` 支持
-`--backend auto|fallback|ortools`：
+`--backend auto|fallback|ortools|native`：
 
 - `auto`：保持兼容行为；默认使用 fallback，若设置旧环境变量
   `SEATTRELLIS_USE_ORTOOLS=1` 或 `SEATTRELLIS_BACKEND=ortools` 则使用 OR-Tools；
 - `fallback`：显式使用内置启发式求解器；
 - `ortools`：显式使用 OR-Tools，不需要再设置旧环境变量。
+- `native`：实验 Rust core 后端。当前仍使用 Python fallback 搜索，但要求本地
+  Rust 扩展可用，并用 native core 做底层结构校验。
 
 `doctor` 会显示当前 backend 默认解析结果。OR-Tools 超时或返回 `UNKNOWN`
 时会提示“未在时间限制内找到方案”，不会再误报为确认无解。

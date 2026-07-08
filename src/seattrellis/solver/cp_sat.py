@@ -2,42 +2,36 @@ from __future__ import annotations
 
 import random
 import time
-from dataclasses import dataclass
 from math import inf, isfinite
 from typing import Any, Mapping, Sequence
 
-from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.history import PairHistory, SeatHistory
-from seattrellis.models.rules import MinDistanceRule, PairRule, RuleSet
+from seattrellis.models.layout import ClassroomLayout, SeatNode
+from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatAssignment
 from seattrellis.models.student import Student, student_needs_front
 from seattrellis.history import assignment_fairness_summary, avoid_recent_neighbors_cost, fair_rotation_cost
 from seattrellis.solver.adjacency import (
     SeatEdge,
-    build_adjacency_edges,
-    graph_distance,
     normalize_edge,
-    seat_distance,
 )
-from seattrellis.io.validation import format_infeasible_diagnostic, validate_loaded_inputs
+from seattrellis.io.validation import format_infeasible_diagnostic
+from seattrellis.solver.errors import SeatTrellisSolveError
+from seattrellis.solver.problem import (
+    CompiledProblem,
+    CompiledRules,
+    assignment_is_excluded,
+    compile_problem,
+    distance_for_rule,
+    seat_indexes_adjacent,
+)
 from seattrellis.solver.result import SeatingSolution
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver.backend import normalize_solver_backend, resolve_solver_backend
+from seattrellis.solver.native import require_native_core
 
 cp_model = None
 _cp_model_unavailable = False
-
-
-class SeatTrellisSolveError(ValueError):
-    """Raised when a seating problem cannot be solved or validated."""
-
-
-@dataclass(frozen=True)
-class _CompiledRules:
-    fixed_seats: dict[int, int]
-    must_be_adjacent: list[tuple[int, int]]
-    cannot_be_adjacent: list[tuple[int, int]]
-    min_distance: list[tuple[int, int, MinDistanceRule]]
 
 
 def solve_seating(
@@ -58,54 +52,82 @@ def solve_seating(
         raise ValueError("time_limit_seconds must be a finite number >= 0.1")
     rules = rules or RuleSet()
     seed = rules.seed if seed is None else seed
-    seats = sorted(layout.enabled_seats, key=lambda seat: (seat.row, seat.col, seat.seat_id))
-    if not students:
-        raise SeatTrellisSolveError("At least one student is required.")
-    if len(students) > len(seats):
-        raise SeatTrellisSolveError(
-            f"Not enough enabled seats: {len(students)} students but only {len(seats)} enabled seats."
-        )
-
-    _validate_unique_students(students)
-    validation_report = validate_loaded_inputs(students, layout, rules)
-    if validation_report.errors:
-        raise SeatTrellisSolveError(validation_report.format_failure(title="Input validation failed."))
-    edges = build_adjacency_edges(layout)
-    compiled = _compile_rules(students, seats, layout, rules, edges)
-    excluded = _compile_excluded_assignments(students, seats, excluded_assignments or [])
+    problem = compile_problem(
+        students,
+        layout,
+        rules,
+        excluded_assignments=excluded_assignments or [],
+    )
 
     requested_backend = normalize_solver_backend(backend)
     effective_backend = resolve_solver_backend(requested_backend)
     if effective_backend == "ortools":
         _load_cp_model()
         return _solve_with_ortools(
-            students,
-            seats,
-            layout,
-            rules,
-            compiled,
-            edges,
+            problem,
             history,
             pair_history,
             seed,
             time_limit_seconds,
-            excluded,
+            requested_backend,
+        )
+    if effective_backend == "native":
+        return _solve_with_native(
+            problem,
+            history,
+            pair_history,
+            seed,
+            time_limit_seconds,
             requested_backend,
         )
     return _solve_with_fallback(
-        students,
-        seats,
-        layout,
-        rules,
-        compiled,
-        edges,
+        problem,
         history,
         pair_history,
         seed,
-        excluded,
         time_limit_seconds,
         requested_backend,
     )
+
+
+def _solve_with_native(
+    problem: CompiledProblem,
+    history: SeatHistory | None,
+    pair_history: PairHistory | None,
+    seed: int,
+    time_limit_seconds: float,
+    requested_backend: str,
+) -> SeatingSolution:
+    native_core = require_native_core()
+    solution = _solve_with_fallback(
+        problem,
+        history,
+        pair_history,
+        seed,
+        time_limit_seconds,
+        requested_backend,
+    )
+    assignment_pairs = [
+        (
+            problem.student_index_by_key[assignment.student_key],
+            problem.seat_index_by_id[assignment.seat_id],
+        )
+        for assignment in solution.assignments
+    ]
+    if not native_core.assignment_is_unique(len(problem.students), len(problem.seats), assignment_pairs):
+        raise SeatTrellisSolveError("Native hard-constraint verification failed: assignment is not unique.")
+    solution.metrics.update(
+        {
+            "solver": "native-spike+fallback-heuristic",
+            "solver_backend_effective": "native",
+            "native_core": {
+                "module": "seattrellis_native",
+                "version": getattr(native_core, "__version__", None),
+                "validated_unique_assignment": True,
+            },
+        }
+    )
+    return solution
 
 
 def _load_cp_model():
@@ -124,19 +146,19 @@ def _load_cp_model():
 
 
 def _solve_with_ortools(
-    students: list[Student],
-    seats: list[SeatNode],
-    layout: ClassroomLayout,
-    rules: RuleSet,
-    compiled: _CompiledRules,
-    edges: set[SeatEdge],
+    problem: CompiledProblem,
     history: SeatHistory | None,
     pair_history: PairHistory | None,
     seed: int,
     time_limit_seconds: float,
-    excluded_assignments: list[dict[int, int]],
     requested_backend: str,
 ) -> SeatingSolution:
+    students = problem.students
+    seats = problem.seats
+    layout = problem.layout
+    rules = problem.rules
+    compiled = problem.rules_compiled
+    edges = problem.edges
     model = cp_model.CpModel()
     x: dict[tuple[int, int], Any] = {}
     for student_index in range(len(students)):
@@ -152,7 +174,7 @@ def _solve_with_ortools(
         model.Add(x[(student_index, seat_index)] == 1)
 
     _add_pair_constraints(model, x, seats, compiled, layout, edges)
-    for excluded in excluded_assignments:
+    for excluded in problem.excluded_assignments:
         model.Add(sum(x[(student_index, seat_index)] for student_index, seat_index in excluded.items()) <= len(students) - 1)
     objective_terms = _build_individual_objective_terms(x, students, seats, layout, rules, history, seed)
     objective_terms.extend(_build_pair_objective_terms(model, x, students, seats, layout, rules, edges, pair_history))
@@ -206,7 +228,7 @@ def _add_pair_constraints(
     model: Any,
     x: dict[tuple[int, int], Any],
     seats: list[SeatNode],
-    compiled: _CompiledRules,
+    compiled: CompiledRules,
     layout: ClassroomLayout,
     edges: set[SeatEdge],
 ) -> None:
@@ -237,7 +259,7 @@ def _add_pair_constraints(
             for second_seat_index, second_seat in enumerate(seats):
                 if first_seat_index == second_seat_index:
                     continue
-                distance = _distance_for_rule(layout, first_seat, second_seat, rule)
+                distance = distance_for_rule(layout, first_seat, second_seat, rule)
                 if distance < rule.distance:
                     model.AddBoolOr(
                         [x[(first_index, first_seat_index)].Not(), x[(second_index, second_seat_index)].Not()]
@@ -354,19 +376,19 @@ def _build_score_balance_terms(
 
 
 def _solve_with_fallback(
-    students: list[Student],
-    seats: list[SeatNode],
-    layout: ClassroomLayout,
-    rules: RuleSet,
-    compiled: _CompiledRules,
-    edges: set[SeatEdge],
+    problem: CompiledProblem,
     history: SeatHistory | None,
     pair_history: PairHistory | None,
     seed: int,
-    excluded_assignments: list[dict[int, int]],
     time_limit_seconds: float,
     requested_backend: str,
 ) -> SeatingSolution:
+    students = problem.students
+    seats = problem.seats
+    layout = problem.layout
+    rules = problem.rules
+    compiled = problem.rules_compiled
+    edges = problem.edges
     rng = random.Random(seed)
     attempts = max(40, len(students) * 12)
     deadline = time.monotonic() + time_limit_seconds
@@ -434,7 +456,7 @@ def _solve_with_fallback(
         if (
             not success
             or not _full_assignment_valid(assignment, seats, layout, compiled, edges)
-            or _assignment_is_excluded(assignment, excluded_assignments)
+            or assignment_is_excluded(assignment, problem.excluded_assignments)
         ):
             continue
         completed_attempts += 1
@@ -511,7 +533,7 @@ def _choose_next_student(
     students: list[Student],
     seats: list[SeatNode],
     layout: ClassroomLayout,
-    compiled: _CompiledRules,
+    compiled: CompiledRules,
     edges: set[SeatEdge],
     assignment: dict[int, int],
     used_seats: set[int],
@@ -539,7 +561,7 @@ def _partial_assignment_valid(
     assignment: dict[int, int],
     seats: list[SeatNode],
     layout: ClassroomLayout,
-    compiled: _CompiledRules,
+    compiled: CompiledRules,
     edges: set[SeatEdge],
 ) -> bool:
     if len(set(assignment.values())) < len(assignment):
@@ -549,17 +571,17 @@ def _partial_assignment_valid(
             return False
     for first_index, second_index in compiled.must_be_adjacent:
         if first_index in assignment and second_index in assignment:
-            if not _seat_indexes_adjacent(seats, assignment[first_index], assignment[second_index], edges):
+            if not seat_indexes_adjacent(seats, assignment[first_index], assignment[second_index], edges):
                 return False
     for first_index, second_index in compiled.cannot_be_adjacent:
         if first_index in assignment and second_index in assignment:
-            if _seat_indexes_adjacent(seats, assignment[first_index], assignment[second_index], edges):
+            if seat_indexes_adjacent(seats, assignment[first_index], assignment[second_index], edges):
                 return False
     for first_index, second_index, rule in compiled.min_distance:
         if first_index in assignment and second_index in assignment:
             first_seat = seats[assignment[first_index]]
             second_seat = seats[assignment[second_index]]
-            if _distance_for_rule(layout, first_seat, second_seat, rule) < rule.distance:
+            if distance_for_rule(layout, first_seat, second_seat, rule) < rule.distance:
                 return False
     return True
 
@@ -568,179 +590,10 @@ def _full_assignment_valid(
     assignment: dict[int, int],
     seats: list[SeatNode],
     layout: ClassroomLayout,
-    compiled: _CompiledRules,
+    compiled: CompiledRules,
     edges: set[SeatEdge],
 ) -> bool:
     return _partial_assignment_valid(assignment, seats, layout, compiled, edges)
-
-
-def _compile_rules(
-    students: list[Student],
-    seats: list[SeatNode],
-    layout: ClassroomLayout,
-    rules: RuleSet,
-    edges: set[SeatEdge],
-) -> _CompiledRules:
-    student_refs = _student_reference_map(students)
-    seat_index_by_id = {seat.seat_id: index for index, seat in enumerate(seats)}
-    fixed: dict[int, int] = {}
-    fixed_seats_seen: dict[int, int] = {}
-
-    for rule in rules.hard.fixed_seats:
-        student_index = _resolve_student(rule.student, student_refs)
-        if rule.seat_id not in seat_index_by_id:
-            raise SeatTrellisSolveError(f"Fixed seat {rule.seat_id!r} is unknown or disabled.")
-        seat_index = seat_index_by_id[rule.seat_id]
-        if student_index in fixed:
-            raise SeatTrellisSolveError(f"Student {rule.student!r} is fixed to more than one seat.")
-        if seat_index in fixed_seats_seen:
-            raise SeatTrellisSolveError(f"Seat {rule.seat_id!r} is fixed to more than one student.")
-        fixed[student_index] = seat_index
-        fixed_seats_seen[seat_index] = student_index
-
-    compiled = _CompiledRules(
-        fixed_seats=fixed,
-        must_be_adjacent=[_compile_pair(rule, student_refs) for rule in rules.hard.must_be_adjacent],
-        cannot_be_adjacent=[_compile_pair(rule, student_refs) for rule in rules.hard.cannot_be_adjacent],
-        min_distance=[
-            (*_compile_pair(rule, student_refs), rule)
-            for rule in rules.hard.min_distance
-        ],
-    )
-    _validate_compiled_rule_conflicts(compiled, seats, layout, edges)
-    return compiled
-
-
-def _compile_excluded_assignments(
-    students: Sequence[Student],
-    seats: Sequence[SeatNode],
-    excluded_assignments: Sequence[Mapping[str, str]],
-) -> list[dict[int, int]]:
-    student_index_by_key = {student.key: index for index, student in enumerate(students)}
-    seat_index_by_id = {seat.seat_id: index for index, seat in enumerate(seats)}
-    compiled: list[dict[int, int]] = []
-    for excluded in excluded_assignments:
-        if set(excluded) != set(student_index_by_key):
-            raise SeatTrellisSolveError(
-                "Each excluded assignment must contain every current student exactly once."
-            )
-        try:
-            item = {
-                student_index_by_key[student_key]: seat_index_by_id[seat_id]
-                for student_key, seat_id in excluded.items()
-            }
-        except KeyError as exc:
-            raise SeatTrellisSolveError(
-                f"Excluded assignment references an unknown student or enabled seat: {exc.args[0]!r}."
-            ) from exc
-        compiled.append(item)
-    return compiled
-
-
-def _assignment_is_excluded(
-    assignment: Mapping[int, int],
-    excluded_assignments: Sequence[Mapping[int, int]],
-) -> bool:
-    return any(
-        len(assignment) == len(excluded)
-        and all(assignment.get(student_index) == seat_index for student_index, seat_index in excluded.items())
-        for excluded in excluded_assignments
-    )
-
-
-def _validate_compiled_rule_conflicts(
-    compiled: _CompiledRules,
-    seats: list[SeatNode],
-    layout: ClassroomLayout,
-    edges: set[SeatEdge],
-) -> None:
-    must_pairs = {_pair_key(first, second) for first, second in compiled.must_be_adjacent}
-    cannot_pairs = {_pair_key(first, second) for first, second in compiled.cannot_be_adjacent}
-    conflicts = must_pairs & cannot_pairs
-    if conflicts:
-        raise SeatTrellisSolveError(
-            "Conflicting hard rules: the same student pair appears in both must_be_adjacent and cannot_be_adjacent."
-        )
-
-    fixed_by_student = compiled.fixed_seats
-    for first_index, second_index in compiled.must_be_adjacent:
-        if first_index in fixed_by_student and second_index in fixed_by_student:
-            first_seat = seats[fixed_by_student[first_index]]
-            second_seat = seats[fixed_by_student[second_index]]
-            if normalize_edge(first_seat.seat_id, second_seat.seat_id) not in edges:
-                raise SeatTrellisSolveError(
-                    "Conflicting hard rules: fixed seats do not satisfy a must_be_adjacent rule."
-                )
-    for first_index, second_index in compiled.cannot_be_adjacent:
-        if first_index in fixed_by_student and second_index in fixed_by_student:
-            first_seat = seats[fixed_by_student[first_index]]
-            second_seat = seats[fixed_by_student[second_index]]
-            if normalize_edge(first_seat.seat_id, second_seat.seat_id) in edges:
-                raise SeatTrellisSolveError(
-                    "Conflicting hard rules: fixed seats violate a cannot_be_adjacent rule."
-                )
-    for first_index, second_index, rule in compiled.min_distance:
-        if first_index in fixed_by_student and second_index in fixed_by_student:
-            first_seat = seats[fixed_by_student[first_index]]
-            second_seat = seats[fixed_by_student[second_index]]
-            if _distance_for_rule(layout, first_seat, second_seat, rule) < rule.distance:
-                raise SeatTrellisSolveError(
-                    "Conflicting hard rules: fixed seats violate a min_distance rule."
-                )
-
-
-def _pair_key(first_index: int, second_index: int) -> tuple[int, int]:
-    return (first_index, second_index) if first_index < second_index else (second_index, first_index)
-
-
-def _compile_pair(rule: PairRule, student_refs: dict[str, int]) -> tuple[int, int]:
-    first_index = _resolve_student(rule.students[0], student_refs)
-    second_index = _resolve_student(rule.students[1], student_refs)
-    if first_index == second_index:
-        raise SeatTrellisSolveError("A pair rule must reference two different students.")
-    return first_index, second_index
-
-
-def _student_reference_map(students: list[Student]) -> dict[str, int]:
-    refs: dict[str, int] = {}
-    for index, student in enumerate(students):
-        for value in (student.student_id, student.name):
-            if not value:
-                continue
-            if value in refs and refs[value] != index:
-                raise SeatTrellisSolveError(f"Ambiguous student reference: {value!r}.")
-            refs[value] = index
-    return refs
-
-
-def _resolve_student(ref: str, refs: dict[str, int]) -> int:
-    if ref not in refs:
-        raise SeatTrellisSolveError(f"Unknown student reference: {ref!r}.")
-    return refs[ref]
-
-
-def _validate_unique_students(students: list[Student]) -> None:
-    keys = [student.key for student in students]
-    duplicates = sorted({key for key in keys if keys.count(key) > 1})
-    if duplicates:
-        raise SeatTrellisSolveError(f"Duplicate student identifiers: {', '.join(duplicates)}")
-
-
-def _seat_indexes_adjacent(seats: list[SeatNode], first_index: int, second_index: int, edges: set[SeatEdge]) -> bool:
-    if first_index == second_index:
-        return False
-    return normalize_edge(seats[first_index].seat_id, seats[second_index].seat_id) in edges
-
-
-def _distance_for_rule(
-    layout: ClassroomLayout,
-    first_seat: SeatNode,
-    second_seat: SeatNode,
-    rule: MinDistanceRule,
-) -> float:
-    if rule.metric == "graph":
-        return graph_distance(layout, first_seat.seat_id, second_seat.seat_id)
-    return seat_distance(first_seat, second_seat)
 
 
 def _individual_cost(
@@ -837,7 +690,7 @@ def _fallback_total_cost(
                 second_score = students[second_index].score
                 if second_score is None:
                     continue
-                if _seat_indexes_adjacent(seats, first_seat_index, second_seat_index, edges):
+                if seat_indexes_adjacent(seats, first_seat_index, second_seat_index, edges):
                     cost -= rules.soft.score_balance.weight * abs(float(first_score) - float(second_score))
 
     rule = rules.soft.avoid_recent_neighbors
