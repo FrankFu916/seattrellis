@@ -27,6 +27,7 @@
 - [ ] Run `python -m pip install -e ".[all,dev]"`.
 - [ ] Run `pytest`.
 - [ ] Run `cargo test --manifest-path native/Cargo.toml`.
+- [ ] Run `python scripts/benchmark_solver.py --sizes 40,50,60 --backends fallback --candidates 1 --time-limit 10 --output outputs/benchmark-solver.json`.
 - [ ] Run `pytest tests/test_web_workflow.py`.
 - [ ] Launch `streamlit run src/seattrellis/web/app.py` and confirm the quick-solve and project tabs load.
 - [ ] Run `python -m build`.

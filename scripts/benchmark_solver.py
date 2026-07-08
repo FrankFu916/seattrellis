@@ -12,7 +12,15 @@ from pathlib import Path
 from typing import Iterable
 
 from seattrellis import __version__
-from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
+from seattrellis.benchmarks import (
+    BENCHMARK_DATASET_NAME,
+    BENCHMARK_DATASET_VERSION,
+    BENCHMARK_DEFAULT_SIZES,
+    benchmark_case_id,
+    benchmark_layout,
+    benchmark_layout_shape,
+    benchmark_students,
+)
 from seattrellis.presets import get_preset
 from seattrellis.service import compute_solve
 from seattrellis.service_types import SolveInput
@@ -21,6 +29,7 @@ from seattrellis.solver.backend import normalize_solver_backend
 
 @dataclass(frozen=True)
 class BenchmarkCase:
+    case_id: str
     size: int
     rows: int
     cols: int
@@ -31,6 +40,8 @@ class BenchmarkCase:
 
 @dataclass(frozen=True)
 class BenchmarkResult:
+    case_id: str
+    dataset_version: str
     size: int
     rows: int
     cols: int
@@ -66,6 +77,12 @@ def main() -> None:
         "description": "Synthetic SeatTrellis solver benchmark. Data is fictional.",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "preset": args.preset,
+        "dataset": {
+            "name": BENCHMARK_DATASET_NAME,
+            "version": BENCHMARK_DATASET_VERSION,
+            "default_sizes": list(BENCHMARK_DEFAULT_SIZES),
+            "fictional": True,
+        },
         "environment": {
             "seattrellis_version": __version__,
             "python": sys.version.split()[0],
@@ -82,8 +99,8 @@ def main() -> None:
 
 
 def run_case(case: BenchmarkCase, *, preset_name: str = "daily") -> BenchmarkResult:
-    students = _students(case.size)
-    layout = _layout(case.rows, case.cols)
+    students = benchmark_students(case.size)
+    layout = benchmark_layout(case.rows, case.cols)
     rules = get_preset(preset_name).rules
     started = time.perf_counter()
     try:
@@ -99,6 +116,8 @@ def run_case(case: BenchmarkCase, *, preset_name: str = "daily") -> BenchmarkRes
         )
     except Exception as exc:
         return BenchmarkResult(
+            case_id=case.case_id,
+            dataset_version=BENCHMARK_DATASET_VERSION,
             size=case.size,
             rows=case.rows,
             cols=case.cols,
@@ -117,6 +136,8 @@ def run_case(case: BenchmarkCase, *, preset_name: str = "daily") -> BenchmarkRes
     solver_backend = str(candidate_set.metadata.get("solver_backend", "unknown"))
     solver_backend_effective = first_candidate.snapshot.metrics.get("solver_backend_effective")
     return BenchmarkResult(
+        case_id=case.case_id,
+        dataset_version=BENCHMARK_DATASET_VERSION,
         size=case.size,
         rows=case.rows,
         cols=case.cols,
@@ -141,9 +162,10 @@ def _cases(
     time_limit_seconds: float,
 ) -> Iterable[BenchmarkCase]:
     for size in sizes:
-        rows, cols = _layout_shape(size)
+        rows, cols = benchmark_layout_shape(size)
         for backend in backends:
             yield BenchmarkCase(
+                case_id=benchmark_case_id(size, rows, cols),
                 size=size,
                 rows=rows,
                 cols=cols,
@@ -151,52 +173,6 @@ def _cases(
                 candidates=candidates,
                 time_limit_seconds=time_limit_seconds,
             )
-
-
-def _layout_shape(size: int) -> tuple[int, int]:
-    if size <= 40:
-        return 5, 8
-    if size <= 50:
-        return 5, 10
-    return 6, 10
-
-
-def _students(count: int) -> list[Student]:
-    return [
-        Student(
-            student_id=f"STU{i:03d}",
-            name=f"Student{i:03d}",
-            gender="F" if i % 2 else "M",
-            height_cm=float(145 + (i * 7) % 42),
-            score=float(55 + (i * 11) % 45),
-            vision="poor" if i % 13 == 0 else None,
-            tags=["leader"] if i % 17 == 0 else [],
-            needs=["vision_front"] if i % 19 == 0 else [],
-        )
-        for i in range(1, count + 1)
-    ]
-
-
-def _layout(rows: int, cols: int) -> ClassroomLayout:
-    seats: list[SeatNode] = []
-    for row in range(1, rows + 1):
-        zone = "front" if row == 1 else "back" if row == rows else "middle"
-        for col in range(1, cols + 1):
-            seats.append(
-                SeatNode(
-                    seat_id=f"R{row}C{col}",
-                    row=row,
-                    col=col,
-                    x=float(col),
-                    y=float(row),
-                    zone=zone,
-                    near_window=col == 1,
-                    near_door=col == cols,
-                    near_platform=row == 1,
-                    near_ac=row == rows and col in {cols - 1, cols},
-                )
-            )
-    return ClassroomLayout(layout_id=f"benchmark-{rows}x{cols}", seats=seats)
 
 
 def _parse_sizes(value: str) -> list[int]:

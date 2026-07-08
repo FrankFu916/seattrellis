@@ -126,10 +126,18 @@ def test_benchmark_script_smoke(tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["dataset"] == {
+        "name": "synthetic-classroom",
+        "version": "synthetic-v1",
+        "default_sizes": [40, 50, 60],
+        "fictional": True,
+    }
     assert payload["results"][0]["ok"] is True
     assert payload["results"][0]["backend"] == "fallback"
     assert payload["benchmark_version"] == 1
     assert payload["environment"]["seattrellis_version"]
+    assert payload["results"][0]["case_id"] == "synthetic-v1-4-students-5x8"
+    assert payload["results"][0]["dataset_version"] == "synthetic-v1"
     assert payload["results"][0]["solver_backend_effective"] == "fallback"
 
 
