@@ -48,6 +48,16 @@ from seattrellis.web.i18n import (
     table_column_labels,
     translate,
 )
+from seattrellis.web.keys import (
+    PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
+    PROJECT_EXPORT_DOWNLOAD_REPORT,
+    QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_EXPORT_DOWNLOAD_ARTIFACT,
+    QUICK_EXPORT_DOWNLOAD_REPORT,
+    QUICK_EXPORT_FORMAT_SELECT,
+    QUICK_GENERATE_BUTTON,
+    QUICK_LOAD_DEMO_BUTTON,
+)
 from seattrellis.web.workflow import (
     WebSolveResult,
     analyze_history_files,
@@ -435,11 +445,16 @@ def _render_exports(
     }
     configurable_formats = {"print-html", "pdf", "docx"}
     with st.expander(_t("export_settings"), expanded=True):
+        export_format_key = (
+            f"{export_key}_format"
+            if project_path is not None
+            else QUICK_EXPORT_FORMAT_SELECT
+        )
         output_format = st.selectbox(
             _t("export_format"),
             list(export_formats),
             format_func=lambda value: export_formats[value][0],
-            key=f"{export_key}_format",
+            key=export_format_key,
         )
         export_label, mime = export_formats[output_format]
         st.caption(_t("export_on_demand"))
@@ -568,11 +583,17 @@ def _render_exports(
 
     # JSON artifact download
     artifact_label = "candidate set JSON" if result.is_candidate_set else "snapshot JSON"
+    artifact_download_key = (
+        PROJECT_EXPORT_DOWNLOAD_ARTIFACT
+        if project_path is not None
+        else QUICK_EXPORT_DOWNLOAD_ARTIFACT
+    )
     st.download_button(
         _t("download", label=artifact_label),
         data=artifact_bytes,
         file_name=result.artifact_path.name,
         mime="application/json",
+        key=artifact_download_key,
     )
     if result.report_path is not None:
         if report_bytes is None:
@@ -581,11 +602,17 @@ def _render_exports(
             except (FileNotFoundError, OSError):
                 report_bytes = None
         if report_bytes is not None:
+            report_download_key = (
+                PROJECT_EXPORT_DOWNLOAD_REPORT
+                if project_path is not None
+                else QUICK_EXPORT_DOWNLOAD_REPORT
+            )
             st.download_button(
                 _t("download", label="plan report JSON"),
                 data=report_bytes,
                 file_name=result.report_path.name,
                 mime="application/json",
+                key=report_download_key,
             )
 
     export_signature = (
@@ -727,7 +754,12 @@ def _render_step_load_data() -> None:
     st.markdown(_t("quick_start"))
     demo_col1, demo_col2 = st.columns([1, 3])
     with demo_col1:
-        if st.button(_t("load_demo"), type="primary", width="stretch"):
+        if st.button(
+            _t("load_demo"),
+            type="primary",
+            width="stretch",
+            key=QUICK_LOAD_DEMO_BUTTON,
+        ):
             demo = demo_paths()
             if demo["students_csv"] and demo["layout"]:
                 st.session_state["demo_loaded"] = True
@@ -965,7 +997,7 @@ def _render_step_solve() -> None:
         max_value=20,
         value=3,
         step=1,
-        key="quick_candidate_count",
+        key=QUICK_CANDIDATE_COUNT_INPUT,
     )
     seed_enabled = st.checkbox(_t("custom_seed"), key="quick_seed_enabled")
     seed = st.number_input(
@@ -1006,7 +1038,12 @@ def _render_step_solve() -> None:
         _render_error(exc)
 
     ready = has_rules and has_files
-    if st.button(_t("generate"), type="primary", disabled=not ready):
+    if st.button(
+        _t("generate"),
+        type="primary",
+        disabled=not ready,
+        key=QUICK_GENERATE_BUTTON,
+    ):
         _reset_solve_state()
         try:
             output_dir = _make_persistent_tempdir()

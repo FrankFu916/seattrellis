@@ -17,6 +17,12 @@ from seattrellis.models.candidate import CandidateSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
+from seattrellis.web.keys import (
+    QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_EXPORT_FORMAT_SELECT,
+    QUICK_GENERATE_BUTTON,
+    QUICK_LOAD_DEMO_BUTTON,
+)
 
 
 def test_web_workflow_generates_candidates_with_preset_overlay_and_history(tmp_path) -> None:
@@ -484,7 +490,7 @@ def test_streamlit_demo_rules_and_history_preview() -> None:
 
     app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
     app.run(timeout=10)
-    next(button for button in app.button if button.label == "🚀 一键加载 Demo").click()
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     app.radio[0].set_value("solve")
     app.run(timeout=10)
@@ -516,16 +522,12 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
 
     app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
     app.run(timeout=10)
-    next(button for button in app.button if button.label == "🚀 一键加载 Demo").click()
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     app.radio[0].set_value("solve")
     app.run(timeout=10)
-    next(
-        control
-        for control in app.number_input
-        if control.label == "候选方案数量"
-    ).set_value(1)
-    next(button for button in app.button if button.label == "生成座位表").click()
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
     app.radio[0].set_value("results")
     app.run(timeout=30)
@@ -545,9 +547,7 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
     assert any(button.label == "生成 Print HTML 导出文件" for button in app.button)
     assert not any("PDF export requires" in message.value for message in app.info)
 
-    export_format = next(
-        control for control in app.selectbox if control.label == "导出格式"
-    )
+    export_format = _control_by_key(app.selectbox, QUICK_EXPORT_FORMAT_SELECT)
     export_format.set_value("html")
     app.run(timeout=30)
 
@@ -602,3 +602,7 @@ def _block_import(monkeypatch, package_name: str) -> None:
         return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+
+def _control_by_key(controls, key: str):
+    return next(control for control in controls if control.key == key)
