@@ -325,6 +325,34 @@ def _commands(
                 ["outputs/neighbor-aware.html"],
             ),
             SmokeCommand(
+                "edit solved snapshot",
+                [
+                    "edit",
+                    "--snapshot",
+                    "outputs/neighbor-aware.snapshot.json",
+                    "--operation",
+                    "swap:STU001:STU002",
+                    "--operation",
+                    "lock-seat:R4C3",
+                    "--output",
+                    "outputs/neighbor-aware-edited.snapshot.json",
+                ],
+                ["outputs/neighbor-aware-edited.snapshot.json"],
+            ),
+            SmokeCommand(
+                "export edited html",
+                [
+                    "export",
+                    "--snapshot",
+                    "outputs/neighbor-aware-edited.snapshot.json",
+                    "--format",
+                    "html",
+                    "--output",
+                    "outputs/neighbor-aware-edited.html",
+                ],
+                ["outputs/neighbor-aware-edited.html"],
+            ),
+            SmokeCommand(
                 "solve candidate set",
                 [
                     "solve",

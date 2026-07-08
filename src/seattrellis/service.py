@@ -16,7 +16,7 @@ from typing import Sequence
 from seattrellis import __version__
 from seattrellis.candidates import generate_candidate_set
 from seattrellis.demo import create_demo_files
-from seattrellis.editing import EditingSession
+from seattrellis.editing import EditingOperation, EditingSession
 from seattrellis.exporters import export_candidate_report_html, export_snapshot
 from seattrellis.history import (
     build_fairness_report,
@@ -424,6 +424,40 @@ def export(
     )
 
 
+def edit_snapshot(
+    *,
+    snapshot_path: str | Path,
+    output_path: str | Path = "outputs/edited.snapshot.json",
+    operations: Sequence[EditingOperation],
+    locked_students: Sequence[str] | None = None,
+    locked_seats: Sequence[str] | None = None,
+    strict: bool = False,
+) -> tuple[Path, str]:
+    """Apply manual edit commands to a snapshot file and write a draft snapshot."""
+    operations = list(operations)
+    if not operations:
+        raise ValueError("At least one editing operation is required.")
+
+    artifact = load_seating_artifact(snapshot_path)
+    if isinstance(artifact, CandidateSet):
+        raise ValueError("Manual editing currently requires a snapshot JSON, not a candidate set.")
+
+    result = compute_edit(
+        EditInput(
+            snapshot=artifact,
+            operations=operations,
+            locked_students=tuple(locked_students or ()),
+            locked_seats=tuple(locked_seats or ()),
+        )
+    )
+    if strict and not result.hard_constraints.satisfied:
+        raise ValueError(_format_edit_strict_failure(result))
+
+    snapshot = _snapshot_with_edit_metadata(result.snapshot, result)
+    path = write_json_model(snapshot, output_path)
+    return path, _format_edit_summary(result)
+
+
 def run_doctor() -> str:
     """Check the environment and return a diagnostic report."""
     lines: list[str] = []
@@ -821,6 +855,31 @@ def _snapshot_with_candidate_metadata(candidate: CandidatePlan) -> SeatingSnapsh
     return candidate.snapshot.copy(update={"metadata": metadata})
 
 
+def _snapshot_with_edit_metadata(
+    snapshot: SeatingSnapshot,
+    result: EditOutput,
+) -> SeatingSnapshot:
+    metadata = dict(snapshot.metadata)
+    metadata["manual_edit"] = {
+        "operation_count": len(result.operation_log),
+        "operations": [
+            {
+                "kind": record.operation.kind,
+                "payload": dict(record.operation.payload),
+            }
+            for record in result.operation_log
+        ],
+        "locked_students": list(result.locked_students),
+        "locked_seats": list(result.locked_seats),
+        "unseated_students": list(result.unseated_students),
+        "hard_constraints_satisfied": result.hard_constraints.satisfied,
+        "violation_count": result.hard_constraints.violation_count,
+    }
+    if hasattr(snapshot, "model_copy"):
+        return snapshot.model_copy(update={"metadata": metadata})  # type: ignore[attr-defined,return-value]
+    return snapshot.copy(update={"metadata": metadata})
+
+
 def _format_solve_fairness_summary(fairness: object) -> str | None:
     if not isinstance(fairness, dict):
         return None
@@ -844,6 +903,46 @@ def _format_solve_fairness_summary(fairness: object) -> str | None:
         ", ".join(cost_parts) if cost_parts else f"enabled_rules={enabled_rules}"
     )
     return f"Fairness: history snapshots={history_count}, {suffix}."
+
+
+def _format_edit_summary(result: EditOutput) -> str:
+    hard = result.hard_constraints
+    lines = [
+        "Manual edit summary:",
+        f"- operations: {len(result.operation_log)}",
+        f"- unseated students: {_format_preview(result.unseated_students)}",
+        f"- locked students: {_format_preview(result.locked_students)}",
+        f"- locked seats: {_format_preview(result.locked_seats)}",
+        (
+            f"- hard constraints: {'satisfied' if hard.satisfied else 'not satisfied'} "
+            f"({hard.violation_count} violation(s))"
+        ),
+    ]
+    if hard.violations:
+        lines.append("Violations:")
+        lines.extend(f"- {violation}" for violation in hard.violations[:10])
+        if len(hard.violations) > 10:
+            lines.append(f"- ... {len(hard.violations) - 10} more")
+    return "\n".join(lines)
+
+
+def _format_edit_strict_failure(result: EditOutput) -> str:
+    violations = "\n".join(
+        f"- {violation}" for violation in result.hard_constraints.violations[:10]
+    )
+    return (
+        "Manual edits did not satisfy hard constraints; no snapshot was written."
+        + (f"\n{violations}" if violations else "")
+    )
+
+
+def _format_preview(values: Sequence[str]) -> str:
+    if not values:
+        return "none"
+    preview = ", ".join(values[:5])
+    if len(values) > 5:
+        return f"{preview}, ... ({len(values)} total)"
+    return preview
 
 
 def _friendly_error(exc: Exception) -> str:

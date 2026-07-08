@@ -3,11 +3,12 @@ from __future__ import annotations
 import pytest
 
 from seattrellis.editing import EditingError, EditingOperation
+from seattrellis.io.json_files import load_snapshot, write_json_model
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import HardRules, PairRule, RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
-from seattrellis.service import compute_edit
+from seattrellis.service import compute_edit, edit_snapshot
 from seattrellis.service_types import EditInput
 
 
@@ -99,6 +100,60 @@ def test_compute_edit_reuses_hard_constraint_diagnostics() -> None:
     assert "cannot_be_adjacent is not satisfied for ('s1', 's2')." in (
         result.hard_constraints.violations
     )
+
+
+def test_edit_snapshot_writes_draft_and_strict_rejects_violations(tmp_path) -> None:
+    snapshot_path = write_json_model(_snapshot(), tmp_path / "input.snapshot.json")
+    draft_path = tmp_path / "draft.snapshot.json"
+    strict_path = tmp_path / "strict.snapshot.json"
+
+    path, summary = edit_snapshot(
+        snapshot_path=snapshot_path,
+        output_path=draft_path,
+        operations=[
+            EditingOperation(
+                kind="move_student",
+                payload={"student_key": "s1", "seat_id": "A2"},
+            )
+        ],
+    )
+
+    assert path == draft_path
+    assert "hard constraints: not satisfied" in summary
+    draft = load_snapshot(draft_path)
+    assert draft.assignments[0].seat_id == "A2"
+    assert draft.metadata["manual_edit"]["operation_count"] == 1
+    assert draft.metadata["manual_edit"]["operations"][0]["kind"] == "move_student"
+    assert draft.metadata["manual_edit"]["hard_constraints_satisfied"] is False
+
+    with pytest.raises(EditingError):
+        edit_snapshot(
+            snapshot_path=snapshot_path,
+            output_path=strict_path,
+            operations=[
+                EditingOperation(kind="lock_seat", payload={"seat_id": "A2"}),
+                EditingOperation(
+                    kind="move_student",
+                    payload={"student_key": "s1", "seat_id": "A2"},
+                ),
+            ],
+            strict=True,
+        )
+    assert not strict_path.exists()
+
+    with pytest.raises(ValueError, match="hard constraints"):
+        edit_snapshot(
+            snapshot_path=snapshot_path,
+            output_path=strict_path,
+            operations=[
+                EditingOperation(
+                    kind="move_student",
+                    payload={"student_key": "s1", "seat_id": "A2"},
+                )
+            ],
+            strict=True,
+        )
+    assert not strict_path.exists()
 
 
 def _snapshot(

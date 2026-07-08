@@ -141,6 +141,27 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 Exported files are written to `outputs/`, which is ignored by Git.
 
+## Manual Edits
+
+After solving, use `edit` to apply command-style adjustments to a snapshot and
+then export the edited draft:
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation swap:STU001:STU002 \
+  --output outputs/neighbor-aware-edited.snapshot.json
+
+seattrellis export \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --format html \
+  --output outputs/neighbor-aware-edited.html
+```
+
+Repeated `--operation` values run in order. By default the command writes a
+draft and prints hard-constraint diagnostics; with `--strict`, a hard-constraint
+violation fails the command and leaves the output file unwritten.
+
 ## Project Workflow
 
 ```bash

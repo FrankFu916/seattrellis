@@ -141,6 +141,25 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 导出文件会写入 `outputs/`。该目录已被 `.gitignore` 忽略。
 
+## 手动微调
+
+求解后可以用 `edit` 对 snapshot 做命令式微调，再把新草稿导出：
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation swap:STU001:STU002 \
+  --output outputs/neighbor-aware-edited.snapshot.json
+
+seattrellis export \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --format html \
+  --output outputs/neighbor-aware-edited.html
+```
+
+多次 `--operation` 会按顺序执行。默认会保存草稿并显示 hard constraint 诊断；
+加 `--strict` 后，若调整违反 hard constraints 则不会写出文件。
+
 ## Project 工作流
 
 ```bash

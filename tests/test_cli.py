@@ -201,6 +201,28 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ],
         [
             "seattrellis",
+            "edit",
+            "--snapshot",
+            "outputs/neighbor-aware.snapshot.json",
+            "--operation",
+            "swap:STU001:STU002",
+            "--operation",
+            "lock-seat:R4C3",
+            "--output",
+            "outputs/neighbor-aware-edited.snapshot.json",
+        ],
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
+            "outputs/neighbor-aware-edited.snapshot.json",
+            "--format",
+            "html",
+            "--output",
+            "outputs/neighbor-aware-edited.html",
+        ],
+        [
+            "seattrellis",
             "solve",
             "--students",
             "examples/students.xlsx",
@@ -226,6 +248,22 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "seating.html").exists()
     assert (tmp_path / "outputs" / "neighbor-aware.snapshot.json").exists()
     assert (tmp_path / "outputs" / "neighbor-aware.html").exists()
+    assert (tmp_path / "outputs" / "neighbor-aware-edited.snapshot.json").exists()
+    assert (tmp_path / "outputs" / "neighbor-aware-edited.html").exists()
+    edited_snapshot = load_snapshot(
+        tmp_path / "outputs" / "neighbor-aware-edited.snapshot.json"
+    )
+    edited_by_student = {
+        assignment.student_key: assignment.seat_id
+        for assignment in edited_snapshot.assignments
+    }
+    original_snapshot = load_snapshot(tmp_path / "outputs" / "neighbor-aware.snapshot.json")
+    original_by_student = {
+        assignment.student_key: assignment.seat_id
+        for assignment in original_snapshot.assignments
+    }
+    assert edited_by_student["STU001"] == original_by_student["STU002"]
+    assert edited_by_student["STU002"] == original_by_student["STU001"]
     assert (tmp_path / "outputs" / "candidates.json").exists()
     assert (tmp_path / "outputs" / "plan-report.json").exists()
     assert (tmp_path / "outputs" / "recommended.html").exists()

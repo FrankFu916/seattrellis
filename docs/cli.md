@@ -8,6 +8,7 @@
 | `presets list/show/export` | 查看或导出内置规则 preset |
 | `validate` | 校验输入、字段和明显规则冲突 |
 | `solve` | 生成 snapshot 或 candidate set |
+| `edit` | 对已有 snapshot 执行人工调整命令 |
 | `export` | 导出选定方案 |
 | `history-report` | 汇总学生座位类别历史 |
 | `pair-report` | 汇总同桌和邻座历史 |
@@ -87,6 +88,37 @@ seattrellis export \
 ```
 
 命令示例见[快速开始](quickstart.zh.md)。
+
+## 人工调整
+
+`edit` 对普通 snapshot 执行一组按顺序排列的人工操作，并写出新的草稿
+snapshot。它适合在可视化编辑器完成前验收“自动生成 → 手动微调 → 重新导出”
+流程：
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation swap:STU001:STU002 \
+  --operation lock-seat:R4C3 \
+  --output outputs/neighbor-aware-edited.snapshot.json
+```
+
+支持的 operation 格式：
+
+- `swap:STU001:STU002`
+- `move:STU003:R2C2`
+- `seat:STU003:R2C2`
+- `unseat:STU004`
+- `lock-student:STU001`
+- `unlock-student:STU001`
+- `lock-seat:R1C1`
+- `unlock-seat:R1C1`
+
+多次 `--operation` 会按命令行顺序执行。默认情况下，即使调整后 hard
+constraints 不满足，也会写出草稿并在终端列出违反项；加 `--strict` 后，
+若 hard constraints 不满足则命令失败且不写出 snapshot。锁定状态目前只用于本次
+命令序列；本次操作摘要会记录在 `metadata.manual_edit`，但锁定状态还不是后续
+命令自动继承的正式 schema 字段。
 
 ## Schema 工具
 

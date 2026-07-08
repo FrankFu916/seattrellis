@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from seattrellis.editing import EditingOperation
 from seattrellis.io.json_files import InputFileError
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import (
@@ -332,6 +333,42 @@ if typer is not None:
             )
         )
 
+    @app.command("edit", help="Apply manual edit operations to a snapshot JSON file.")
+    def edit_command(
+        snapshot: Path = typer.Option(..., "--snapshot", help="Snapshot JSON path."),
+        operation: list[str] = typer.Option(
+            [],
+            "--operation",
+            "--op",
+            help=(
+                "Operation to apply, repeatable and ordered. Examples: "
+                "swap:STU001:STU002, move:STU003:R2C2, unseat:STU004, "
+                "lock-seat:R1C1."
+            ),
+        ),
+        output: Path = typer.Option(
+            Path("outputs/edited.snapshot.json"),
+            "--output",
+            "-o",
+            help="Edited snapshot output path.",
+        ),
+        strict: bool = typer.Option(
+            False,
+            "--strict",
+            help="Fail instead of writing when hard constraints are not satisfied.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_edit_result(
+                edit_snapshot(
+                    snapshot_path=snapshot,
+                    output_path=output,
+                    operations=_parse_edit_operations(operation),
+                    strict=strict,
+                )
+            )
+        )
+
     @app.command("history-report", help="Summarize historical seating snapshots.")
     def history_report_command(
         students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
@@ -487,6 +524,7 @@ else:
 
 from seattrellis.service import (  # noqa: E402, F401
     # Public API
+    edit_snapshot,
     export,
     init_demo,
     project_export,
@@ -603,6 +641,12 @@ def _run_argparse() -> None:
     )
     export_parser.add_argument("--page-scale", type=float, default=1.0)
     export_parser.add_argument("--locale", choices=["zh", "en"], default="zh")
+
+    edit_parser = subparsers.add_parser("edit", help="Apply manual edits to a snapshot.")
+    edit_parser.add_argument("--snapshot", required=True)
+    edit_parser.add_argument("--operation", "--op", dest="operations", action="append", default=[])
+    edit_parser.add_argument("--output", "-o", default="outputs/edited.snapshot.json")
+    edit_parser.add_argument("--strict", action="store_true")
 
     history_parser = subparsers.add_parser("history-report", help="Summarize historical seating snapshots.")
     history_parser.add_argument("--students", required=True)
@@ -736,6 +780,15 @@ def _run_argparse() -> None:
             ),
         )
         print(f"Export written to {path}")
+    elif args.command == "edit":
+        path, summary = edit_snapshot(
+            snapshot_path=args.snapshot,
+            output_path=args.output,
+            operations=_parse_edit_operations(args.operations),
+            strict=args.strict,
+        )
+        print(f"Edited snapshot written to {path}")
+        print(summary)
     elif args.command == "history-report":
         print(
             run_history_report(
@@ -820,6 +873,12 @@ def _print_solve_result(result: tuple[Path, str | None]) -> None:
         typer.echo(summary)
 
 
+def _print_edit_result(result: tuple[Path, str]) -> None:
+    path, summary = result
+    typer.echo(f"Edited snapshot written to {path}")
+    typer.echo(summary)
+
+
 def _print_schema_migration(result) -> None:
     message = (
         f"{result.artifact} schema_version {result.schema_version!r} "
@@ -829,6 +888,73 @@ def _print_schema_migration(result) -> None:
         typer.echo(message)
     else:
         print(message)
+
+
+def _parse_edit_operations(values: list[str]) -> list[EditingOperation]:
+    if not values:
+        raise ValueError("At least one --operation value is required.")
+    return [_parse_edit_operation(value) for value in values]
+
+
+def _parse_edit_operation(value: str) -> EditingOperation:
+    text = str(value).strip()
+    if not text:
+        raise ValueError("Editing operation cannot be empty.")
+    parts = [part.strip() for part in text.split(":")]
+    name = parts[0].replace("-", "_").strip().lower()
+    kind = {
+        "swap": "swap_students",
+        "swap_students": "swap_students",
+        "move": "move_student",
+        "move_student": "move_student",
+        "seat": "seat_student",
+        "seat_student": "seat_student",
+        "unseat": "unseat_student",
+        "unseat_student": "unseat_student",
+        "lock_student": "lock_student",
+        "unlock_student": "unlock_student",
+        "lock_seat": "lock_seat",
+        "unlock_seat": "unlock_seat",
+    }.get(name)
+    if kind is None:
+        raise ValueError(
+            f"Unsupported editing operation {parts[0]!r}. "
+            "Use swap, move, seat, unseat, lock-student, unlock-student, "
+            "lock-seat, or unlock-seat."
+        )
+
+    if kind == "swap_students":
+        _require_operation_parts(text, parts, 3)
+        return EditingOperation(
+            kind="swap_students",
+            payload={"first_student": parts[1], "second_student": parts[2]},
+        )
+    if kind in {"move_student", "seat_student"}:
+        _require_operation_parts(text, parts, 3)
+        return EditingOperation(
+            kind=kind,  # type: ignore[arg-type]
+            payload={"student_key": parts[1], "seat_id": parts[2]},
+        )
+    if kind in {"unseat_student", "lock_student", "unlock_student"}:
+        _require_operation_parts(text, parts, 2)
+        return EditingOperation(
+            kind=kind,  # type: ignore[arg-type]
+            payload={"student_key": parts[1]},
+        )
+    _require_operation_parts(text, parts, 2)
+    return EditingOperation(
+        kind=kind,  # type: ignore[arg-type]
+        payload={"seat_id": parts[1]},
+    )
+
+
+def _require_operation_parts(text: str, parts: list[str], expected: int) -> None:
+    if len(parts) != expected or any(not part for part in parts[1:]):
+        examples = (
+            "swap:STU001:STU002, move:STU003:R2C2, unseat:STU004, "
+            "lock-seat:R1C1"
+        )
+        raise ValueError(f"Invalid editing operation {text!r}. Examples: {examples}.")
 
 
 if __name__ == "__main__":
