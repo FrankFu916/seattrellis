@@ -11,7 +11,7 @@ from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service import run_doctor
 from seattrellis.solver import resolve_solver_backend, solve_seating
-from seattrellis.solver import cp_sat
+from seattrellis.solver import native_backend, ortools_backend
 
 
 def test_backend_resolution_prefers_explicit_request(monkeypatch) -> None:
@@ -44,8 +44,8 @@ def test_explicit_fallback_ignores_ortools_env(monkeypatch) -> None:
 def test_explicit_ortools_reports_missing_extra_without_env(monkeypatch) -> None:
     _block_import(monkeypatch, "ortools")
     monkeypatch.delenv("SEATTRELLIS_USE_ORTOOLS", raising=False)
-    monkeypatch.setattr(cp_sat, "cp_model", None)
-    monkeypatch.setattr(cp_sat, "_cp_model_unavailable", False)
+    monkeypatch.setattr(ortools_backend, "cp_model", None)
+    monkeypatch.setattr(ortools_backend, "_cp_model_unavailable", False)
     students = [Student(student_id="S1")]
     layout = ClassroomLayout(seats=[SeatNode(seat_id="A1", row=1, col=1)])
 
@@ -54,7 +54,7 @@ def test_explicit_ortools_reports_missing_extra_without_env(monkeypatch) -> None
 
 
 def test_explicit_native_reports_missing_extension(monkeypatch) -> None:
-    monkeypatch.setattr(cp_sat, "require_native_core", lambda: (_ for _ in ()).throw(
+    monkeypatch.setattr(native_backend, "require_native_core", lambda: (_ for _ in ()).throw(
         MissingOptionalDependencyError("Rust native backend", "native")
     ))
     students = [Student(student_id="S1")]
@@ -72,11 +72,11 @@ def test_ortools_unknown_status_is_not_reported_as_infeasible(monkeypatch) -> No
         MODEL_INVALID = 1
         UNKNOWN = 0
 
-    monkeypatch.setattr(cp_sat, "cp_model", FakeCpModel)
+    monkeypatch.setattr(ortools_backend, "cp_model", FakeCpModel)
     students = [Student(student_id="S1")]
     layout = ClassroomLayout(seats=[SeatNode(seat_id="A1", row=1, col=1)])
 
-    message = cp_sat._format_ortools_failure(
+    message = ortools_backend.format_ortools_failure(
         status=FakeCpModel.UNKNOWN,
         students=students,
         layout=layout,

@@ -4,7 +4,7 @@ import builtins
 
 from typer.testing import CliRunner
 
-import seattrellis.solver.cp_sat as cp_sat
+from seattrellis.solver import ortools_backend
 from seattrellis import cli
 from seattrellis.exporters import export_snapshot
 from seattrellis.io.json_files import write_json_model
@@ -134,8 +134,8 @@ def test_project_export_preserves_optional_dependency_errors(monkeypatch, tmp_pa
 def test_missing_solver_extra_when_ortools_is_requested_is_friendly(monkeypatch) -> None:
     _block_import(monkeypatch, "ortools")
     monkeypatch.setenv("SEATTRELLIS_USE_ORTOOLS", "1")
-    monkeypatch.setattr(cp_sat, "cp_model", None)
-    monkeypatch.setattr(cp_sat, "_cp_model_unavailable", False)
+    monkeypatch.setattr(ortools_backend, "cp_model", None)
+    monkeypatch.setattr(ortools_backend, "_cp_model_unavailable", False)
 
     students = [Student(student_id="A", name="Student A")]
     layout = ClassroomLayout(

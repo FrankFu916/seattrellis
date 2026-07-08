@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-import seattrellis.solver.cp_sat as cp_sat
 from seattrellis import cli
 from seattrellis.history import (
     avoid_recent_neighbors_cost,
@@ -36,6 +35,7 @@ from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.solver import solve_seating
 from seattrellis.solver.adjacency import build_adjacency_edges, normalize_edge
+from seattrellis.solver import ortools_backend
 
 
 def _students(count: int = 2) -> list[Student]:
@@ -481,8 +481,8 @@ def test_fair_rotation_and_avoid_recent_neighbors_can_run_together() -> None:
 def test_ortools_solver_uses_fair_rotation_when_available(monkeypatch) -> None:
     pytest.importorskip("ortools.sat.python.cp_model")
     monkeypatch.setenv("SEATTRELLIS_USE_ORTOOLS", "1")
-    monkeypatch.setattr(cp_sat, "cp_model", None)
-    monkeypatch.setattr(cp_sat, "_cp_model_unavailable", False)
+    monkeypatch.setattr(ortools_backend, "cp_model", None)
+    monkeypatch.setattr(ortools_backend, "_cp_model_unavailable", False)
     students = _students(2)
     layout = _two_seat_layout()
     history = build_seat_history(students, layout, [_snapshot({"S1": "FRONT", "S2": "BACK"}, students=students)])
@@ -496,8 +496,8 @@ def test_ortools_solver_uses_fair_rotation_when_available(monkeypatch) -> None:
 def test_ortools_solver_uses_avoid_recent_neighbors_when_available(monkeypatch) -> None:
     pytest.importorskip("ortools.sat.python.cp_model")
     monkeypatch.setenv("SEATTRELLIS_USE_ORTOOLS", "1")
-    monkeypatch.setattr(cp_sat, "cp_model", None)
-    monkeypatch.setattr(cp_sat, "_cp_model_unavailable", False)
+    monkeypatch.setattr(ortools_backend, "cp_model", None)
+    monkeypatch.setattr(ortools_backend, "_cp_model_unavailable", False)
     students = _students(2)
     layout = _line_layout(3)
     pair_history = build_pair_history(students, layout, [_snapshot({"S1": "A1", "S2": "A2"}, students=students)])

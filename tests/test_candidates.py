@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-import seattrellis.solver.cp_sat as cp_sat
 from seattrellis import cli
 from seattrellis.candidates import generate_candidate_set
 from seattrellis.history import build_pair_history, build_seat_history, load_history_snapshots
@@ -21,6 +20,7 @@ from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.student import Student
 from seattrellis.solver.adjacency import build_adjacency_edges, normalize_edge
+from seattrellis.solver import ortools_backend
 
 
 def _example_inputs():
@@ -253,8 +253,8 @@ def test_candidate_set_optional_exports_do_not_regress(
 def test_ortools_multi_candidate_generation_supports_assignment_exclusion(monkeypatch) -> None:
     ortools_cp_model = pytest.importorskip("ortools.sat.python.cp_model")
     monkeypatch.setenv("SEATTRELLIS_USE_ORTOOLS", "1")
-    monkeypatch.setattr(cp_sat, "cp_model", ortools_cp_model)
-    monkeypatch.setattr(cp_sat, "_cp_model_unavailable", False)
+    monkeypatch.setattr(ortools_backend, "cp_model", ortools_cp_model)
+    monkeypatch.setattr(ortools_backend, "_cp_model_unavailable", False)
     students = [Student(student_id=f"S{index}", name=f"Student{index}") for index in range(1, 4)]
     layout = ClassroomLayout(
         seats=[SeatNode(seat_id=f"A{index}", row=1, col=index) for index in range(1, 4)]
