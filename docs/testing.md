@@ -7,7 +7,7 @@ SeatTrellis 的测试分为四层：单元测试、应用级 smoke、性能基�
 
 ```bash
 python -m pytest
-python -m compileall -q src/seattrellis scripts/benchmark_solver.py
+python -m compileall -q src/seattrellis scripts/benchmark_solver.py scripts/smoke_cli.py
 cargo test --manifest-path native/Cargo.toml
 python scripts/check_repository_hygiene.py
 mkdocs build --strict
@@ -62,7 +62,21 @@ python scripts/benchmark_solver.py \
 
 ## 发布前人工 smoke
 
-除 pytest 外，发布前应实际运行 CLI 和 Web：
+除 pytest 外，发布前应实际运行 CLI 和 Web。CLI 主流程可以直接运行：
+
+```bash
+python scripts/smoke_cli.py \
+  --optional auto \
+  --time-limit 3 \
+  --json-report outputs/cli-smoke.json
+```
+
+该脚本会在临时目录中执行 `init-demo`、preset、validate、solve、history、pair、
+project、candidate export 和 print-html 隐私参数流程；如果本地安装了 Excel、
+PNG 或 DOCX 依赖，也会自动覆盖这些导出路径。PDF 因依赖系统原生库，默认不跑；
+需要发布前单独验证时可加 `--include-pdf`。
+
+手动验收时仍建议抽查以下命令，确认终端输出和用户体验符合预期：
 
 - `seattrellis init-demo --force`
 - `seattrellis validate ...`

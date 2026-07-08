@@ -65,31 +65,6 @@ jobs:
       - name: Run Rust core tests
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: cargo test --manifest-path native/Cargo.toml
-      - name: README command smoke test
+      - name: CLI workflow smoke test
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        shell: bash
-        run: |
-          seattrellis --help
-          tmpdir="$(mktemp -d)"
-          cd "$tmpdir"
-          seattrellis init-demo
-          seattrellis presets list
-          seattrellis presets show daily
-          seattrellis presets export daily --output outputs/daily.rules.json
-          seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
-          seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history --output outputs/daily.snapshot.json
-          seattrellis project-info --project examples/project.seattrellis.json
-          seattrellis project-validate --project examples/project.seattrellis.json
-          seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
-          seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html
-          seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
-          seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-          seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-          seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
-          seattrellis export --snapshot outputs/neighbor-aware.snapshot.json --format html --output outputs/neighbor-aware.html
-          seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 3 --output outputs/candidates.json --report outputs/plan-report.json
-          seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html
-          seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history
-          seattrellis export --snapshot outputs/latest.snapshot.json --format excel
-          seattrellis export --snapshot outputs/latest.snapshot.json --format png
-          seattrellis export --snapshot outputs/latest.snapshot.json --format html
+        run: python scripts/smoke_cli.py --optional auto --time-limit 3
