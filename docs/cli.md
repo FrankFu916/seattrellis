@@ -130,9 +130,38 @@ constraints 不满足，也会写出草稿并在终端列出违反项；加 `--s
 命令序列；本次操作摘要会记录在 `metadata.manual_edit`，但锁定状态还不是后续
 命令自动继承的正式 schema 字段。
 
+对于可复用、可审计的调整记录，也可以使用 `--operations-file`。文件可以是操作对象
+数组，或包含 `operations` 数组的对象；文件中的操作总会先执行，随后才执行命令行中的
+`--operation`：
+
+```json
+{
+  "operations": [
+    {
+      "kind": "swap_students",
+      "payload": {
+        "first_student": "STU001",
+        "second_student": "STU002"
+      }
+    },
+    {
+      "kind": "lock_seat",
+      "payload": {"seat_id": "R4C3"}
+    }
+  ]
+}
+```
+
+```bash
+seattrellis edit \
+  --snapshot outputs/candidates.json \
+  --operations-file adjustments.json \
+  --output outputs/edited.snapshot.json
+```
+
 Project 工作流可使用 `project-edit` 复用相同语义。未指定 `--snapshot` 时，它会在
 project outputs 目录中查找最新 snapshot 或 candidate set；输入 candidate set 时默认
-使用 project 的 `default_candidate`。
+使用 project 的 `default_candidate`。`project-edit` 同样支持 `--operations-file`。
 
 ## Schema 工具
 

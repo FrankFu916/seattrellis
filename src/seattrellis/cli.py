@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
+from typing import Mapping
 
 from seattrellis.editing import EditingOperation
 from seattrellis.io.json_files import InputFileError
@@ -354,6 +356,14 @@ if typer is not None:
                 "lock-seat:R1C1."
             ),
         ),
+        operations_file: Path | None = typer.Option(
+            None,
+            "--operations-file",
+            help=(
+                "JSON operation log to apply before any --operation values. "
+                "Use a list or an object with an operations list."
+            ),
+        ),
         output: Path = typer.Option(
             Path("outputs/edited.snapshot.json"),
             "--output",
@@ -371,7 +381,10 @@ if typer is not None:
                 edit_snapshot(
                     snapshot_path=snapshot,
                     output_path=output,
-                    operations=_parse_edit_operations(operation),
+                    operations=_parse_edit_operations(
+                        operation,
+                        operations_file=operations_file,
+                    ),
                     candidate_id=candidate,
                     strict=strict,
                 )
@@ -521,6 +534,14 @@ if typer is not None:
             "--op",
             help="Operation to apply, repeatable and ordered.",
         ),
+        operations_file: Path | None = typer.Option(
+            None,
+            "--operations-file",
+            help=(
+                "JSON operation log to apply before any --operation values. "
+                "Use a list or an object with an operations list."
+            ),
+        ),
         output: Path | None = typer.Option(None, "--output", "-o", help="Edited snapshot output path."),
         strict: bool = typer.Option(
             False,
@@ -534,7 +555,10 @@ if typer is not None:
                     project_path=project,
                     snapshot_path=snapshot,
                     candidate_id=candidate,
-                    operations=_parse_edit_operations(operation),
+                    operations=_parse_edit_operations(
+                        operation,
+                        operations_file=operations_file,
+                    ),
                     output_path=output,
                     strict=strict,
                 )
@@ -702,6 +726,7 @@ def _run_argparse() -> None:
     edit_parser.add_argument("--snapshot", required=True)
     edit_parser.add_argument("--candidate", default=None)
     edit_parser.add_argument("--operation", "--op", dest="operations", action="append", default=[])
+    edit_parser.add_argument("--operations-file", default=None)
     edit_parser.add_argument("--output", "-o", default="outputs/edited.snapshot.json")
     edit_parser.add_argument("--strict", action="store_true")
 
@@ -753,6 +778,7 @@ def _run_argparse() -> None:
     project_edit_parser.add_argument("--snapshot", default=None)
     project_edit_parser.add_argument("--candidate", default=None)
     project_edit_parser.add_argument("--operation", "--op", dest="operations", action="append", default=[])
+    project_edit_parser.add_argument("--operations-file", default=None)
     project_edit_parser.add_argument("--output", "-o", default=None)
     project_edit_parser.add_argument("--strict", action="store_true")
 
@@ -849,7 +875,10 @@ def _run_argparse() -> None:
         path, summary = edit_snapshot(
             snapshot_path=args.snapshot,
             output_path=args.output,
-            operations=_parse_edit_operations(args.operations),
+            operations=_parse_edit_operations(
+                args.operations,
+                operations_file=args.operations_file,
+            ),
             candidate_id=args.candidate,
             strict=args.strict,
         )
@@ -912,7 +941,10 @@ def _run_argparse() -> None:
             project_path=args.project,
             snapshot_path=args.snapshot,
             candidate_id=args.candidate,
-            operations=_parse_edit_operations(args.operations),
+            operations=_parse_edit_operations(
+                args.operations,
+                operations_file=args.operations_file,
+            ),
             output_path=args.output,
             strict=args.strict,
         )
@@ -967,10 +999,100 @@ def _print_schema_migration(result) -> None:
         print(message)
 
 
-def _parse_edit_operations(values: list[str]) -> list[EditingOperation]:
-    if not values:
-        raise ValueError("At least one --operation value is required.")
-    return [_parse_edit_operation(value) for value in values]
+def _parse_edit_operations(
+    values: list[str],
+    *,
+    operations_file: str | Path | None = None,
+) -> list[EditingOperation]:
+    """Collect file-backed operations before inline operations.
+
+    A saved operation log is deliberately applied first, then any inline
+    operations are appended. This produces a deterministic order across both
+    Typer and argparse entry points.
+    """
+
+    operations: list[EditingOperation] = []
+    if operations_file is not None:
+        operations.extend(_load_edit_operations_file(Path(operations_file)))
+    operations.extend(_parse_edit_operation(value) for value in values)
+    if not operations:
+        raise ValueError(
+            "Provide at least one --operation value or an --operations-file."
+        )
+    return operations
+
+
+def _load_edit_operations_file(path: Path) -> list[EditingOperation]:
+    """Read a portable JSON operation log used by the CLI and future UIs."""
+
+    try:
+        contents = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValueError(f"Editing operation file not found: {path}") from exc
+    except OSError as exc:
+        raise ValueError(f"Editing operation file could not be read: {path}") from exc
+    try:
+        data = json.loads(contents)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Editing operation file is not valid JSON: {path}") from exc
+
+    if isinstance(data, list):
+        entries = data
+    elif isinstance(data, dict):
+        entries = data.get("operations")
+        if entries is None:
+            raise ValueError(
+                f"Editing operation file {path} must contain an 'operations' list."
+            )
+    else:
+        raise ValueError(
+            f"Editing operation file {path} must be a JSON list or object."
+        )
+    if not isinstance(entries, list):
+        raise ValueError(
+            f"Editing operation file {path} must contain an 'operations' list."
+        )
+
+    operations: list[EditingOperation] = []
+    for index, entry in enumerate(entries, start=1):
+        operations.append(
+            _parse_edit_operation_mapping(
+                entry,
+                source=f"Editing operation file {path}, item {index}",
+            )
+        )
+    return operations
+
+
+def _parse_edit_operation_mapping(
+    entry: object,
+    *,
+    source: str,
+) -> EditingOperation:
+    if not isinstance(entry, dict):
+        raise ValueError(f"{source} must be an object with kind and payload.")
+    raw_kind = entry.get("kind")
+    if not isinstance(raw_kind, str) or not raw_kind.strip():
+        raise ValueError(f"{source} must contain a non-empty string kind.")
+    payload = entry.get("payload")
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"{source} must contain a payload object.")
+
+    normalized_payload: dict[str, str | bool | None] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            raise ValueError(f"{source} payload keys must be strings.")
+        if value is not None and not isinstance(value, (str, bool)):
+            raise ValueError(
+                f"{source} payload values must be strings, booleans, or null."
+            )
+        normalized_payload[key] = value
+
+    kind = _normalize_edit_operation_kind(raw_kind)
+    return EditingOperation(
+        kind=kind,  # type: ignore[arg-type]
+        payload=normalized_payload,
+    )
 
 
 def _parse_edit_operation(value: str) -> EditingOperation:
@@ -978,28 +1100,7 @@ def _parse_edit_operation(value: str) -> EditingOperation:
     if not text:
         raise ValueError("Editing operation cannot be empty.")
     parts = [part.strip() for part in text.split(":")]
-    name = parts[0].replace("-", "_").strip().lower()
-    kind = {
-        "swap": "swap_students",
-        "swap_students": "swap_students",
-        "move": "move_student",
-        "move_student": "move_student",
-        "seat": "seat_student",
-        "seat_student": "seat_student",
-        "unseat": "unseat_student",
-        "unseat_student": "unseat_student",
-        "lock_student": "lock_student",
-        "unlock_student": "unlock_student",
-        "lock_seat": "lock_seat",
-        "unlock_seat": "unlock_seat",
-    }.get(name)
-    if kind is None:
-        raise ValueError(
-            f"Unsupported editing operation {parts[0]!r}. "
-            "Use swap, move, seat, unseat, lock-student, unlock-student, "
-            "lock-seat, or unlock-seat."
-        )
-
+    kind = _normalize_edit_operation_kind(parts[0])
     if kind == "swap_students":
         _require_operation_parts(text, parts, 3)
         return EditingOperation(
@@ -1023,6 +1124,31 @@ def _parse_edit_operation(value: str) -> EditingOperation:
         kind=kind,  # type: ignore[arg-type]
         payload={"seat_id": parts[1]},
     )
+
+
+def _normalize_edit_operation_kind(value: str) -> str:
+    name = str(value).replace("-", "_").strip().lower()
+    kind = {
+        "swap": "swap_students",
+        "swap_students": "swap_students",
+        "move": "move_student",
+        "move_student": "move_student",
+        "seat": "seat_student",
+        "seat_student": "seat_student",
+        "unseat": "unseat_student",
+        "unseat_student": "unseat_student",
+        "lock_student": "lock_student",
+        "unlock_student": "unlock_student",
+        "lock_seat": "lock_seat",
+        "unlock_seat": "unlock_seat",
+    }.get(name)
+    if kind is None:
+        raise ValueError(
+            f"Unsupported editing operation {value!r}. "
+            "Use swap, move, seat, unseat, lock-student, unlock-student, "
+            "lock-seat, or unlock-seat."
+        )
+    return kind
 
 
 def _require_operation_parts(text: str, parts: list[str], expected: int) -> None:

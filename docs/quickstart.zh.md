@@ -162,6 +162,31 @@ seattrellis export \
 如果输入的是 candidate set，`edit` 默认选择 recommended candidate，也可以用
 `--candidate candidate_02` 指定候选。
 
+若要保存或重放一组调整，可把操作写进 JSON 文件，再通过 `--operations-file` 读取。
+文件为操作数组，或包含 `operations` 数组的对象；文件操作会先于命令行中的
+`--operation` 执行：
+
+```json
+{
+  "operations": [
+    {
+      "kind": "swap_students",
+      "payload": {
+        "first_student": "STU001",
+        "second_student": "STU002"
+      }
+    }
+  ]
+}
+```
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operations-file adjustments.json \
+  --output outputs/neighbor-aware-edited.snapshot.json
+```
+
 ## Project 工作流
 
 ```bash

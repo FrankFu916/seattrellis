@@ -164,6 +164,32 @@ violation fails the command and leaves the output file unwritten.
 When the input is a candidate set, `edit` selects the recommended candidate by
 default; pass `--candidate candidate_02` to choose a specific candidate.
 
+To save or replay a group of edits, place operations in a JSON file and pass
+`--operations-file`. The file can be an operation list or an object with an
+`operations` list. File operations always run before inline `--operation`
+values:
+
+```json
+{
+  "operations": [
+    {
+      "kind": "swap_students",
+      "payload": {
+        "first_student": "STU001",
+        "second_student": "STU002"
+      }
+    }
+  ]
+}
+```
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operations-file adjustments.json \
+  --output outputs/neighbor-aware-edited.snapshot.json
+```
+
 ## Project Workflow
 
 ```bash

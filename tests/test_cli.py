@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import subprocess
+
+import pytest
 
 from seattrellis import cli
 from seattrellis.io.json_files import load_candidate_set, load_snapshot
@@ -19,6 +22,93 @@ def test_cli_helpers_init_solve_and_export(tmp_path) -> None:
     snapshot = load_snapshot(snapshot_path)
     assert len(snapshot.assignments) == 8
     assert html_path.exists()
+
+
+def test_cli_edit_operations_file_runs_and_precedes_inline_operations(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    snapshot_path = cli.solve(
+        students_path=paths["students_csv"],
+        layout_path=paths["layout"],
+        rules_path=paths["rules"],
+        output_path=tmp_path / "outputs" / "latest.snapshot.json",
+    )
+    operations_path = tmp_path / "outputs" / "manual-operations.json"
+    operations_path.write_text(
+        json.dumps(
+            {
+                "operations": [
+                    {
+                        "kind": "swap_students",
+                        "payload": {
+                            "first_student": "STU001",
+                            "second_student": "STU002",
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            "seattrellis",
+            "edit",
+            "--snapshot",
+            str(snapshot_path),
+            "--operations-file",
+            str(operations_path),
+            "--operation",
+            "lock-seat:R4C3",
+            "--output",
+            "outputs/edited-from-file.snapshot.json",
+        ],
+        cwd=tmp_path,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    edited = load_snapshot(tmp_path / "outputs" / "edited-from-file.snapshot.json")
+    operations = edited.metadata["manual_edit"]["operations"]
+    assert [operation["kind"] for operation in operations] == [
+        "swap_students",
+        "lock_seat",
+    ]
+
+
+def test_cli_edit_operations_file_accepts_a_list_and_rejects_bad_payloads(tmp_path) -> None:
+    operations_path = tmp_path / "operations.json"
+    operations_path.write_text(
+        json.dumps(
+            [
+                {
+                    "kind": "unseat",
+                    "payload": {"student_key": "STU001"},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    operations = cli._parse_edit_operations([], operations_file=operations_path)
+
+    assert operations[0].kind == "unseat_student"
+    assert operations[0].payload == {"student_key": "STU001"}
+
+    operations_path.write_text(
+        json.dumps(
+            {
+                "operations": [
+                    {"kind": "unseat_student", "payload": ["STU001"]}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="payload object"):
+        cli._parse_edit_operations([], operations_file=operations_path)
 
 
 def test_readme_quick_start_commands_run(tmp_path) -> None:
