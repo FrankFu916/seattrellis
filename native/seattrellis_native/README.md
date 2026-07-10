@@ -1,16 +1,29 @@
 # SeatTrellis native core
 
-This crate is the Python binding for the experimental Rust core in
-`../seattrellis_core`. It is not the default solver and does not replace the
-Python fallback or Python OR-Tools backend.
+This crate is the separately installable Python binding for the experimental
+Rust core in `../seattrellis_core`. It is not the default solver and does not
+replace the Python fallback or Python OR-Tools backend. Installing it adds the
+`native` solver option; it does not replace the main `seattrellis` package.
 
 Local development:
 
 ```bash
-python -m pip install maturin
-python -m maturin develop --manifest-path native/seattrellis_native/Cargo.toml --features extension-module
+# Install the main application from the repository root.
+python -m pip install -e .
+
+# Build and install only the optional native extension.
+python -m pip install "maturin>=1.8,<2"
+python -m maturin develop --manifest-path native/seattrellis_native/Cargo.toml
+
+# Verify that the application and extension coexist.
+python -c "import seattrellis, seattrellis_native; print(seattrellis_native.__version__)"
 seattrellis solve --backend native ...
 ```
+
+Use a Rust compiler whose target architecture matches the Python interpreter.
+For example, an Apple Silicon Python requires an `aarch64-apple-darwin` Rust
+toolchain. `maturin develop` builds a local extension for the active Python;
+it is not a release-wheel command.
 
 Rust-only checks:
 

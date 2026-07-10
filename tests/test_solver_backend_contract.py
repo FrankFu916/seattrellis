@@ -7,6 +7,7 @@ from seattrellis.io.students import read_students
 from seattrellis.scoring import evaluate_hard_constraints
 from seattrellis.solver import native_backend
 from seattrellis.solver import solve_seating
+from seattrellis.solver.native import native_core_status
 
 
 def _fixture_problem():
@@ -45,7 +46,32 @@ def test_native_backend_contract_with_fake_native_core(monkeypatch) -> None:
 
     monkeypatch.setattr(native_backend, "require_native_core", lambda: FakeNativeCore())
 
-    solution = solve_seating(students, layout, rules, seed=rules.seed, backend="native")
+    solution = solve_seating(
+        students,
+        layout,
+        rules,
+        seed=rules.seed,
+        backend="native",
+    )
+
+    _assert_solution_contract(solution, students, layout, rules, "native")
+    assert solution.metrics["native_core"]["validated_unique_assignment"] is True
+
+
+@pytest.mark.skipif(
+    not native_core_status().available,
+    reason="The optional Rust extension is not installed.",
+)
+def test_native_backend_contract_with_installed_extension() -> None:
+    students, layout, rules = _fixture_problem()
+
+    solution = solve_seating(
+        students,
+        layout,
+        rules,
+        seed=rules.seed,
+        backend="native",
+    )
 
     _assert_solution_contract(solution, students, layout, rules, "native")
     assert solution.metrics["native_core"]["validated_unique_assignment"] is True
