@@ -31,6 +31,8 @@
   student-scoped repair with selectable Python, OR-Tools, or native backends.
 - Added replayable Web manual swaps with immediate hard-constraint diagnostics
   and undo/redo support; edited drafts remain available to export or repair.
+- Added Web controls for moving students to empty seats, placing them in an
+  unseated area, and seating them again without implicitly displacing others.
 - Added an optional separately packaged Rust extension and explicit `native`
   solver selection while retaining the Python backends.
 

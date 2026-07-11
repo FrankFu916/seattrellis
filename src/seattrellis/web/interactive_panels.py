@@ -20,11 +20,15 @@ from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver import SeatTrellisSolveError
 from seattrellis.web.keys import (
+    PROJECT_EDIT_ACTION_SELECT,
+    PROJECT_EDIT_APPLY_BUTTON,
     PROJECT_REDO_BUTTON,
     PROJECT_REPAIR_BUTTON,
     PROJECT_SWAP_BUTTON,
     PROJECT_UNDO_BUTTON,
     QUICK_REDO_BUTTON,
+    QUICK_EDIT_ACTION_SELECT,
+    QUICK_EDIT_APPLY_BUTTON,
     QUICK_REPAIR_BUTTON,
     QUICK_SWAP_BUTTON,
     QUICK_UNDO_BUTTON,
@@ -193,7 +197,15 @@ def render_manual_edit_panel(
     seated_students = sorted(
         assignment.student_key for assignment in snapshot.assignments
     )
+    assigned_seats = {assignment.seat_id for assignment in snapshot.assignments}
+    empty_seats = sorted(
+        seat.seat_id
+        for seat in snapshot.layout.seats
+        if seat.enabled and seat.seat_id not in assigned_seats
+    )
+    unseated_students = sorted(set(student_names) - set(seated_students))
     _render_manual_edit_status(snapshot, draft, translate)
+    st.caption(translate("unseated_count", count=len(unseated_students)))
 
     with st.expander(translate("manual_edit_title"), expanded=False):
         st.caption(translate("manual_edit_help"))
@@ -232,6 +244,15 @@ def render_manual_edit_panel(
             disabled=not draft.can_redo,
             key=PROJECT_REDO_BUTTON if project else QUICK_REDO_BUTTON,
         )
+        operation_clicked, operation = _render_other_edit_action(
+            prefix=prefix,
+            project=project,
+            seated_students=seated_students,
+            unseated_students=unseated_students,
+            empty_seats=empty_seats,
+            label_student=label_student,
+            translate=translate,
+        )
         try:
             if swap_clicked:
                 draft = apply_web_edit(
@@ -249,6 +270,8 @@ def render_manual_edit_panel(
                 draft = undo_web_edit(draft, output_dir=output_dir)
             elif redo_clicked:
                 draft = redo_web_edit(draft, output_dir=output_dir)
+            elif operation_clicked and operation is not None:
+                draft = apply_web_edit(draft, operation, output_dir=output_dir)
             else:
                 return
             st.session_state[state_key] = draft
@@ -261,6 +284,76 @@ def render_manual_edit_panel(
             st.rerun()
         except (EditingError, InputFileError, ValidationError, ValueError) as exc:
             render_error(exc)
+
+
+def _render_other_edit_action(
+    *,
+    prefix: str,
+    project: bool,
+    seated_students: list[str],
+    unseated_students: list[str],
+    empty_seats: list[str],
+    label_student: Callable[[str], str],
+    translate: Translate,
+) -> tuple[bool, EditingOperation | None]:
+    action_labels = {
+        "move": translate("action_move"),
+        "unseat": translate("action_unseat"),
+        "seat": translate("action_seat"),
+    }
+    action_key = (
+        PROJECT_EDIT_ACTION_SELECT if project else QUICK_EDIT_ACTION_SELECT
+    )
+    selected_label = st.selectbox(
+        translate("other_edit_action"),
+        list(action_labels.values()),
+        key=action_key,
+    )
+    action = next(
+        key for key, label in action_labels.items() if label == selected_label
+    )
+
+    student_options = unseated_students if action == "seat" else seated_students
+    student_key = st.selectbox(
+        translate("student_to_edit"),
+        student_options,
+        format_func=label_student,
+        key=f"{prefix}_edit_action_student_{action}",
+    )
+    target_seat: str | None = None
+    if action in {"move", "seat"}:
+        target_seat = st.selectbox(
+            translate("target_empty_seat"),
+            empty_seats,
+            key=f"{prefix}_edit_action_seat_{action}",
+        )
+        if not empty_seats:
+            st.info(translate("no_empty_seats"))
+    if action == "seat" and not unseated_students:
+        st.info(translate("no_unseated_students"))
+
+    disabled = not student_options or (
+        action in {"move", "seat"} and not empty_seats
+    )
+    apply_key = PROJECT_EDIT_APPLY_BUTTON if project else QUICK_EDIT_APPLY_BUTTON
+    clicked = st.button(
+        translate("apply_edit"),
+        disabled=disabled,
+        key=apply_key,
+    )
+    if not clicked or student_key is None:
+        return clicked, None
+    if action == "unseat":
+        return True, EditingOperation(
+            kind="unseat_student",
+            payload={"student_key": student_key},
+        )
+    if target_seat is None:
+        return True, None
+    return True, EditingOperation(
+        kind="seat_student" if action == "seat" else "move_student",
+        payload={"student_key": student_key, "seat_id": target_seat},
+    )
 
 
 def _render_manual_edit_status(

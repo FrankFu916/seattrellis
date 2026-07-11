@@ -20,6 +20,8 @@ from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.web.keys import (
     QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_EDIT_ACTION_SELECT,
+    QUICK_EDIT_APPLY_BUTTON,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_GENERATE_BUTTON,
@@ -731,6 +733,64 @@ def test_streamlit_results_can_swap_undo_and_redo() -> None:
     app.run(timeout=30)
     redone = app.session_state["result"].artifact
     assert redone.metadata["manual_edit"]["operation_count"] == 1
+    assert not app.exception
+
+
+def test_streamlit_results_can_move_unseat_and_reseat_student() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    app.radio[0].set_value("results")
+    app.run(timeout=30)
+
+    original = app.session_state["result"].artifact
+    original_seats = {
+        item.student_key: item.seat_id for item in original.assignments
+    }
+    action = _control_by_key(app.selectbox, QUICK_EDIT_ACTION_SELECT)
+    action.set_value("安排未入座学生")
+    app.run(timeout=30)
+    assert _control_by_key(app.button, QUICK_EDIT_APPLY_BUTTON).disabled is True
+    assert any(message.value == "当前没有未入座学生。" for message in app.info)
+    _control_by_key(app.selectbox, QUICK_EDIT_ACTION_SELECT).set_value("移动到空座")
+    app.run(timeout=30)
+    _control_by_key(app.button, QUICK_EDIT_APPLY_BUTTON).click()
+    app.run(timeout=30)
+    moved = app.session_state["result"].artifact
+    moved_seats = {item.student_key: item.seat_id for item in moved.assignments}
+    assert len(moved.assignments) == 8
+    assert moved_seats != original_seats
+    assert moved.metadata["manual_edit"]["operation_count"] == 1
+
+    _control_by_key(app.selectbox, QUICK_EDIT_ACTION_SELECT).set_value("移出座位")
+    app.run(timeout=30)
+    _control_by_key(app.button, QUICK_EDIT_APPLY_BUTTON).click()
+    app.run(timeout=30)
+
+    unseated = app.session_state["result"].artifact
+    assert len(unseated.assignments) == 7
+    assert len(unseated.metadata["manual_edit"]["unseated_students"]) == 1
+    assert unseated.metadata["manual_edit"]["operation_count"] == 2
+
+    _control_by_key(app.selectbox, QUICK_EDIT_ACTION_SELECT).set_value(
+        "安排未入座学生"
+    )
+    app.run(timeout=30)
+    _control_by_key(app.button, QUICK_EDIT_APPLY_BUTTON).click()
+    app.run(timeout=30)
+
+    reseated = app.session_state["result"].artifact
+    assert len(reseated.assignments) == 8
+    assert reseated.metadata["manual_edit"]["unseated_students"] == []
+    assert reseated.metadata["manual_edit"]["operation_count"] == 3
     assert not app.exception
 
 

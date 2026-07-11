@@ -35,11 +35,14 @@ needed.
 
 ## Manual swaps and history
 
-After solving, expand **Manual adjustment** and choose two seated students to
-swap. Every swap immediately reevaluates the current `RuleSet` hard
-constraints. The result area reports whether they pass and how many violations
-remain. Changes can be undone and redone in order. The current draft can be
-exported directly or passed to **Lock & repair** for constrained re-solving.
+After solving, expand **Manual adjustment** to swap two students, move a
+student to an empty seat, move a student to the unseated area, or place an
+unseated student in an empty seat. Move targets are limited to empty seats, so
+the interface never silently unseats a third student. Every change immediately
+reevaluates the current `RuleSet` hard constraints. The result area reports
+whether they pass and how many violations remain. Changes can be undone and
+redone in order. The current draft can be exported directly or passed to
+**Lock & repair** for constrained re-solving.
 
 Manual edits do not overwrite the source candidate set or rules file. The
 output snapshot records the operation log, locks, unseated students, and
