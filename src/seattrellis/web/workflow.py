@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from seattrellis.service import (
+    edit_snapshot,
     export,
     export_extension,
     project_export,
@@ -21,6 +22,7 @@ from seattrellis.service import (
     score_text,
     solve_with_report,
 )
+from seattrellis.editing import EditingOperation, lock_state_from_snapshot
 from seattrellis.io.json_files import (
     InputFileError,
     load_layout,
@@ -60,6 +62,128 @@ class WebSolveResult:
         if isinstance(warnings, list):
             return tuple(str(warning) for warning in warnings)
         return ()
+
+
+@dataclass(frozen=True)
+class WebEditingDraft:
+    """Replayable manual-edit state that survives Streamlit reruns."""
+
+    source_result: WebSolveResult
+    current_result: WebSolveResult
+    candidate_id: str
+    operations: tuple[EditingOperation, ...] = ()
+    redo_operations: tuple[EditingOperation, ...] = ()
+    initial_locked_students: tuple[str, ...] = ()
+    initial_locked_seats: tuple[str, ...] = ()
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self.operations)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self.redo_operations)
+
+
+def begin_web_editing(
+    result: WebSolveResult,
+    candidate_id: str = "recommended",
+) -> WebEditingDraft:
+    """Create an edit draft from the displayed snapshot and its saved locks."""
+    snapshot = selected_snapshot(result, candidate_id)
+    lock_state = lock_state_from_snapshot(snapshot)
+    return WebEditingDraft(
+        source_result=result,
+        current_result=result,
+        candidate_id=candidate_id,
+        initial_locked_students=lock_state.locked_students,
+        initial_locked_seats=lock_state.locked_seats,
+    )
+
+
+def apply_web_edit(
+    draft: WebEditingDraft,
+    operation: EditingOperation,
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Apply one command by replaying the active operation log."""
+    operations = (*draft.operations, operation)
+    current = _write_web_edit(draft, operations, output_dir=output_dir)
+    return replace(
+        draft,
+        current_result=current,
+        operations=operations,
+        redo_operations=(),
+    )
+
+
+def undo_web_edit(
+    draft: WebEditingDraft,
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Undo the latest command and retain it for redo."""
+    if not draft.operations:
+        raise ValueError("There is no editing operation to undo.")
+    operation = draft.operations[-1]
+    operations = draft.operations[:-1]
+    current = (
+        draft.source_result
+        if not operations
+        else _write_web_edit(draft, operations, output_dir=output_dir)
+    )
+    return replace(
+        draft,
+        current_result=current,
+        operations=operations,
+        redo_operations=(*draft.redo_operations, operation),
+    )
+
+
+def redo_web_edit(
+    draft: WebEditingDraft,
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Reapply the most recently undone command."""
+    if not draft.redo_operations:
+        raise ValueError("There is no editing operation to redo.")
+    operation = draft.redo_operations[-1]
+    operations = (*draft.operations, operation)
+    current = _write_web_edit(draft, operations, output_dir=output_dir)
+    return replace(
+        draft,
+        current_result=current,
+        operations=operations,
+        redo_operations=draft.redo_operations[:-1],
+    )
+
+
+def _write_web_edit(
+    draft: WebEditingDraft,
+    operations: Sequence[EditingOperation],
+    *,
+    output_dir: str | Path,
+) -> WebSolveResult:
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_path = output_root / "seattrellis.edited.snapshot.json"
+    written_path, summary = edit_snapshot(
+        snapshot_path=draft.source_result.artifact_path,
+        output_path=output_path,
+        operations=operations,
+        candidate_id=(
+            draft.candidate_id if draft.source_result.is_candidate_set else None
+        ),
+        locked_students=draft.initial_locked_students,
+        locked_seats=draft.initial_locked_seats,
+    )
+    return WebSolveResult(
+        artifact_path=written_path,
+        artifact=load_snapshot(written_path),
+        summary=summary,
+    )
 
 
 @dataclass(frozen=True)

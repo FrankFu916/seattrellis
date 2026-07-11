@@ -204,6 +204,23 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "⭐ marks the recommendation.",
     ),
     "assignment_table": ("📋 分配明细表", "📋 Assignment details"),
+    "manual_edit_title": ("✏️ 人工调整", "✏️ Manual adjustment"),
+    "manual_edit_help": (
+        "交换两名已入座学生后会立即重新检查硬约束；调整可以撤销或重做。",
+        "Swap two seated students and immediately recheck hard constraints. Changes can be undone or redone.",
+    ),
+    "first_student": ("第一名学生", "First student"),
+    "second_student": ("第二名学生", "Second student"),
+    "swap_students": ("交换座位", "Swap seats"),
+    "undo": ("撤销", "Undo"),
+    "redo": ("重做", "Redo"),
+    "edit_complete": ("人工调整已保存。", "Manual adjustment saved."),
+    "edit_operations": ("已应用操作：{count}", "Applied operations: {count}"),
+    "edit_hard_passed": ("调整后硬约束通过。", "Hard constraints pass after editing."),
+    "edit_hard_failed": (
+        "调整后有 {count} 项硬约束违规：{items}",
+        "The edited draft has {count} hard-constraint violations: {items}",
+    ),
     "repair_title": ("🛠️ 锁定与局部重排", "🛠️ Lock & repair"),
     "repair_help": (
         "选择受影响学生时，仅重新安排这些学生；不选择则在锁定条件下全局重排。",

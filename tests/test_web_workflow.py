@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from seattrellis import cli
+from seattrellis.editing import EditingOperation
 import seattrellis.web.workflow as workflow
 from seattrellis.io.json_files import InputFileError, load_layout, load_snapshot
 from seattrellis.io.students import read_students
@@ -24,6 +25,9 @@ from seattrellis.web.keys import (
     QUICK_GENERATE_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
     QUICK_REPAIR_BUTTON,
+    QUICK_REDO_BUTTON,
+    QUICK_SWAP_BUTTON,
+    QUICK_UNDO_BUTTON,
 )
 
 
@@ -105,6 +109,54 @@ def test_web_workflow_repairs_selected_candidate_with_locks(tmp_path) -> None:
     }
     assert assignments[locked_student] == locked_seat
     assert repaired.artifact.metadata["source_candidate"]["candidate_id"]
+
+
+def test_web_editing_draft_replays_undo_and_redo(tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=2,
+    )
+    original = workflow.selected_snapshot(result)
+    first, second = [item.student_key for item in original.assignments[:2]]
+    original_seats = {
+        item.student_key: item.seat_id for item in original.assignments
+    }
+    draft = workflow.begin_web_editing(result)
+
+    edited = workflow.apply_web_edit(
+        draft,
+        EditingOperation(
+            kind="swap_students",
+            payload={"first_student": first, "second_student": second},
+        ),
+        output_dir=tmp_path / "edit",
+    )
+
+    assert edited.can_undo is True
+    assert edited.can_redo is False
+    edited_snapshot = workflow.selected_snapshot(edited.current_result)
+    edited_seats = {
+        item.student_key: item.seat_id for item in edited_snapshot.assignments
+    }
+    assert edited_seats[first] == original_seats[second]
+    assert edited_seats[second] == original_seats[first]
+    assert edited_snapshot.metadata["manual_edit"]["operation_count"] == 1
+
+    undone = workflow.undo_web_edit(edited, output_dir=tmp_path / "edit")
+    assert undone.current_result is result
+    assert undone.can_undo is False
+    assert undone.can_redo is True
+
+    redone = workflow.redo_web_edit(undone, output_dir=tmp_path / "edit")
+    assert redone.can_undo is True
+    assert redone.can_redo is False
+    redone_snapshot = workflow.selected_snapshot(redone.current_result)
+    assert {
+        item.student_key: item.seat_id for item in redone_snapshot.assignments
+    } == edited_seats
 
 
 def test_web_workflow_requires_rules_or_preset(tmp_path) -> None:
@@ -648,6 +700,37 @@ def test_streamlit_results_can_run_repair() -> None:
     assert isinstance(repaired.artifact, SeatingSnapshot)
     assert repaired.artifact.metadata["repair"]["history_count"] == 3
     assert repaired.artifact.metadata["repair"]["solver_backend"] == "fallback"
+
+
+def test_streamlit_results_can_swap_undo_and_redo() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    app.radio[0].set_value("results")
+    app.run(timeout=30)
+
+    _control_by_key(app.button, QUICK_SWAP_BUTTON).click()
+    app.run(timeout=30)
+    edited = app.session_state["result"].artifact
+    assert edited.metadata["manual_edit"]["operation_count"] == 1
+
+    _control_by_key(app.button, QUICK_UNDO_BUTTON).click()
+    app.run(timeout=30)
+    assert "manual_edit" not in app.session_state["result"].artifact.metadata
+
+    _control_by_key(app.button, QUICK_REDO_BUTTON).click()
+    app.run(timeout=30)
+    redone = app.session_state["result"].artifact
+    assert redone.metadata["manual_edit"]["operation_count"] == 1
+    assert not app.exception
 
 
 def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:

@@ -33,6 +33,18 @@ The repair backend can be `auto`, `fallback`, `ortools`, or the optional
 `native` Rust extension. Use `auto` unless a specific installed backend is
 needed.
 
+## Manual swaps and history
+
+After solving, expand **Manual adjustment** and choose two seated students to
+swap. Every swap immediately reevaluates the current `RuleSet` hard
+constraints. The result area reports whether they pass and how many violations
+remain. Changes can be undone and redone in order. The current draft can be
+exported directly or passed to **Lock & repair** for constrained re-solving.
+
+Manual edits do not overwrite the source candidate set or rules file. The
+output snapshot records the operation log, locks, unseated students, and
+constraint summary in `metadata.manual_edit`.
+
 The resolved rules panel shows the exact `RuleSet` used by the solver. History
 inspection reports student coverage, stale references, disabled seats, and
 layout differences before a solve begins.
@@ -76,8 +88,8 @@ formats.
 
 Streamlit tables may still need horizontal scrolling on very narrow phones.
 The interface currently supports Simplified Chinese and English.
-Seat-map selection and drag-and-drop locking are not available yet; the repair
-controls currently use accessible form fields.
+Seat-map selection and drag-and-drop are not available yet; manual editing and
+repair currently use accessible form fields.
 
 ## Privacy
 

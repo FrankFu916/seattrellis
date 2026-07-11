@@ -34,6 +34,8 @@ python -m pytest tests/test_web_workflow.py
 
 关键控件使用稳定 widget key，而不是依赖中文或英文 label。后续调整文案、视觉主题
 或拆分页面时，应优先保留这些 key，或同步更新 `seattrellis.web.keys` 和对应测试。
+人工调整测试会在 Streamlit AppTest 中实际执行交换、撤销和重做，并检查生成草稿
+的 `metadata.manual_edit`，不只是验证控件是否存在。
 
 浏览器级 E2E 仍是后续工作。引入 Playwright 时，建议先覆盖：
 

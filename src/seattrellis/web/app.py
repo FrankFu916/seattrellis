@@ -23,6 +23,7 @@ except Exception as exc:  # pragma: no cover
     raise MissingOptionalDependencyError("Streamlit web UI", "web") from exc
 
 from seattrellis.io.json_files import InputFileError
+from seattrellis.editing import EditingError, EditingOperation
 from seattrellis.models.candidate import CandidateSet
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import list_presets
@@ -51,7 +52,10 @@ from seattrellis.web.i18n import (
 from seattrellis.web.keys import (
     PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
     PROJECT_EXPORT_DOWNLOAD_REPORT,
+    PROJECT_REDO_BUTTON,
     PROJECT_REPAIR_BUTTON,
+    PROJECT_SWAP_BUTTON,
+    PROJECT_UNDO_BUTTON,
     QUICK_CANDIDATE_COUNT_INPUT,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_DOWNLOAD_ARTIFACT,
@@ -59,13 +63,19 @@ from seattrellis.web.keys import (
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_GENERATE_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
+    QUICK_REDO_BUTTON,
     QUICK_REPAIR_BUTTON,
+    QUICK_SWAP_BUTTON,
+    QUICK_UNDO_BUTTON,
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
+    WebEditingDraft,
+    apply_web_edit,
     analyze_history_files,
     assignment_rows,
     build_rules_preview,
+    begin_web_editing,
     candidate_summary_rows,
     demo_paths,
     export_for_web,
@@ -78,10 +88,12 @@ from seattrellis.web.workflow import (
     project_validate_for_web,
     parse_rules_overlay,
     repair_for_web,
+    redo_web_edit,
     score_breakdown_rows,
     selected_candidate,
     selected_snapshot,
     solve_for_web,
+    undo_web_edit,
 )
 
 # ---------------------------------------------------------------------------
@@ -108,6 +120,8 @@ _SS_DEFAULTS = {
     "ui_locale": "zh",
     "quick_step_value": "load",
     "project_mode_value": "path",
+    "_quick_editing_draft": None,
+    "_project_editing_draft": None,
 }
 
 # Persistent temp dirs that survive Streamlit re-runs.
@@ -206,6 +220,8 @@ def _reset_solve_state():
     for k in ("solved", "result", "artifact_json", "report_json",
               "output_dir", "project_path", "layout_loaded"):
         st.session_state[k] = _SS_DEFAULTS[k]
+    st.session_state["_quick_editing_draft"] = None
+    st.session_state["_project_editing_draft"] = None
 
 
 def _restore_web_config(data: bytes) -> WebSessionConfig:
@@ -436,6 +452,127 @@ def _render_repair_panel(
                 ValueError,
             ) as exc:
                 _render_error(exc)
+
+
+def _render_manual_edit_panel(
+    result: WebSolveResult,
+    candidate_id: str,
+    *,
+    output_dir: Path,
+    project: bool = False,
+) -> None:
+    """Render replayable swap, undo, and redo controls."""
+    prefix = "project" if project else "quick"
+    state_key = f"_{prefix}_editing_draft"
+    draft = _ss(state_key)
+    if not isinstance(draft, WebEditingDraft) or (
+        draft.current_result.artifact_path != result.artifact_path
+        or (result.is_candidate_set and draft.candidate_id != candidate_id)
+    ):
+        draft = begin_web_editing(result, candidate_id)
+        st.session_state[state_key] = draft
+
+    snapshot = selected_snapshot(result, candidate_id)
+    student_names = {student.key: student.name for student in snapshot.students}
+    seated_students = sorted(
+        assignment.student_key for assignment in snapshot.assignments
+    )
+
+    manual_edit = snapshot.metadata.get("manual_edit")
+    if isinstance(manual_edit, dict):
+        count = int(manual_edit.get("operation_count", 0))
+        st.caption(_t("edit_operations", count=count))
+        violation_count = int(manual_edit.get("violation_count", 0))
+        if bool(manual_edit.get("hard_constraints_satisfied")):
+            st.success(_t("edit_hard_passed"))
+        else:
+            summary = draft.current_result.summary or ""
+            _heading, separator, violation_section = summary.partition("Violations:")
+            violations = [
+                line.removeprefix("- ")
+                for line in violation_section.splitlines()
+                if separator and line.startswith("- ")
+            ]
+            st.warning(
+                _t(
+                    "edit_hard_failed",
+                    count=violation_count,
+                    items="; ".join(violations[-3:]) or "—",
+                )
+            )
+
+    with st.expander(_t("manual_edit_title"), expanded=False):
+        st.caption(_t("manual_edit_help"))
+
+        def label_student(key: str) -> str:
+            return f"{student_names.get(key, key)} ({key})"
+
+        columns = st.columns(2)
+        first_student = columns[0].selectbox(
+            _t("first_student"),
+            seated_students,
+            format_func=label_student,
+            key=f"{prefix}_edit_first_student",
+        )
+        second_default = 1 if len(seated_students) > 1 else 0
+        second_student = columns[1].selectbox(
+            _t("second_student"),
+            seated_students,
+            index=second_default,
+            format_func=label_student,
+            key=f"{prefix}_edit_second_student",
+        )
+        buttons = st.columns(3)
+        swap_key = PROJECT_SWAP_BUTTON if project else QUICK_SWAP_BUTTON
+        undo_key = PROJECT_UNDO_BUTTON if project else QUICK_UNDO_BUTTON
+        redo_key = PROJECT_REDO_BUTTON if project else QUICK_REDO_BUTTON
+        swap_clicked = buttons[0].button(
+            _t("swap_students"),
+            type="primary",
+            disabled=len(seated_students) < 2 or first_student == second_student,
+            key=swap_key,
+        )
+        undo_clicked = buttons[1].button(
+            _t("undo"),
+            disabled=not draft.can_undo,
+            key=undo_key,
+        )
+        redo_clicked = buttons[2].button(
+            _t("redo"),
+            disabled=not draft.can_redo,
+            key=redo_key,
+        )
+        try:
+            if swap_clicked:
+                draft = apply_web_edit(
+                    draft,
+                    EditingOperation(
+                        kind="swap_students",
+                        payload={
+                            "first_student": first_student,
+                            "second_student": second_student,
+                        },
+                    ),
+                    output_dir=output_dir,
+                )
+            elif undo_clicked:
+                draft = undo_web_edit(draft, output_dir=output_dir)
+            elif redo_clicked:
+                draft = redo_web_edit(draft, output_dir=output_dir)
+            else:
+                return
+            st.session_state[state_key] = draft
+            st.session_state["result"] = draft.current_result
+            st.session_state["artifact_json"] = (
+                None
+                if project
+                else draft.current_result.artifact_path.read_bytes()
+            )
+            st.session_state["report_json"] = None
+            st.success(_t("edit_complete"))
+            st.rerun()
+        except (EditingError, InputFileError, ValidationError, ValueError) as exc:
+            _render_error(exc)
 
 
 def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candidate_selector") -> str | None:
@@ -1289,6 +1426,7 @@ def _render_step_results() -> None:
             column_config=_localized_columns(rows),
         )
 
+    _render_manual_edit_panel(result, candidate_id, output_dir=output_dir)
     _render_repair_panel(result, candidate_id, output_dir=output_dir)
 
     # --- Exports ---
@@ -1472,6 +1610,12 @@ def _render_project_tab() -> None:
                 column_config=_localized_columns(rows),
             )
 
+        _render_manual_edit_panel(
+            result,
+            candidate_id,
+            output_dir=output_dir,
+            project=True,
+        )
         _render_repair_panel(
             result,
             candidate_id,
