@@ -18,7 +18,20 @@ The Quick solve tab follows three steps:
 2. Choose a preset, optionally add a rules overlay, inspect history, and set
    candidate count, seed, and time limit.
 3. Compare candidates, inspect the seating map and scores, then download the
-   result.
+result.
+
+## Lock and repair
+
+After solving, expand **Lock & repair** to keep students in their current
+seats, lock seats, or select the students that may be rearranged. Leaving the
+affected-student selection empty performs a global re-solve while preserving
+the locks. Quick solve reuses the history loaded for the current session;
+Project workspace uses the project's history directory. The resulting snapshot
+records lock state, repair provenance, and the students whose seats changed.
+
+The repair backend can be `auto`, `fallback`, `ortools`, or the optional
+`native` Rust extension. Use `auto` unless a specific installed backend is
+needed.
 
 The resolved rules panel shows the exact `RuleSet` used by the solver. History
 inspection reports student coverage, stale references, disabled seats, and
@@ -63,6 +76,8 @@ formats.
 
 Streamlit tables may still need horizontal scrolling on very narrow phones.
 The interface currently supports Simplified Chinese and English.
+Seat-map selection and drag-and-drop locking are not available yet; the repair
+controls currently use accessible form fields.
 
 ## Privacy
 

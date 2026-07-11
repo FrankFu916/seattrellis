@@ -14,8 +14,10 @@ from seattrellis.service import (
     export_extension,
     project_export,
     project_info,
+    project_repair,
     project_solve,
     project_validate,
+    repair_snapshot,
     score_text,
     solve_with_report,
 )
@@ -381,6 +383,79 @@ def project_solve_for_web(
         artifact=artifact,
         report_path=report_path if report_path is not None and report_path.exists() else None,
         report=report,
+        summary=summary,
+    )
+
+
+def repair_for_web(
+    result: WebSolveResult,
+    *,
+    output_dir: str | Path,
+    candidate_id: str = "recommended",
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+) -> WebSolveResult:
+    """Repair the currently displayed artifact and return a Web-ready snapshot."""
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_path = output_root / "seattrellis.repaired.snapshot.json"
+    written_path, summary = repair_snapshot(
+        snapshot_path=result.artifact_path,
+        output_path=output_path,
+        candidate_id=candidate_id if result.is_candidate_set else None,
+        affected_students=affected_students,
+        locked_students=locked_students,
+        locked_seats=locked_seats,
+        history_paths=history_paths,
+        history_dir=history_dir,
+        reuse_saved_locks=reuse_saved_locks,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
+    )
+    return WebSolveResult(
+        artifact_path=written_path,
+        artifact=load_snapshot(written_path),
+        summary=summary,
+    )
+
+
+def project_repair_for_web(
+    result: WebSolveResult,
+    *,
+    project_path: str | Path,
+    candidate_id: str = "recommended",
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+) -> WebSolveResult:
+    """Repair a Project artifact while reusing its configured history."""
+    written_path, summary = project_repair(
+        project_path=project_path,
+        snapshot_path=result.artifact_path,
+        candidate_id=candidate_id if result.is_candidate_set else None,
+        affected_students=affected_students,
+        locked_students=locked_students,
+        locked_seats=locked_seats,
+        reuse_saved_locks=reuse_saved_locks,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
+    )
+    return WebSolveResult(
+        artifact_path=written_path,
+        artifact=load_snapshot(written_path),
         summary=summary,
     )
 

@@ -52,6 +52,17 @@ seat、pair rule 和 group 等规则可能引用学生 ID；页面检测到这�
 页面可下载 snapshot/candidate set、plan report、HTML、打印 HTML、PDF、PNG、
 Excel 和 Word。缺少 optional extra 时会显示对应安装提示，不影响其他格式。
 
+## 锁定与局部重排
+
+求解后展开“锁定与局部重排”，可以锁定学生当前位置、锁定座位，并选择只允许
+重新安排的受影响学生。若不选择受影响学生，系统会在保留锁定的前提下执行全局
+重排。快速排座会继续使用本次加载的 history；Project 工作区会使用项目配置的
+history 目录。重排完成后页面会显示实际改变座位的学生，并把锁定状态和调整摘要
+写入新 snapshot 的 metadata。
+
+后端可以选择 `auto`、`fallback`、`ortools` 或可选的 `native`。未安装 Rust 原生
+扩展时不要强制选择 `native`；`auto` 会选择当前环境可用的合适后端。
+
 ## 隐私与临时文件
 
 所有求解均在本机完成。快速排座使用系统临时目录保存中间文件，并把下载所需 JSON 保存在当前 Streamlit 会话中。不要把真实学生数据、截图或导出文件提交到公开仓库。
@@ -67,6 +78,7 @@ Excel 和 Word。缺少 optional extra 时会显示对应安装提示，不影�
 ## 当前限制
 
 - 尚未提供拖拽 layout 编辑。
+- 当前局部重排通过表单选择学生和座位，尚未提供座位图上的框选或拖拽锁定。
 - Streamlit 的表格在很窄的手机屏幕上仍可能需要横向滚动。
 - 当前只提供简体中文和英文。
 

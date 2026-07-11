@@ -27,6 +27,8 @@
 - Added lock-aware constrained re-solving for global or student-scoped repair,
   including saved lock state, empty-seat reservation, history-aware fairness,
   and post-solve anchor verification.
+- Added Web controls for locking students or seats and running global or
+  student-scoped repair with selectable Python, OR-Tools, or native backends.
 - Added an optional separately packaged Rust extension and explicit `native`
   solver selection while retaining the Python backends.
 

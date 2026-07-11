@@ -23,6 +23,7 @@ from seattrellis.web.keys import (
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_GENERATE_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
+    QUICK_REPAIR_BUTTON,
 )
 
 
@@ -70,6 +71,40 @@ def test_web_workflow_keeps_single_snapshot_path(tmp_path) -> None:
     assert result.artifact_path.name == "seattrellis.snapshot.json"
     assert result.report is None
     assert len(workflow.assignment_rows(result.artifact)) == 8
+
+
+def test_web_workflow_repairs_selected_candidate_with_locks(tmp_path) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="daily",
+        history_dir="examples/history",
+        output_dir=tmp_path / "solve",
+        candidate_count=2,
+    )
+    selected = workflow.selected_snapshot(result)
+    locked_student = selected.assignments[0].student_key
+    locked_seat = selected.assignments[0].seat_id
+
+    repaired = workflow.repair_for_web(
+        result,
+        output_dir=tmp_path / "repair",
+        locked_students=[locked_student],
+        history_dir="examples/history",
+        backend="fallback",
+    )
+
+    assert isinstance(repaired.artifact, SeatingSnapshot)
+    assert repaired.artifact_path.name == "seattrellis.repaired.snapshot.json"
+    assert repaired.artifact.metadata["repair"]["history_count"] == 3
+    assert repaired.artifact.metadata["lock_state"]["locked_students"] == [
+        locked_student
+    ]
+    assignments = {
+        item.student_key: item.seat_id for item in repaired.artifact.assignments
+    }
+    assert assignments[locked_student] == locked_seat
+    assert repaired.artifact.metadata["source_candidate"]["candidate_id"]
 
 
 def test_web_workflow_requires_rules_or_preset(tmp_path) -> None:
@@ -464,6 +499,24 @@ def test_project_web_workflow_can_override_to_single_snapshot(tmp_path) -> None:
     assert result.report is None
 
 
+def test_project_web_workflow_repairs_with_project_history(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    result = workflow.project_solve_for_web(
+        project_path=paths["project"],
+        candidate_count=2,
+    )
+
+    repaired = workflow.project_repair_for_web(
+        result,
+        project_path=paths["project"],
+        backend="fallback",
+    )
+
+    assert isinstance(repaired.artifact, SeatingSnapshot)
+    assert repaired.artifact.metadata["repair"]["history_count"] == 3
+    assert repaired.artifact_path.parent == paths["project"].parent / "outputs"
+
+
 def test_web_workflow_module_does_not_import_streamlit(monkeypatch) -> None:
     _block_import(monkeypatch, "streamlit")
 
@@ -547,6 +600,10 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
         "导出完整候选集比较报告",
     } <= checkbox_labels
     assert any(button.label == "生成 Print HTML 导出文件" for button in app.button)
+    assert any(expander.label == "🛠️ 锁定与局部重排" for expander in app.expander)
+    assert _control_by_key(app.button, QUICK_REPAIR_BUTTON).label == "执行局部重排"
+    multiselect_labels = {control.label for control in app.multiselect}
+    assert {"受影响学生", "锁定学生当前位置", "锁定座位"} <= multiselect_labels
     assert not any("PDF export requires" in message.value for message in app.info)
 
     export_format = _control_by_key(app.selectbox, QUICK_EXPORT_FORMAT_SELECT)
@@ -566,6 +623,31 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
 
     assert not app.exception
     assert any("HTML 已生成" in message.value for message in app.success)
+
+
+def test_streamlit_results_can_run_repair() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    app.radio[0].set_value("results")
+    app.run(timeout=30)
+    _control_by_key(app.selectbox, "quick_repair_backend").set_value("fallback")
+    _control_by_key(app.button, QUICK_REPAIR_BUTTON).click()
+    app.run(timeout=30)
+
+    assert not app.exception
+    repaired = app.session_state["result"]
+    assert isinstance(repaired.artifact, SeatingSnapshot)
+    assert repaired.artifact.metadata["repair"]["history_count"] == 3
+    assert repaired.artifact.metadata["repair"]["solver_backend"] == "fallback"
 
 
 def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:

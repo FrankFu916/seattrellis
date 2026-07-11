@@ -51,6 +51,7 @@ from seattrellis.web.i18n import (
 from seattrellis.web.keys import (
     PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
     PROJECT_EXPORT_DOWNLOAD_REPORT,
+    PROJECT_REPAIR_BUTTON,
     QUICK_CANDIDATE_COUNT_INPUT,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_DOWNLOAD_ARTIFACT,
@@ -58,6 +59,7 @@ from seattrellis.web.keys import (
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_GENERATE_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
+    QUICK_REPAIR_BUTTON,
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
@@ -71,9 +73,11 @@ from seattrellis.web.workflow import (
     load_demo_snapshot,
     project_export_for_web,
     project_info_for_web,
+    project_repair_for_web,
     project_solve_for_web,
     project_validate_for_web,
     parse_rules_overlay,
+    repair_for_web,
     score_breakdown_rows,
     selected_candidate,
     selected_snapshot,
@@ -313,6 +317,125 @@ def _render_seat_map(snapshot, layout) -> None:
             return
     html = build_seat_grid_html(layout, snapshot, locale=_locale())
     st.markdown(html, unsafe_allow_html=True)
+
+
+def _render_repair_panel(
+    result: WebSolveResult,
+    candidate_id: str,
+    *,
+    output_dir: Path,
+    project_path: Path | None = None,
+) -> None:
+    """Render lock-aware repair controls without duplicating domain rules."""
+    snapshot = selected_snapshot(result, candidate_id)
+    prefix = "project" if project_path is not None else "quick"
+    student_names = {student.key: student.name for student in snapshot.students}
+    student_keys = sorted(student_names)
+    seat_ids = sorted(
+        seat.seat_id for seat in snapshot.layout.seats if seat.enabled
+    )
+
+    repair_metadata = snapshot.metadata.get("repair")
+    if isinstance(repair_metadata, dict):
+        changed = repair_metadata.get("changed_students", [])
+        if isinstance(changed, list) and changed:
+            labels = [student_names.get(str(key), str(key)) for key in changed]
+            st.info(_t("repair_changes", students=", ".join(labels)))
+        elif isinstance(changed, list):
+            st.info(_t("repair_no_changes"))
+
+    with st.expander(_t("repair_title"), expanded=False):
+        st.caption(_t("repair_help"))
+
+        def label_student(key: str) -> str:
+            return f"{student_names[key]} ({key})"
+
+        affected_students = st.multiselect(
+            _t("affected_students"),
+            student_keys,
+            format_func=label_student,
+            key=f"{prefix}_repair_affected_students",
+        )
+        locked_students = st.multiselect(
+            _t("locked_students"),
+            student_keys,
+            format_func=label_student,
+            key=f"{prefix}_repair_locked_students",
+        )
+        locked_seats = st.multiselect(
+            _t("locked_seats"),
+            seat_ids,
+            key=f"{prefix}_repair_locked_seats",
+        )
+        reuse_saved_locks = st.checkbox(
+            _t("reuse_saved_locks"),
+            value=True,
+            key=f"{prefix}_repair_reuse_saved_locks",
+        )
+        settings = st.columns(2)
+        backend = settings[0].selectbox(
+            _t("repair_backend"),
+            ["auto", "fallback", "ortools", "native"],
+            key=f"{prefix}_repair_backend",
+        )
+        time_limit_seconds = settings[1].number_input(
+            _t("repair_time_limit"),
+            min_value=0.1,
+            max_value=30.0,
+            value=3.0,
+            step=0.5,
+            key=f"{prefix}_repair_time_limit",
+        )
+        button_key = (
+            PROJECT_REPAIR_BUTTON
+            if project_path is not None
+            else QUICK_REPAIR_BUTTON
+        )
+        if st.button(_t("run_repair"), type="primary", key=button_key):
+            try:
+                common = {
+                    "candidate_id": candidate_id,
+                    "affected_students": affected_students,
+                    "locked_students": locked_students,
+                    "locked_seats": locked_seats,
+                    "reuse_saved_locks": reuse_saved_locks,
+                    "time_limit_seconds": float(time_limit_seconds),
+                    "backend": backend,
+                }
+                if project_path is not None:
+                    repaired = project_repair_for_web(
+                        result,
+                        project_path=project_path,
+                        **common,
+                    )
+                else:
+                    _students, _layout, _rules, history_paths = (
+                        _materialize_quick_inputs()
+                    )
+                    repaired = repair_for_web(
+                        result,
+                        output_dir=output_dir,
+                        history_paths=history_paths,
+                        **common,
+                    )
+                st.session_state["result"] = repaired
+                st.session_state["artifact_json"] = (
+                    None
+                    if project_path is not None
+                    else repaired.artifact_path.read_bytes()
+                )
+                st.session_state["report_json"] = None
+                st.session_state["current_candidate_id"] = "recommended"
+                st.success(_t("repair_complete"))
+                st.rerun()
+            except (
+                InputFileError,
+                MissingOptionalDependencyError,
+                SeatTrellisSolveError,
+                ValidationError,
+                ValueError,
+            ) as exc:
+                _render_error(exc)
 
 
 def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candidate_selector") -> str | None:
@@ -1166,6 +1289,8 @@ def _render_step_results() -> None:
             column_config=_localized_columns(rows),
         )
 
+    _render_repair_panel(result, candidate_id, output_dir=output_dir)
+
     # --- Exports ---
     _render_exports(result, output_dir, candidate_id)
 
@@ -1346,6 +1471,13 @@ def _render_project_tab() -> None:
                 width="stretch",
                 column_config=_localized_columns(rows),
             )
+
+        _render_repair_panel(
+            result,
+            candidate_id,
+            output_dir=output_dir,
+            project_path=Path(proj_path_str),
+        )
 
         _render_exports(result, output_dir, candidate_id, Path(proj_path_str))
 
