@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import seattrellis.service as service_module
 from seattrellis.editing import EditingError, EditingOperation
 from seattrellis.io.json_files import load_snapshot, write_json_model
 from seattrellis.io.project import write_project
@@ -14,12 +15,21 @@ from seattrellis.models.candidate import (
     ScoreDimension,
 )
 from seattrellis.models.layout import ClassroomLayout, SeatNode
-from seattrellis.models.rules import HardRules, PairRule, RuleSet
+from seattrellis.models.rules import FixedSeatRule, HardRules, PairRule, RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.student import Student
-from seattrellis.service import compute_edit, edit_snapshot, project_edit
-from seattrellis.service_types import EditInput
+from seattrellis.service import (
+    compute_edit,
+    compute_repair,
+    edit_snapshot,
+    project_edit,
+    project_repair,
+    repair_snapshot,
+)
+from seattrellis.service_types import EditInput, RepairInput
+from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.solver.result import SeatingSolution
 
 
 def test_compute_edit_applies_operations_and_returns_draft_state() -> None:
@@ -42,18 +52,24 @@ def test_compute_edit_applies_operations_and_returns_draft_state() -> None:
     assert result.locked_seats == ["B2"]
     assert result.locked_students == []
     assert result.unseated_students == []
+    assert result.lock_state.locked_seats == ("B2",)
+    assert result.snapshot.metadata["lock_state"] == {
+        "locked_students": [],
+        "locked_seats": ["B2"],
+    }
     assert [record.operation.kind for record in result.operation_log] == [
         "swap_students",
         "lock_seat",
     ]
 
 
-def test_compute_edit_accepts_initial_locks() -> None:
+@pytest.mark.parametrize("locked_students", [("s1",), "s1"])
+def test_compute_edit_accepts_initial_locks(locked_students) -> None:
     with pytest.raises(EditingError, match="Student is locked"):
         compute_edit(
             EditInput(
                 snapshot=_snapshot(),
-                locked_students=("s1",),
+                locked_students=locked_students,
                 operations=[
                     EditingOperation(
                         kind="move_student",
@@ -110,6 +126,193 @@ def test_compute_edit_reuses_hard_constraint_diagnostics() -> None:
     assert "cannot_be_adjacent is not satisfied for ('s1', 's2')." in (
         result.hard_constraints.violations
     )
+
+
+def test_compute_repair_preserves_locks_and_limits_changes_to_local_scope() -> None:
+    snapshot = _snapshot(
+        rules=RuleSet(
+            seed=7,
+            hard=HardRules(
+                cannot_be_adjacent=[PairRule(students=("s1", "s2"))]
+            ),
+        )
+    )
+
+    result = compute_repair(
+        RepairInput(
+            snapshot=snapshot,
+            affected_students=("s2", "s3"),
+            locked_students=("s1",),
+            backend="fallback",
+            time_limit_seconds=1,
+        )
+    )
+
+    assert result.hard_constraints.satisfied
+    assert _seat_for(result.snapshot, "s1") == "A1"
+    assert result.fixed_assignments == {"s1": "A1"}
+    assert result.mutable_students == ["s2", "s3"]
+    assert result.changed_students == ["s2", "s3"]
+    assert result.snapshot.rules.hard.fixed_seats == []
+    assert result.snapshot.metadata["repair"]["solver_backend"] == "fallback"
+
+
+def test_compute_repair_reuses_saved_empty_seat_locks_without_mutating_layout() -> None:
+    snapshot = _snapshot(
+        assignments=[
+            SeatAssignment(student_key="s1", student_name="林安", seat_id="A1"),
+            SeatAssignment(student_key="s2", student_name="周雨", seat_id="A2"),
+        ]
+    )
+    snapshot.metadata["manual_edit"] = {
+        "locked_students": [],
+        "locked_seats": ["B2"],
+    }
+
+    result = compute_repair(
+        RepairInput(snapshot=snapshot, backend="fallback", time_limit_seconds=1)
+    )
+
+    assert result.hard_constraints.satisfied
+    assert result.reserved_empty_seats == ["B2"]
+    assert "B2" not in {_seat_for(result.snapshot, key) for key in ["s1", "s2", "s3"]}
+    assert result.snapshot.layout.seat_by_id("B2").enabled is True
+    assert result.snapshot.metadata["repair"]["reserved_empty_seats"] == ["B2"]
+
+
+def test_compute_repair_rejects_a_student_that_is_both_affected_and_locked() -> None:
+    with pytest.raises(ValueError, match="Affected students cannot also be locked"):
+        compute_repair(
+            RepairInput(
+                snapshot=_snapshot(),
+                affected_students=("s1",),
+                locked_students=("s1",),
+            )
+        )
+
+
+def test_compute_repair_reuses_pure_edit_lock_state_and_accepts_string_locks() -> None:
+    edited = compute_edit(
+        EditInput(
+            snapshot=_snapshot(),
+            operations=[
+                EditingOperation(
+                    kind="lock_student",
+                    payload={"student_key": "s1"},
+                )
+            ],
+        )
+    )
+
+    result = compute_repair(
+        RepairInput(
+            snapshot=edited.snapshot,
+            affected_students=("s2", "s3"),
+            backend="fallback",
+            time_limit_seconds=1,
+        )
+    )
+    explicit_string = compute_repair(
+        RepairInput(
+            snapshot=_snapshot(),
+            affected_students=("s2", "s3"),
+            locked_students="s1",
+            backend="fallback",
+            time_limit_seconds=1,
+        )
+    )
+
+    assert result.lock_state.locked_students == ("s1",)
+    assert result.fixed_assignments["s1"] == "A1"
+    assert explicit_string.fixed_assignments["s1"] == "A1"
+
+
+def test_compute_repair_counts_existing_fixed_rules_as_effective_locks() -> None:
+    snapshot = _snapshot(
+        rules=RuleSet(
+            hard=HardRules(
+                fixed_seats=[FixedSeatRule(student="s1", seat_id="A1")]
+            )
+        )
+    )
+
+    result = compute_repair(
+        RepairInput(
+            snapshot=snapshot,
+            affected_students=("s1",),
+            backend="fallback",
+            time_limit_seconds=1,
+        )
+    )
+
+    assert result.fixed_assignments["s1"] == "A1"
+    assert "s1" not in result.mutable_students
+    assert result.snapshot.metadata["repair"]["temporary_fixed_assignments"] == {
+        "s2": "A2",
+        "s3": "B1",
+    }
+
+
+def test_compute_repair_rejects_reserving_a_seat_required_by_hard_rules() -> None:
+    snapshot = _snapshot(
+        assignments=[
+            SeatAssignment(student_key="s1", student_name="林安", seat_id="A1"),
+            SeatAssignment(student_key="s2", student_name="周雨", seat_id="A2"),
+        ],
+        rules=RuleSet(
+            hard=HardRules(
+                fixed_seats=[FixedSeatRule(student="s3", seat_id="B2")]
+            )
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Cannot reserve an empty locked seat"):
+        compute_repair(
+            RepairInput(snapshot=snapshot, locked_seats=("B2",))
+        )
+
+
+def test_compute_repair_rejects_a_solver_result_that_breaks_a_temporary_lock(
+    monkeypatch,
+) -> None:
+    def invalid_solution(*_args, **_kwargs) -> SeatingSolution:
+        return SeatingSolution(
+            assignments=[
+                SeatAssignment(student_key="s1", student_name="林安", seat_id="B2"),
+                SeatAssignment(student_key="s2", student_name="周雨", seat_id="A2"),
+                SeatAssignment(student_key="s3", student_name="许然", seat_id="B1"),
+            ],
+            solver_status="FEASIBLE",
+            metrics={"solver_backend_effective": "fallback"},
+        )
+
+    monkeypatch.setattr(service_module, "solve_seating", invalid_solution)
+
+    with pytest.raises(SeatTrellisSolveError, match="repair anchors"):
+        compute_repair(
+            RepairInput(
+                snapshot=_snapshot(),
+                locked_students=("s1",),
+                backend="fallback",
+            )
+        )
+
+
+def test_compute_repair_keeps_history_metrics() -> None:
+    snapshot = _snapshot()
+    history = _snapshot()
+
+    result = compute_repair(
+        RepairInput(
+            snapshot=snapshot,
+            history_snapshots=(history,),
+            backend="fallback",
+            time_limit_seconds=1,
+        )
+    )
+
+    assert result.snapshot.metadata["repair"]["history_count"] == 1
+    assert result.snapshot.metrics["fairness"]["history_count"] == 1
 
 
 def test_edit_snapshot_writes_draft_and_strict_rejects_violations(tmp_path) -> None:
@@ -220,6 +423,55 @@ def test_edit_snapshot_can_select_candidate_and_rejects_candidate_for_snapshot(t
                 EditingOperation(kind="unseat_student", payload={"student_key": "s1"})
             ],
         )
+
+
+def test_repair_snapshot_selects_candidate_and_project_repair_uses_latest(tmp_path) -> None:
+    candidate_path = write_json_model(_candidate_set(), tmp_path / "candidates.json")
+    repaired_path = tmp_path / "candidate-repaired.snapshot.json"
+
+    path, summary = repair_snapshot(
+        snapshot_path=candidate_path,
+        candidate_id="candidate_01",
+        affected_students=("s1", "s2"),
+        output_path=repaired_path,
+        backend="fallback",
+        time_limit_seconds=1,
+    )
+
+    repaired = load_snapshot(path)
+    assert path == repaired_path
+    assert "Repair summary:" in summary
+    assert repaired.metadata["source_candidate"]["candidate_id"] == "candidate_01"
+    assert "candidate" not in repaired.metadata
+    assert repaired.metadata["repair"]["source_candidate_id"] == "candidate_01"
+    assert repaired.metadata["repair"]["mutable_students"] == ["s1", "s2"]
+
+    project_dir = tmp_path / "class-a"
+    outputs_dir = project_dir / "outputs"
+    outputs_dir.mkdir(parents=True)
+    project_path = write_project(
+        SeatTrellisProject(
+            name="Class A",
+            students="students.csv",
+            layout="classroom.json",
+            rules="rules.json",
+            outputs_dir="outputs",
+        ),
+        project_dir / "project.seattrellis.json",
+    )
+    write_json_model(_candidate_set(), outputs_dir / "latest.candidates.json")
+
+    project_path_result, project_summary = project_repair(
+        project_path=project_path,
+        affected_students=("s1", "s2"),
+        backend="fallback",
+        time_limit_seconds=1,
+    )
+
+    assert project_path_result == outputs_dir / "latest.repaired.snapshot.json"
+    assert "Repair summary:" in project_summary
+    project_repaired = load_snapshot(project_path_result)
+    assert project_repaired.metadata["source_candidate"]["candidate_id"] == "candidate_02"
 
 
 def test_project_edit_uses_latest_project_artifact_by_default(tmp_path) -> None:

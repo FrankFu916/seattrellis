@@ -23,7 +23,7 @@ from seattrellis.io.validation import ValidationReport
 from seattrellis.solver.backend import SolverBackend, normalize_solver_backend
 
 if TYPE_CHECKING:
-    from seattrellis.editing import EditingOperation, EditingRecord
+    from seattrellis.editing import EditingLockState, EditingOperation, EditingRecord
 
 
 ExportTemplate = Literal["public", "teacher", "report"]
@@ -242,6 +242,43 @@ class EditOutput:
     locked_students: list[str]
     locked_seats: list[str]
     operation_log: tuple[EditingRecord, ...]
+    lock_state: EditingLockState
+
+
+@dataclass(frozen=True)
+class RepairInput:
+    """Request a constrained re-solve from a manual seating draft."""
+
+    snapshot: SeatingSnapshot
+    affected_students: Sequence[str] = field(default_factory=tuple)
+    locked_students: Sequence[str] = field(default_factory=tuple)
+    locked_seats: Sequence[str] = field(default_factory=tuple)
+    lock_state: EditingLockState | None = None
+    reuse_saved_locks: bool = True
+    history_snapshots: Sequence[SeatingSnapshot] = field(default_factory=tuple)
+    seed: int | None = None
+    time_limit_seconds: float = 3.0
+    backend: SolverBackend = "auto"
+
+    def __post_init__(self) -> None:
+        if not isfinite(self.time_limit_seconds) or self.time_limit_seconds < 0.1:
+            raise ValueError("time_limit_seconds must be a finite number >= 0.1")
+        object.__setattr__(self, "backend", normalize_solver_backend(self.backend))
+
+
+@dataclass(frozen=True)
+class RepairOutput:
+    """Result and trace data for a constrained re-solve."""
+
+    snapshot: SeatingSnapshot
+    hard_constraints: HardConstraintSummary
+    locked_students: list[str]
+    locked_seats: list[str]
+    lock_state: EditingLockState
+    mutable_students: list[str]
+    fixed_assignments: dict[str, str]
+    reserved_empty_seats: list[str]
+    changed_students: list[str]
 
 
 @dataclass(frozen=True)

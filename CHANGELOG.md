@@ -20,6 +20,15 @@
 - Added deterministic export regression fixtures and documented failed-publish
   and rollback handling.
 - Added a public roadmap for the v1.3–v1.8 milestones.
+- Added candidate comparison reports with recommendation, score, constraint,
+  and history explanations.
+- Added UI-neutral manual editing sessions, replayable operation files, and
+  Project commands for editing saved candidates.
+- Added lock-aware constrained re-solving for global or student-scoped repair,
+  including saved lock state, empty-seat reservation, history-aware fairness,
+  and post-solve anchor verification.
+- Added an optional separately packaged Rust extension and explicit `native`
+  solver selection while retaining the Python backends.
 
 ### Changed
 

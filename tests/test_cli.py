@@ -207,6 +207,36 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ],
         [
             "seattrellis",
+            "project-repair",
+            "--project",
+            "examples/project.seattrellis.json",
+            "--snapshot",
+            "outputs/project-edited.snapshot.json",
+            "--affected-student",
+            "STU001",
+            "--affected-student",
+            "STU002",
+            "--backend",
+            "fallback",
+            "--time-limit",
+            "1",
+            "--output",
+            "outputs/project-repaired.snapshot.json",
+        ],
+        [
+            "seattrellis",
+            "project-export",
+            "--project",
+            "examples/project.seattrellis.json",
+            "--snapshot",
+            "outputs/project-repaired.snapshot.json",
+            "--format",
+            "html",
+            "--output",
+            "outputs/project-repaired.html",
+        ],
+        [
+            "seattrellis",
             "validate",
             "--students",
             "examples/students.csv",
@@ -351,6 +381,34 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
         ],
         [
             "seattrellis",
+            "repair",
+            "--snapshot",
+            "outputs/neighbor-aware-edited.snapshot.json",
+            "--affected-student",
+            "STU001",
+            "--affected-student",
+            "STU002",
+            "--history-dir",
+            "examples/history",
+            "--backend",
+            "fallback",
+            "--time-limit",
+            "1",
+            "--output",
+            "outputs/neighbor-aware-repaired.snapshot.json",
+        ],
+        [
+            "seattrellis",
+            "export",
+            "--snapshot",
+            "outputs/neighbor-aware-repaired.snapshot.json",
+            "--format",
+            "html",
+            "--output",
+            "outputs/neighbor-aware-repaired.html",
+        ],
+        [
+            "seattrellis",
             "solve",
             "--students",
             "examples/students.xlsx",
@@ -378,6 +436,8 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "neighbor-aware.html").exists()
     assert (tmp_path / "outputs" / "neighbor-aware-edited.snapshot.json").exists()
     assert (tmp_path / "outputs" / "neighbor-aware-edited.html").exists()
+    assert (tmp_path / "outputs" / "neighbor-aware-repaired.snapshot.json").exists()
+    assert (tmp_path / "outputs" / "neighbor-aware-repaired.html").exists()
     edited_snapshot = load_snapshot(
         tmp_path / "outputs" / "neighbor-aware-edited.snapshot.json"
     )
@@ -392,6 +452,11 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     }
     assert edited_by_student["STU001"] == original_by_student["STU002"]
     assert edited_by_student["STU002"] == original_by_student["STU001"]
+    repaired_snapshot = load_snapshot(
+        tmp_path / "outputs" / "neighbor-aware-repaired.snapshot.json"
+    )
+    assert repaired_snapshot.metadata["repair"]["history_count"] == 3
+    assert repaired_snapshot.metadata["lock_state"]["locked_seats"] == ["R4C3"]
     assert (tmp_path / "outputs" / "candidates.json").exists()
     assert (tmp_path / "outputs" / "plan-report.json").exists()
     assert (tmp_path / "outputs" / "recommended-edited.snapshot.json").exists()
@@ -416,9 +481,15 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "project-recommended.html").exists()
     assert (tmp_path / "outputs" / "project-edited.snapshot.json").exists()
     assert (tmp_path / "outputs" / "project-edited.html").exists()
+    assert (tmp_path / "outputs" / "project-repaired.snapshot.json").exists()
+    assert (tmp_path / "outputs" / "project-repaired.html").exists()
     project_edited = load_snapshot(tmp_path / "outputs" / "project-edited.snapshot.json")
     assert project_edited.metadata["candidate"]["candidate_id"]
     assert project_edited.metadata["manual_edit"]["operation_count"] == 1
+    project_repaired = load_snapshot(
+        tmp_path / "outputs" / "project-repaired.snapshot.json"
+    )
+    assert project_repaired.metadata["repair"]["history_count"] == 3
     assert len(load_candidate_set(tmp_path / "outputs" / "candidates.json").candidates) == 5
 
 

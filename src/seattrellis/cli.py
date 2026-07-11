@@ -391,6 +391,92 @@ if typer is not None:
             )
         )
 
+    @app.command(
+        "repair",
+        help="Re-solve a seating draft while preserving locks or a local scope.",
+    )
+    def repair_command(
+        snapshot: Path = typer.Option(
+            ...,
+            "--snapshot",
+            help="Snapshot or candidate-set JSON path.",
+        ),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID for a candidate set, or 'recommended'.",
+        ),
+        affected_student: list[str] = typer.Option(
+            [],
+            "--affected-student",
+            help="Student key to include in the local repair. Can be repeated.",
+        ),
+        lock_student: list[str] = typer.Option(
+            [],
+            "--lock-student",
+            help="Keep a student's current seat for this re-solve. Can be repeated.",
+        ),
+        lock_seat: list[str] = typer.Option(
+            [],
+            "--lock-seat",
+            help="Keep a seat's occupant or reserve an empty seat. Can be repeated.",
+        ),
+        history: list[Path] = typer.Option(
+            [],
+            "--history",
+            help="Historical snapshot JSON path. Can be repeated.",
+        ),
+        history_dir: Path | None = typer.Option(
+            None,
+            "--history-dir",
+            help="Directory containing historical *.snapshot.json files.",
+        ),
+        ignore_saved_locks: bool = typer.Option(
+            False,
+            "--ignore-saved-locks",
+            help="Do not reuse locks recorded by a prior edit operation.",
+        ),
+        seed: int | None = typer.Option(
+            None,
+            "--seed",
+            help="Override the source snapshot seed.",
+        ),
+        time_limit_seconds: float = typer.Option(
+            3.0,
+            "--time-limit",
+            help="Solver time limit in seconds.",
+        ),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
+        ),
+        output: Path = typer.Option(
+            Path("outputs/repaired.snapshot.json"),
+            "--output",
+            "-o",
+            help="Repaired snapshot output path.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_repair_result(
+                repair_snapshot(
+                    snapshot_path=snapshot,
+                    output_path=output,
+                    candidate_id=candidate,
+                    affected_students=affected_student,
+                    locked_students=lock_student,
+                    locked_seats=lock_seat,
+                    history_paths=history,
+                    history_dir=history_dir,
+                    reuse_saved_locks=not ignore_saved_locks,
+                    seed=seed,
+                    time_limit_seconds=time_limit_seconds,
+                    backend=backend,
+                )
+            )
+        )
+
     @app.command("history-report", help="Summarize historical seating snapshots.")
     def history_report_command(
         students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
@@ -565,6 +651,86 @@ if typer is not None:
             )
         )
 
+    @app.command(
+        "project-repair",
+        help="Re-solve the latest or selected project artifact with draft locks.",
+    )
+    def project_repair_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        snapshot: Path | None = typer.Option(
+            None,
+            "--snapshot",
+            help="Snapshot or candidate-set JSON path. Defaults to latest project artifact.",
+        ),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID, or 'recommended'.",
+        ),
+        affected_student: list[str] = typer.Option(
+            [],
+            "--affected-student",
+            help="Student key to include in the local repair. Can be repeated.",
+        ),
+        lock_student: list[str] = typer.Option(
+            [],
+            "--lock-student",
+            help="Keep a student's current seat. Can be repeated.",
+        ),
+        lock_seat: list[str] = typer.Option(
+            [],
+            "--lock-seat",
+            help="Keep an occupant or reserve an empty seat. Can be repeated.",
+        ),
+        ignore_saved_locks: bool = typer.Option(
+            False,
+            "--ignore-saved-locks",
+            help="Do not reuse locks recorded by a prior edit operation.",
+        ),
+        seed: int | None = typer.Option(
+            None,
+            "--seed",
+            help="Override the source snapshot seed.",
+        ),
+        time_limit_seconds: float = typer.Option(
+            3.0,
+            "--time-limit",
+            help="Solver time limit in seconds.",
+        ),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
+        ),
+        output: Path | None = typer.Option(
+            None,
+            "--output",
+            "-o",
+            help="Repaired snapshot output path.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_repair_result(
+                project_repair(
+                    project_path=project,
+                    snapshot_path=snapshot,
+                    candidate_id=candidate,
+                    affected_students=affected_student,
+                    locked_students=lock_student,
+                    locked_seats=lock_seat,
+                    reuse_saved_locks=not ignore_saved_locks,
+                    seed=seed,
+                    time_limit_seconds=time_limit_seconds,
+                    backend=backend,
+                    output_path=output,
+                )
+            )
+        )
+
     @app.command("project-export", help="Export the latest or selected project seating artifact.")
     def project_export_command(
         project: Path = typer.Option(
@@ -609,6 +775,8 @@ from seattrellis.service import (  # noqa: E402, F401
     project_init,
     project_solve,
     project_validate,
+    project_repair,
+    repair_snapshot,
     run_doctor,
     run_history_report,
     run_pair_report,
@@ -730,6 +898,23 @@ def _run_argparse() -> None:
     edit_parser.add_argument("--output", "-o", default="outputs/edited.snapshot.json")
     edit_parser.add_argument("--strict", action="store_true")
 
+    repair_parser = subparsers.add_parser(
+        "repair",
+        help="Re-solve a seating draft while preserving locks or a local scope.",
+    )
+    repair_parser.add_argument("--snapshot", required=True)
+    repair_parser.add_argument("--candidate", default=None)
+    repair_parser.add_argument("--affected-student", action="append", default=[])
+    repair_parser.add_argument("--lock-student", action="append", default=[])
+    repair_parser.add_argument("--lock-seat", action="append", default=[])
+    repair_parser.add_argument("--history", action="append", default=[])
+    repair_parser.add_argument("--history-dir", default=None)
+    repair_parser.add_argument("--ignore-saved-locks", action="store_true")
+    repair_parser.add_argument("--seed", type=int, default=None)
+    repair_parser.add_argument("--time-limit", type=float, default=3.0)
+    repair_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
+    repair_parser.add_argument("--output", "-o", default="outputs/repaired.snapshot.json")
+
     history_parser = subparsers.add_parser("history-report", help="Summarize historical seating snapshots.")
     history_parser.add_argument("--students", required=True)
     history_parser.add_argument("--layout", required=True)
@@ -781,6 +966,22 @@ def _run_argparse() -> None:
     project_edit_parser.add_argument("--operations-file", default=None)
     project_edit_parser.add_argument("--output", "-o", default=None)
     project_edit_parser.add_argument("--strict", action="store_true")
+
+    project_repair_parser = subparsers.add_parser(
+        "project-repair",
+        help="Re-solve a project artifact while preserving locks or a local scope.",
+    )
+    project_repair_parser.add_argument("--project", default="seattrellis.project.json")
+    project_repair_parser.add_argument("--snapshot", default=None)
+    project_repair_parser.add_argument("--candidate", default=None)
+    project_repair_parser.add_argument("--affected-student", action="append", default=[])
+    project_repair_parser.add_argument("--lock-student", action="append", default=[])
+    project_repair_parser.add_argument("--lock-seat", action="append", default=[])
+    project_repair_parser.add_argument("--ignore-saved-locks", action="store_true")
+    project_repair_parser.add_argument("--seed", type=int, default=None)
+    project_repair_parser.add_argument("--time-limit", type=float, default=3.0)
+    project_repair_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
+    project_repair_parser.add_argument("--output", "-o", default=None)
 
     project_export_parser = subparsers.add_parser("project-export", help="Export a project artifact.")
     project_export_parser.add_argument("--project", default="seattrellis.project.json")
@@ -884,6 +1085,23 @@ def _run_argparse() -> None:
         )
         print(f"Edited snapshot written to {path}")
         print(summary)
+    elif args.command == "repair":
+        path, summary = repair_snapshot(
+            snapshot_path=args.snapshot,
+            output_path=args.output,
+            candidate_id=args.candidate,
+            affected_students=args.affected_student,
+            locked_students=args.lock_student,
+            locked_seats=args.lock_seat,
+            history_paths=args.history,
+            history_dir=args.history_dir,
+            reuse_saved_locks=not args.ignore_saved_locks,
+            seed=args.seed,
+            time_limit_seconds=args.time_limit,
+            backend=args.backend,
+        )
+        print(f"Repaired snapshot written to {path}")
+        print(summary)
     elif args.command == "history-report":
         print(
             run_history_report(
@@ -950,6 +1168,22 @@ def _run_argparse() -> None:
         )
         print(f"Edited snapshot written to {path}")
         print(summary)
+    elif args.command == "project-repair":
+        path, summary = project_repair(
+            project_path=args.project,
+            snapshot_path=args.snapshot,
+            candidate_id=args.candidate,
+            affected_students=args.affected_student,
+            locked_students=args.lock_student,
+            locked_seats=args.lock_seat,
+            reuse_saved_locks=not args.ignore_saved_locks,
+            seed=args.seed,
+            time_limit_seconds=args.time_limit,
+            backend=args.backend,
+            output_path=args.output,
+        )
+        print(f"Repaired snapshot written to {path}")
+        print(summary)
     elif args.command == "project-export":
         path = project_export(
             project_path=args.project,
@@ -985,6 +1219,12 @@ def _print_solve_result(result: tuple[Path, str | None]) -> None:
 def _print_edit_result(result: tuple[Path, str]) -> None:
     path, summary = result
     typer.echo(f"Edited snapshot written to {path}")
+    typer.echo(summary)
+
+
+def _print_repair_result(result: tuple[Path, str]) -> None:
+    path, summary = result
+    typer.echo(f"Repaired snapshot written to {path}")
     typer.echo(summary)
 
 

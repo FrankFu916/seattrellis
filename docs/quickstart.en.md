@@ -190,6 +190,23 @@ seattrellis edit \
   --output outputs/neighbor-aware-edited.snapshot.json
 ```
 
+Use `repair` to re-solve only a small group after locking parts of a draft.
+With `--affected-student`, every other seated student remains in place:
+
+```bash
+seattrellis repair \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --affected-student STU001 \
+  --affected-student STU002 \
+  --lock-seat R4C3 \
+  --backend fallback \
+  --output outputs/neighbor-aware-repaired.snapshot.json
+```
+
+`repair` reuses the `metadata.lock_state` saved by editing by default. Pass
+`--ignore-saved-locks` to ignore it; without `--affected-student`, every
+unlocked student may be re-arranged.
+
 ## Project Workflow
 
 ```bash
@@ -208,11 +225,14 @@ seattrellis project-solve --project examples/project.seattrellis.json --candidat
 # Edit
 seattrellis project-edit --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --operation swap:STU001:STU002 --output outputs/project-edited.snapshot.json
 
+# Re-solve the affected students after editing
+seattrellis project-repair --project examples/project.seattrellis.json --snapshot outputs/project-edited.snapshot.json --affected-student STU001 --affected-student STU002 --backend fallback --output outputs/project-repaired.snapshot.json
+
 # Export
-seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project-edited.snapshot.json --format html --output outputs/project-edited.html
+seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project-repaired.snapshot.json --format html --output outputs/project-repaired.html
 ```
 
-`project-init` creates a lightweight local project file; `project-info` checks its settings and path status; `project-validate`, `project-solve`, `project-edit`, and `project-export` reuse the existing validation, solving, manual editing, and export logic. A project file stores relative paths and defaults only — it does not embed student lists or seating data. Relative paths are resolved from the project file's directory.
+`project-init` creates a lightweight local project file; `project-info` checks its settings and path status; `project-validate`, `project-solve`, `project-edit`, `project-repair`, and `project-export` reuse the existing validation, solving, manual editing, local repair, and export logic. A project file stores relative paths and defaults only — it does not embed student lists or seating data. Relative paths are resolved from the project file's directory.
 
 ## Multi-Candidate Scoring Dimensions
 

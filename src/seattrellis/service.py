@@ -16,7 +16,12 @@ from typing import Sequence
 from seattrellis import __version__
 from seattrellis.candidates import generate_candidate_set
 from seattrellis.demo import create_demo_files
-from seattrellis.editing import EditingOperation, EditingSession
+from seattrellis.editing import (
+    EditingLockState,
+    EditingOperation,
+    EditingSession,
+    snapshot_with_lock_state,
+)
 from seattrellis.exporters import export_candidate_report_html, export_snapshot
 from seattrellis.history import (
     build_fairness_report,
@@ -58,7 +63,8 @@ from seattrellis.presets import (
     load_rules_with_preset,
     preset_context_warnings,
 )
-from seattrellis.scoring import build_plan_comparison_report
+from seattrellis.scoring import build_plan_comparison_report, evaluate_hard_constraints
+from seattrellis.repair import compile_repair_context
 from seattrellis.service_types import (
     EditInput,
     EditOutput,
@@ -69,6 +75,8 @@ from seattrellis.service_types import (
     PairReportOutput,
     ProjectInfoInput,
     ProjectInfoOutput,
+    RepairInput,
+    RepairOutput,
     SolveInput,
     SolveOutput,
     ValidateInput,
@@ -76,7 +84,7 @@ from seattrellis.service_types import (
     export_extension,
     score_text,
 )
-from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.solver import SeatTrellisSolveError, solve_seating
 from seattrellis.solver.backend import (
     SOLVER_BACKENDS,
     normalize_solver_backend,
@@ -168,22 +176,145 @@ def compute_validate(input: ValidateInput) -> ValidateOutput:
 
 def compute_edit(input: EditInput) -> EditOutput:
     """Apply manual editing commands to a loaded snapshot."""
+    initial_lock_state = EditingLockState.from_values(
+        locked_students=input.locked_students,
+        locked_seats=input.locked_seats,
+    )
     session = EditingSession.from_snapshot(
         input.snapshot,
-        locked_students=tuple(input.locked_students),
-        locked_seats=tuple(input.locked_seats),
+        locked_students=initial_lock_state.locked_students,
+        locked_seats=initial_lock_state.locked_seats,
     )
     summary = session.hard_constraint_summary()
     for operation in input.operations:
         summary = session.apply(operation)
 
+    lock_state = session.lock_state
     return EditOutput(
-        snapshot=session.current_snapshot(),
+        snapshot=snapshot_with_lock_state(session.current_snapshot(), lock_state),
         hard_constraints=summary,
         unseated_students=session.unseated_students(),
         locked_students=sorted(session.locked_students),
         locked_seats=sorted(session.locked_seats),
         operation_log=session.operation_log,
+        lock_state=lock_state,
+    )
+
+
+def compute_repair(input: RepairInput) -> RepairOutput:
+    """Re-solve a draft while preserving requested local anchors."""
+
+    input_lock_state = input.lock_state or EditingLockState()
+    explicit_lock_state = EditingLockState.from_values(
+        locked_students=input.locked_students,
+        locked_seats=input.locked_seats,
+    )
+    context = compile_repair_context(
+        input.snapshot,
+        affected_students=input.affected_students,
+        locked_students=(
+            *input_lock_state.locked_students,
+            *explicit_lock_state.locked_students,
+        ),
+        locked_seats=(
+            *input_lock_state.locked_seats,
+            *explicit_lock_state.locked_seats,
+        ),
+        reuse_saved_locks=input.reuse_saved_locks,
+    )
+    seed = input.snapshot.seed if input.seed is None else input.seed
+    history_snapshots = list(input.history_snapshots)
+    history = build_seat_history(
+        input.snapshot.students,
+        input.snapshot.layout,
+        history_snapshots,
+    )
+    pair_rule = input.snapshot.rules.soft.avoid_recent_neighbors
+    pair_history = build_pair_history(
+        input.snapshot.students,
+        input.snapshot.layout,
+        history_snapshots,
+        lookback=pair_rule.lookback,
+        within_distance=pair_rule.within_distance,
+    )
+    solution = solve_seating(
+        input.snapshot.students,
+        context.solver_layout,
+        context.solver_rules,
+        history=history,
+        pair_history=pair_history,
+        seed=seed,
+        time_limit_seconds=input.time_limit_seconds,
+        backend=input.backend,
+    )
+    metadata = dict(input.snapshot.metadata)
+    metadata["repair"] = {
+        "locked_students": context.locked_students,
+        "locked_seats": context.locked_seats,
+        "mutable_students": context.mutable_students,
+        "fixed_assignments": context.fixed_assignments,
+        "temporary_fixed_assignments": context.temporary_fixed_assignments,
+        "reserved_empty_seats": context.reserved_empty_seats,
+        "reuse_saved_locks": input.reuse_saved_locks,
+        "history_count": len(history_snapshots),
+        "solver_backend": solution.metrics.get("solver_backend_effective"),
+    }
+    snapshot = solution.to_snapshot(
+        students=input.snapshot.students,
+        layout=input.snapshot.layout,
+        rules=input.snapshot.rules,
+        seed=seed,
+        metadata=metadata,
+    )
+    lock_state = EditingLockState.from_values(
+        locked_students=context.locked_students,
+        locked_seats=context.locked_seats,
+    )
+    snapshot = snapshot_with_lock_state(snapshot, lock_state)
+    metadata = dict(snapshot.metadata)
+    repair_constraints = evaluate_hard_constraints(
+        snapshot.assignments,
+        snapshot.students,
+        context.solver_layout,
+        context.solver_rules,
+    )
+    if not repair_constraints.satisfied:
+        raise SeatTrellisSolveError(
+            "Repair solver returned a snapshot that violates repair anchors."
+        )
+    hard_constraints = EditingSession.from_snapshot(snapshot).hard_constraint_summary()
+    if not hard_constraints.satisfied:
+        raise SeatTrellisSolveError(
+            "Repair solver returned a snapshot that violates hard constraints."
+        )
+    original_assignments = {
+        assignment.student_key: assignment.seat_id
+        for assignment in input.snapshot.assignments
+    }
+    changed_students = sorted(
+        assignment.student_key
+        for assignment in snapshot.assignments
+        if original_assignments.get(assignment.student_key) != assignment.seat_id
+    )
+    metadata["repair"]["changed_students"] = changed_students
+    metadata["repair"]["anchor_constraints_satisfied"] = repair_constraints.satisfied
+    if hasattr(snapshot, "model_copy"):
+        snapshot = snapshot.model_copy(  # type: ignore[attr-defined,assignment]
+            update={"metadata": metadata}
+        )
+    else:
+        snapshot = snapshot.copy(update={"metadata": metadata})
+    snapshot = _snapshot_with_repair_provenance(snapshot)
+    return RepairOutput(
+        snapshot=snapshot,
+        hard_constraints=hard_constraints,
+        locked_students=context.locked_students,
+        locked_seats=context.locked_seats,
+        lock_state=lock_state,
+        mutable_students=context.mutable_students,
+        fixed_assignments=context.fixed_assignments,
+        reserved_empty_seats=context.reserved_empty_seats,
+        changed_students=changed_students,
     )
 
 
@@ -468,6 +599,60 @@ def edit_snapshot(
     return path, _format_edit_summary(result)
 
 
+def repair_snapshot(
+    *,
+    snapshot_path: str | Path,
+    output_path: str | Path = "outputs/repaired.snapshot.json",
+    candidate_id: str | None = None,
+    default_candidate_id: str = "recommended",
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+) -> tuple[Path, str]:
+    """Re-solve a snapshot or selected candidate while preserving draft locks."""
+
+    candidate_id = str(candidate_id).strip() if candidate_id is not None else None
+    if candidate_id == "":
+        raise ValueError("candidate_id cannot be empty.")
+    backend = normalize_solver_backend(backend)
+
+    artifact = load_seating_artifact(snapshot_path)
+    if isinstance(artifact, CandidateSet):
+        selected_candidate = artifact.get_candidate(candidate_id or default_candidate_id)
+        snapshot = _snapshot_with_candidate_metadata(selected_candidate)
+    else:
+        if candidate_id is not None:
+            raise ValueError("--candidate can only be used when repairing a candidate set.")
+        snapshot = artifact
+
+    history_snapshots = load_history_snapshots(
+        history_paths=history_paths,
+        history_dir=history_dir,
+    )
+
+    result = compute_repair(
+        RepairInput(
+            snapshot=snapshot,
+            affected_students=affected_students,
+            locked_students=locked_students,
+            locked_seats=locked_seats,
+            reuse_saved_locks=reuse_saved_locks,
+            history_snapshots=history_snapshots,
+            seed=seed,
+            time_limit_seconds=time_limit_seconds,
+            backend=backend,
+        )
+    )
+    path = write_json_model(result.snapshot, output_path)
+    return path, _format_repair_summary(result)
+
+
 def run_doctor() -> str:
     """Check the environment and return a diagnostic report."""
     lines: list[str] = []
@@ -748,6 +933,50 @@ def project_edit(
     )
 
 
+def project_repair(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    snapshot_path: str | Path | None = None,
+    candidate_id: str | None = None,
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+    output_path: str | Path | None = None,
+) -> tuple[Path, str]:
+    """Re-solve the latest or selected project artifact with draft locks."""
+
+    project, paths = load_project_paths(
+        project_path,
+        require_history=True,
+        create_outputs=True,
+    )
+    selected_snapshot = (
+        Path(snapshot_path)
+        if snapshot_path is not None
+        else find_latest_project_artifact(paths.outputs_dir)
+    )
+    if output_path is None:
+        output_path = _repaired_snapshot_output_path(selected_snapshot, paths.outputs_dir)
+    return repair_snapshot(
+        snapshot_path=selected_snapshot,
+        output_path=output_path,
+        candidate_id=candidate_id,
+        default_candidate_id=project.default_candidate,
+        affected_students=affected_students,
+        locked_students=locked_students,
+        locked_seats=locked_seats,
+        history_dir=paths.history_dir,
+        reuse_saved_locks=reuse_saved_locks,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
+    )
+
+
 def project_export(
     *,
     project_path: str | Path = "seattrellis.project.json",
@@ -913,7 +1142,28 @@ def _snapshot_with_edit_metadata(
         "violation_count": result.hard_constraints.violation_count,
     }
     if hasattr(snapshot, "model_copy"):
-        return snapshot.model_copy(update={"metadata": metadata})  # type: ignore[attr-defined,return-value]
+        return snapshot.model_copy(  # type: ignore[attr-defined,return-value]
+            update={"metadata": metadata}
+        )
+    return snapshot.copy(update={"metadata": metadata})
+
+
+def _snapshot_with_repair_provenance(snapshot: SeatingSnapshot) -> SeatingSnapshot:
+    """Keep candidate origin without retaining stale pre-repair score metadata."""
+
+    metadata = dict(snapshot.metadata)
+    candidate = metadata.pop("candidate", None)
+    if isinstance(candidate, dict):
+        metadata["source_candidate"] = candidate
+        repair = metadata.get("repair")
+        if isinstance(repair, dict):
+            repair = dict(repair)
+            repair["source_candidate_id"] = candidate.get("candidate_id")
+            metadata["repair"] = repair
+    if hasattr(snapshot, "model_copy"):
+        return snapshot.model_copy(  # type: ignore[attr-defined,return-value]
+            update={"metadata": metadata}
+        )
     return snapshot.copy(update={"metadata": metadata})
 
 
@@ -923,6 +1173,14 @@ def _edited_snapshot_output_path(selected_snapshot: Path, outputs_dir: Path) -> 
         if name.endswith(suffix):
             return outputs_dir / f"{name.removesuffix(suffix)}.edited.snapshot.json"
     return outputs_dir / f"{selected_snapshot.stem}.edited.snapshot.json"
+
+
+def _repaired_snapshot_output_path(selected_snapshot: Path, outputs_dir: Path) -> Path:
+    name = selected_snapshot.name
+    for suffix in (".candidates.json", ".snapshot.json", ".json"):
+        if name.endswith(suffix):
+            return outputs_dir / f"{name.removesuffix(suffix)}.repaired.snapshot.json"
+    return outputs_dir / f"{selected_snapshot.stem}.repaired.snapshot.json"
 
 
 def _format_solve_fairness_summary(fairness: object) -> str | None:
@@ -979,6 +1237,24 @@ def _format_edit_strict_failure(result: EditOutput) -> str:
         "Manual edits did not satisfy hard constraints; no snapshot was written."
         + (f"\n{violations}" if violations else "")
     )
+
+
+def _format_repair_summary(result: RepairOutput) -> str:
+    hard = result.hard_constraints
+    lines = [
+        "Repair summary:",
+        f"- mutable students: {_format_preview(result.mutable_students)}",
+        f"- fixed assignments: {len(result.fixed_assignments)}",
+        f"- changed students: {_format_preview(result.changed_students)}",
+        f"- locked students: {_format_preview(result.locked_students)}",
+        f"- locked seats: {_format_preview(result.locked_seats)}",
+        f"- reserved empty seats: {_format_preview(result.reserved_empty_seats)}",
+        (
+            f"- hard constraints: {'satisfied' if hard.satisfied else 'not satisfied'} "
+            f"({hard.violation_count} violation(s))"
+        ),
+    ]
+    return "\n".join(lines)
 
 
 def _format_preview(values: Sequence[str]) -> str:

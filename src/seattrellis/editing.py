@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Literal, Mapping
+from typing import Iterable, Literal, Mapping, Sequence
 
 from seattrellis.models.candidate import HardConstraintSummary
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
@@ -20,6 +20,8 @@ EditingOperationKind = Literal[
     "unlock_seat",
 ]
 
+LOCK_STATE_METADATA_KEY = "lock_state"
+
 
 class EditingError(ValueError):
     """Raised when a manual editing command would make the draft inconsistent."""
@@ -31,6 +33,26 @@ class EditingOperation:
 
     kind: EditingOperationKind
     payload: Mapping[str, str | bool | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class EditingLockState:
+    """Portable current locks shared by edit and constrained re-solve flows."""
+
+    locked_students: tuple[str, ...] = ()
+    locked_seats: tuple[str, ...] = ()
+
+    @classmethod
+    def from_values(
+        cls,
+        *,
+        locked_students: Sequence[str] = (),
+        locked_seats: Sequence[str] = (),
+    ) -> "EditingLockState":
+        return cls(
+            locked_students=tuple(_normalized_identifiers(locked_students)),
+            locked_seats=tuple(_normalized_identifiers(locked_seats)),
+        )
 
 
 @dataclass(frozen=True)
@@ -101,6 +123,15 @@ class EditingSession:
         """Commands that are currently applied to the draft."""
 
         return tuple(self.undo_stack)
+
+    @property
+    def lock_state(self) -> EditingLockState:
+        """Return the current locks in a portable UI-neutral form."""
+
+        return EditingLockState.from_values(
+            locked_students=tuple(self.locked_students),
+            locked_seats=tuple(self.locked_seats),
+        )
 
     def current_snapshot(self) -> SeatingSnapshot:
         """Return a defensive copy of the current draft snapshot."""
@@ -427,12 +458,57 @@ class EditingSession:
             raise EditingError(f"Seat is locked and cannot be changed: {seat_id}.")
 
 
+def lock_state_from_snapshot(snapshot: SeatingSnapshot) -> EditingLockState:
+    """Return persisted locks from a snapshot, ignoring malformed metadata."""
+
+    stored = snapshot.metadata.get(LOCK_STATE_METADATA_KEY)
+    if not isinstance(stored, dict):
+        return EditingLockState()
+    return EditingLockState.from_values(
+        locked_students=stored.get("locked_students", ()),
+        locked_seats=stored.get("locked_seats", ()),
+    )
+
+
+def snapshot_with_lock_state(
+    snapshot: SeatingSnapshot,
+    lock_state: EditingLockState,
+) -> SeatingSnapshot:
+    """Persist portable locks without changing assignments or source rules."""
+
+    metadata = dict(snapshot.metadata)
+    metadata[LOCK_STATE_METADATA_KEY] = {
+        "locked_students": list(lock_state.locked_students),
+        "locked_seats": list(lock_state.locked_seats),
+    }
+    if hasattr(snapshot, "model_copy"):
+        return snapshot.model_copy(  # type: ignore[attr-defined,return-value]
+            update={"metadata": metadata}
+        )
+    return snapshot.copy(update={"metadata": metadata})
+
+
 def _required_payload(operation: EditingOperation, key: str) -> str:
     value = operation.payload.get(key)
     text = "" if value is None else str(value).strip()
     if not text:
         raise EditingError(f"{operation.kind} requires payload field: {key}.")
     return text
+
+
+def _normalized_identifiers(values: object) -> list[str]:
+    if isinstance(values, str):
+        candidates = [values]
+    elif isinstance(values, Iterable):
+        candidates = values
+    else:
+        return []
+    normalized: list[str] = []
+    for value in candidates:
+        text = str(value).strip()
+        if text and text not in normalized:
+            normalized.append(text)
+    return sorted(normalized)
 
 
 def _assignment_by_student(assignments: Iterable[SeatAssignment]) -> dict[str, SeatAssignment]:

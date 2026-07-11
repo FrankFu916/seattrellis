@@ -127,8 +127,8 @@ seattrellis edit \
 多次 `--operation` 会按命令行顺序执行。默认情况下，即使调整后 hard
 constraints 不满足，也会写出草稿并在终端列出违反项；加 `--strict` 后，
 若 hard constraints 不满足则命令失败且不写出 snapshot。锁定状态目前只用于本次
-命令序列；本次操作摘要会记录在 `metadata.manual_edit`，但锁定状态还不是后续
-命令自动继承的正式 schema 字段。
+命令序列；本次操作摘要会记录在 `metadata.manual_edit`，当前锁状态会记录在
+`metadata.lock_state`。后续 `repair` 默认继承这份状态。
 
 对于可复用、可审计的调整记录，也可以使用 `--operations-file`。文件可以是操作对象
 数组，或包含 `operations` 数组的对象；文件中的操作总会先执行，随后才执行命令行中的
@@ -162,6 +162,33 @@ seattrellis edit \
 Project 工作流可使用 `project-edit` 复用相同语义。未指定 `--snapshot` 时，它会在
 project outputs 目录中查找最新 snapshot 或 candidate set；输入 candidate set 时默认
 使用 project 的 `default_candidate`。`project-edit` 同样支持 `--operations-file`。
+
+## 锁定后重排与局部修复
+
+`repair` 把编辑草稿交回现有求解器处理。它不会把临时锁写入 rules 文件，而是在本次
+求解中转为临时 fixed-seat 约束；输出 snapshot 会在 `metadata.repair` 中记录锁定、
+可变学生、预留空座、实际变化学生、历史数量和有效 backend。
+
+```bash
+seattrellis repair \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --affected-student STU001 \
+  --affected-student STU002 \
+  --lock-seat R4C3 \
+  --backend fallback \
+  --output outputs/neighbor-aware-repaired.snapshot.json
+```
+
+提供一个或多个 `--affected-student` 时，其他当前已入座学生会固定在草稿位置，
+因此只有受影响学生和当前未入座学生会被重新安排。未提供时，所有未锁定学生都可以
+重新排座。`--lock-student` 保留该学生当前座位；`--lock-seat` 保留当前座位上的学生，
+若该座位为空则临时预留为空座。默认会继承 `metadata.lock_state` 中的锁；使用
+`--ignore-saved-locks` 可忽略它们。`--history` 与 `--history-dir` 可传入历史方案，
+保证公平轮换和近期邻座规则在局部修复时仍生效。
+
+`project-repair` 对 Project 工作流提供相同能力，未提供 `--snapshot` 时会使用最新
+project artifact，并自动读取 project 配置的 `history_dir`。若锁定和原有 hard
+fixed-seat 规则矛盾，命令会在写出任何文件前失败，而不会静默改变老师的规则。
 
 ## Schema 工具
 

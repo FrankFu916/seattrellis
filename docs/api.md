@@ -10,13 +10,14 @@
 - `compute_solve(SolveInput) -> SolveOutput`
 - `compute_validate(ValidateInput) -> ValidateOutput`
 - `compute_edit(EditInput) -> EditOutput`
+- `compute_repair(RepairInput) -> RepairOutput`
 - `compute_history_report(HistoryReportInput) -> HistoryReportOutput`
 - `compute_pair_report(PairReportInput) -> PairReportOutput`
 - `compute_project_info(ProjectInfoInput) -> ProjectInfoOutput`
 
 ## 文件接口
 
-`solve`、`solve_with_report`、`edit_snapshot`、`run_validate`、
+`solve`、`solve_with_report`、`edit_snapshot`、`repair_snapshot`、`run_validate`、
 `run_history_report`、`run_pair_report` 和 `project_*` 函数接受文件路径，
 供 CLI 和 Web 共用。
 导出使用 `seattrellis.service.export` 或
@@ -61,8 +62,9 @@ if not summary.satisfied:
 ```
 
 编辑草稿允许临时出现未入座学生，但会拒绝重复座位、重复学生、未知学生和禁用座位。
-每次成功操作都会返回 hard constraint 诊断；局部自动修复仍属于后续 solver/service
-功能，不在编辑层直接实现。
+每次成功操作都会返回 hard constraint 诊断；当前锁状态通过 `EditingLockState` 和
+`metadata.lock_state` 在内存和文件工作流中保持一致。局部自动修复由 service 层完成，
+不在编辑层直接实现。
 
 适配器如果已经把 UI 操作整理成命令序列，可以直接调用服务层：
 
@@ -86,10 +88,16 @@ result = compute_edit(
 ```
 
 `EditOutput.snapshot` 是新的草稿 snapshot；`locked_students`、`locked_seats`、
-`unseated_students` 和 `hard_constraints` 可直接用于界面状态和实时诊断。
+`unseated_students`、`lock_state` 和 `hard_constraints` 可直接用于界面状态和实时诊断。
 文件接口 `edit_snapshot` 可直接读取普通 snapshot；如果输入是 candidate set，
 默认选择 recommended candidate，也可以传入 `candidate_id` 指定候选。输出始终是
 普通草稿 snapshot，并在 `metadata.manual_edit` 记录本次操作摘要。
+
+需要锁定后重排时，调用 `compute_repair(RepairInput)` 或 `repair_snapshot`。如果提供
+`affected_students`，未在名单中的当前已入座学生会临时固定在原座；锁定的空座会临时从
+求解可用座位中移除。`RepairInput` 可接收 `EditOutput.lock_state` 和历史 snapshots，
+保证纯内存 UI、CLI 和 Project 工作流具有相同锁定和公平性语义。原始 `RuleSet` 不会被
+修改，临时固定关系、有效固定关系和输出差异写入 `metadata.repair`，供 UI 展示和审计。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
 单独测试。
