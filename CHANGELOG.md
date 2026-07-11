@@ -36,6 +36,8 @@
 
 ### Changed
 
+- Moved stateful Web editing and repair controls out of the page entry point
+  into a dedicated adapter module while keeping workflow code Streamlit-free.
 - Print HTML, PDF, and Word exporters now consume the shared export options
   while preserving the legacy exporter arguments.
 - Updated the optional OR-Tools range to 9.15.x so its protobuf dependency

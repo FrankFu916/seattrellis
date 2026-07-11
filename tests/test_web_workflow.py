@@ -577,6 +577,7 @@ def test_web_workflow_module_does_not_import_streamlit(monkeypatch) -> None:
 
 def test_streamlit_app_compiles() -> None:
     py_compile.compile("src/seattrellis/web/app.py", doraise=True)
+    py_compile.compile("src/seattrellis/web/interactive_panels.py", doraise=True)
 
 
 def test_streamlit_app_smoke() -> None:

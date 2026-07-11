@@ -100,7 +100,8 @@ result = compute_edit(
 修改，临时固定关系、有效固定关系和输出差异写入 `metadata.repair`，供 UI 展示和审计。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
-单独测试。
+单独测试。`seattrellis.web.interactive_panels` 是 Streamlit 专用适配层，只消费
+workflow API 和显式页面回调；领域规则、操作重放和 repair 语义不得放入该模块。
 
 读取 snapshot、candidate set 或 project 时应检查 `schema_version`。
 以下划线开头的函数属于内部实现，不在兼容承诺内。字段定义见

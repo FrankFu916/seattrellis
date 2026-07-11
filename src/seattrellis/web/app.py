@@ -1,7 +1,7 @@
 """SeatTrellis Streamlit web UI — v0.4.0.
 
-Privacy-first, local-only.  All business logic lives in ``web/workflow.py``
-and ``web/components.py`` so this module stays thin.
+Privacy-first, local-only. Business logic lives in ``web/workflow.py``;
+stateful editing controls live in ``web/interactive_panels.py``.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ except Exception as exc:  # pragma: no cover
     raise MissingOptionalDependencyError("Streamlit web UI", "web") from exc
 
 from seattrellis.io.json_files import InputFileError
-from seattrellis.editing import EditingError, EditingOperation
 from seattrellis.models.candidate import CandidateSet
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import list_presets
@@ -49,13 +48,13 @@ from seattrellis.web.i18n import (
     table_column_labels,
     translate,
 )
+from seattrellis.web.interactive_panels import (
+    render_manual_edit_panel as _render_manual_edit_panel,
+    render_repair_panel as _render_repair_panel,
+)
 from seattrellis.web.keys import (
     PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
     PROJECT_EXPORT_DOWNLOAD_REPORT,
-    PROJECT_REDO_BUTTON,
-    PROJECT_REPAIR_BUTTON,
-    PROJECT_SWAP_BUTTON,
-    PROJECT_UNDO_BUTTON,
     QUICK_CANDIDATE_COUNT_INPUT,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_DOWNLOAD_ARTIFACT,
@@ -63,19 +62,12 @@ from seattrellis.web.keys import (
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_GENERATE_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
-    QUICK_REDO_BUTTON,
-    QUICK_REPAIR_BUTTON,
-    QUICK_SWAP_BUTTON,
-    QUICK_UNDO_BUTTON,
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
-    WebEditingDraft,
-    apply_web_edit,
     analyze_history_files,
     assignment_rows,
     build_rules_preview,
-    begin_web_editing,
     candidate_summary_rows,
     demo_paths,
     export_for_web,
@@ -83,17 +75,13 @@ from seattrellis.web.workflow import (
     load_demo_snapshot,
     project_export_for_web,
     project_info_for_web,
-    project_repair_for_web,
     project_solve_for_web,
     project_validate_for_web,
     parse_rules_overlay,
-    repair_for_web,
-    redo_web_edit,
     score_breakdown_rows,
     selected_candidate,
     selected_snapshot,
     solve_for_web,
-    undo_web_edit,
 )
 
 # ---------------------------------------------------------------------------
@@ -333,246 +321,6 @@ def _render_seat_map(snapshot, layout) -> None:
             return
     html = build_seat_grid_html(layout, snapshot, locale=_locale())
     st.markdown(html, unsafe_allow_html=True)
-
-
-def _render_repair_panel(
-    result: WebSolveResult,
-    candidate_id: str,
-    *,
-    output_dir: Path,
-    project_path: Path | None = None,
-) -> None:
-    """Render lock-aware repair controls without duplicating domain rules."""
-    snapshot = selected_snapshot(result, candidate_id)
-    prefix = "project" if project_path is not None else "quick"
-    student_names = {student.key: student.name for student in snapshot.students}
-    student_keys = sorted(student_names)
-    seat_ids = sorted(
-        seat.seat_id for seat in snapshot.layout.seats if seat.enabled
-    )
-
-    repair_metadata = snapshot.metadata.get("repair")
-    if isinstance(repair_metadata, dict):
-        changed = repair_metadata.get("changed_students", [])
-        if isinstance(changed, list) and changed:
-            labels = [student_names.get(str(key), str(key)) for key in changed]
-            st.info(_t("repair_changes", students=", ".join(labels)))
-        elif isinstance(changed, list):
-            st.info(_t("repair_no_changes"))
-
-    with st.expander(_t("repair_title"), expanded=False):
-        st.caption(_t("repair_help"))
-
-        def label_student(key: str) -> str:
-            return f"{student_names[key]} ({key})"
-
-        affected_students = st.multiselect(
-            _t("affected_students"),
-            student_keys,
-            format_func=label_student,
-            key=f"{prefix}_repair_affected_students",
-        )
-        locked_students = st.multiselect(
-            _t("locked_students"),
-            student_keys,
-            format_func=label_student,
-            key=f"{prefix}_repair_locked_students",
-        )
-        locked_seats = st.multiselect(
-            _t("locked_seats"),
-            seat_ids,
-            key=f"{prefix}_repair_locked_seats",
-        )
-        reuse_saved_locks = st.checkbox(
-            _t("reuse_saved_locks"),
-            value=True,
-            key=f"{prefix}_repair_reuse_saved_locks",
-        )
-        settings = st.columns(2)
-        backend = settings[0].selectbox(
-            _t("repair_backend"),
-            ["auto", "fallback", "ortools", "native"],
-            key=f"{prefix}_repair_backend",
-        )
-        time_limit_seconds = settings[1].number_input(
-            _t("repair_time_limit"),
-            min_value=0.1,
-            max_value=30.0,
-            value=3.0,
-            step=0.5,
-            key=f"{prefix}_repair_time_limit",
-        )
-        button_key = (
-            PROJECT_REPAIR_BUTTON
-            if project_path is not None
-            else QUICK_REPAIR_BUTTON
-        )
-        if st.button(_t("run_repair"), type="primary", key=button_key):
-            try:
-                common = {
-                    "candidate_id": candidate_id,
-                    "affected_students": affected_students,
-                    "locked_students": locked_students,
-                    "locked_seats": locked_seats,
-                    "reuse_saved_locks": reuse_saved_locks,
-                    "time_limit_seconds": float(time_limit_seconds),
-                    "backend": backend,
-                }
-                if project_path is not None:
-                    repaired = project_repair_for_web(
-                        result,
-                        project_path=project_path,
-                        **common,
-                    )
-                else:
-                    _students, _layout, _rules, history_paths = (
-                        _materialize_quick_inputs()
-                    )
-                    repaired = repair_for_web(
-                        result,
-                        output_dir=output_dir,
-                        history_paths=history_paths,
-                        **common,
-                    )
-                st.session_state["result"] = repaired
-                st.session_state["artifact_json"] = (
-                    None
-                    if project_path is not None
-                    else repaired.artifact_path.read_bytes()
-                )
-                st.session_state["report_json"] = None
-                st.session_state["current_candidate_id"] = "recommended"
-                st.success(_t("repair_complete"))
-                st.rerun()
-            except (
-                InputFileError,
-                MissingOptionalDependencyError,
-                SeatTrellisSolveError,
-                ValidationError,
-                ValueError,
-            ) as exc:
-                _render_error(exc)
-
-
-def _render_manual_edit_panel(
-    result: WebSolveResult,
-    candidate_id: str,
-    *,
-    output_dir: Path,
-    project: bool = False,
-) -> None:
-    """Render replayable swap, undo, and redo controls."""
-    prefix = "project" if project else "quick"
-    state_key = f"_{prefix}_editing_draft"
-    draft = _ss(state_key)
-    if not isinstance(draft, WebEditingDraft) or (
-        draft.current_result.artifact_path != result.artifact_path
-        or (result.is_candidate_set and draft.candidate_id != candidate_id)
-    ):
-        draft = begin_web_editing(result, candidate_id)
-        st.session_state[state_key] = draft
-
-    snapshot = selected_snapshot(result, candidate_id)
-    student_names = {student.key: student.name for student in snapshot.students}
-    seated_students = sorted(
-        assignment.student_key for assignment in snapshot.assignments
-    )
-
-    manual_edit = snapshot.metadata.get("manual_edit")
-    if isinstance(manual_edit, dict):
-        count = int(manual_edit.get("operation_count", 0))
-        st.caption(_t("edit_operations", count=count))
-        violation_count = int(manual_edit.get("violation_count", 0))
-        if bool(manual_edit.get("hard_constraints_satisfied")):
-            st.success(_t("edit_hard_passed"))
-        else:
-            summary = draft.current_result.summary or ""
-            _heading, separator, violation_section = summary.partition("Violations:")
-            violations = [
-                line.removeprefix("- ")
-                for line in violation_section.splitlines()
-                if separator and line.startswith("- ")
-            ]
-            st.warning(
-                _t(
-                    "edit_hard_failed",
-                    count=violation_count,
-                    items="; ".join(violations[-3:]) or "—",
-                )
-            )
-
-    with st.expander(_t("manual_edit_title"), expanded=False):
-        st.caption(_t("manual_edit_help"))
-
-        def label_student(key: str) -> str:
-            return f"{student_names.get(key, key)} ({key})"
-
-        columns = st.columns(2)
-        first_student = columns[0].selectbox(
-            _t("first_student"),
-            seated_students,
-            format_func=label_student,
-            key=f"{prefix}_edit_first_student",
-        )
-        second_default = 1 if len(seated_students) > 1 else 0
-        second_student = columns[1].selectbox(
-            _t("second_student"),
-            seated_students,
-            index=second_default,
-            format_func=label_student,
-            key=f"{prefix}_edit_second_student",
-        )
-        buttons = st.columns(3)
-        swap_key = PROJECT_SWAP_BUTTON if project else QUICK_SWAP_BUTTON
-        undo_key = PROJECT_UNDO_BUTTON if project else QUICK_UNDO_BUTTON
-        redo_key = PROJECT_REDO_BUTTON if project else QUICK_REDO_BUTTON
-        swap_clicked = buttons[0].button(
-            _t("swap_students"),
-            type="primary",
-            disabled=len(seated_students) < 2 or first_student == second_student,
-            key=swap_key,
-        )
-        undo_clicked = buttons[1].button(
-            _t("undo"),
-            disabled=not draft.can_undo,
-            key=undo_key,
-        )
-        redo_clicked = buttons[2].button(
-            _t("redo"),
-            disabled=not draft.can_redo,
-            key=redo_key,
-        )
-        try:
-            if swap_clicked:
-                draft = apply_web_edit(
-                    draft,
-                    EditingOperation(
-                        kind="swap_students",
-                        payload={
-                            "first_student": first_student,
-                            "second_student": second_student,
-                        },
-                    ),
-                    output_dir=output_dir,
-                )
-            elif undo_clicked:
-                draft = undo_web_edit(draft, output_dir=output_dir)
-            elif redo_clicked:
-                draft = redo_web_edit(draft, output_dir=output_dir)
-            else:
-                return
-            st.session_state[state_key] = draft
-            st.session_state["result"] = draft.current_result
-            st.session_state["artifact_json"] = (
-                None
-                if project
-                else draft.current_result.artifact_path.read_bytes()
-            )
-            st.session_state["report_json"] = None
-            st.success(_t("edit_complete"))
-            st.rerun()
-        except (EditingError, InputFileError, ValidationError, ValueError) as exc:
-            _render_error(exc)
 
 
 def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candidate_selector") -> str | None:
@@ -1426,8 +1174,21 @@ def _render_step_results() -> None:
             column_config=_localized_columns(rows),
         )
 
-    _render_manual_edit_panel(result, candidate_id, output_dir=output_dir)
-    _render_repair_panel(result, candidate_id, output_dir=output_dir)
+    _render_manual_edit_panel(
+        result,
+        candidate_id,
+        output_dir=output_dir,
+        translate=_t,
+        render_error=_render_error,
+    )
+    _render_repair_panel(
+        result,
+        candidate_id,
+        output_dir=output_dir,
+        translate=_t,
+        render_error=_render_error,
+        quick_history_paths=lambda: _materialize_quick_inputs()[3],
+    )
 
     # --- Exports ---
     _render_exports(result, output_dir, candidate_id)
@@ -1614,12 +1375,16 @@ def _render_project_tab() -> None:
             result,
             candidate_id,
             output_dir=output_dir,
+            translate=_t,
+            render_error=_render_error,
             project=True,
         )
         _render_repair_panel(
             result,
             candidate_id,
             output_dir=output_dir,
+            translate=_t,
+            render_error=_render_error,
             project_path=Path(proj_path_str),
         )
 

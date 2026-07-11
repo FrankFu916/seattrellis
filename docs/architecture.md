@@ -9,6 +9,12 @@ SeatTrellis 按职责分为四层：
 
 CLI 和 Web 必须调用 service 层，不能复制规则合并、校验、求解或候选选择逻辑。Optional extras 使用延迟导入，保证最小安装无需加载重依赖。
 
+Web 适配器进一步分为三类：`web/workflow.py` 提供不依赖 Streamlit 的文件和服务
+适配；`web/components.py` 生成纯数据或 HTML；`web/interactive_panels.py` 只负责
+人工编辑、撤销/重做和局部修复等有状态控件。`web/app.py` 负责页面导航、输入材料化
+和结果编排。状态型面板通过显式回调获取 history 和错误展示能力，不反向导入页面
+模块。
+
 v1.4 开始，solver backend 共享 `CompiledProblem` 边界：输入模型先被解析成稳定的
 学生/座位索引、启用座位、邻接边、hard rules 和候选排除关系，再交给独立的
 fallback、OR-Tools 或实验 native backend 模块。`cp_sat.py` 仅保留为兼容入口和
