@@ -23,6 +23,7 @@ from seattrellis.web.keys import (
     QUICK_BATCH_MOVE_BUTTON,
     QUICK_BATCH_SEATS_SELECT,
     QUICK_BATCH_STUDENTS_SELECT,
+    QUICK_CANVAS_MODE_SELECT,
     QUICK_EDIT_ACTION_SELECT,
     QUICK_EDIT_APPLY_BUTTON,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
@@ -827,6 +828,10 @@ def test_streamlit_locks_survive_undo_redo_and_repair() -> None:
     locked = app.session_state["result"].artifact
     assert locked.metadata["lock_state"]["locked_students"] == [student_key]
     assert _control_by_key(app.button, QUICK_LOCK_STUDENT_BUTTON).label == "解锁学生"
+    assert _control_by_key(
+        app.button,
+        f"quick_canvas_seat_{original_seat}",
+    ).disabled is True
 
     _control_by_key(app.button, QUICK_UNDO_BUTTON).click()
     app.run(timeout=30)
@@ -926,6 +931,97 @@ def test_streamlit_batch_move_is_one_undoable_operation() -> None:
     assert {
         item.student_key: item.seat_id for item in redone.assignments
     } == moved_seats
+    assert not app.exception
+
+
+def test_streamlit_seat_canvas_moves_swaps_and_toggles_lock() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    app.radio[0].set_value("results")
+    app.run(timeout=30)
+
+    original = app.session_state["result"].artifact
+    assignments = sorted(
+        original.assignments,
+        key=lambda item: item.student_key,
+    )
+    first, second = assignments[:2]
+    assigned_seats = {item.seat_id for item in original.assignments}
+    empty_seat = next(
+        seat.seat_id
+        for seat in sorted(original.layout.seats, key=lambda item: item.seat_id)
+        if seat.enabled and seat.seat_id not in assigned_seats
+    )
+
+    _control_by_key(
+        app.button,
+        f"quick_canvas_seat_{first.seat_id}",
+    ).click()
+    app.run(timeout=30)
+    _control_by_key(
+        app.button,
+        f"quick_canvas_seat_{empty_seat}",
+    ).click()
+    app.run(timeout=30)
+    moved = app.session_state["result"].artifact
+    assert next(
+        item.seat_id for item in moved.assignments
+        if item.student_key == first.student_key
+    ) == empty_seat
+    assert moved.metadata["manual_edit"]["operations"][0]["kind"] == "move_student"
+
+    _control_by_key(app.button, QUICK_UNDO_BUTTON).click()
+    app.run(timeout=30)
+    _control_by_key(
+        app.button,
+        f"quick_canvas_seat_{first.seat_id}",
+    ).click()
+    app.run(timeout=30)
+    _control_by_key(
+        app.button,
+        f"quick_canvas_seat_{second.seat_id}",
+    ).click()
+    app.run(timeout=30)
+    swapped = app.session_state["result"].artifact
+    swapped_seats = {
+        item.student_key: item.seat_id for item in swapped.assignments
+    }
+    assert swapped_seats[first.student_key] == second.seat_id
+    assert swapped_seats[second.student_key] == first.seat_id
+    assert swapped.metadata["manual_edit"]["operations"][0]["kind"] == (
+        "swap_students"
+    )
+
+    _control_by_key(app.button, QUICK_UNDO_BUTTON).click()
+    app.run(timeout=30)
+    _control_by_key(app.selectbox, QUICK_CANVAS_MODE_SELECT).set_value(
+        "锁定 / 解锁座位"
+    )
+    app.run(timeout=30)
+    _control_by_key(
+        app.button,
+        f"quick_canvas_seat_{empty_seat}",
+    ).click()
+    app.run(timeout=30)
+    seat_locked = app.session_state["result"].artifact
+    assert seat_locked.metadata["lock_state"]["locked_seats"] == [empty_seat]
+
+    _control_by_key(
+        app.button,
+        f"quick_canvas_seat_{empty_seat}",
+    ).click()
+    app.run(timeout=30)
+    seat_unlocked = app.session_state["result"].artifact
+    assert seat_unlocked.metadata["lock_state"]["locked_seats"] == []
     assert not app.exception
 
 

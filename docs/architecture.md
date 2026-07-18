@@ -15,6 +15,11 @@ Web 适配器进一步分为三类：`web/workflow.py` 提供不依赖 Streamlit
 和结果编排。状态型面板通过显式回调获取 history 和错误展示能力，不反向导入页面
 模块。
 
+交互座位图不直接修改 assignments。座位点击在
+`web/interactive_panels.py` 中转换为 `move_student`、`swap_students` 或
+`lock_seat`/`unlock_seat`，然后沿用 `WebEditingDraft` 的重放、撤销和持久化路径。
+未来 SVG/React 画布应发送相同领域命令，不能建立第二套编辑状态机。
+
 v1.4 开始，solver backend 共享 `CompiledProblem` 边界：输入模型先被解析成稳定的
 学生/座位索引、启用座位、邻接边、hard rules 和候选排除关系，再交给独立的
 fallback、OR-Tools 或实验 native backend 模块。`cp_sat.py` 仅保留为兼容入口和

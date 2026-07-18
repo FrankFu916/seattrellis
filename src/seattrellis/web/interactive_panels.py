@@ -27,6 +27,7 @@ from seattrellis.web.keys import (
     PROJECT_BATCH_MOVE_BUTTON,
     PROJECT_BATCH_SEATS_SELECT,
     PROJECT_BATCH_STUDENTS_SELECT,
+    PROJECT_CANVAS_MODE_SELECT,
     PROJECT_EDIT_ACTION_SELECT,
     PROJECT_EDIT_APPLY_BUTTON,
     PROJECT_LOCK_SEAT_BUTTON,
@@ -43,6 +44,7 @@ from seattrellis.web.keys import (
     QUICK_BATCH_MOVE_BUTTON,
     QUICK_BATCH_SEATS_SELECT,
     QUICK_BATCH_STUDENTS_SELECT,
+    QUICK_CANVAS_MODE_SELECT,
     QUICK_LOCK_SEAT_BUTTON,
     QUICK_LOCK_SEAT_SELECT,
     QUICK_LOCK_STUDENT_BUTTON,
@@ -209,6 +211,7 @@ def render_manual_edit_panel(
     ):
         draft = begin_web_editing(result, candidate_id)
         st.session_state[state_key] = draft
+        st.session_state[f"_{prefix}_canvas_source_seat"] = None
 
     snapshot = selected_snapshot(result, candidate_id)
     student_names = {student.key: student.name for student in snapshot.students}
@@ -253,6 +256,14 @@ def render_manual_edit_panel(
         def label_student(key: str) -> str:
             return f"{student_names.get(key, key)} ({key})"
 
+        canvas_operation = _render_seat_canvas(
+            prefix=prefix,
+            project=project,
+            snapshot=snapshot,
+            locked_students=locked_students,
+            locked_seats=locked_seats,
+            translate=translate,
+        )
         lock_clicked, lock_operation = _render_lock_controls(
             prefix=prefix,
             project=project,
@@ -313,7 +324,13 @@ def render_manual_edit_panel(
             translate=translate,
         )
         try:
-            if lock_clicked and lock_operation is not None:
+            if canvas_operation is not None:
+                draft = apply_web_edit(
+                    draft,
+                    canvas_operation,
+                    output_dir=output_dir,
+                )
+            elif lock_clicked and lock_operation is not None:
                 draft = apply_web_edit(
                     draft,
                     lock_operation,
@@ -355,6 +372,141 @@ def render_manual_edit_panel(
             st.rerun()
         except (EditingError, InputFileError, ValidationError, ValueError) as exc:
             render_error(exc)
+
+
+def _render_seat_canvas(
+    *,
+    prefix: str,
+    project: bool,
+    snapshot: SeatingSnapshot,
+    locked_students: set[str],
+    locked_seats: set[str],
+    translate: Translate,
+) -> EditingOperation | None:
+    st.markdown(f"**{translate('seat_canvas_title')}**")
+    st.caption(translate("seat_canvas_help"))
+    mode_labels = {
+        "move": translate("canvas_mode_move"),
+        "lock": translate("canvas_mode_lock"),
+    }
+    mode_key = PROJECT_CANVAS_MODE_SELECT if project else QUICK_CANVAS_MODE_SELECT
+    selected_label = st.selectbox(
+        translate("seat_canvas_mode"),
+        list(mode_labels.values()),
+        key=mode_key,
+    )
+    mode = next(key for key, label in mode_labels.items() if label == selected_label)
+    source_key = f"_{prefix}_canvas_source_seat"
+    prior_mode_key = f"_{prefix}_canvas_mode_value"
+    if st.session_state.get(prior_mode_key) != mode:
+        st.session_state[prior_mode_key] = mode
+        st.session_state[source_key] = None
+
+    seats = list(snapshot.layout.seats)
+    if not seats:
+        st.info(translate("seat_map_unavailable"))
+        return None
+    seat_by_position = {(seat.row, seat.col): seat for seat in seats}
+    assignments = {
+        assignment.seat_id: assignment for assignment in snapshot.assignments
+    }
+    selected_source = st.session_state.get(source_key)
+    source_assignment = assignments.get(selected_source)
+    if (
+        mode != "move"
+        or source_assignment is None
+        or selected_source in locked_seats
+        or source_assignment.student_key in locked_students
+    ):
+        selected_source = None
+        st.session_state[source_key] = None
+    if selected_source is not None and source_assignment is not None:
+        st.caption(
+            translate(
+                "canvas_source_selected",
+                seat=selected_source,
+                student=source_assignment.student_name,
+            )
+        )
+
+    clicked_seat: str | None = None
+    max_row = max(seat.row for seat in seats)
+    max_col = max(seat.col for seat in seats)
+    for row in range(1, max_row + 1):
+        columns = st.columns(max_col)
+        for col in range(1, max_col + 1):
+            seat = seat_by_position.get((row, col))
+            if seat is None:
+                columns[col - 1].empty()
+                continue
+            assignment = assignments.get(seat.seat_id)
+            locked = (
+                seat.seat_id in locked_seats
+                or (
+                    assignment is not None
+                    and assignment.student_key in locked_students
+                )
+            )
+            if not seat.enabled:
+                label = f"{seat.seat_id}\n{translate('disabled_seat')}"
+            else:
+                occupant = (
+                    assignment.student_name
+                    if assignment is not None
+                    else translate("empty_seat")
+                )
+                marker = "● " if seat.seat_id == selected_source else ""
+                lock_marker = " 🔒" if locked else ""
+                label = f"{marker}{seat.seat_id}{lock_marker}\n{occupant}"
+            disabled = not seat.enabled or (mode == "move" and locked)
+            if columns[col - 1].button(
+                label,
+                key=f"{prefix}_canvas_seat_{seat.seat_id}",
+                disabled=disabled,
+                use_container_width=True,
+            ):
+                clicked_seat = seat.seat_id
+
+    if clicked_seat is None:
+        return None
+    if mode == "lock":
+        return EditingOperation(
+            kind=(
+                "unlock_seat"
+                if clicked_seat in locked_seats
+                else "lock_seat"
+            ),
+            payload={"seat_id": clicked_seat},
+        )
+
+    target_assignment = assignments.get(clicked_seat)
+    if selected_source is None:
+        if target_assignment is None:
+            st.info(translate("canvas_choose_occupied"))
+            return None
+        st.session_state[source_key] = clicked_seat
+        st.rerun()
+    st.session_state[source_key] = None
+    if clicked_seat == selected_source:
+        st.info(translate("canvas_selection_cleared"))
+        return None
+    if source_assignment is None:
+        return None
+    if target_assignment is None:
+        return EditingOperation(
+            kind="move_student",
+            payload={
+                "student_key": source_assignment.student_key,
+                "seat_id": clicked_seat,
+            },
+        )
+    return EditingOperation(
+        kind="swap_students",
+        payload={
+            "first_student": source_assignment.student_key,
+            "second_student": target_assignment.student_key,
+        },
+    )
 
 
 def _render_lock_controls(

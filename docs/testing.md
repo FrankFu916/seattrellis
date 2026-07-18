@@ -40,6 +40,8 @@ python -m pytest tests/test_web_workflow.py
 不变且 `metadata.lock_state` 在编辑和求解之间一致。
 批量移动同时覆盖领域层原子失败、CLI JSON/内联解析，以及 Web 多选配对后的单次
 撤销/重做，确保批次不会产生中间态。
+座位图测试会真实点击已占座位和空座完成移动，点击两名学生完成交换，并切换图上
+座位锁；同时验证锁定学生的座位按钮不可操作。
 
 浏览器级 E2E 仍是后续工作。引入 Playwright 时，建议先覆盖：
 

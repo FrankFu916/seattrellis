@@ -37,6 +37,8 @@
   and flow directly into saved-lock constrained repair.
 - Added atomic batch moves across the domain, CLI operation files and inline
   syntax, and Web multi-selection with one-step undo/redo.
+- Added an accessible interactive seating grid for direct click-to-move,
+  click-to-swap, and seat-lock toggling through the shared command log.
 - Added an optional separately packaged Rust extension and explicit `native`
   solver selection while retaining the Python backends.
 

@@ -60,6 +60,13 @@ selected students can be targets for a rotation, but the batch cannot displace
 anyone outside it. The whole batch creates one operation record and is restored
 by one undo.
 
+The **Interactive seating map** supports direct seat clicks. In **Move / swap**
+mode, click an occupied source and then an empty target to move, or another
+occupied seat to swap. Click the source again to cancel. In **Lock / unlock
+seats** mode, one click toggles the seat lock. Locked students and seats are
+disabled in move mode. Every map action still uses the shared command log and
+hard-constraint diagnostics.
+
 The resolved rules panel shows the exact `RuleSet` used by the solver. History
 inspection reports student coverage, stale references, disabled seats, and
 layout differences before a solve begins.
@@ -103,8 +110,8 @@ formats.
 
 Streamlit tables may still need horizontal scrolling on very narrow phones.
 The interface currently supports Simplified Chinese and English.
-Seat-map selection and drag-and-drop are not available yet; manual editing and
-repair currently use accessible form fields.
+Seat-map clicking and accessible form controls are available. Box selection and
+drag-and-drop are not implemented yet.
 
 ## Privacy
 

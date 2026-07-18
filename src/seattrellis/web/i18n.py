@@ -247,6 +247,27 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "Select the same number of students and target seats.",
     ),
     "apply_batch_move": ("执行批量移动", "Apply batch move"),
+    "seat_canvas_title": ("座位图快捷操作", "Interactive seating map"),
+    "seat_canvas_help": (
+        "先点击一名学生的座位，再点击空座进行移动，或点击另一名学生进行交换。",
+        "Select an occupied source seat, then choose an empty seat to move "
+        "or another occupied seat to swap.",
+    ),
+    "seat_canvas_mode": ("座位图模式", "Map mode"),
+    "canvas_mode_move": ("移动 / 交换", "Move / swap"),
+    "canvas_mode_lock": ("锁定 / 解锁座位", "Lock / unlock seats"),
+    "canvas_source_selected": (
+        "已选择起点：{seat} · {student}",
+        "Source selected: {seat} · {student}",
+    ),
+    "canvas_choose_occupied": (
+        "请先选择一个已入座学生的座位。",
+        "Choose an occupied student seat first.",
+    ),
+    "canvas_selection_cleared": ("已取消起点选择。", "Source selection cleared."),
+    "empty_seat": ("空座", "Empty"),
+    "disabled_seat": ("不可用", "Disabled"),
+    "locked_marker": ("已锁定", "Locked"),
     "no_empty_seats": ("当前没有可用空座。", "There are no available empty seats."),
     "no_unseated_students": ("当前没有未入座学生。", "There are no unseated students."),
     "undo": ("撤销", "Undo"),
