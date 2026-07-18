@@ -36,7 +36,8 @@ python -m pytest tests/test_web_workflow.py
 或拆分页面时，应优先保留这些 key，或同步更新 `seattrellis.web.keys` 和对应测试。
 人工调整测试会在 Streamlit AppTest 中实际执行交换、移动到空座、移出、重新入座、
 撤销和重做，并检查人数不变量与生成草稿的 `metadata.manual_edit`，不只是验证控件
-是否存在。
+是否存在。锁定测试还会执行“锁定 → 撤销 → 重做 → repair → 解锁”，验证学生位置
+不变且 `metadata.lock_state` 在编辑和求解之间一致。
 
 浏览器级 E2E 仍是后续工作。引入 Playwright 时，建议先覆盖：
 

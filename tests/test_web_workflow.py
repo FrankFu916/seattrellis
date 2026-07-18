@@ -26,6 +26,8 @@ from seattrellis.web.keys import (
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_GENERATE_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
+    QUICK_LOCK_SEAT_BUTTON,
+    QUICK_LOCK_STUDENT_BUTTON,
     QUICK_REPAIR_BUTTON,
     QUICK_REDO_BUTTON,
     QUICK_SWAP_BUTTON,
@@ -791,6 +793,76 @@ def test_streamlit_results_can_move_unseat_and_reseat_student() -> None:
     assert len(reseated.assignments) == 8
     assert reseated.metadata["manual_edit"]["unseated_students"] == []
     assert reseated.metadata["manual_edit"]["operation_count"] == 3
+    assert not app.exception
+
+
+def test_streamlit_locks_survive_undo_redo_and_repair() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    app.radio[0].set_value("results")
+    app.run(timeout=30)
+
+    original = app.session_state["result"].artifact
+    student_key = sorted(item.student_key for item in original.assignments)[0]
+    original_seat = next(
+        item.seat_id
+        for item in original.assignments
+        if item.student_key == student_key
+    )
+
+    _control_by_key(app.button, QUICK_LOCK_STUDENT_BUTTON).click()
+    app.run(timeout=30)
+    locked = app.session_state["result"].artifact
+    assert locked.metadata["lock_state"]["locked_students"] == [student_key]
+    assert _control_by_key(app.button, QUICK_LOCK_STUDENT_BUTTON).label == "解锁学生"
+
+    _control_by_key(app.button, QUICK_UNDO_BUTTON).click()
+    app.run(timeout=30)
+    undone = app.session_state["result"].artifact
+    assert undone.metadata.get("lock_state", {}).get("locked_students", []) == []
+
+    _control_by_key(app.button, QUICK_REDO_BUTTON).click()
+    app.run(timeout=30)
+    redone = app.session_state["result"].artifact
+    assert redone.metadata["lock_state"]["locked_students"] == [student_key]
+
+    _control_by_key(app.selectbox, "quick_repair_backend").set_value("fallback")
+    _control_by_key(app.button, QUICK_REPAIR_BUTTON).click()
+    app.run(timeout=30)
+    repaired = app.session_state["result"].artifact
+    repaired_seat = next(
+        item.seat_id
+        for item in repaired.assignments
+        if item.student_key == student_key
+    )
+    assert repaired_seat == original_seat
+    assert repaired.metadata["repair"]["locked_students"] == [student_key]
+    assert repaired.metadata["lock_state"]["locked_students"] == [student_key]
+
+    _control_by_key(app.button, QUICK_LOCK_STUDENT_BUTTON).click()
+    app.run(timeout=30)
+    unlocked = app.session_state["result"].artifact
+    assert unlocked.metadata["lock_state"]["locked_students"] == []
+
+    _control_by_key(app.button, QUICK_LOCK_SEAT_BUTTON).click()
+    app.run(timeout=30)
+    seat_locked = app.session_state["result"].artifact
+    assert len(seat_locked.metadata["lock_state"]["locked_seats"]) == 1
+    assert _control_by_key(app.button, QUICK_LOCK_SEAT_BUTTON).label == "解锁座位"
+
+    _control_by_key(app.button, QUICK_LOCK_SEAT_BUTTON).click()
+    app.run(timeout=30)
+    seat_unlocked = app.session_state["result"].artifact
+    assert seat_unlocked.metadata["lock_state"]["locked_seats"] == []
     assert not app.exception
 
 

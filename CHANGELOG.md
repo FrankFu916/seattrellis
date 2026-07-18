@@ -33,6 +33,8 @@
   and undo/redo support; edited drafts remain available to export or repair.
 - Added Web controls for moving students to empty seats, placing them in an
   unseated area, and seating them again without implicitly displacing others.
+- Added undoable Web student and seat locks that filter invalid manual moves
+  and flow directly into saved-lock constrained repair.
 - Added an optional separately packaged Rust extension and explicit `native`
   solver selection while retaining the Python backends.
 

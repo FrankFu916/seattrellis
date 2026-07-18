@@ -206,8 +206,10 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
     "assignment_table": ("📋 分配明细表", "📋 Assignment details"),
     "manual_edit_title": ("✏️ 人工调整", "✏️ Manual adjustment"),
     "manual_edit_help": (
-        "交换、移动、移出或重新入座后会立即检查硬约束；所有调整均可撤销或重做。",
-        "Swap, move, unseat, or reseat students and immediately recheck hard constraints. Every change can be undone or redone.",
+        "交换、移动、移出或重新入座后会立即检查硬约束；"
+        "所有调整均可撤销或重做。",
+        "Swap, move, unseat, or reseat students and immediately recheck "
+        "hard constraints. Every change can be undone or redone.",
     ),
     "first_student": ("第一名学生", "First student"),
     "second_student": ("第二名学生", "Second student"),
@@ -220,6 +222,17 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
     "target_empty_seat": ("目标空座", "Target empty seat"),
     "apply_edit": ("应用调整", "Apply adjustment"),
     "unseated_count": ("未入座学生：{count}", "Unseated students: {count}"),
+    "lock_controls": ("锁定状态", "Locks"),
+    "lock_summary": (
+        "已锁定学生 {students} 人，座位 {seats} 个。",
+        "{students} students and {seats} seats locked.",
+    ),
+    "student_lock_target": ("学生锁定对象", "Student lock target"),
+    "seat_lock_target": ("座位锁定对象", "Seat lock target"),
+    "lock_student": ("锁定学生", "Lock student"),
+    "unlock_student": ("解锁学生", "Unlock student"),
+    "lock_seat": ("锁定座位", "Lock seat"),
+    "unlock_seat": ("解锁座位", "Unlock seat"),
     "no_empty_seats": ("当前没有可用空座。", "There are no available empty seats."),
     "no_unseated_students": ("当前没有未入座学生。", "There are no unseated students."),
     "undo": ("撤销", "Undo"),

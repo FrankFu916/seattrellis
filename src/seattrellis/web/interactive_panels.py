@@ -14,7 +14,11 @@ except Exception as exc:  # pragma: no cover - guarded by the web extra.
 
     raise MissingOptionalDependencyError("Streamlit web UI", "web") from exc
 
-from seattrellis.editing import EditingError, EditingOperation
+from seattrellis.editing import (
+    EditingError,
+    EditingOperation,
+    lock_state_from_snapshot,
+)
 from seattrellis.io.json_files import InputFileError
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
@@ -22,6 +26,10 @@ from seattrellis.solver import SeatTrellisSolveError
 from seattrellis.web.keys import (
     PROJECT_EDIT_ACTION_SELECT,
     PROJECT_EDIT_APPLY_BUTTON,
+    PROJECT_LOCK_SEAT_BUTTON,
+    PROJECT_LOCK_SEAT_SELECT,
+    PROJECT_LOCK_STUDENT_BUTTON,
+    PROJECT_LOCK_STUDENT_SELECT,
     PROJECT_REDO_BUTTON,
     PROJECT_REPAIR_BUTTON,
     PROJECT_SWAP_BUTTON,
@@ -29,6 +37,10 @@ from seattrellis.web.keys import (
     QUICK_REDO_BUTTON,
     QUICK_EDIT_ACTION_SELECT,
     QUICK_EDIT_APPLY_BUTTON,
+    QUICK_LOCK_SEAT_BUTTON,
+    QUICK_LOCK_SEAT_SELECT,
+    QUICK_LOCK_STUDENT_BUTTON,
+    QUICK_LOCK_STUDENT_SELECT,
     QUICK_REPAIR_BUTTON,
     QUICK_SWAP_BUTTON,
     QUICK_UNDO_BUTTON,
@@ -197,15 +209,37 @@ def render_manual_edit_panel(
     seated_students = sorted(
         assignment.student_key for assignment in snapshot.assignments
     )
+    assignments_by_student = {
+        assignment.student_key: assignment for assignment in snapshot.assignments
+    }
     assigned_seats = {assignment.seat_id for assignment in snapshot.assignments}
-    empty_seats = sorted(
+    all_empty_seats = sorted(
         seat.seat_id
         for seat in snapshot.layout.seats
         if seat.enabled and seat.seat_id not in assigned_seats
     )
     unseated_students = sorted(set(student_names) - set(seated_students))
+    lock_state = lock_state_from_snapshot(snapshot)
+    locked_students = set(lock_state.locked_students)
+    locked_seats = set(lock_state.locked_seats)
+    movable_students = [
+        student_key
+        for student_key in seated_students
+        if student_key not in locked_students
+        and assignments_by_student[student_key].seat_id not in locked_seats
+    ]
+    empty_seats = [
+        seat_id for seat_id in all_empty_seats if seat_id not in locked_seats
+    ]
     _render_manual_edit_status(snapshot, draft, translate)
     st.caption(translate("unseated_count", count=len(unseated_students)))
+    st.caption(
+        translate(
+            "lock_summary",
+            students=len(locked_students),
+            seats=len(locked_seats),
+        )
+    )
 
     with st.expander(translate("manual_edit_title"), expanded=False):
         st.caption(translate("manual_edit_help"))
@@ -213,17 +247,27 @@ def render_manual_edit_panel(
         def label_student(key: str) -> str:
             return f"{student_names.get(key, key)} ({key})"
 
+        lock_clicked, lock_operation = _render_lock_controls(
+            prefix=prefix,
+            project=project,
+            snapshot=snapshot,
+            seated_students=seated_students,
+            locked_students=locked_students,
+            locked_seats=locked_seats,
+            label_student=label_student,
+            translate=translate,
+        )
         columns = st.columns(2)
         first_student = columns[0].selectbox(
             translate("first_student"),
-            seated_students,
+            movable_students,
             format_func=label_student,
             key=f"{prefix}_edit_first_student",
         )
         second_student = columns[1].selectbox(
             translate("second_student"),
-            seated_students,
-            index=1 if len(seated_students) > 1 else 0,
+            movable_students,
+            index=1 if len(movable_students) > 1 else 0,
             format_func=label_student,
             key=f"{prefix}_edit_second_student",
         )
@@ -231,7 +275,7 @@ def render_manual_edit_panel(
         swap_clicked = buttons[0].button(
             translate("swap_students"),
             type="primary",
-            disabled=len(seated_students) < 2 or first_student == second_student,
+            disabled=len(movable_students) < 2 or first_student == second_student,
             key=PROJECT_SWAP_BUTTON if project else QUICK_SWAP_BUTTON,
         )
         undo_clicked = buttons[1].button(
@@ -247,14 +291,20 @@ def render_manual_edit_panel(
         operation_clicked, operation = _render_other_edit_action(
             prefix=prefix,
             project=project,
-            seated_students=seated_students,
+            seated_students=movable_students,
             unseated_students=unseated_students,
             empty_seats=empty_seats,
             label_student=label_student,
             translate=translate,
         )
         try:
-            if swap_clicked:
+            if lock_clicked and lock_operation is not None:
+                draft = apply_web_edit(
+                    draft,
+                    lock_operation,
+                    output_dir=output_dir,
+                )
+            elif swap_clicked:
                 draft = apply_web_edit(
                     draft,
                     EditingOperation(
@@ -284,6 +334,77 @@ def render_manual_edit_panel(
             st.rerun()
         except (EditingError, InputFileError, ValidationError, ValueError) as exc:
             render_error(exc)
+
+
+def _render_lock_controls(
+    *,
+    prefix: str,
+    project: bool,
+    snapshot: SeatingSnapshot,
+    seated_students: list[str],
+    locked_students: set[str],
+    locked_seats: set[str],
+    label_student: Callable[[str], str],
+    translate: Translate,
+) -> tuple[bool, EditingOperation | None]:
+    st.markdown(f"**{translate('lock_controls')}**")
+    columns = st.columns(2)
+    student_key = columns[0].selectbox(
+        translate("student_lock_target"),
+        seated_students,
+        format_func=label_student,
+        key=(
+            PROJECT_LOCK_STUDENT_SELECT
+            if project
+            else QUICK_LOCK_STUDENT_SELECT
+        ),
+    )
+    seat_ids = sorted(seat.seat_id for seat in snapshot.layout.seats if seat.enabled)
+    occupants = {
+        assignment.seat_id: assignment.student_key
+        for assignment in snapshot.assignments
+    }
+
+    def label_seat(seat_id: str) -> str:
+        student_key = occupants.get(seat_id)
+        if student_key is None:
+            return seat_id
+        return f"{seat_id} · {label_student(student_key)}"
+
+    seat_id = columns[1].selectbox(
+        translate("seat_lock_target"),
+        seat_ids,
+        format_func=label_seat,
+        key=PROJECT_LOCK_SEAT_SELECT if project else QUICK_LOCK_SEAT_SELECT,
+    )
+    buttons = st.columns(2)
+    student_is_locked = (
+        student_key is not None and student_key in locked_students
+    )
+    seat_is_locked = seat_id is not None and seat_id in locked_seats
+    student_clicked = buttons[0].button(
+        translate("unlock_student" if student_is_locked else "lock_student"),
+        key=(
+            PROJECT_LOCK_STUDENT_BUTTON
+            if project
+            else QUICK_LOCK_STUDENT_BUTTON
+        ),
+    )
+    seat_clicked = buttons[1].button(
+        translate("unlock_seat" if seat_is_locked else "lock_seat"),
+        key=PROJECT_LOCK_SEAT_BUTTON if project else QUICK_LOCK_SEAT_BUTTON,
+    )
+    if student_clicked and student_key is not None:
+        return True, EditingOperation(
+            kind="unlock_student" if student_is_locked else "lock_student",
+            payload={"student_key": student_key},
+        )
+    if seat_clicked and seat_id is not None:
+        return True, EditingOperation(
+            kind="unlock_seat" if seat_is_locked else "lock_seat",
+            payload={"seat_id": seat_id},
+        )
+    return False, None
 
 
 def _render_other_edit_action(
