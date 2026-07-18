@@ -54,6 +54,12 @@ targets, and occupants of locked seats cannot be swapped or unseated. Lock and
 unlock commands participate in undo/redo and are saved in
 `metadata.lock_state`. **Lock & repair** reuses these saved locks by default.
 
+**Batch move** pairs selected students and target seats in selection order and
+shows the mapping before execution. Counts must match. Current seats of the
+selected students can be targets for a rotation, but the batch cannot displace
+anyone outside it. The whole batch creates one operation record and is restored
+by one undo.
+
 The resolved rules panel shows the exact `RuleSet` used by the solver. History
 inspection reports student coverage, stale references, disabled seats, and
 layout differences before a solve begins.

@@ -38,6 +38,8 @@ python -m pytest tests/test_web_workflow.py
 撤销和重做，并检查人数不变量与生成草稿的 `metadata.manual_edit`，不只是验证控件
 是否存在。锁定测试还会执行“锁定 → 撤销 → 重做 → repair → 解锁”，验证学生位置
 不变且 `metadata.lock_state` 在编辑和求解之间一致。
+批量移动同时覆盖领域层原子失败、CLI JSON/内联解析，以及 Web 多选配对后的单次
+撤销/重做，确保批次不会产生中间态。
 
 浏览器级 E2E 仍是后续工作。引入 Playwright 时，建议先覆盖：
 

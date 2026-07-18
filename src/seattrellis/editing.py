@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Literal, Mapping, Sequence
+from typing import Iterable, Literal, Mapping, Sequence, TypeAlias
 
 from seattrellis.models.candidate import HardConstraintSummary
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
@@ -12,6 +12,7 @@ from seattrellis.scoring import evaluate_hard_constraints
 EditingOperationKind = Literal[
     "swap_students",
     "move_student",
+    "batch_move",
     "unseat_student",
     "seat_student",
     "lock_student",
@@ -21,6 +22,14 @@ EditingOperationKind = Literal[
 ]
 
 LOCK_STATE_METADATA_KEY = "lock_state"
+
+EditingPayloadValue: TypeAlias = (
+    str
+    | bool
+    | None
+    | list["EditingPayloadValue"]
+    | dict[str, "EditingPayloadValue"]
+)
 
 
 class EditingError(ValueError):
@@ -32,7 +41,7 @@ class EditingOperation:
     """A UI-neutral command that changes a seating draft."""
 
     kind: EditingOperationKind
-    payload: Mapping[str, str | bool | None] = field(default_factory=dict)
+    payload: Mapping[str, EditingPayloadValue] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -179,6 +188,11 @@ class EditingSession:
                     _required_payload(operation, "student_key"),
                     _required_payload(operation, "seat_id"),
                 )
+            case "batch_move":
+                assignments = self._batch_move(
+                    assignments,
+                    _required_batch_moves(operation),
+                )
             case "seat_student":
                 assignments = self._move_student(
                     assignments,
@@ -237,6 +251,24 @@ class EditingSession:
             EditingOperation(
                 kind="move_student",
                 payload={"student_key": student_key, "seat_id": seat_id},
+            )
+        )
+
+    def batch_move(
+        self,
+        moves: Mapping[str, str] | Sequence[tuple[str, str]],
+    ) -> HardConstraintSummary:
+        """Apply multiple destinations as one atomic, undoable command."""
+        entries = moves.items() if isinstance(moves, Mapping) else moves
+        return self.apply(
+            EditingOperation(
+                kind="batch_move",
+                payload={
+                    "moves": [
+                        {"student_key": student_key, "seat_id": seat_id}
+                        for student_key, seat_id in entries
+                    ]
+                },
             )
         )
 
@@ -335,6 +367,67 @@ class EditingSession:
             by_student.pop(occupant.student_key)
 
         by_student[student_key] = self._make_assignment(student_key, seat_id)
+        return self._ordered_assignments(by_student.values())
+
+    def _batch_move(
+        self,
+        assignments: list[SeatAssignment],
+        moves: Sequence[tuple[str, str]],
+    ) -> list[SeatAssignment]:
+        normalized = [
+            (
+                self._require_known_student(student_key),
+                self._require_enabled_seat(seat_id),
+            )
+            for student_key, seat_id in moves
+        ]
+        students = [student_key for student_key, _seat_id in normalized]
+        seats = [seat_id for _student_key, seat_id in normalized]
+        duplicate_students = _duplicates(students)
+        duplicate_seats = _duplicates(seats)
+        if duplicate_students:
+            raise EditingError(
+                "Batch move contains duplicate students: "
+                + ", ".join(duplicate_students)
+                + "."
+            )
+        if duplicate_seats:
+            raise EditingError(
+                "Batch move contains duplicate target seats: "
+                + ", ".join(duplicate_seats)
+                + "."
+            )
+
+        by_student = _assignment_by_student(assignments)
+        by_seat = _assignment_by_seat(assignments)
+        active_moves = [
+            (student_key, seat_id)
+            for student_key, seat_id in normalized
+            if student_key not in by_student
+            or by_student[student_key].seat_id != seat_id
+        ]
+        moving_students = {student_key for student_key, _seat_id in active_moves}
+        for student_key, target_seat in active_moves:
+            current = by_student.get(student_key)
+            self._ensure_student_can_move(student_key)
+            if current is not None:
+                self._ensure_seat_can_change(current.seat_id)
+            self._ensure_seat_can_change(target_seat)
+            occupant = by_seat.get(target_seat)
+            if (
+                occupant is not None
+                and occupant.student_key != student_key
+                and occupant.student_key not in moving_students
+            ):
+                raise EditingError(
+                    "Batch move target is occupied by a student outside the batch: "
+                    f"{target_seat} ({occupant.student_key})."
+                )
+
+        for student_key in moving_students:
+            by_student.pop(student_key, None)
+        for student_key, seat_id in active_moves:
+            by_student[student_key] = self._make_assignment(student_key, seat_id)
         return self._ordered_assignments(by_student.values())
 
     def _unseat_student(
@@ -496,6 +589,26 @@ def _required_payload(operation: EditingOperation, key: str) -> str:
     return text
 
 
+def _required_batch_moves(operation: EditingOperation) -> list[tuple[str, str]]:
+    value = operation.payload.get("moves")
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise EditingError("batch_move requires a moves list.")
+    if not value:
+        raise EditingError("batch_move requires at least one move.")
+    moves: list[tuple[str, str]] = []
+    for index, entry in enumerate(value, start=1):
+        if not isinstance(entry, Mapping):
+            raise EditingError(f"batch_move item {index} must be an object.")
+        student_key = str(entry.get("student_key") or "").strip()
+        seat_id = str(entry.get("seat_id") or "").strip()
+        if not student_key or not seat_id:
+            raise EditingError(
+                f"batch_move item {index} requires student_key and seat_id."
+            )
+        moves.append((student_key, seat_id))
+    return moves
+
+
 def _normalized_identifiers(values: object) -> list[str]:
     if isinstance(values, str):
         candidates = [values]
@@ -509,6 +622,10 @@ def _normalized_identifiers(values: object) -> list[str]:
         if text and text not in normalized:
             normalized.append(text)
     return sorted(normalized)
+
+
+def _duplicates(values: Sequence[str]) -> list[str]:
+    return sorted({value for value in values if values.count(value) > 1})
 
 
 def _assignment_by_student(assignments: Iterable[SeatAssignment]) -> dict[str, SeatAssignment]:

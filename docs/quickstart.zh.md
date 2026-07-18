@@ -162,6 +162,17 @@ seattrellis export \
 如果输入的是 candidate set，`edit` 默认选择 recommended candidate，也可以用
 `--candidate candidate_02` 指定候选。
 
+批量换位可作为一条原子操作执行并一次撤销：
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation "batch-move:STU001=R1C2,STU002=R1C1" \
+  --output outputs/batch-edited.snapshot.json
+```
+
+目标座位已有学生时，该学生必须也在同一批次内；任何冲突都会使整个批次失败。
+
 若要保存或重放一组调整，可把操作写进 JSON 文件，再通过 `--operations-file` 读取。
 文件为操作数组，或包含 `operations` 数组的对象；文件操作会先于命令行中的
 `--operation` 执行：

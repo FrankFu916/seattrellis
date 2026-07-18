@@ -333,6 +333,19 @@ def _commands(
                 [],
             ),
             SmokeCommand(
+                "batch move saved snapshot",
+                [
+                    "edit",
+                    "--snapshot",
+                    "examples/history/week1.snapshot.json",
+                    "--operation",
+                    "batch-move:STU001=R1C2,STU002=R1C1",
+                    "--output",
+                    "outputs/week1-batch-edited.snapshot.json",
+                ],
+                ["outputs/week1-batch-edited.snapshot.json"],
+            ),
+            SmokeCommand(
                 "history report",
                 [
                     "history-report",

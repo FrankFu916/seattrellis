@@ -20,6 +20,9 @@ from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.web.keys import (
     QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_BATCH_MOVE_BUTTON,
+    QUICK_BATCH_SEATS_SELECT,
+    QUICK_BATCH_STUDENTS_SELECT,
     QUICK_EDIT_ACTION_SELECT,
     QUICK_EDIT_APPLY_BUTTON,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
@@ -863,6 +866,66 @@ def test_streamlit_locks_survive_undo_redo_and_repair() -> None:
     app.run(timeout=30)
     seat_unlocked = app.session_state["result"].artifact
     assert seat_unlocked.metadata["lock_state"]["locked_seats"] == []
+    assert not app.exception
+
+
+def test_streamlit_batch_move_is_one_undoable_operation() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    app.radio[0].set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    app.radio[0].set_value("results")
+    app.run(timeout=30)
+
+    original = app.session_state["result"].artifact
+    original_seats = {
+        item.student_key: item.seat_id for item in original.assignments
+    }
+    students = sorted(original_seats)[:2]
+    assigned_seats = set(original_seats.values())
+    empty_seats = sorted(
+        seat.seat_id
+        for seat in original.layout.seats
+        if seat.enabled and seat.seat_id not in assigned_seats
+    )[:2]
+
+    _control_by_key(app.multiselect, QUICK_BATCH_STUDENTS_SELECT).set_value(
+        students
+    )
+    app.run(timeout=30)
+    _control_by_key(app.multiselect, QUICK_BATCH_SEATS_SELECT).set_value(
+        empty_seats
+    )
+    app.run(timeout=30)
+    _control_by_key(app.button, QUICK_BATCH_MOVE_BUTTON).click()
+    app.run(timeout=30)
+
+    moved = app.session_state["result"].artifact
+    moved_seats = {item.student_key: item.seat_id for item in moved.assignments}
+    assert [moved_seats[student] for student in students] == empty_seats
+    assert moved.metadata["manual_edit"]["operation_count"] == 1
+    assert moved.metadata["manual_edit"]["operations"][0]["kind"] == "batch_move"
+
+    _control_by_key(app.button, QUICK_UNDO_BUTTON).click()
+    app.run(timeout=30)
+    undone = app.session_state["result"].artifact
+    assert {
+        item.student_key: item.seat_id for item in undone.assignments
+    } == original_seats
+
+    _control_by_key(app.button, QUICK_REDO_BUTTON).click()
+    app.run(timeout=30)
+    redone = app.session_state["result"].artifact
+    assert {
+        item.student_key: item.seat_id for item in redone.assignments
+    } == moved_seats
     assert not app.exception
 
 

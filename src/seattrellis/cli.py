@@ -5,7 +5,11 @@ import json
 from pathlib import Path
 from typing import Mapping
 
-from seattrellis.editing import EditingOperation
+from seattrellis.editing import (
+    EditingOperation,
+    EditingOperationKind,
+    EditingPayloadValue,
+)
 from seattrellis.io.json_files import InputFileError
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import (
@@ -1318,19 +1322,18 @@ def _parse_edit_operation_mapping(
     if not isinstance(payload, Mapping):
         raise ValueError(f"{source} must contain a payload object.")
 
-    normalized_payload: dict[str, str | bool | None] = {}
+    normalized_payload: dict[str, EditingPayloadValue] = {}
     for key, value in payload.items():
         if not isinstance(key, str):
             raise ValueError(f"{source} payload keys must be strings.")
-        if value is not None and not isinstance(value, (str, bool)):
-            raise ValueError(
-                f"{source} payload values must be strings, booleans, or null."
-            )
-        normalized_payload[key] = value
+        normalized_payload[key] = _normalize_edit_payload_value(
+            value,
+            source=f"{source} payload.{key}",
+        )
 
     kind = _normalize_edit_operation_kind(raw_kind)
     return EditingOperation(
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         payload=normalized_payload,
     )
 
@@ -1350,29 +1353,43 @@ def _parse_edit_operation(value: str) -> EditingOperation:
     if kind in {"move_student", "seat_student"}:
         _require_operation_parts(text, parts, 3)
         return EditingOperation(
-            kind=kind,  # type: ignore[arg-type]
+            kind=kind,
             payload={"student_key": parts[1], "seat_id": parts[2]},
         )
+    if kind == "batch_move":
+        _require_operation_parts(text, parts, 2)
+        moves: list[dict[str, str]] = []
+        for index, item in enumerate(parts[1].split(","), start=1):
+            pair = [part.strip() for part in item.split("=", 1)]
+            if len(pair) != 2 or not pair[0] or not pair[1]:
+                raise ValueError(
+                    f"Invalid batch move item {index} in operation {text!r}. "
+                    "Use STUDENT=SEAT pairs separated by commas."
+                )
+            moves.append({"student_key": pair[0], "seat_id": pair[1]})
+        return EditingOperation(kind="batch_move", payload={"moves": moves})
     if kind in {"unseat_student", "lock_student", "unlock_student"}:
         _require_operation_parts(text, parts, 2)
         return EditingOperation(
-            kind=kind,  # type: ignore[arg-type]
+            kind=kind,
             payload={"student_key": parts[1]},
         )
     _require_operation_parts(text, parts, 2)
     return EditingOperation(
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         payload={"seat_id": parts[1]},
     )
 
 
-def _normalize_edit_operation_kind(value: str) -> str:
+def _normalize_edit_operation_kind(value: str) -> EditingOperationKind:
     name = str(value).replace("-", "_").strip().lower()
-    kind = {
+    aliases: dict[str, EditingOperationKind] = {
         "swap": "swap_students",
         "swap_students": "swap_students",
         "move": "move_student",
         "move_student": "move_student",
+        "batch": "batch_move",
+        "batch_move": "batch_move",
         "seat": "seat_student",
         "seat_student": "seat_student",
         "unseat": "unseat_student",
@@ -1381,14 +1398,43 @@ def _normalize_edit_operation_kind(value: str) -> str:
         "unlock_student": "unlock_student",
         "lock_seat": "lock_seat",
         "unlock_seat": "unlock_seat",
-    }.get(name)
+    }
+    kind = aliases.get(name)
     if kind is None:
         raise ValueError(
             f"Unsupported editing operation {value!r}. "
-            "Use swap, move, seat, unseat, lock-student, unlock-student, "
+            "Use swap, move, batch-move, seat, unseat, lock-student, "
+            "unlock-student, "
             "lock-seat, or unlock-seat."
         )
     return kind
+
+
+def _normalize_edit_payload_value(
+    value: object,
+    *,
+    source: str,
+) -> EditingPayloadValue:
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, list):
+        return [
+            _normalize_edit_payload_value(item, source=f"{source}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, Mapping):
+        normalized: dict[str, EditingPayloadValue] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{source} object keys must be strings.")
+            normalized[key] = _normalize_edit_payload_value(
+                item,
+                source=f"{source}.{key}",
+            )
+        return normalized
+    raise ValueError(
+        f"{source} must contain only strings, booleans, null, lists, or objects."
+    )
 
 
 def _require_operation_parts(text: str, parts: list[str], expected: int) -> None:

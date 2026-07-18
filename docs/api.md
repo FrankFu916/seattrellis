@@ -56,6 +56,7 @@ from seattrellis.editing import EditingSession
 session = EditingSession.from_snapshot(snapshot)
 session.lock_seat("R1C1")
 summary = session.swap_students("S001", "S018")
+session.batch_move({"S002": "R2C2", "S003": "R2C3"})
 
 if not summary.satisfied:
     print(summary.violations)
@@ -65,6 +66,10 @@ if not summary.satisfied:
 每次成功操作都会返回 hard constraint 诊断；当前锁状态通过 `EditingLockState` 和
 `metadata.lock_state` 在内存和文件工作流中保持一致。局部自动修复由 service 层完成，
 不在编辑层直接实现。
+
+`batch_move` 会先验证全部映射再一次更新 assignments。学生和目标座位必须唯一；
+占用目标座位的学生必须也参与批次，因此可表达循环换位，但不会隐式移出第三方。
+任一锁定、未知或冲突映射都会拒绝整个命令，undo/redo 也把它视作单条操作。
 
 适配器如果已经把 UI 操作整理成命令序列，可以直接调用服务层：
 

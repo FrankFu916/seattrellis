@@ -24,6 +24,9 @@ from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver import SeatTrellisSolveError
 from seattrellis.web.keys import (
+    PROJECT_BATCH_MOVE_BUTTON,
+    PROJECT_BATCH_SEATS_SELECT,
+    PROJECT_BATCH_STUDENTS_SELECT,
     PROJECT_EDIT_ACTION_SELECT,
     PROJECT_EDIT_APPLY_BUTTON,
     PROJECT_LOCK_SEAT_BUTTON,
@@ -37,6 +40,9 @@ from seattrellis.web.keys import (
     QUICK_REDO_BUTTON,
     QUICK_EDIT_ACTION_SELECT,
     QUICK_EDIT_APPLY_BUTTON,
+    QUICK_BATCH_MOVE_BUTTON,
+    QUICK_BATCH_SEATS_SELECT,
+    QUICK_BATCH_STUDENTS_SELECT,
     QUICK_LOCK_SEAT_BUTTON,
     QUICK_LOCK_SEAT_SELECT,
     QUICK_LOCK_STUDENT_BUTTON,
@@ -297,6 +303,15 @@ def render_manual_edit_panel(
             label_student=label_student,
             translate=translate,
         )
+        batch_clicked, batch_operation = _render_batch_move(
+            prefix=prefix,
+            project=project,
+            snapshot=snapshot,
+            movable_students=movable_students,
+            empty_seats=empty_seats,
+            label_student=label_student,
+            translate=translate,
+        )
         try:
             if lock_clicked and lock_operation is not None:
                 draft = apply_web_edit(
@@ -322,6 +337,12 @@ def render_manual_edit_panel(
                 draft = redo_web_edit(draft, output_dir=output_dir)
             elif operation_clicked and operation is not None:
                 draft = apply_web_edit(draft, operation, output_dir=output_dir)
+            elif batch_clicked and batch_operation is not None:
+                draft = apply_web_edit(
+                    draft,
+                    batch_operation,
+                    output_dir=output_dir,
+                )
             else:
                 return
             st.session_state[state_key] = draft
@@ -405,6 +426,88 @@ def _render_lock_controls(
             payload={"seat_id": seat_id},
         )
     return False, None
+
+
+def _render_batch_move(
+    *,
+    prefix: str,
+    project: bool,
+    snapshot: SeatingSnapshot,
+    movable_students: list[str],
+    empty_seats: list[str],
+    label_student: Callable[[str], str],
+    translate: Translate,
+) -> tuple[bool, EditingOperation | None]:
+    st.markdown(f"**{translate('batch_move_title')}**")
+    st.caption(translate("batch_move_help"))
+    student_key = (
+        PROJECT_BATCH_STUDENTS_SELECT
+        if project
+        else QUICK_BATCH_STUDENTS_SELECT
+    )
+    selected_students = st.multiselect(
+        translate("batch_students"),
+        movable_students,
+        format_func=label_student,
+        key=student_key,
+    )
+    assignments = {
+        assignment.student_key: assignment.seat_id
+        for assignment in snapshot.assignments
+    }
+    target_options = list(empty_seats)
+    for student_key in selected_students:
+        current_seat = assignments[student_key]
+        if current_seat not in target_options:
+            target_options.append(current_seat)
+    seat_key = (
+        PROJECT_BATCH_SEATS_SELECT if project else QUICK_BATCH_SEATS_SELECT
+    )
+    selected_seats = st.multiselect(
+        translate("batch_target_seats"),
+        target_options,
+        key=seat_key,
+    )
+    counts_match = (
+        bool(selected_students)
+        and len(selected_students) == len(selected_seats)
+    )
+    if selected_students or selected_seats:
+        if counts_match:
+            pairs = ", ".join(
+                f"{label_student(student_key)} → {seat_id}"
+                for student_key, seat_id in zip(
+                    selected_students,
+                    selected_seats,
+                    strict=True,
+                )
+            )
+            st.caption(translate("batch_pairing", pairs=pairs))
+        else:
+            st.info(translate("batch_count_mismatch"))
+    button_key = (
+        PROJECT_BATCH_MOVE_BUTTON if project else QUICK_BATCH_MOVE_BUTTON
+    )
+    clicked = st.button(
+        translate("apply_batch_move"),
+        disabled=not counts_match,
+        key=button_key,
+    )
+    if not clicked or not counts_match:
+        return clicked, None
+    return True, EditingOperation(
+        kind="batch_move",
+        payload={
+            "moves": [
+                {"student_key": student_key, "seat_id": seat_id}
+                for student_key, seat_id in zip(
+                    selected_students,
+                    selected_seats,
+                    strict=True,
+                )
+            ]
+        },
+    )
 
 
 def _render_other_edit_action(

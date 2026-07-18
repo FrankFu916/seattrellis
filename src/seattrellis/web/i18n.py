@@ -233,6 +233,20 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
     "unlock_student": ("解锁学生", "Unlock student"),
     "lock_seat": ("锁定座位", "Lock seat"),
     "unlock_seat": ("解锁座位", "Unlock seat"),
+    "batch_move_title": ("批量移动", "Batch move"),
+    "batch_move_help": (
+        "按选择顺序将学生与目标座位一一配对；整个批次一次完成，也只需撤销一次。",
+        "Students and target seats are paired in selection order. "
+        "The whole batch is applied and undone as one command.",
+    ),
+    "batch_students": ("批量选择学生", "Students to move"),
+    "batch_target_seats": ("批量目标座位", "Target seats"),
+    "batch_pairing": ("配对预览：{pairs}", "Pairing preview: {pairs}"),
+    "batch_count_mismatch": (
+        "学生与目标座位数量必须相同。",
+        "Select the same number of students and target seats.",
+    ),
+    "apply_batch_move": ("执行批量移动", "Apply batch move"),
     "no_empty_seats": ("当前没有可用空座。", "There are no available empty seats."),
     "no_unseated_students": ("当前没有未入座学生。", "There are no unseated students."),
     "undo": ("撤销", "Undo"),

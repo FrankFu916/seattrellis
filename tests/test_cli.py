@@ -111,6 +111,67 @@ def test_cli_edit_operations_file_accepts_a_list_and_rejects_bad_payloads(tmp_pa
         cli._parse_edit_operations([], operations_file=operations_path)
 
 
+def test_cli_parses_inline_and_file_backed_batch_moves(tmp_path) -> None:
+    inline = cli._parse_edit_operations(
+        ["batch-move:STU001=R1C2,STU002=R1C1"]
+    )
+
+    assert inline == [
+        cli.EditingOperation(
+            kind="batch_move",
+            payload={
+                "moves": [
+                    {"student_key": "STU001", "seat_id": "R1C2"},
+                    {"student_key": "STU002", "seat_id": "R1C1"},
+                ]
+            },
+        )
+    ]
+
+    operations_path = tmp_path / "batch-operations.json"
+    operations_path.write_text(
+        json.dumps(
+            {
+                "operations": [
+                    {
+                        "kind": "batch_move",
+                        "payload": {
+                            "moves": [
+                                {
+                                    "student_key": "STU001",
+                                    "seat_id": "R1C2",
+                                },
+                                {
+                                    "student_key": "STU002",
+                                    "seat_id": "R1C1",
+                                },
+                            ]
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from_file = cli._parse_edit_operations([], operations_file=operations_path)
+
+    assert from_file == inline
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "batch-move:",
+        "batch-move:STU001",
+        "batch-move:STU001=R1C2,STU002",
+    ],
+)
+def test_cli_rejects_malformed_inline_batch_move(value) -> None:
+    with pytest.raises(ValueError, match="operation|batch move item"):
+        cli._parse_edit_operations([value])
+
+
 def test_readme_quick_start_commands_run(tmp_path) -> None:
     commands = [
         ["seattrellis", "--help"],

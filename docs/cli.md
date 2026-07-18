@@ -117,6 +117,7 @@ seattrellis edit \
 
 - `swap:STU001:STU002`
 - `move:STU003:R2C2`
+- `batch-move:STU001=R1C2,STU002=R1C1`
 - `seat:STU003:R2C2`
 - `unseat:STU004`
 - `lock-student:STU001`
@@ -147,10 +148,23 @@ constraints 不满足，也会写出草稿并在终端列出违反项；加 `--s
     {
       "kind": "lock_seat",
       "payload": {"seat_id": "R4C3"}
+    },
+    {
+      "kind": "batch_move",
+      "payload": {
+        "moves": [
+          {"student_key": "STU003", "seat_id": "R2C2"},
+          {"student_key": "STU004", "seat_id": "R2C1"}
+        ]
+      }
     }
   ]
 }
 ```
+
+`batch_move` 是单条原子操作：学生和目标座位不得重复；目标座位若已占用，其占用者
+也必须包含在同一批次中。任一映射未知、锁定或冲突时，整个批次失败，不会留下部分
+修改。内联格式适合简单 ID；ID 含逗号或等号时应使用 JSON 操作文件。
 
 ```bash
 seattrellis edit \

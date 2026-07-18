@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 import seattrellis.service as service_module
-from seattrellis.editing import EditingError, EditingOperation
+from seattrellis.editing import EditingError, EditingOperation, EditingSession
 from seattrellis.io.json_files import load_snapshot, write_json_model
 from seattrellis.io.project import write_project
 from seattrellis.models.candidate import (
@@ -98,6 +98,112 @@ def test_compute_edit_reports_unseated_draft_and_hard_constraint_summary() -> No
     assert "Assignments do not contain every current student exactly once." in (
         result.hard_constraints.violations
     )
+
+
+def test_batch_move_is_atomic_and_undoable() -> None:
+    session = EditingSession.from_snapshot(_snapshot())
+
+    summary = session.batch_move(
+        {
+            "s1": "A2",
+            "s2": "B1",
+            "s3": "A1",
+        }
+    )
+
+    assert summary.satisfied
+    assert _seat_for(session.current_snapshot(), "s1") == "A2"
+    assert _seat_for(session.current_snapshot(), "s2") == "B1"
+    assert _seat_for(session.current_snapshot(), "s3") == "A1"
+    assert [record.operation.kind for record in session.operation_log] == [
+        "batch_move"
+    ]
+
+    session.undo()
+    assert _seat_for(session.current_snapshot(), "s1") == "A1"
+    assert _seat_for(session.current_snapshot(), "s2") == "A2"
+    assert _seat_for(session.current_snapshot(), "s3") == "B1"
+    session.redo()
+    assert _seat_for(session.current_snapshot(), "s1") == "A2"
+
+
+@pytest.mark.parametrize(
+    ("moves", "message"),
+    [
+        (
+            [
+                {"student_key": "s1", "seat_id": "B2"},
+                {"student_key": "s2", "seat_id": "B2"},
+            ],
+            "duplicate target seats",
+        ),
+        (
+            [{"student_key": "s1", "seat_id": "A2"}],
+            "outside the batch",
+        ),
+    ],
+)
+def test_batch_move_rejects_invalid_batch_without_partial_changes(
+    moves,
+    message,
+) -> None:
+    session = EditingSession.from_snapshot(_snapshot())
+    before = session.current_snapshot()
+
+    with pytest.raises(EditingError, match=message):
+        session.apply(
+            EditingOperation(kind="batch_move", payload={"moves": moves})
+        )
+
+    assert session.current_snapshot().assignments == before.assignments
+    assert session.operation_log == ()
+
+
+def test_compute_edit_serializes_batch_move_metadata() -> None:
+    result = compute_edit(
+        EditInput(
+            snapshot=_snapshot(),
+            operations=[
+                EditingOperation(
+                    kind="batch_move",
+                    payload={
+                        "moves": [
+                            {"student_key": "s1", "seat_id": "B2"},
+                            {"student_key": "s2", "seat_id": "A1"},
+                        ]
+                    },
+                )
+            ],
+        )
+    )
+
+    operation = result.operation_log[0].operation
+    assert operation.kind == "batch_move"
+    assert operation.payload["moves"] == [
+        {"student_key": "s1", "seat_id": "B2"},
+        {"student_key": "s2", "seat_id": "A1"},
+    ]
+    assert _seat_for(result.snapshot, "s1") == "B2"
+    assert _seat_for(result.snapshot, "s2") == "A1"
+
+
+@pytest.mark.parametrize("lock_kind", ["student", "seat"])
+def test_batch_move_respects_locks_without_partial_changes(lock_kind) -> None:
+    session = EditingSession.from_snapshot(_snapshot())
+    if lock_kind == "student":
+        session.lock_student("s1")
+        message = "Student is locked"
+    else:
+        session.lock_seat("B2")
+        message = "Seat is locked"
+    before = session.current_snapshot()
+    operation_count = len(session.operation_log)
+
+    with pytest.raises(EditingError, match=message):
+        session.batch_move({"s1": "B2", "s2": "A1"})
+
+    assert session.current_snapshot().assignments == before.assignments
+    assert len(session.operation_log) == operation_count
 
 
 def test_compute_edit_reuses_hard_constraint_diagnostics() -> None:

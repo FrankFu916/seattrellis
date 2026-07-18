@@ -35,6 +35,8 @@
   unseated area, and seating them again without implicitly displacing others.
 - Added undoable Web student and seat locks that filter invalid manual moves
   and flow directly into saved-lock constrained repair.
+- Added atomic batch moves across the domain, CLI operation files and inline
+  syntax, and Web multi-selection with one-step undo/redo.
 - Added an optional separately packaged Rust extension and explicit `native`
   solver selection while retaining the Python backends.
 
