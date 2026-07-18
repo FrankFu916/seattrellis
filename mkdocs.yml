@@ -40,6 +40,9 @@ plugins:
         - en
         - zh
 
+hooks:
+  - scripts/mkdocs_hooks.py
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -97,6 +100,7 @@ nav:
       - 性能基准: benchmarks.md
       - 规则能力审计: rule-capability-audit.md
       - Rust native core: native-core.md
+      - 编辑器协议: editor-protocol.md
       - 架构决策:
           - 原生内核语言: adr/0001-rust-native-core.md
           - OR-Tools 边界: adr/0002-keep-ortools-in-python.md

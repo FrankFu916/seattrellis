@@ -39,6 +39,11 @@
 - repair 会复用历史方案以保持公平轮换和近期邻座语义，并在写出结果前同时复核原始
   hard rules 与临时修复约束；
 - 这一层不改变 project 的持久化 rules 文件，也不另写一套局部搜索算法。
+- 前端适配器通过版本化 `EditorCommandEnvelope` 提交 apply、undo 或 redo，
+  通过 `EditorStateEnvelope` 读取数据最小化的编辑状态；
+- 每份草稿拥有独立 `draft_id` 和单调递增 revision。服务端拒绝旧 revision、错误
+  草稿和重复 `command_id`，成功命令只增加一次 revision；
+- 一个命令中的多项 operation 原子执行并作为一个撤销批次，失败时不落盘。
 
 ## 后果
 
@@ -48,3 +53,5 @@
 - 局部修复先通过“固定未受影响学生并调用现有 solver”实现，不另写一套规则；
 - `metadata.repair` 保留临时/有效固定关系、预留空座、历史数量和实际变化学生，便于
   UI 呈现与后续操作审计。
+- `draft_id` 和 revision 只解决并发覆盖，不承担身份认证或授权。若协议将来通过
+  网络开放，适配器必须另外验证会话所有权和请求来源。

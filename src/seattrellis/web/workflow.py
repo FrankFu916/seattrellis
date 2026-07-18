@@ -4,11 +4,16 @@ import json
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from math import isfinite
 from pathlib import Path
 from typing import Any, Sequence
+from uuid import uuid4
 
+from seattrellis.editing import (
+    EditingOperation,
+    lock_state_from_snapshot,
+)
 from seattrellis.service import (
     edit_snapshot,
     export,
@@ -22,7 +27,6 @@ from seattrellis.service import (
     score_text,
     solve_with_report,
 )
-from seattrellis.editing import EditingOperation, lock_state_from_snapshot
 from seattrellis.io.json_files import (
     InputFileError,
     load_layout,
@@ -73,16 +77,21 @@ class WebEditingDraft:
     candidate_id: str
     operations: tuple[EditingOperation, ...] = ()
     redo_operations: tuple[EditingOperation, ...] = ()
+    operation_batches: tuple[tuple[EditingOperation, ...], ...] = ()
+    redo_operation_batches: tuple[tuple[EditingOperation, ...], ...] = ()
     initial_locked_students: tuple[str, ...] = ()
     initial_locked_seats: tuple[str, ...] = ()
+    draft_id: str = field(default_factory=lambda: uuid4().hex)
+    revision: int = 0
+    applied_command_ids: tuple[str, ...] = ()
 
     @property
     def can_undo(self) -> bool:
-        return bool(self.operations)
+        return bool(self.operation_batches or self.operations)
 
     @property
     def can_redo(self) -> bool:
-        return bool(self.redo_operations)
+        return bool(self.redo_operation_batches or self.redo_operations)
 
 
 def begin_web_editing(
@@ -108,13 +117,29 @@ def apply_web_edit(
     output_dir: str | Path,
 ) -> WebEditingDraft:
     """Apply one command by replaying the active operation log."""
-    operations = (*draft.operations, operation)
+    return apply_web_edits(draft, (operation,), output_dir=output_dir)
+
+
+def apply_web_edits(
+    draft: WebEditingDraft,
+    new_operations: Sequence[EditingOperation],
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Apply one or more operations atomically as a single draft revision."""
+    new_operations = tuple(new_operations)
+    if not new_operations:
+        raise ValueError("At least one editing operation is required.")
+    operations = (*draft.operations, *new_operations)
     current = _write_web_edit(draft, operations, output_dir=output_dir)
     return replace(
         draft,
         current_result=current,
         operations=operations,
         redo_operations=(),
+        operation_batches=(*draft.operation_batches, new_operations),
+        redo_operation_batches=(),
+        revision=draft.revision + 1,
     )
 
 
@@ -126,8 +151,12 @@ def undo_web_edit(
     """Undo the latest command and retain it for redo."""
     if not draft.operations:
         raise ValueError("There is no editing operation to undo.")
-    operation = draft.operations[-1]
-    operations = draft.operations[:-1]
+    batch = (
+        draft.operation_batches[-1]
+        if draft.operation_batches
+        else (draft.operations[-1],)
+    )
+    operations = draft.operations[: -len(batch)]
     current = (
         draft.source_result
         if not operations
@@ -137,7 +166,12 @@ def undo_web_edit(
         draft,
         current_result=current,
         operations=operations,
-        redo_operations=(*draft.redo_operations, operation),
+        redo_operations=(*draft.redo_operations, *batch),
+        operation_batches=(
+            draft.operation_batches[:-1] if draft.operation_batches else ()
+        ),
+        redo_operation_batches=(*draft.redo_operation_batches, batch),
+        revision=draft.revision + 1,
     )
 
 
@@ -149,14 +183,25 @@ def redo_web_edit(
     """Reapply the most recently undone command."""
     if not draft.redo_operations:
         raise ValueError("There is no editing operation to redo.")
-    operation = draft.redo_operations[-1]
-    operations = (*draft.operations, operation)
+    batch = (
+        draft.redo_operation_batches[-1]
+        if draft.redo_operation_batches
+        else (draft.redo_operations[-1],)
+    )
+    operations = (*draft.operations, *batch)
     current = _write_web_edit(draft, operations, output_dir=output_dir)
     return replace(
         draft,
         current_result=current,
         operations=operations,
-        redo_operations=draft.redo_operations[:-1],
+        redo_operations=draft.redo_operations[: -len(batch)],
+        operation_batches=(*draft.operation_batches, batch),
+        redo_operation_batches=(
+            draft.redo_operation_batches[:-1]
+            if draft.redo_operation_batches
+            else ()
+        ),
+        revision=draft.revision + 1,
     )
 
 

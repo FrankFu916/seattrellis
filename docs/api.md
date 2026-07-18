@@ -108,6 +108,49 @@ Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，
 单独测试。`seattrellis.web.interactive_panels` 是 Streamlit 专用适配层，只消费
 workflow API 和显式页面回调；领域规则、操作重放和 repair 语义不得放入该模块。
 
+React/SVG 或桌面编辑器应使用版本化协议读取状态并提交命令：
+
+```python
+from seattrellis.editing_protocol import (
+    EDITOR_PROTOCOL_VERSION,
+    EditorCommandEnvelope,
+)
+from seattrellis.web.editor_protocol import (
+    build_editor_state_for_web,
+    dispatch_editor_command_for_web,
+)
+
+state = build_editor_state_for_web(draft)
+command = EditorCommandEnvelope.parse_obj(
+    {
+        "kind": "seattrellis_editor_command",
+        "protocol_version": EDITOR_PROTOCOL_VERSION,
+        "command_id": "swap-001",
+        "draft_id": state.draft_id,
+        "base_revision": state.revision,
+        "action": "apply",
+        "operations": [
+            {
+                "kind": "swap_students",
+                "payload": {
+                    "first_student": "S001",
+                    "second_student": "S018",
+                },
+            }
+        ],
+    }
+)
+draft = dispatch_editor_command_for_web(
+    draft,
+    command,
+    output_dir="outputs/editor",
+)
+```
+
+一个 envelope 内的 operations 会原子执行，并作为一个批次撤销。错误 `draft_id`、
+旧 revision 或重复 `command_id` 会抛出 `EditorProtocolConflictError`；校验或执行
+失败时不会写入部分结果。字段与并发语义见[编辑器协议](editor-protocol.md)。
+
 读取 snapshot、candidate set 或 project 时应检查 `schema_version`。
 以下划线开头的函数属于内部实现，不在兼容承诺内。字段定义见
 [输入格式](input-format.zh.md)，版本策略见[版本与兼容](versioning.md)。

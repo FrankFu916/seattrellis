@@ -11,6 +11,7 @@ from typing import TypeVar
 SNAPSHOT_SCHEMA_VERSION = "1.0"
 CANDIDATE_SCHEMA_VERSION = "0.2.2"
 PROJECT_SCHEMA_VERSION = 1
+EDITOR_PROTOCOL_VERSION = "1.0"
 JSON_SCHEMA_DRAFT = "http://json-schema.org/draft-07/schema#"
 
 SchemaVersion = TypeVar("SchemaVersion", str, int)
@@ -73,6 +74,20 @@ JSON_SCHEMA_ARTIFACTS: tuple[JsonSchemaArtifact, ...] = (
         title="SeatTrellis Project",
         model_path="seattrellis.models.project:SeatTrellisProject",
         schema_version=PROJECT_SCHEMA_VERSION,
+    ),
+    JsonSchemaArtifact(
+        name="editor-command",
+        file_name="editor-command.schema.json",
+        title="SeatTrellis Editor Command",
+        model_path="seattrellis.editing_protocol:EditorCommandEnvelope",
+        schema_version=EDITOR_PROTOCOL_VERSION,
+    ),
+    JsonSchemaArtifact(
+        name="editor-state",
+        file_name="editor-state.schema.json",
+        title="SeatTrellis Editor State",
+        model_path="seattrellis.editing_protocol:EditorStateEnvelope",
+        schema_version=EDITOR_PROTOCOL_VERSION,
     ),
 )
 

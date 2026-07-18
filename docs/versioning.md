@@ -20,6 +20,7 @@ API 的不兼容变更必须通过新的 MAJOR 版本发布。
 | `SeatingSnapshot` | `"1.0"` | v0.1.0 |
 | `CandidateSet` / `PlanComparisonReport` | `"0.2.2"` | v0.2.2 |
 | `SeatTrellisProject` | `1` | v0.2.3 |
+| `EditorCommandEnvelope` / `EditorStateEnvelope` | `protocol_version: "1.0"` | v1.4 开发周期 |
 | `RuleSet` (JSON) | 无独立版本 | — |
 
 当前读取器只接受表中的版本。新增可选字段时可以保留版本号；字段改名、类型
@@ -31,12 +32,19 @@ API 的不兼容变更必须通过新的 MAJOR 版本发布。
 seattrellis schema export --output-dir schemas
 ```
 
+文档构建会把这些文件复制到站点的 `/schemas/` 路径，使每份 Schema 的 `$id`
+可以直接访问。
+
 当前 `schema migrate` 命令对现行版本执行验证与规范化写回，为未来旧版本迁移保留
 稳定入口：
 
 ```bash
 seattrellis schema migrate --input input.json --output output.json
 ```
+
+Editor command/state 是短期传输契约，不是长期保存的 snapshot 或 project 产物，
+因此不由 `schema migrate` 处理。客户端必须显式发送 `protocol_version`；不支持的
+版本会在执行命令前被拒绝。
 
 ## 命令行接口 (CLI)
 

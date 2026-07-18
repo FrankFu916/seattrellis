@@ -39,6 +39,9 @@
   syntax, and Web multi-selection with one-step undo/redo.
 - Added an accessible interactive seating grid for direct click-to-move,
   click-to-swap, and seat-lock toggling through the shared command log.
+- Added a versioned editor command/state protocol with atomic command batches,
+  optimistic revision checks, duplicate-command protection, minimized frontend
+  state, and committed JSON Schema documents.
 - Added an optional separately packaged Rust extension and explicit `native`
   solver selection while retaining the Python backends.
 

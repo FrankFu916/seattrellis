@@ -133,6 +133,8 @@ def test_web_editing_draft_replays_undo_and_redo(tmp_path) -> None:
         item.student_key: item.seat_id for item in original.assignments
     }
     draft = workflow.begin_web_editing(result)
+    assert draft.revision == 0
+    assert draft.draft_id
 
     edited = workflow.apply_web_edit(
         draft,
@@ -145,6 +147,8 @@ def test_web_editing_draft_replays_undo_and_redo(tmp_path) -> None:
 
     assert edited.can_undo is True
     assert edited.can_redo is False
+    assert edited.revision == 1
+    assert edited.draft_id == draft.draft_id
     edited_snapshot = workflow.selected_snapshot(edited.current_result)
     edited_seats = {
         item.student_key: item.seat_id for item in edited_snapshot.assignments
@@ -157,10 +161,12 @@ def test_web_editing_draft_replays_undo_and_redo(tmp_path) -> None:
     assert undone.current_result is result
     assert undone.can_undo is False
     assert undone.can_redo is True
+    assert undone.revision == 2
 
     redone = workflow.redo_web_edit(undone, output_dir=tmp_path / "edit")
     assert redone.can_undo is True
     assert redone.can_redo is False
+    assert redone.revision == 3
     redone_snapshot = workflow.selected_snapshot(redone.current_result)
     assert {
         item.student_key: item.seat_id for item in redone_snapshot.assignments

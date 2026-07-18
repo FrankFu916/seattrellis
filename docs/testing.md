@@ -14,6 +14,7 @@ mkdocs build --strict
 ```
 
 其中 Rust 测试只覆盖可选 native core，不代表默认 Python backend 被替换。
+文档构建完成后，`site/schemas/` 应包含 registry 中的全部公开 Schema。
 
 ## Web smoke 测试
 
@@ -42,6 +43,12 @@ python -m pytest tests/test_web_workflow.py
 撤销/重做，确保批次不会产生中间态。
 座位图测试会真实点击已占座位和空座完成移动，点击两名学生完成交换，并切换图上
 座位锁；同时验证锁定学生的座位按钮不可操作。
+
+编辑器协议 contract 测试覆盖九类 operation、必填版本字段、严格 ID/revision
+类型、旧 revision、错误 draft、重复 command ID、批次原子失败和按命令撤销/重做。
+状态测试还会遍历全部字段，确认不包含成绩、备注、特殊需求、身高、视力或任意学生
+扩展属性，并核对学生与座位关联一致。两份编辑器 JSON Schema 与 registry 生成结果
+逐字典比较，避免已提交契约漂移。
 
 浏览器级 E2E 仍是后续工作。引入 Playwright 时，建议先覆盖：
 

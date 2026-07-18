@@ -149,6 +149,8 @@ def _commands(
             [
                 "outputs/schemas/project.schema.json",
                 "outputs/schemas/seating-snapshot.schema.json",
+                "outputs/schemas/editor-command.schema.json",
+                "outputs/schemas/editor-state.schema.json",
             ],
         ),
         SmokeCommand(

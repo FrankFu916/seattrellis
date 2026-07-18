@@ -17,6 +17,8 @@ from seattrellis.io.project import load_project, write_project
 from seattrellis.models.project import SeatTrellisProject
 from seattrellis.schema import (
     CANDIDATE_SCHEMA_VERSION,
+    EDITOR_PROTOCOL_VERSION,
+    JSON_SCHEMA_DRAFT,
     PROJECT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
     json_schema_artifact_names,
@@ -125,6 +127,8 @@ def test_json_schema_files_match_registry() -> None:
         "candidate-set",
         "plan-comparison-report",
         "project",
+        "editor-command",
+        "editor-state",
     ]
     assert set(documents) == {
         "student.schema.json",
@@ -134,6 +138,8 @@ def test_json_schema_files_match_registry() -> None:
         "candidate-set.schema.json",
         "plan-comparison-report.schema.json",
         "project.schema.json",
+        "editor-command.schema.json",
+        "editor-state.schema.json",
     }
     assert documents["seating-snapshot.schema.json"]["$schema"]
     assert documents["seating-snapshot.schema.json"]["x-seattrellis-schema-version"] == (
@@ -144,6 +150,35 @@ def test_json_schema_files_match_registry() -> None:
     )
     assert documents["project.schema.json"]["x-seattrellis-schema-version"] == (
         PROJECT_SCHEMA_VERSION
+    )
+    for artifact in ("editor-command", "editor-state"):
+        document = documents[f"{artifact}.schema.json"]
+        assert document["$schema"] == JSON_SCHEMA_DRAFT
+        assert document["$id"].endswith(f"/{artifact}.schema.json")
+        assert document["x-seattrellis-artifact"] == artifact
+        assert document["x-seattrellis-schema-version"] == EDITOR_PROTOCOL_VERSION
+    command_schema = documents["editor-command.schema.json"]
+    assert {
+        "kind",
+        "protocol_version",
+        "command_id",
+        "draft_id",
+        "base_revision",
+        "action",
+    } <= set(command_schema["required"])
+    assert command_schema["properties"]["operations"]["maxItems"] == 100
+    assert command_schema["properties"]["command_id"]["minLength"] == 1
+    assert command_schema["properties"]["command_id"]["maxLength"] == 128
+    assert command_schema["allOf"][0]["then"]["properties"]["operations"][
+        "minItems"
+    ] == 1
+    assert command_schema["allOf"][1]["then"]["properties"]["operations"][
+        "maxItems"
+    ] == 0
+    assert all(
+        "kind" in definition["required"]
+        for name, definition in command_schema["definitions"].items()
+        if name.endswith("Operation")
     )
     for file_name, document in documents.items():
         committed = json.loads(Path("schemas", file_name).read_text(encoding="utf-8"))
