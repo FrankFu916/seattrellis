@@ -8,7 +8,7 @@
 | [v1.3.0](https://github.com/FrankFu916/seattrellis/milestone/1) | 导出与隐私 | 统一导出请求、CLI/Web 隐私选项、A4 页面设置、中英文导出 |
 | [v1.4.0](https://github.com/FrankFu916/seattrellis/milestone/2) | 内核边界与基准 | SolverBackend、规则编译、候选集报告、40/50/60 人基准、Rust spike |
 | [v1.5.0](https://github.com/FrankFu916/seattrellis/milestone/3) | 人工调整 | 锁定、交换、未入座区、撤销/重做、局部修复、操作日志 |
-| [v1.6.0](https://github.com/FrankFu916/seattrellis/milestone/4) | 可视化编辑与导入 | layout 编辑器、Excel 字段映射、增量更新、浏览器 E2E |
+| [v1.6.0](https://github.com/FrankFu916/seattrellis/milestone/4) | 可视化编辑与导入 | layout 编辑器、Excel 字段映射、增量更新、扩展浏览器 E2E |
 | [v1.7.0](https://github.com/FrankFu916/seattrellis/milestone/5) | 新规则与工作台 | 成绩位置/分布、师徒结对、多期轮换、历史与项目包 |
 | [v1.8.0](https://github.com/FrankFu916/seattrellis/milestone/6) | 桌面与高级导出 | pywebview 原型、安装包、SVG/PPTX、原生文件对话框 |
 

@@ -53,15 +53,26 @@ from seattrellis.web.interactive_panels import (
     render_repair_panel as _render_repair_panel,
 )
 from seattrellis.web.keys import (
+    PROJECT_EXPORT_PREFIX,
     PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
     PROJECT_EXPORT_DOWNLOAD_REPORT,
+    QUICK_CANDIDATE_SELECT,
     QUICK_CANDIDATE_COUNT_INPUT,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_DOWNLOAD_ARTIFACT,
     QUICK_EXPORT_DOWNLOAD_REPORT,
     QUICK_EXPORT_FORMAT_SELECT,
+    QUICK_EXPORT_PREFIX,
     QUICK_GENERATE_BUTTON,
+    QUICK_INSPECT_HISTORY_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
+    QUICK_RESULTS_STATUS,
+    QUICK_SOLVE_STATUS,
+    QUICK_STEP_RADIO,
+    UI_LANGUAGE_SELECT,
+    export_prepare_key,
+    export_prepared_download_key,
+    widget_region_key,
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
@@ -323,14 +334,17 @@ def _render_seat_map(snapshot, layout) -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
-def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candidate_selector") -> str | None:
+def _render_candidate_switcher(
+    result: WebSolveResult,
+    widget_key: str = QUICK_CANDIDATE_SELECT,
+) -> str | None:
     """Render candidate selector and return the chosen candidate ID."""
     if not result.is_candidate_set:
         return "recommended"
 
     options = build_candidate_selector(result.artifact, locale=_locale())
-    labels = [opt["label"] for opt in options]
     ids = [opt["id"] for opt in options]
+    labels_by_id = {opt["id"]: opt["label"] for opt in options}
 
     current = _ss("current_candidate_id")
     try:
@@ -338,17 +352,14 @@ def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candid
     except ValueError:
         idx = 0
 
-    selected_label = st.selectbox(
-        _t("candidate_choice"),
-        labels,
-        index=idx,
-        key=f"{widget_key}_{_locale()}",
-    )
-    try:
-        selected_idx = labels.index(selected_label)
-    except ValueError:
-        selected_idx = 0
-    selected_id = ids[selected_idx]
+    with st.container(key=widget_region_key(widget_key)):
+        selected_id = st.selectbox(
+            _t("candidate_choice"),
+            ids,
+            index=idx,
+            format_func=labels_by_id.__getitem__,
+            key=widget_key,
+        )
     st.session_state["current_candidate_id"] = selected_id
     return selected_id
 
@@ -437,7 +448,11 @@ def _render_exports(
 ) -> None:
     """Render download buttons for all export formats."""
     st.subheader(_t("exports"))
-    export_key = "project_export" if project_path is not None else "quick_export"
+    export_key = (
+        PROJECT_EXPORT_PREFIX
+        if project_path is not None
+        else QUICK_EXPORT_PREFIX
+    )
     export_formats = {
         "print-html": ("Print HTML", "text/html"),
         "pdf": ("PDF", "application/pdf"),
@@ -503,13 +518,14 @@ def _render_exports(
             and st.session_state[template_key] not in template_options
         ):
             st.session_state[template_key] = "public"
-        template = st.selectbox(
-            _t("export_template"),
-            template_options,
-            format_func=template_labels.__getitem__,
-            key=template_key,
-            disabled=not supports_privacy_options,
-        )
+        with st.container(key=widget_region_key(template_key)):
+            template = st.selectbox(
+                _t("export_template"),
+                template_options,
+                format_func=template_labels.__getitem__,
+                key=template_key,
+                disabled=not supports_privacy_options,
+            )
         defaults = PrivacyOptions.for_template(template)
         st.caption(_t("privacy_defaults"))
         privacy_columns = st.columns(2)
@@ -547,22 +563,26 @@ def _render_exports(
                 disabled=not defaults.show_vision or not supports_privacy_options,
                 key=f"{export_key}_hide_vision_{template}",
             )
-            anonymize = st.checkbox(
-                _t("anonymize_names"),
-                value=False,
-                disabled=not supports_privacy_options,
-                key=f"{export_key}_anonymize_{template}",
-            )
+            anonymize_key = f"{export_key}_anonymize_{template}"
+            with st.container(key=widget_region_key(anonymize_key)):
+                anonymize = st.checkbox(
+                    _t("anonymize_names"),
+                    value=False,
+                    disabled=not supports_privacy_options,
+                    key=anonymize_key,
+                )
 
         page_columns = st.columns(3)
         with page_columns[0]:
-            orientation = st.selectbox(
-                _t("page_orientation"),
-                ["portrait", "landscape"],
-                format_func=lambda value: _t(f"orientation_{value}"),
-                key=f"{export_key}_orientation",
-                disabled=not supports_privacy_options,
-            )
+            orientation_key = f"{export_key}_orientation"
+            with st.container(key=widget_region_key(orientation_key)):
+                orientation = st.selectbox(
+                    _t("page_orientation"),
+                    ["portrait", "landscape"],
+                    format_func=lambda value: _t(f"orientation_{value}"),
+                    key=orientation_key,
+                    disabled=not supports_privacy_options,
+                )
         with page_columns[1]:
             page_scale = st.number_input(
                 _t("page_scale"),
@@ -574,14 +594,20 @@ def _render_exports(
                 disabled=not supports_privacy_options,
             )
         with page_columns[2]:
-            export_locale = st.selectbox(
-                _t("export_locale"),
-                ["zh", "en"],
-                index=0 if _locale() == "zh" else 1,
-                format_func=lambda value: "简体中文" if value == "zh" else "English",
-                key=f"{export_key}_locale",
-                disabled=not supports_privacy_options,
-            )
+            locale_key = f"{export_key}_locale"
+            with st.container(key=widget_region_key(locale_key)):
+                export_locale = st.selectbox(
+                    _t("export_locale"),
+                    ["zh", "en"],
+                    index=0 if _locale() == "zh" else 1,
+                    format_func=(
+                        lambda value: "简体中文"
+                        if value == "zh"
+                        else "English"
+                    ),
+                    key=locale_key,
+                    disabled=not supports_privacy_options,
+                )
 
     privacy = PrivacyOptions(
         hide_scores=hide_scores,
@@ -615,13 +641,14 @@ def _render_exports(
         if project_path is not None
         else QUICK_EXPORT_DOWNLOAD_ARTIFACT
     )
-    st.download_button(
-        _t("download", label=artifact_label),
-        data=artifact_bytes,
-        file_name=result.artifact_path.name,
-        mime="application/json",
-        key=artifact_download_key,
-    )
+    with st.container(key=widget_region_key(artifact_download_key)):
+        st.download_button(
+            _t("download", label=artifact_label),
+            data=artifact_bytes,
+            file_name=result.artifact_path.name,
+            mime="application/json",
+            key=artifact_download_key,
+        )
     if result.report_path is not None:
         if report_bytes is None:
             try:
@@ -634,13 +661,14 @@ def _render_exports(
                 if project_path is not None
                 else QUICK_EXPORT_DOWNLOAD_REPORT
             )
-            st.download_button(
-                _t("download", label="plan report JSON"),
-                data=report_bytes,
-                file_name=result.report_path.name,
-                mime="application/json",
-                key=report_download_key,
-            )
+            with st.container(key=widget_region_key(report_download_key)):
+                st.download_button(
+                    _t("download", label="plan report JSON"),
+                    data=report_bytes,
+                    file_name=result.report_path.name,
+                    mime="application/json",
+                    key=report_download_key,
+                )
 
     export_signature = (
         str(result.artifact_path),
@@ -661,10 +689,13 @@ def _render_exports(
         export_locale,
     )
     prepared_key = f"{export_key}_prepared_download"
-    if st.button(
-        _t("prepare_export", label=export_label),
-        key=f"{export_key}_prepare_{output_format}",
-    ):
+    prepare_widget_key = export_prepare_key(export_key, output_format)
+    with st.container(key=widget_region_key(prepare_widget_key)):
+        prepare_requested = st.button(
+            _t("prepare_export", label=export_label),
+            key=prepare_widget_key,
+        )
+    if prepare_requested:
         st.session_state.pop(prepared_key, None)
         try:
             request = None
@@ -723,17 +754,19 @@ def _render_exports(
 
     prepared = st.session_state.get(prepared_key)
     if prepared and prepared.get("signature") == export_signature:
-        st.success(_t("export_ready", label=prepared["label"]))
-        try:
-            st.download_button(
-                _t("download", label=prepared["label"]),
-                data=prepared["data"],
-                file_name=prepared["file_name"],
-                mime=prepared["mime"],
-                key=f"{export_key}_download_prepared",
-            )
-        except (KeyError, TypeError) as exc:
-            st.warning(_t("export_unavailable", error=exc))
+        download_widget_key = export_prepared_download_key(export_key)
+        with st.container(key=widget_region_key(download_widget_key)):
+            st.success(_t("export_ready", label=prepared["label"]))
+            try:
+                st.download_button(
+                    _t("download", label=prepared["label"]),
+                    data=prepared["data"],
+                    file_name=prepared["file_name"],
+                    mime=prepared["mime"],
+                    key=download_widget_key,
+                )
+            except (KeyError, TypeError) as exc:
+                st.warning(_t("export_unavailable", error=exc))
 
 
 # ---------------------------------------------------------------------------
@@ -753,14 +786,15 @@ def _render_quick_solve_tab() -> None:
     current_step = _ss("quick_step_value")
     if current_step not in step_labels:
         current_step = "load"
-    step = st.radio(
-        _t("steps"),
-        ["load", "solve", "results"],
-        index=["load", "solve", "results"].index(current_step),
-        format_func=step_labels.__getitem__,
-        horizontal=True,
-        key=f"quick_step_{_locale()}",
-    )
+    with st.container(key=widget_region_key(QUICK_STEP_RADIO)):
+        step = st.radio(
+            _t("steps"),
+            ["load", "solve", "results"],
+            index=["load", "solve", "results"].index(current_step),
+            format_func=step_labels.__getitem__,
+            horizontal=True,
+            key=QUICK_STEP_RADIO,
+        )
     st.session_state["quick_step_value"] = step
 
     # --- Step 1: Load data ---
@@ -785,12 +819,14 @@ def _render_step_load_data() -> None:
     st.markdown(_t("quick_start"))
     demo_col1, demo_col2 = st.columns([1, 3])
     with demo_col1:
-        if st.button(
-            _t("load_demo"),
-            type="primary",
-            width="stretch",
-            key=QUICK_LOAD_DEMO_BUTTON,
-        ):
+        with st.container(key=widget_region_key(QUICK_LOAD_DEMO_BUTTON)):
+            load_demo = st.button(
+                _t("load_demo"),
+                type="primary",
+                width="stretch",
+                key=QUICK_LOAD_DEMO_BUTTON,
+            )
+        if load_demo:
             demo = demo_paths()
             if demo["students_csv"] and demo["layout"]:
                 st.session_state["demo_loaded"] = True
@@ -975,7 +1011,14 @@ def _render_step_solve() -> None:
     )
     if has_history:
         with st.expander(_t("history_quality"), expanded=False):
-            if st.button(_t("inspect_history"), key="inspect_history"):
+            with st.container(
+                key=widget_region_key(QUICK_INSPECT_HISTORY_BUTTON)
+            ):
+                inspect_history = st.button(
+                    _t("inspect_history"),
+                    key=QUICK_INSPECT_HISTORY_BUTTON,
+                )
+            if inspect_history:
                 try:
                     (
                         students_path,
@@ -1022,14 +1065,15 @@ def _render_step_solve() -> None:
                     st.success(_t("history_consistent"))
 
     # Solve settings
-    candidate_count = st.number_input(
-        _t("candidate_count"),
-        min_value=1,
-        max_value=20,
-        value=3,
-        step=1,
-        key=QUICK_CANDIDATE_COUNT_INPUT,
-    )
+    with st.container(key=widget_region_key(QUICK_CANDIDATE_COUNT_INPUT)):
+        candidate_count = st.number_input(
+            _t("candidate_count"),
+            min_value=1,
+            max_value=20,
+            value=3,
+            step=1,
+            key=QUICK_CANDIDATE_COUNT_INPUT,
+        )
     seed_enabled = st.checkbox(_t("custom_seed"), key="quick_seed_enabled")
     seed = st.number_input(
         "seed",
@@ -1069,12 +1113,14 @@ def _render_step_solve() -> None:
         _render_error(exc)
 
     ready = has_rules and has_files
-    if st.button(
-        _t("generate"),
-        type="primary",
-        disabled=not ready,
-        key=QUICK_GENERATE_BUTTON,
-    ):
+    with st.container(key=widget_region_key(QUICK_GENERATE_BUTTON)):
+        generate_requested = st.button(
+            _t("generate"),
+            type="primary",
+            disabled=not ready,
+            key=QUICK_GENERATE_BUTTON,
+        )
+    if generate_requested:
         _reset_solve_state()
         try:
             output_dir = _make_persistent_tempdir()
@@ -1113,7 +1159,8 @@ def _render_step_solve() -> None:
 
             st.session_state["layout_loaded"] = load_layout(layout_path)
 
-            st.success(_t("solve_complete_next"))
+            with st.container(key=widget_region_key(QUICK_SOLVE_STATUS)):
+                st.success(_t("solve_complete_next"))
         except (
             InputFileError,
             MissingOptionalDependencyError,
@@ -1136,16 +1183,17 @@ def _render_step_results() -> None:
     layout = _ss("layout_loaded")
 
     # --- Success / warnings ---
-    if result.is_candidate_set:
-        st.success(
-            _t(
-                "candidate_result",
-                count=len(result.artifact.candidates),
-                candidate_id=result.artifact.recommended_candidate_id,
+    with st.container(key=widget_region_key(QUICK_RESULTS_STATUS)):
+        if result.is_candidate_set:
+            st.success(
+                _t(
+                    "candidate_result",
+                    count=len(result.artifact.candidates),
+                    candidate_id=result.artifact.recommended_candidate_id,
+                )
             )
-        )
-    else:
-        st.success(_t("single_result", status=result.artifact.solver_status))
+        else:
+            st.success(_t("single_result", status=result.artifact.solver_status))
 
     if result.warnings:
         st.warning("\n".join(result.warnings))
@@ -1401,11 +1449,13 @@ st.set_page_config(
     page_icon="🏫",
     layout="wide",
 )
-language_label = st.sidebar.selectbox(
-    "语言 / Language",
-    list(LANGUAGE_OPTIONS),
-    key="ui_language_choice",
-)
+with st.sidebar:
+    with st.container(key=widget_region_key(UI_LANGUAGE_SELECT)):
+        language_label = st.selectbox(
+            "语言 / Language",
+            list(LANGUAGE_OPTIONS),
+            key=UI_LANGUAGE_SELECT,
+        )
 st.session_state["ui_locale"] = LANGUAGE_OPTIONS[language_label]
 st.markdown(accessibility_styles(), unsafe_allow_html=True)
 st.markdown(

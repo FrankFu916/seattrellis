@@ -1,7 +1,7 @@
 # 测试与验收策略
 
-SeatTrellis 的测试分为四层：单元测试、应用级 smoke、性能基准和发布前人工验收。
-普通开发可以先跑较快的子集，发布前再跑完整清单。
+SeatTrellis 的测试分为五层：单元测试、应用级 smoke、浏览器 E2E、性能基准和
+发布前人工验收。普通开发可以先跑较快的子集，发布前再跑完整清单。
 
 ## 本地自动测试
 
@@ -50,13 +50,41 @@ python -m pytest tests/test_web_workflow.py
 扩展属性，并核对学生与座位关联一致。两份编辑器 JSON Schema 与 registry 生成结果
 逐字典比较，避免已提交契约漂移。
 
-浏览器级 E2E 仍是后续工作。引入 Playwright 时，建议先覆盖：
+## 浏览器级 E2E
 
-1. Demo → 求解 → 查看结果 → 生成 Print HTML；
-2. 上传 CSV/JSON → 求解 → 下载 candidate set；
-3. Project 文件 → validate → solve → export；
-4. 导出隐私字段检查；
-5. 主要错误路径和浏览器可访问名称。
+真实浏览器测试与 AppTest 分开安装和执行：
+
+```bash
+python -m pip install -e ".[web,e2e]"
+python -m playwright install chromium
+python -m pytest e2e --browser=chromium
+```
+
+Linux 开发机若尚未安装 Chromium 的系统依赖，使用
+`python -m playwright install --with-deps chromium`。CI 通过
+`e2e/constraints.txt` 固定已验证的 Streamlit 与 Playwright 组合；项目 extras
+仍保留兼容范围，便于本地验证更新版本。
+
+当前黄金路径会启动独立的 Streamlit 进程，并真实执行：
+
+1. 切换英文界面并加载 Demo；
+2. 使用 fallback backend 生成三个候选方案；
+3. 下载并解析 candidate set JSON；
+4. 启用 public 模板、姓名匿名化、A4 横向和英文内容；
+5. 生成并下载 Print HTML；
+6. 检查匿名姓名存在，原姓名、成绩、身高、视力和特殊需求没有泄漏；
+7. 确认页面没有 Streamlit exception，服务在下载后仍能通过 health check。
+
+测试使用应用自有的 keyed region 与可访问名称定位控件，不依赖控件顺序或中文
+文案。CI 在 Ubuntu、Python 3.12 和 Chromium 上单独执行这组测试；失败时上传
+浏览器 trace、截图和 Streamlit 服务日志。
+
+后续浏览器覆盖按以下顺序扩充：
+
+1. 上传 CSV/JSON → 求解 → 下载 candidate set；
+2. Project 文件 → validate → solve → export；
+3. 拖拽或点击调整 → undo/redo → constraint diagnosis；
+4. 主要错误路径和键盘操作。
 
 ## 性能基准
 

@@ -28,6 +28,13 @@ python scripts/check_repository_hygiene.py
 ```
 
 Please add or update tests for any new rule, importer, exporter, or CLI behavior.
+Changes to a browser-facing workflow should also run the real-browser suite:
+
+```bash
+python -m pip install -e ".[web,e2e]"
+python -m playwright install chromium
+python -m pytest e2e --browser=chromium
+```
 
 Changes to solver behavior must update the
 [rule capability audit](docs/rule-capability-audit.md). A rule is considered
@@ -51,6 +58,7 @@ When opening an Issue:
 Before opening a Pull Request:
 
 - run `pytest`;
+- run the browser suite when Web workflow behavior changes;
 - keep core solving logic independent from CLI and Streamlit UI;
 - update README or examples if user-facing behavior changes;
 - keep examples fictional;

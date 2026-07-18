@@ -51,7 +51,9 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-`all` extra 包含 OR-Tools、Excel、PNG、PDF、Word 和 Streamlit 相关依赖；`dev` extra 包含测试和构建工具，`docs` extra 用于构建文档站。
+`all` extra 包含 OR-Tools、Excel、PNG、PDF、Word 和 Streamlit 相关依赖；
+`dev` extra 包含测试和构建工具，`e2e` extra 用于真实浏览器验收，`docs`
+extra 用于构建文档站。
 
 ### 网页端
 

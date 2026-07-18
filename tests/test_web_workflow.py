@@ -28,14 +28,18 @@ from seattrellis.web.keys import (
     QUICK_EDIT_APPLY_BUTTON,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_FORMAT_SELECT,
+    QUICK_EXPORT_PREFIX,
     QUICK_GENERATE_BUTTON,
+    QUICK_INSPECT_HISTORY_BUTTON,
     QUICK_LOAD_DEMO_BUTTON,
     QUICK_LOCK_SEAT_BUTTON,
     QUICK_LOCK_STUDENT_BUTTON,
     QUICK_REPAIR_BUTTON,
     QUICK_REDO_BUTTON,
     QUICK_SWAP_BUTTON,
+    QUICK_STEP_RADIO,
     QUICK_UNDO_BUTTON,
+    export_prepare_key,
 )
 
 
@@ -613,7 +617,7 @@ def test_streamlit_demo_rules_and_history_preview() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
 
     assert not app.exception
@@ -622,7 +626,7 @@ def test_streamlit_demo_rules_and_history_preview() -> None:
         "History 质量检查",
     ]
 
-    next(button for button in app.button if button.key == "inspect_history").click()
+    _control_by_key(app.button, QUICK_INSPECT_HISTORY_BUTTON).click()
     app.run(timeout=10)
 
     assert not app.exception
@@ -645,12 +649,12 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(2)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
-    app.radio[0].set_value("results")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
 
     assert not app.exception
@@ -685,7 +689,10 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
 
     _control_by_key(app.checkbox, QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX).set_value(True)
     app.run(timeout=30)
-    _control_by_key(app.button, "quick_export_prepare_html").click()
+    _control_by_key(
+        app.button,
+        export_prepare_key(QUICK_EXPORT_PREFIX, "html"),
+    ).click()
     app.run(timeout=30)
 
     assert not app.exception
@@ -699,12 +706,12 @@ def test_streamlit_results_can_run_repair() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
-    app.radio[0].set_value("results")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
     _control_by_key(app.selectbox, "quick_repair_backend").set_value("fallback")
     _control_by_key(app.button, QUICK_REPAIR_BUTTON).click()
@@ -724,12 +731,12 @@ def test_streamlit_results_can_swap_undo_and_redo() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
-    app.radio[0].set_value("results")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
 
     _control_by_key(app.button, QUICK_SWAP_BUTTON).click()
@@ -755,12 +762,12 @@ def test_streamlit_results_can_move_unseat_and_reseat_student() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
-    app.radio[0].set_value("results")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
 
     original = app.session_state["result"].artifact
@@ -813,12 +820,12 @@ def test_streamlit_locks_survive_undo_redo_and_repair() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
-    app.radio[0].set_value("results")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
 
     original = app.session_state["result"].artifact
@@ -887,12 +894,12 @@ def test_streamlit_batch_move_is_one_undoable_operation() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
-    app.radio[0].set_value("results")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
 
     original = app.session_state["result"].artifact
@@ -947,12 +954,12 @@ def test_streamlit_seat_canvas_moves_swaps_and_toggles_lock() -> None:
     app.run(timeout=10)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
-    app.radio[0].set_value("solve")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
     _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
     app.run(timeout=30)
-    app.radio[0].set_value("results")
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
 
     original = app.session_state["result"].artifact
@@ -1047,8 +1054,9 @@ def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:
     assert not app.exception
     assert [title.value for title in app.title] == ["🏫 SeatTrellis"]
     assert [tab.label for tab in app.tabs] == ["Quick solve", "Project workspace"]
-    assert app.radio[0].label == "Steps"
-    assert app.radio[0].options == [
+    step_radio = _control_by_key(app.radio, QUICK_STEP_RADIO)
+    assert step_radio.label == "Steps"
+    assert step_radio.options == [
         "1. Load data",
         "2. Configure & solve",
         "3. Review & export",
@@ -1057,7 +1065,7 @@ def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:
         "Web settings JSON"
     )
 
-    app.radio[0].set_value("solve")
+    step_radio.set_value("solve")
     app.run(timeout=10)
     assert not app.exception
     assert any(message.value.startswith("Upload both") for message in app.warning)

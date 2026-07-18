@@ -28,7 +28,9 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-The `all` extra includes OR-Tools, Excel, PNG, and Streamlit dependencies. The `dev` extra includes test and build tools.
+The `all` extra includes OR-Tools, Excel, PNG, and Streamlit dependencies.
+The `dev` extra includes test and build tools, while the `e2e` extra installs
+the real-browser acceptance runner.
 
 ### Web UI
 

@@ -32,7 +32,12 @@
 - [ ] Run `seattrellis schema migrate --input examples/history/week1.snapshot.json --output outputs/week1.migrated.snapshot.json`.
 - [ ] Run `python scripts/benchmark_solver.py --sizes 40,50,60 --backends fallback --candidates 1 --time-limit 10 --output outputs/benchmark-solver.json --markdown-output outputs/benchmark-solver.md`.
 - [ ] Run `pytest tests/test_web_workflow.py`.
+- [ ] Run `python -m pip install -e ".[web,e2e]"`.
+- [ ] Run `python -m playwright install chromium`.
+- [ ] On Linux, run `python -m playwright install --with-deps chromium`.
+- [ ] Run `python -m pytest e2e --browser=chromium`.
 - [ ] Launch `streamlit run src/seattrellis/web/app.py` and confirm the quick-solve and project tabs load.
+- [ ] Build from a clean checkout so untracked files matched by `MANIFEST.in` cannot enter the source distribution.
 - [ ] Run `python -m build`.
 - [ ] Run `python scripts/check_release_version.py`.
 

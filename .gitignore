@@ -10,6 +10,7 @@ dist/
 site/
 build/
 target/
+test-results/
 outputs/
 exports/
 snapshots/

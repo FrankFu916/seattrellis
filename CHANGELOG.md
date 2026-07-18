@@ -44,6 +44,9 @@
   state, and committed JSON Schema documents.
 - Added an optional separately packaged Rust extension and explicit `native`
   solver selection while retaining the Python backends.
+- Added a real-browser Playwright acceptance test for the Web Demo-to-export
+  workflow, including process cleanup, download and privacy checks, health
+  verification, and CI failure artifacts.
 
 ### Changed
 
@@ -55,6 +58,8 @@
   resolves to a release that fixes CVE-2026-0994.
 - Documented the release environments and the TestPyPI/PyPI Trusted Publishing
   process.
+- Raised the Web extra's minimum Streamlit version to 1.50, matching the
+  keyed-widget identity and layout behavior used by the application.
 
 ## 1.2.3 - 2026-07-03
 
