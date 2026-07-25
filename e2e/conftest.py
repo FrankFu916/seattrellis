@@ -112,9 +112,9 @@ def browser_context_args(
     }
 
 
-@pytest.fixture(scope="session")
-def web_server() -> WebServer:
-    """Start Streamlit once and retain its log as a CI failure artifact."""
+@pytest.fixture
+def web_server(request: pytest.FixtureRequest) -> WebServer:
+    """Start an isolated Streamlit process and retain its diagnostic log."""
 
     results_dir = Path(
         os.environ.get("SEATTRELLIS_E2E_RESULTS", "test-results")
@@ -123,7 +123,11 @@ def web_server() -> WebServer:
     runtime_dir = Path(
         tempfile.mkdtemp(prefix="web-runtime-", dir=results_dir)
     )
-    log_path = results_dir / "web-server.log"
+    test_name = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "-"
+        for character in request.node.name
+    ).strip("-")
+    log_path = results_dir / f"web-server-{test_name}.log"
     port = _reserve_local_port()
     url = f"http://127.0.0.1:{port}"
     health_url = f"{url}/_stcore/health"
@@ -202,4 +206,11 @@ def web_server() -> WebServer:
             server.assert_healthy()
             yield server
         finally:
+            unexpected_return_code = process.poll()
+            if unexpected_return_code is not None:
+                with log_path.open("a", encoding="utf-8") as diagnostics:
+                    diagnostics.write(
+                        "\nStreamlit exited unexpectedly with code "
+                        f"{unexpected_return_code}.\n"
+                    )
             _stop_process(process)
