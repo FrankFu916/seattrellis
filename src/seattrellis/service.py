@@ -679,13 +679,16 @@ def run_doctor() -> str:
             extras_status.append((extra, "❌", package_name))
 
     lines.append("")
-    lines.append("  Optional extras:")
+    lines.append("  Optional extras (installed packages):")
     for extra, status, pkg in extras_status:
         lines.append(f"    {status} {extra:8s} ({pkg})")
 
-    examples_dir = Path(__file__).resolve().parents[2] / "examples"
+    examples_dir = Path.cwd() / "examples"
+    source_examples_dir = Path(__file__).resolve().parents[2] / "examples"
+    if not examples_dir.is_dir() and source_examples_dir.is_dir():
+        examples_dir = source_examples_dir
     lines.append("")
-    lines.append("  Examples:")
+    lines.append(f"  Examples:     {examples_dir}")
     for fname in [
         "students.csv",
         "classroom.json",
@@ -722,7 +725,9 @@ def run_doctor() -> str:
     lines.append(f"    Native core: {native_line}")
 
     lines.append("")
-    lines.append("  Privacy: all examples/ use fictional data only.")
+    lines.append(
+        "  Privacy: bundled demo data is fictional; keep real classroom data private."
+    )
     lines.append("=" * 52)
     return "\n".join(lines)
 

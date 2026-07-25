@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.3.0 - 2026-07-25
+
 ### Added
 
 - Added the shared `ExportRequest`, `PrivacyOptions`, and `PageOptions`
@@ -76,6 +78,11 @@
   invariant backed by sensitive-field regression coverage.
 - `doctor` now checks installed package metadata without importing optional
   native or Web runtimes into the diagnostic process.
+
+### Fixed
+
+- `doctor` now checks installed package metadata without importing optional
+  native libraries, and reports demo files from the current workspace.
 
 ## 1.2.3 - 2026-07-03
 
