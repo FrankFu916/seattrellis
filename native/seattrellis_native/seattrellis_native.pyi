@@ -1,3 +1,6 @@
+__version__: str
+NATIVE_API_VERSION: int
+
 def assignment_is_unique(
     student_count: int,
     seat_count: int,
@@ -5,8 +8,8 @@ def assignment_is_unique(
 ) -> bool: ...
 
 def seat_distance(
-    first_row: float,
-    first_col: float,
-    second_row: float,
-    second_col: float,
+    first_x: float,
+    first_y: float,
+    second_x: float,
+    second_y: float,
 ) -> float: ...

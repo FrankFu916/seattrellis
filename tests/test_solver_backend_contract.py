@@ -7,7 +7,11 @@ from seattrellis.io.students import read_students
 from seattrellis.scoring import evaluate_hard_constraints
 from seattrellis.solver import native_backend
 from seattrellis.solver import solve_seating
-from seattrellis.solver.native import native_core_status
+from seattrellis.solver.native import (
+    EXPECTED_NATIVE_API_VERSION,
+    native_core_status,
+    require_native_core,
+)
 
 
 def _fixture_problem():
@@ -34,6 +38,7 @@ def test_native_backend_contract_with_fake_native_core(monkeypatch) -> None:
 
     class FakeNativeCore:
         __version__ = "test"
+        NATIVE_API_VERSION = EXPECTED_NATIVE_API_VERSION
 
         @staticmethod
         def assignment_is_unique(student_count: int, seat_count: int, assignments: list[tuple[int, int]]) -> bool:
@@ -54,7 +59,12 @@ def test_native_backend_contract_with_fake_native_core(monkeypatch) -> None:
         backend="native",
     )
 
-    _assert_solution_contract(solution, students, layout, rules, "native")
+    _assert_solution_contract(solution, students, layout, rules, "fallback")
+    assert solution.metrics["solver"] == "fallback-heuristic+native-validator"
+    assert solution.metrics["solver_backend_requested"] == "native"
+    assert solution.metrics["solver_validation_backend"] == "native"
+    assert solution.metrics["native_core"]["api_version"] == EXPECTED_NATIVE_API_VERSION
+    assert solution.metrics["native_core"]["role"] == "post-solve-assignment-validator"
     assert solution.metrics["native_core"]["validated_unique_assignment"] is True
 
 
@@ -64,6 +74,15 @@ def test_native_backend_contract_with_fake_native_core(monkeypatch) -> None:
 )
 def test_native_backend_contract_with_installed_extension() -> None:
     students, layout, rules = _fixture_problem()
+    native_core = require_native_core()
+
+    assert native_core.NATIVE_API_VERSION == EXPECTED_NATIVE_API_VERSION
+    assert native_core.seat_distance(
+        first_x=1.0,
+        first_y=1.0,
+        second_x=4.0,
+        second_y=5.0,
+    ) == 5.0
 
     solution = solve_seating(
         students,
@@ -73,7 +92,11 @@ def test_native_backend_contract_with_installed_extension() -> None:
         backend="native",
     )
 
-    _assert_solution_contract(solution, students, layout, rules, "native")
+    _assert_solution_contract(solution, students, layout, rules, "fallback")
+    assert solution.metrics["solver"] == "fallback-heuristic+native-validator"
+    assert solution.metrics["solver_backend_requested"] == "native"
+    assert solution.metrics["solver_validation_backend"] == "native"
+    assert solution.metrics["native_core"]["api_version"] == EXPECTED_NATIVE_API_VERSION
     assert solution.metrics["native_core"]["validated_unique_assignment"] is True
 
 

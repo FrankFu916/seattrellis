@@ -45,11 +45,14 @@ def solve_with_native(
         raise SeatTrellisSolveError("Native hard-constraint verification failed: assignment is not unique.")
     solution.metrics.update(
         {
-            "solver": "native-spike+fallback-heuristic",
-            "solver_backend_effective": "native",
+            "solver": "fallback-heuristic+native-validator",
+            "solver_backend_effective": "fallback",
+            "solver_validation_backend": "native",
             "native_core": {
                 "module": "seattrellis_native",
                 "version": getattr(native_core, "__version__", None),
+                "api_version": getattr(native_core, "NATIVE_API_VERSION", None),
+                "role": "post-solve-assignment-validator",
                 "validated_unique_assignment": True,
             },
         }

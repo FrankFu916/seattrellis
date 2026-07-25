@@ -1,3 +1,5 @@
+pub const NATIVE_API_VERSION: u32 = 1;
+
 pub fn assignment_is_unique(
     student_count: usize,
     seat_count: usize,
@@ -21,27 +23,24 @@ pub fn assignment_is_unique(
     seen_students.into_iter().all(|seen| seen)
 }
 
-pub fn seat_distance(
-    first_row: f64,
-    first_col: f64,
-    second_row: f64,
-    second_col: f64,
-) -> Option<f64> {
-    if !(first_row.is_finite()
-        && first_col.is_finite()
-        && second_row.is_finite()
-        && second_col.is_finite())
+pub fn seat_distance(first_x: f64, first_y: f64, second_x: f64, second_y: f64) -> Option<f64> {
+    if !(first_x.is_finite() && first_y.is_finite() && second_x.is_finite() && second_y.is_finite())
     {
         return None;
     }
-    let row_delta = first_row - second_row;
-    let col_delta = first_col - second_col;
-    Some((row_delta * row_delta + col_delta * col_delta).sqrt())
+    let x_delta = first_x - second_x;
+    let y_delta = first_y - second_y;
+    Some((x_delta * x_delta + y_delta * y_delta).sqrt())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{assignment_is_unique, seat_distance};
+    use super::{assignment_is_unique, seat_distance, NATIVE_API_VERSION};
+
+    #[test]
+    fn exposes_expected_native_api_version() {
+        assert_eq!(NATIVE_API_VERSION, 1);
+    }
 
     #[test]
     fn accepts_complete_unique_assignment() {

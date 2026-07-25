@@ -4,12 +4,14 @@ import builtins
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
 from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service import run_doctor
+from seattrellis.solver import native as native_adapter
 from seattrellis.solver import resolve_solver_backend, solve_seating
 from seattrellis.solver import native_backend, ortools_backend
 
@@ -62,6 +64,66 @@ def test_explicit_native_reports_missing_extension(monkeypatch) -> None:
 
     with pytest.raises(MissingOptionalDependencyError, match="Rust native backend"):
         solve_seating(students, layout, RuleSet(), backend="native")
+
+
+def test_native_core_status_accepts_matching_api(monkeypatch) -> None:
+    core = SimpleNamespace(
+        NATIVE_API_VERSION=1,
+        __version__="test",
+        assignment_is_unique=lambda *_args: True,
+        seat_distance=lambda *_args: 0.0,
+    )
+    monkeypatch.setattr(native_adapter, "_load_native_core", lambda: core)
+
+    status = native_adapter.native_core_status()
+
+    assert status.available is True
+    assert status.version == "test"
+    assert status.api_version == native_adapter.EXPECTED_NATIVE_API_VERSION
+    assert status.error is None
+
+
+@pytest.mark.parametrize("api_version", [None, True, 0, 2, "1"])
+def test_native_core_status_rejects_incompatible_api(monkeypatch, api_version) -> None:
+    core = SimpleNamespace(
+        __version__="test",
+        assignment_is_unique=lambda *_args: True,
+        seat_distance=lambda *_args: 0.0,
+    )
+    if api_version is not None:
+        core.NATIVE_API_VERSION = api_version
+    monkeypatch.setattr(native_adapter, "_load_native_core", lambda: core)
+
+    status = native_adapter.native_core_status()
+
+    assert status.available is False
+    assert status.api_version is None
+    assert "Incompatible SeatTrellis native core API" in (status.error or "")
+
+
+def test_require_native_core_rejects_incompatible_installed_extension(monkeypatch) -> None:
+    core = SimpleNamespace(
+        NATIVE_API_VERSION=2,
+        __version__="old",
+        assignment_is_unique=lambda *_args: True,
+        seat_distance=lambda *_args: 0.0,
+    )
+    monkeypatch.setattr(native_adapter, "_load_native_core", lambda: core)
+
+    with pytest.raises(ValueError, match="expected 1, found 2"):
+        native_adapter.require_native_core()
+
+
+def test_require_native_core_rejects_incomplete_api(monkeypatch) -> None:
+    core = SimpleNamespace(
+        NATIVE_API_VERSION=1,
+        __version__="incomplete",
+        assignment_is_unique=lambda *_args: True,
+    )
+    monkeypatch.setattr(native_adapter, "_load_native_core", lambda: core)
+
+    with pytest.raises(ValueError, match=r"missing required callable\(s\): seat_distance"):
+        native_adapter.require_native_core()
 
 
 def test_ortools_unknown_status_is_not_reported_as_infeasible(monkeypatch) -> None:
