@@ -78,18 +78,18 @@
 ## Release
 
 - [ ] Review `CHANGELOG.md`.
-- [ ] For the first release, confirm the TestPyPI and PyPI Trusted Publishers
+- [ ] For the first PyPI release, confirm the TestPyPI and PyPI Trusted Publishers
       described in `docs/publishing.md` are configured.
-- [ ] Manually publish the candidate build to TestPyPI and verify installation
-      in a clean environment.
-- [ ] Create and push the tag:
-
-```bash
-git tag -a v1.3.0 -m "SeatTrellis v1.3.0"
-git push origin v1.3.0
-```
-
-- [ ] Create a GitHub Release for `v1.3.0`.
-- [ ] Confirm the `Publish distributions` workflow passed for the GitHub Release.
-- [ ] Confirm the TestPyPI installation verification job passed.
+- [ ] Publish a uniquely versioned candidate such as `1.3.0rc1` to TestPyPI;
+      confirm its installation-verification job passed in a clean environment.
+- [ ] Confirm the reviewed release commit has restored both package version fields
+      to `1.3.0`, then run `python scripts/check_release_version.py --tag v1.3.0`.
+- [ ] Create a draft GitHub Release targeting the reviewed `main` commit, with tag
+      `v1.3.0` and title `SeatTrellis v1.3.0`.
 - [ ] Include a short privacy note in the release description.
+- [ ] Publish the GitHub Release.
+- [ ] Confirm every `Publish distributions` job passed, including PyPI publication,
+      clean installation verification, and Release asset upload.
+- [ ] Confirm the GitHub Release contains the wheel, sdist, and `SHA256SUMS`.
+- [ ] Confirm `pip install seattrellis==1.3.0`, `seattrellis --version`, and
+      `seattrellis --help` work in a clean environment.
