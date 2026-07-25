@@ -140,7 +140,7 @@ jobs:
           --tracing=retain-on-failure
           --screenshot=only-on-failure
           --output=test-results/playwright
-          --basetemp=test-results/pytest-tmp
+          --basetemp=.pytest_cache/e2e-tmp
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v7
