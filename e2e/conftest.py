@@ -142,6 +142,7 @@ def web_server(request: pytest.FixtureRequest) -> WebServer:
         {
             "NO_PROXY": "127.0.0.1,localhost",
             "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONFAULTHANDLER": "1",
             "PYTHONPATH": python_path,
             "PYTHONUNBUFFERED": "1",
             "SEATTRELLIS_BACKEND": "fallback",
