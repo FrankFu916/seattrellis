@@ -28,8 +28,9 @@
   `SEATTRELLIS_USE_ORTOOLS=1` 或 `SEATTRELLIS_BACKEND=ortools` 则使用 OR-Tools；
 - `fallback`：显式使用内置启发式求解器；
 - `ortools`：显式使用 OR-Tools，不需要再设置旧环境变量。
-- `native`：实验 Rust core 后端。当前仍使用 Python fallback 搜索，但要求本地
-  Rust 扩展可用，并用 native core 做底层结构校验。
+- `native`：仅供源码试验的 Rust 校验器。求解仍由 Python fallback 完成，扩展
+  不会随主包或任何 extra 安装；只有在同版本源码树中自行构建
+  `seattrellis_native` 后才应显式选择。
 
 `doctor` 会显示当前 backend 默认解析结果。OR-Tools 超时或返回 `UNKNOWN`
 时会提示“未在时间限制内找到方案”，不会再误报为确认无解。

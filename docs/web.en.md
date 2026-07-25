@@ -29,9 +29,11 @@ the locks. Quick solve reuses the history loaded for the current session;
 Project workspace uses the project's history directory. The resulting snapshot
 records lock state, repair provenance, and the students whose seats changed.
 
-The repair backend can be `auto`, `fallback`, `ortools`, or the optional
-`native` Rust extension. Use `auto` unless a specific installed backend is
-needed.
+The repair backend can be `auto`, `fallback`, `ortools`, or the experimental
+`native` validator. The native extension is built from a matching source
+checkout and is not installed by the main PyPI package or any extra. `auto`
+never selects it. Regular installations should use `auto`, `fallback`, or
+`ortools`.
 
 ## Manual swaps and history
 

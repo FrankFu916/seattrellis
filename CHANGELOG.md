@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- Removed the misleading `native` extra. The experimental Rust extension is
+  built separately from a matching source checkout and currently acts only as
+  a post-solve validator for the Python fallback backend.
+
 ## 1.3.0 - 2026-07-25
 
 ### Added

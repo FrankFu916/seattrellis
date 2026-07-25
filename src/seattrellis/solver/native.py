@@ -47,13 +47,15 @@ def require_native_core() -> ModuleType:
         core = _load_native_core()
     except Exception as exc:
         raise MissingOptionalDependencyError(
-            "Rust native backend",
-            "native",
+            "Rust native validation mode",
+            None,
             detail=(
-                "The native backend is an experimental local extension. Build it with:\n"
-                "  python -m pip install maturin\n"
-                "  python -m maturin develop --manifest-path native/seattrellis_native/Cargo.toml "
-                "--features extension-module"
+                "The experimental seattrellis_native extension is not bundled "
+                "with SeatTrellis and is not installed by an optional extra. "
+                "Use --backend fallback, or install the solver extra and use "
+                "--backend ortools. To evaluate the native validator, build it "
+                "from a matching source checkout. See "
+                "https://frankfu916.github.io/seattrellis/native-core/."
             ),
         ) from exc
     _validate_native_core(core)

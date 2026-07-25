@@ -56,14 +56,37 @@ def test_explicit_ortools_reports_missing_extra_without_env(monkeypatch) -> None
 
 
 def test_explicit_native_reports_missing_extension(monkeypatch) -> None:
-    monkeypatch.setattr(native_backend, "require_native_core", lambda: (_ for _ in ()).throw(
-        MissingOptionalDependencyError("Rust native backend", "native")
-    ))
+    monkeypatch.setattr(
+        native_backend,
+        "require_native_core",
+        lambda: (_ for _ in ()).throw(
+            MissingOptionalDependencyError("Rust native validation mode", None)
+        ),
+    )
     students = [Student(student_id="S1")]
     layout = ClassroomLayout(seats=[SeatNode(seat_id="A1", row=1, col=1)])
 
-    with pytest.raises(MissingOptionalDependencyError, match="Rust native backend"):
+    with pytest.raises(
+        MissingOptionalDependencyError,
+        match="Rust native validation mode",
+    ):
         solve_seating(students, layout, RuleSet(), backend="native")
+
+
+def test_missing_native_core_points_to_source_build(monkeypatch) -> None:
+    def missing_native_core():
+        raise ModuleNotFoundError("No module named 'seattrellis_native'")
+
+    monkeypatch.setattr(native_adapter, "_load_native_core", missing_native_core)
+
+    with pytest.raises(MissingOptionalDependencyError) as error:
+        native_adapter.require_native_core()
+
+    message = str(error.value)
+    assert "Rust native validation mode is not available" in message
+    assert "matching source checkout" in message
+    assert "https://frankfu916.github.io/seattrellis/native-core/" in message
+    assert "seattrellis[native]" not in message
 
 
 def test_native_core_status_accepts_matching_api(monkeypatch) -> None:

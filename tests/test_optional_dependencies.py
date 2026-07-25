@@ -19,6 +19,19 @@ from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver import solve_seating
 
 
+def test_source_only_optional_feature_uses_specific_guidance() -> None:
+    error = MissingOptionalDependencyError(
+        "Source-only feature",
+        None,
+        detail="Build it from a matching source checkout.",
+    )
+
+    message = str(error)
+    assert "Source-only feature is not available in this installation." in message
+    assert "Build it from a matching source checkout." in message
+    assert "seattrellis[" not in message
+
+
 def test_missing_excel_extra_for_import_is_friendly(monkeypatch, tmp_path) -> None:
     _block_import(monkeypatch, "openpyxl")
     xlsx_path = tmp_path / "students.xlsx"

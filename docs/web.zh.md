@@ -68,8 +68,9 @@ Excel 和 Word。缺少 optional extra 时会显示对应安装提示，不影�
 history 目录。重排完成后页面会显示实际改变座位的学生，并把锁定状态和调整摘要
 写入新 snapshot 的 metadata。
 
-后端可以选择 `auto`、`fallback`、`ortools` 或可选的 `native`。未安装 Rust 原生
-扩展时不要强制选择 `native`；`auto` 会选择当前环境可用的合适后端。
+后端可以选择 `auto`、`fallback`、`ortools` 或实验性的 `native`。`native` 仅供
+同版本源码树中的构建测试，不随 PyPI 主包或任何 extra 安装；`auto` 不会自动
+启用它。普通安装应使用 `auto`、`fallback` 或 `ortools`。
 
 ## 人工交换与撤销
 

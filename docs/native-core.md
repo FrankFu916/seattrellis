@@ -13,18 +13,34 @@ Current behavior:
 - if the extension is not installed, SeatTrellis reports a clear missing native
   backend error instead of silently falling back.
 
+## Installation status
+
+The experimental `seattrellis_native` extension is not bundled with the main
+`seattrellis` wheel and is not currently published by this project as a
+separate wheel. There is no `native` runtime extra. PyPI users should use
+`auto`, `fallback`, or `ortools`; do not select `native` unless
+`import seattrellis_native` succeeds.
+
 Local Rust checks:
 
 ```bash
 cargo test --manifest-path native/Cargo.toml
 ```
 
-Build the Python extension for local development:
+To evaluate the extension, activate a virtual environment in a matching source
+checkout and run:
 
 ```bash
-python -m pip install maturin
-python -m maturin develop --manifest-path native/seattrellis_native/Cargo.toml --features extension-module
+python -m pip install -e .
+python -m pip install "maturin>=1.8,<2"
+python -m maturin develop --release --manifest-path native/seattrellis_native/Cargo.toml --features extension-module
+python -c "import seattrellis_native; print(seattrellis_native.NATIVE_API_VERSION)"
+seattrellis doctor
 ```
+
+`maturin develop` requires an active virtual environment. The Rust target must
+match the Python interpreter architecture; for example, an Apple Silicon Python
+requires an `aarch64-apple-darwin` Rust toolchain.
 
 Then run:
 
