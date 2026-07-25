@@ -502,6 +502,22 @@ def solve_for_web(
     )
 
 
+def expand_user_path(path_text: str) -> Path:
+    """Expand a leading home marker or reject it consistently across platforms."""
+    path = Path(path_text)
+    try:
+        expanded = path.expanduser()
+    except RuntimeError as exc:
+        raise ValueError(
+            f"Could not expand the home directory in path: {path_text}"
+        ) from exc
+    if path_text.startswith("~") and expanded == path:
+        raise ValueError(
+            f"Could not expand the home directory in path: {path_text}"
+        )
+    return expanded
+
+
 def project_info_for_web(*, project_path: str | Path) -> str:
     return project_info(project_path=project_path)
 

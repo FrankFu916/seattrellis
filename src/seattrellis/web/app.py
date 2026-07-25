@@ -112,6 +112,7 @@ from seattrellis.web.workflow import (
     build_rules_preview,
     candidate_summary_rows,
     demo_paths,
+    expand_user_path,
     export_for_web,
     load_demo_layout,
     load_demo_snapshot,
@@ -1446,8 +1447,8 @@ def _render_project_tab() -> None:
             )
         if project_path_text:
             try:
-                project_path = Path(project_path_text).expanduser()
-            except RuntimeError as exc:
+                project_path = expand_user_path(project_path_text)
+            except ValueError as exc:
                 with st.container(
                     key=widget_region_key(PROJECT_PATH_STATUS)
                 ):
