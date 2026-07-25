@@ -3,7 +3,13 @@ from __future__ import annotations
 import pytest
 
 import seattrellis.service as service_module
-from seattrellis.editing import EditingError, EditingOperation, EditingSession
+from seattrellis.editing import (
+    EditingError,
+    EditingLockState,
+    EditingOperation,
+    EditingSession,
+    snapshot_with_lock_state,
+)
 from seattrellis.io.json_files import load_snapshot, write_json_model
 from seattrellis.io.project import write_project
 from seattrellis.models.candidate import (
@@ -78,6 +84,29 @@ def test_compute_edit_accepts_initial_locks(locked_students) -> None:
                 ],
             )
         )
+
+
+def test_compute_edit_merges_saved_and_explicit_locks() -> None:
+    snapshot = snapshot_with_lock_state(
+        _snapshot(),
+        EditingLockState.from_values(locked_students=("s1",)),
+    )
+
+    result = compute_edit(
+        EditInput(
+            snapshot=snapshot,
+            locked_seats=("B2",),
+            operations=[
+                EditingOperation(
+                    kind="unlock_student",
+                    payload={"student_key": "s1"},
+                )
+            ],
+        )
+    )
+
+    assert result.lock_state.locked_students == ()
+    assert result.lock_state.locked_seats == ("B2",)
 
 
 def test_compute_edit_reports_unseated_draft_and_hard_constraint_summary() -> None:
@@ -473,6 +502,47 @@ def test_edit_snapshot_writes_draft_and_strict_rejects_violations(tmp_path) -> N
             strict=True,
         )
     assert not strict_path.exists()
+
+
+def test_edit_snapshot_respects_and_can_release_saved_student_locks(tmp_path) -> None:
+    snapshot = snapshot_with_lock_state(
+        _snapshot(),
+        EditingLockState.from_values(locked_students=("s1",)),
+    )
+    snapshot_path = write_json_model(snapshot, tmp_path / "locked.snapshot.json")
+    rejected_path = tmp_path / "rejected.snapshot.json"
+
+    with pytest.raises(EditingError, match="Student is locked"):
+        edit_snapshot(
+            snapshot_path=snapshot_path,
+            output_path=rejected_path,
+            operations=[
+                EditingOperation(
+                    kind="move_student",
+                    payload={"student_key": "s1", "seat_id": "B2"},
+                )
+            ],
+        )
+    assert not rejected_path.exists()
+
+    unlocked_path, _summary = edit_snapshot(
+        snapshot_path=snapshot_path,
+        output_path=tmp_path / "unlocked.snapshot.json",
+        operations=[
+            EditingOperation(
+                kind="unlock_student",
+                payload={"student_key": "s1"},
+            ),
+            EditingOperation(
+                kind="move_student",
+                payload={"student_key": "s1", "seat_id": "B2"},
+            ),
+        ],
+    )
+
+    unlocked = load_snapshot(unlocked_path)
+    assert _seat_for(unlocked, "s1") == "B2"
+    assert unlocked.metadata["lock_state"]["locked_students"] == []
 
 
 def test_edit_snapshot_selects_recommended_candidate_by_default(tmp_path) -> None:

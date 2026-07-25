@@ -19,6 +19,7 @@ from seattrellis.editing import (
     EditingLockState,
     EditingOperation,
     EditingSession,
+    lock_state_from_snapshot,
     snapshot_with_lock_state,
 )
 from seattrellis.exporters import export_candidate_report_html, export_snapshot
@@ -174,9 +175,20 @@ def compute_validate(input: ValidateInput) -> ValidateOutput:
 
 def compute_edit(input: EditInput) -> EditOutput:
     """Apply manual editing commands to a loaded snapshot."""
-    initial_lock_state = EditingLockState.from_values(
+    saved_lock_state = lock_state_from_snapshot(input.snapshot)
+    explicit_lock_state = EditingLockState.from_values(
         locked_students=input.locked_students,
         locked_seats=input.locked_seats,
+    )
+    initial_lock_state = EditingLockState.from_values(
+        locked_students=(
+            *saved_lock_state.locked_students,
+            *explicit_lock_state.locked_students,
+        ),
+        locked_seats=(
+            *saved_lock_state.locked_seats,
+            *explicit_lock_state.locked_seats,
+        ),
     )
     session = EditingSession.from_snapshot(
         input.snapshot,
