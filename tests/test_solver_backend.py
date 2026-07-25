@@ -12,9 +12,10 @@ from seattrellis import service as service_module
 from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service import run_doctor
+from seattrellis.solver import SeatTrellisSolveError
 from seattrellis.solver import native as native_adapter
 from seattrellis.solver import resolve_solver_backend, solve_seating
-from seattrellis.solver import native_backend, ortools_backend
+from seattrellis.solver import fallback_backend, native_backend, ortools_backend
 
 
 def test_backend_resolution_prefers_explicit_request(monkeypatch) -> None:
@@ -42,6 +43,52 @@ def test_explicit_fallback_ignores_ortools_env(monkeypatch) -> None:
     assert solution.metrics["solver"] == "fallback-heuristic"
     assert solution.metrics["solver_backend_requested"] == "fallback"
     assert solution.metrics["solver_backend_effective"] == "fallback"
+
+
+def test_fallback_deadline_applies_to_first_attempt(monkeypatch) -> None:
+    class Clock:
+        now = 0.0
+
+        def monotonic(self) -> float:
+            return self.now
+
+    clock = Clock()
+    cost_calls = 0
+
+    def slow_candidate_cost(*_args, **_kwargs) -> float:
+        nonlocal cost_calls
+        cost_calls += 1
+        clock.now += 0.06
+        return 0.0
+
+    monkeypatch.setattr(fallback_backend.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(
+        fallback_backend,
+        "_fallback_candidate_cost",
+        slow_candidate_cost,
+    )
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+    layout = ClassroomLayout(
+        seats=[
+            SeatNode(seat_id="A1", row=1, col=1),
+            SeatNode(seat_id="A2", row=1, col=2),
+        ]
+    )
+
+    with pytest.raises(
+        SeatTrellisSolveError,
+        match="within 0.1 seconds",
+    ):
+        solve_seating(
+            students,
+            layout,
+            RuleSet(),
+            backend="fallback",
+            time_limit_seconds=0.1,
+        )
+
+    assert cost_calls == 2
+    assert clock.now == pytest.approx(0.12)
 
 
 def test_explicit_ortools_reports_missing_extra_without_env(monkeypatch) -> None:

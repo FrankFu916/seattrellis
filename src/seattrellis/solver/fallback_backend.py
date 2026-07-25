@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import random
 import time
-from math import inf
 
 from seattrellis.history import avoid_recent_neighbors_cost
 from seattrellis.io.validation import format_infeasible_diagnostic
@@ -23,6 +22,10 @@ from seattrellis.solver.problem import (
     seat_indexes_adjacent,
 )
 from seattrellis.solver.result import SeatingSolution
+
+
+class _FallbackDeadlineExceeded(RuntimeError):
+    """Stop cooperative fallback work after the configured deadline."""
 
 
 def solve_with_fallback(
@@ -45,51 +48,39 @@ def solve_with_fallback(
     attempts = max(40, len(students) * 12)
     deadline = time.monotonic() + time_limit_seconds
     best_assignment: dict[int, int] | None = None
-    best_cost: float = inf
+    best_cost: float | None = None
     completed_attempts = 0
     stopped_by_time_limit = False
 
-    for attempt in range(attempts):
-        if attempt > 0 and time.monotonic() >= deadline:
-            stopped_by_time_limit = True
-            break
-        assignment: dict[int, int] = {}
-        used_seats: set[int] = set()
-        success = True
+    try:
+        for attempt in range(attempts):
+            _raise_if_deadline_reached(deadline)
+            assignment: dict[int, int] = {}
+            used_seats: set[int] = set()
+            success = True
 
-        while len(assignment) < len(students):
-            if attempt > 0 and time.monotonic() >= deadline:
-                stopped_by_time_limit = True
-                success = False
-                break
-            choice = _choose_next_student(students, seats, layout, compiled, edges, assignment, used_seats)
-            if choice is None:
-                success = False
-                break
-            student_index, candidates = choice
-            if attempt == 0:
-                candidates = sorted(
-                    candidates,
-                    key=lambda idx: _fallback_candidate_cost(
-                        student_index,
-                        idx,
-                        assignment,
-                        students,
-                        seats,
-                        layout,
-                        rules,
-                        edges,
-                        history,
-                        pair_history,
-                    ),
+            while len(assignment) < len(students):
+                _raise_if_deadline_reached(deadline)
+                choice = _choose_next_student(
+                    students,
+                    seats,
+                    layout,
+                    compiled,
+                    edges,
+                    assignment,
+                    used_seats,
+                    deadline,
                 )
-                seat_index = candidates[0]
-            else:
-                candidates = sorted(
-                    candidates,
-                    key=lambda idx: _fallback_candidate_cost(
+                if choice is None:
+                    success = False
+                    break
+                student_index, candidates = choice
+
+                def ranking_cost(seat_index: int) -> float:
+                    _raise_if_deadline_reached(deadline)
+                    cost = _fallback_candidate_cost(
                         student_index,
-                        idx,
+                        seat_index,
                         assignment,
                         students,
                         seats,
@@ -99,23 +90,58 @@ def solve_with_fallback(
                         history,
                         pair_history,
                     )
-                    + rng.random() * 25,
-                )
-                seat_index = rng.choice(candidates[: min(3, len(candidates))])
-            assignment[student_index] = seat_index
-            used_seats.add(seat_index)
+                    _raise_if_deadline_reached(deadline)
+                    if attempt > 0:
+                        cost += rng.random() * 25
+                    return cost
 
-        if (
-            not success
-            or not _full_assignment_valid(assignment, seats, layout, compiled, edges)
-            or assignment_is_excluded(assignment, problem.excluded_assignments)
-        ):
-            continue
-        completed_attempts += 1
-        cost = _fallback_total_cost(assignment, students, seats, layout, rules, edges, history, pair_history)
-        if cost < best_cost:
-            best_assignment = dict(assignment)
-            best_cost = cost
+                candidates = sorted(
+                    candidates,
+                    key=ranking_cost,
+                )
+                seat_index = (
+                    candidates[0]
+                    if attempt == 0
+                    else rng.choice(candidates[: min(3, len(candidates))])
+                )
+                assignment[student_index] = seat_index
+                used_seats.add(seat_index)
+
+            _raise_if_deadline_reached(deadline)
+            if (
+                not success
+                or not _full_assignment_valid(
+                    assignment,
+                    seats,
+                    layout,
+                    compiled,
+                    edges,
+                )
+                or assignment_is_excluded(
+                    assignment,
+                    problem.excluded_assignments,
+                )
+            ):
+                continue
+            completed_attempts += 1
+            if best_assignment is None:
+                best_assignment = dict(assignment)
+            cost = _fallback_total_cost(
+                assignment,
+                students,
+                seats,
+                layout,
+                rules,
+                edges,
+                history,
+                pair_history,
+                deadline,
+            )
+            if best_cost is None or cost < best_cost:
+                best_assignment = dict(assignment)
+                best_cost = cost
+    except _FallbackDeadlineExceeded:
+        stopped_by_time_limit = True
 
     if best_assignment is None:
         if stopped_by_time_limit:
@@ -157,19 +183,26 @@ def _choose_next_student(
     edges: set[SeatEdge],
     assignment: dict[int, int],
     used_seats: set[int],
+    deadline: float,
 ) -> tuple[int, list[int]] | None:
     best: tuple[int, list[int]] | None = None
     for student_index in range(len(students)):
+        _raise_if_deadline_reached(deadline)
         if student_index in assignment:
             continue
-        candidates = [
-            seat_index
-            for seat_index in range(len(seats))
-            if seat_index not in used_seats
-            and _partial_assignment_valid(
-                {**assignment, student_index: seat_index}, seats, layout, compiled, edges
-            )
-        ]
+        candidates: list[int] = []
+        for seat_index in range(len(seats)):
+            _raise_if_deadline_reached(deadline)
+            if seat_index in used_seats:
+                continue
+            if _partial_assignment_valid(
+                {**assignment, student_index: seat_index},
+                seats,
+                layout,
+                compiled,
+                edges,
+            ):
+                candidates.append(seat_index)
         if not candidates:
             return None
         if best is None or len(candidates) < len(best[1]):
@@ -269,20 +302,24 @@ def _fallback_total_cost(
     edges: set[SeatEdge],
     history: SeatHistory | None,
     pair_history: PairHistory | None,
+    deadline: float,
 ) -> float:
     min_row = min(seat.row for seat in seats)
     max_row = max(seat.row for seat in seats)
     rng = random.Random(rules.seed)
     cost = 0.0
     for student_index, seat_index in assignment.items():
+        _raise_if_deadline_reached(deadline)
         cost += individual_cost(students[student_index], seats[seat_index], layout, rules, history, rng, min_row, max_row)
 
     if rules.soft.score_balance.enabled and rules.soft.score_balance.weight:
         for first_index, first_seat_index in assignment.items():
+            _raise_if_deadline_reached(deadline)
             first_score = students[first_index].score
             if first_score is None:
                 continue
             for second_index, second_seat_index in assignment.items():
+                _raise_if_deadline_reached(deadline)
                 if second_index <= first_index:
                     continue
                 second_score = students[second_index].score
@@ -294,7 +331,9 @@ def _fallback_total_cost(
     rule = rules.soft.avoid_recent_neighbors
     if rule.enabled and rule.weight:
         for first_index, first_seat_index in assignment.items():
+            _raise_if_deadline_reached(deadline)
             for second_index, second_seat_index in assignment.items():
+                _raise_if_deadline_reached(deadline)
                 if second_index <= first_index:
                     continue
                 cost += avoid_recent_neighbors_cost(
@@ -308,3 +347,8 @@ def _fallback_total_cost(
                     adjacency_edges=edges,
                 )
     return cost
+
+
+def _raise_if_deadline_reached(deadline: float) -> None:
+    if time.monotonic() >= deadline:
+        raise _FallbackDeadlineExceeded
