@@ -397,6 +397,15 @@ def test_service_export_all_candidate_scope_writes_comparison_report(tmp_path) -
         output_path=tmp_path / "all.html",
         candidate_scope="all",
         locale="en",
+        template="teacher",
+        privacy=PrivacyOptions(
+            hide_scores=False,
+            hide_notes=False,
+            hide_special_needs=False,
+            anonymize=False,
+            show_height=True,
+            show_vision=True,
+        ),
     )
 
     report_path = service_export(snapshot_path=artifact_path, request=request)
@@ -406,6 +415,15 @@ def test_service_export_all_candidate_scope_writes_comparison_report(tmp_path) -
     assert "candidate_&lt;01&gt;" in report
     assert "Recommended" in report
     assert "Score comparison" in report
+    for sensitive_value in (
+        "alert(&quot;student&quot;)",
+        "SECRET_NOTE",
+        "SECRET_NEED",
+        "SECRET_TAG",
+        "SECRET_VISION",
+        "&lt;Unsafe Classroom&gt;",
+    ):
+        assert sensitive_value not in report
 
 
 def test_service_export_all_candidate_scope_requires_candidate_set(tmp_path) -> None:
