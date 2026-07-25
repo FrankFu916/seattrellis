@@ -41,8 +41,15 @@ def solve_with_native(
         )
         for assignment in solution.assignments
     ]
-    if not native_core.assignment_is_unique(len(problem.students), len(problem.seats), assignment_pairs):
-        raise SeatTrellisSolveError("Native hard-constraint verification failed: assignment is not unique.")
+    if not native_core.assignment_is_unique(
+        len(problem.students),
+        len(problem.seats),
+        assignment_pairs,
+    ):
+        raise SeatTrellisSolveError(
+            "Native assignment-structure validation failed: "
+            "the assignment is not complete and unique."
+        )
     solution.metrics.update(
         {
             "solver": "fallback-heuristic+native-validator",

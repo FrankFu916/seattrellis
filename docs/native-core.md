@@ -18,8 +18,8 @@ Current behavior:
 The experimental `seattrellis_native` extension is not bundled with the main
 `seattrellis` wheel and is not currently published by this project as a
 separate wheel. There is no `native` runtime extra. PyPI users should use
-`auto`, `fallback`, or `ortools`; do not select `native` unless
-`import seattrellis_native` succeeds.
+`auto`, `fallback`, or `ortools`; do not select `native` unless the compatibility
+check below succeeds.
 
 Local Rust checks:
 
@@ -34,13 +34,15 @@ checkout and run:
 python -m pip install -e .
 python -m pip install "maturin>=1.8,<2"
 python -m maturin develop --release --manifest-path native/seattrellis_native/Cargo.toml --features extension-module
-python -c "import seattrellis_native; print(seattrellis_native.NATIVE_API_VERSION)"
+python -c "from seattrellis.solver.native import require_native_core; print(require_native_core().NATIVE_API_VERSION)"
 seattrellis doctor
 ```
 
 `maturin develop` requires an active virtual environment. The Rust target must
 match the Python interpreter architecture; for example, an Apple Silicon Python
 requires an `aarch64-apple-darwin` Rust toolchain.
+`doctor` reads package metadata without loading the extension into its own
+process; the explicit compatibility command above performs the API check.
 
 Then run:
 

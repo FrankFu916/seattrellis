@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from seattrellis import service as service_module
 from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service import run_doctor
@@ -185,6 +186,7 @@ def test_doctor_reports_solver_backend(monkeypatch) -> None:
         "streamlit",
         "weasyprint",
         "docx",
+        "seattrellis_native",
     }
 
     def reject_optional_import(name, *args, **kwargs):
@@ -192,7 +194,19 @@ def test_doctor_reports_solver_backend(monkeypatch) -> None:
             raise AssertionError(f"doctor imported optional module {name}")
         return original_import(name, *args, **kwargs)
 
+    def reject_native_core_load() -> None:
+        raise AssertionError("doctor loaded the native extension")
+
     monkeypatch.setattr(builtins, "__import__", reject_optional_import)
+    monkeypatch.setattr(native_adapter, "_load_native_core", reject_native_core_load)
+    metadata_version = service_module.version
+
+    def report_native_metadata(package_name: str) -> str:
+        if package_name == "seattrellis-native":
+            return "0.1.0"
+        return metadata_version(package_name)
+
+    monkeypatch.setattr(service_module, "version", report_native_metadata)
 
     output = run_doctor()
 
@@ -200,7 +214,7 @@ def test_doctor_reports_solver_backend(monkeypatch) -> None:
     assert "Effective default: fallback" in output
     assert "Supported: auto, fallback, ortools, native" in output
     assert "SEATTRELLIS_BACKEND: (not set)" in output
-    assert "Native core:" in output
+    assert "Native extension: installed (0.1.0; compatibility is checked only" in output
 
 
 def test_benchmark_script_smoke(tmp_path) -> None:

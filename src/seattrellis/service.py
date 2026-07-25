@@ -90,7 +90,6 @@ from seattrellis.solver.backend import (
     resolve_solver_backend,
     solver_backend_environment_summary,
 )
-from seattrellis.solver.native import native_core_status
 
 
 # In-memory operations
@@ -716,13 +715,16 @@ def run_doctor() -> str:
     lines.append(f"    Supported: {', '.join(SOLVER_BACKENDS)}")
     lines.append(f"    SEATTRELLIS_BACKEND: {backend_env['SEATTRELLIS_BACKEND']}")
     lines.append(f"    SEATTRELLIS_USE_ORTOOLS: {backend_env['SEATTRELLIS_USE_ORTOOLS']}")
-    native_status = native_core_status()
-    native_line = "available"
-    if native_status.version:
-        native_line = f"available ({native_status.version})"
-    elif not native_status.available:
+    try:
+        native_version = version("seattrellis-native")
+    except PackageNotFoundError:
         native_line = "not installed"
-    lines.append(f"    Native core: {native_line}")
+    else:
+        native_line = (
+            f"installed ({native_version}; compatibility is checked only "
+            "when selected)"
+        )
+    lines.append(f"    Native extension: {native_line}")
 
     lines.append("")
     lines.append(

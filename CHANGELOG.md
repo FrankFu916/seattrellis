@@ -55,8 +55,8 @@
 - Added a versioned editor command/state protocol with atomic command batches,
   optimistic revision checks, duplicate-command protection, minimized frontend
   state, and committed JSON Schema documents.
-- Added an optional separately packaged Rust extension and explicit `native`
-  solver selection while retaining the Python backends.
+- Added an experimental Rust validator package and explicit `native` validation
+  mode while retaining the Python search backends.
 - Added a real-browser Playwright acceptance test for the Web Demo-to-export
   workflow, including process cleanup, download and privacy checks, health
   verification, and CI failure artifacts.
