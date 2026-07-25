@@ -4,37 +4,15 @@
 
 ### Added
 
+- Added explicit `auto`, `fallback`, `ortools`, and source-only `native`
+  backend selection with shared compiled-problem and result contracts.
+- Added repeatable synthetic 40/50/60-student benchmark tooling and reports.
 - Added Python 3.11 and 3.12 native-extension wheel checks on Linux, Windows,
   and macOS, with short-lived CI artifacts for inspection.
-
-### Changed
-
-- Removed the misleading `native` extra. The experimental Rust extension is
-  built separately from a matching source checkout and currently acts only as
-  a post-solve validator for the Python fallback backend.
-
-## 1.3.0 - 2026-07-25
-
-### Added
-
-- Added the shared `ExportRequest`, `PrivacyOptions`, and `PageOptions`
-  application contract, including safe public defaults and A4 page settings.
-- Added CLI and Web controls for print templates, field hiding, anonymization,
-  page orientation, scaling, and Chinese or English export content.
-- Added PDF page-orientation and bilingual exporter regression coverage.
-- Added architecture decision records for the Rust native core, the Python
-  OR-Tools integration, and the command-log editing model.
-- Added a rule capability audit that distinguishes implemented rules from
-  model-only declarations.
-- Added repository hygiene, dependency-audit, secret-scan, package-validation,
-  and Trusted Publishing workflows.
-- Added release-tag/package-version consistency checks and an automated
-  TestPyPI installation smoke test.
-- Added deterministic export regression fixtures and documented failed-publish
-  and rollback handling.
-- Added a public roadmap for the v1.3–v1.8 milestones.
 - Added candidate comparison reports with recommendation, score, constraint,
   and history explanations.
+- Added JSON Schema export and normalization commands for versioned project
+  artifacts and editor protocol messages.
 - Added UI-neutral manual editing sessions, replayable operation files, and
   Project commands for editing saved candidates.
 - Added lock-aware constrained re-solving for global or student-scoped repair,
@@ -65,14 +43,11 @@
 
 ### Changed
 
+- Removed the misleading `native` extra. The experimental Rust extension is
+  built separately from a matching source checkout and currently acts only as
+  a post-solve validator for the Python fallback backend.
 - Moved stateful Web editing and repair controls out of the page entry point
   into a dedicated adapter module while keeping workflow code Streamlit-free.
-- Print HTML, PDF, and Word exporters now consume the shared export options
-  while preserving the legacy exporter arguments.
-- Updated the optional OR-Tools range to 9.15.x so its protobuf dependency
-  resolves to a release that fixes CVE-2026-0994.
-- Documented the release environments and the TestPyPI/PyPI Trusted Publishing
-  process.
 - Raised the Web extra's minimum Streamlit version to 1.50, matching the
   keyed-widget identity and layout behavior used by the application.
 - Quick-solve uploads now survive wizard navigation and invalidate stale
@@ -89,6 +64,49 @@
   invariant backed by sensitive-field regression coverage.
 - `doctor` now checks installed package metadata without importing optional
   native or Web runtimes into the diagnostic process.
+
+### Fixed
+
+- Web result tables no longer use the pandas/Arrow conversion path that could
+  crash the Streamlit server after a solve.
+- Manual edits now inherit persisted student and seat locks while still
+  allowing explicit unlock commands.
+- Repeated OR-Tools requests consistently report a missing optional dependency
+  instead of failing with an internal attribute error.
+- The fallback backend now applies its deadline during the deterministic first
+  attempt, candidate ranking, and objective calculation.
+- OR-Tools timeout and unknown statuses are no longer reported as proof of an
+  infeasible seating problem.
+
+## 1.3.0 - 2026-07-25
+
+### Added
+
+- Added the shared `ExportRequest`, `PrivacyOptions`, and `PageOptions`
+  application contract, including safe public defaults and A4 page settings.
+- Added CLI and Web controls for print templates, field hiding, anonymization,
+  page orientation, scaling, and Chinese or English export content.
+- Added PDF page-orientation and bilingual exporter regression coverage.
+- Added architecture decision records for the Rust native core, the Python
+  OR-Tools integration, and the command-log editing model.
+- Added a rule capability audit that distinguishes implemented rules from
+  model-only declarations.
+- Added repository hygiene, dependency-audit, secret-scan, package-validation,
+  and Trusted Publishing workflows.
+- Added release-tag/package-version consistency checks and an automated
+  TestPyPI installation smoke test.
+- Added deterministic export regression fixtures and documented failed-publish
+  and rollback handling.
+- Added a public roadmap for the v1.3–v1.8 milestones.
+
+### Changed
+
+- Print HTML, PDF, and Word exporters now consume the shared export options
+  while preserving the legacy exporter arguments.
+- Updated the optional OR-Tools range to 9.15.x so its protobuf dependency
+  resolves to a release that fixes CVE-2026-0994.
+- Documented the release environments and the TestPyPI/PyPI Trusted Publishing
+  process.
 
 ### Fixed
 
