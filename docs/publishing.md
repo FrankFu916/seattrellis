@@ -27,6 +27,11 @@ GitHub 仓库中应存在同名 environments。建议给 `pypi` environment 添�
 5. 从 TestPyPI 轮询下载刚发布的 wheel，在干净 runner 中安装并运行
    `seattrellis --version` 和 `seattrellis --help`。
 
+TestPyPI 与 PyPI 一样不允许覆盖已经上传的文件。每次候选验证都应使用新的
+预发布版本，例如 `1.3.0rc1`、`1.3.0rc2`。候选验证通过后，把包版本恢复为
+最终版本并再次运行版本一致性和完整测试；不要把预发布版本提交合并到正式
+发布分支。
+
 必要时也可以在本地全新虚拟环境中复核：
 
 ```bash
@@ -36,10 +41,14 @@ seattrellis --help
 
 ## PyPI
 
-创建 GitHub Release 后，`release.published` 事件会使用 `pypi` environment 发布
-同一构建产物。工作流会强制校验 `pyproject.toml`、运行时
-`seattrellis.__version__` 与 `v<version>` release tag 完全一致；Release 标题仍需
-在发布前人工核对。
+从已经通过审查的 `main` 提交创建 GitHub Release 后，`release.published` 事件
+会使用 `pypi` environment 发布同一构建产物。工作流会强制校验
+`pyproject.toml`、运行时 `seattrellis.__version__` 与 `v<version>` release tag
+完全一致；Release 标题和目标提交仍需在发布前人工核对。
+
+正式发布成功后，工作流还会从 PyPI 重新下载并安装对应 wheel，验证版本与 CLI，
+并把 wheel、sdist 和 `SHA256SUMS` 附加到 GitHub Release。GitHub Actions 临时
+artifact 只用于 job 之间传递文件，不替代这些公开 Release 附件。
 
 如果 Trusted Publisher 尚未配置，发布 job 会失败且不会回退到长期 token。
 
