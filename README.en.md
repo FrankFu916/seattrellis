@@ -70,7 +70,7 @@ The `all` extra includes OR-Tools, Excel, PNG, PDF, Word, and Streamlit dependen
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.

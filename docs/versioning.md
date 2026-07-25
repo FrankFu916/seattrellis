@@ -87,7 +87,7 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 | 操作系统 | macOS ≥ 13, Windows ≥ 10, Ubuntu ≥ 22.04 |
 | Pydantic | 1.10+ 和 2.x 双轨（v1 兼容模式优先） |
 | OR-Tools | 9.15.x |
-| Streamlit | 1.30+ |
+| Streamlit | 1.50+ |
 
 ## v1.x 兼容范围
 

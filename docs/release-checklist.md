@@ -36,7 +36,7 @@
 - [ ] Run `python -m playwright install chromium`.
 - [ ] On Linux, run `python -m playwright install --with-deps chromium`.
 - [ ] Run `python -m pytest e2e --browser=chromium`.
-- [ ] Launch `streamlit run src/seattrellis/web/app.py` and confirm the quick-solve and project tabs load.
+- [ ] Launch `streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1` and confirm the quick-solve and project tabs load.
 - [ ] Build from a clean checkout so untracked files matched by `MANIFEST.in` cannot enter the source distribution.
 - [ ] Run `python -m build`.
 - [ ] Run `python scripts/check_release_version.py`.

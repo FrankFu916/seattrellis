@@ -35,7 +35,7 @@ pytest
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
@@ -263,6 +263,9 @@ candidate set 中每个方案包含 snapshot、seed、solver backend、总分、
 ```bash
 seattrellis export --snapshot outputs/candidates.json --candidate-scope all --format html --output outputs/candidate-comparison.html
 ```
+
+候选比较报告只包含方案级聚合指标，不展示姓名、学号、学生成绩、备注、特殊需求、
+身高或视力；选择不同模板或字段开关也不会扩大这类报告的内容。
 
 ## 继续阅读
 

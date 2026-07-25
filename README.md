@@ -59,7 +59,7 @@ extra 用于构建文档站。
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。

@@ -36,7 +36,7 @@ the real-browser acceptance runner.
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
@@ -266,6 +266,10 @@ Snapshots and candidate sets are different formats, and old snapshots remain rea
 ```bash
 seattrellis export --snapshot outputs/candidates.json --candidate-scope all --format html --output outputs/candidate-comparison.html
 ```
+
+The comparison report contains plan-level aggregate metrics only. It does not
+include names, student IDs, grades, notes, needs, height, or vision data,
+regardless of the selected template or field-visibility options.
 
 ## Next Steps
 

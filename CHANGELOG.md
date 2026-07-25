@@ -47,6 +47,8 @@
 - Added a real-browser Playwright acceptance test for the Web Demo-to-export
   workflow, including process cleanup, download and privacy checks, health
   verification, and CI failure artifacts.
+- Expanded real-browser coverage to uploaded CSV/JSON inputs and the local
+  Project validate/solve/candidate/export workflow.
 
 ### Changed
 
@@ -60,6 +62,20 @@
   process.
 - Raised the Web extra's minimum Streamlit version to 1.50, matching the
   keyed-widget identity and layout behavior used by the application.
+- Quick-solve uploads now survive wizard navigation and invalidate stale
+  results when inputs change.
+- Standalone Project manifest uploads are validated and previewed without
+  resolving server-side paths; full Project operations require a local path.
+- Quick solve and Project results no longer appear in the other workspace, and
+  preparing a new result or manual edit now discards stale export downloads.
+- The checked-in Streamlit configuration and documented commands bind the Web
+  app to the local machine by default.
+- Project output-directory and JSON write failures now produce user-facing file
+  errors instead of uncaught operating-system exceptions.
+- Full candidate comparison reports now have an explicit aggregate-only privacy
+  invariant backed by sensitive-field regression coverage.
+- `doctor` now checks installed package metadata without importing optional
+  native or Web runtimes into the diagnostic process.
 
 ## 1.2.3 - 2026-07-03
 
