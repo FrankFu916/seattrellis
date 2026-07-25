@@ -28,11 +28,16 @@ def test_doctor_checks_demo_files_in_the_current_workspace(
         "project.seattrellis.json",
     ):
         assert f"✅ {filename}" in report
-    assert checked_packages == [
+    assert {
         "ortools",
         "openpyxl",
         "Pillow",
         "streamlit",
         "weasyprint",
         "python-docx",
-    ]
+        "seattrellis-native",
+    } <= set(checked_packages)
+    assert (
+        "Native extension: installed "
+        "(1.0; compatibility is checked only when selected)"
+    ) in report
