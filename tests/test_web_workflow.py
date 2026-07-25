@@ -899,7 +899,7 @@ def test_streamlit_project_path_reports_unexpandable_home() -> None:
 
 
 def test_expand_user_path_rejects_unknown_home_on_every_platform() -> None:
-    with pytest.raises(ValueError, match="Could not expand the home directory"):
+    with pytest.raises(ValueError, match="Named home-directory shortcuts"):
         workflow.expand_user_path(
             "~seattrellis-user-that-does-not-exist/project.json"
         )

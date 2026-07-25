@@ -504,6 +504,15 @@ def solve_for_web(
 
 def expand_user_path(path_text: str) -> Path:
     """Expand a leading home marker or reject it consistently across platforms."""
+    if (
+        path_text.startswith("~")
+        and len(path_text) > 1
+        and path_text[1] not in {"/", "\\"}
+    ):
+        raise ValueError(
+            "Named home-directory shortcuts are not portable; use ~/ or an "
+            f"absolute path instead: {path_text}"
+        )
     path = Path(path_text)
     try:
         expanded = path.expanduser()
