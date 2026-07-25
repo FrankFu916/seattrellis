@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Added Python 3.11 and 3.12 native-extension wheel checks on Linux, Windows,
+  and macOS, with short-lived CI artifacts for inspection.
+
 ### Changed
 
 - Removed the misleading `native` extra. The experimental Rust extension is

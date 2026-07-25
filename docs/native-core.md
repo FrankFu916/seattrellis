@@ -52,6 +52,11 @@ seattrellis solve \
   --backend native
 ```
 
+Pull requests build and install experimental wheels on Linux, Windows, and
+macOS with Python 3.11 and 3.12. Those wheels are retained as short-lived CI
+artifacts for inspection; they are not release assets and are not supported as
+public binary distributions yet.
+
 The native backend is not a release default until it proves a measurable benefit
 on the 40/50/60-student benchmark suite and passes Python/Rust differential
 tests for hard constraints and scoring.
