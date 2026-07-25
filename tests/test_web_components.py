@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from seattrellis.io.json_files import InputFileError
@@ -13,6 +15,7 @@ from seattrellis.web.components import (
     accessibility_styles,
     build_candidate_selector,
     build_comparison_table,
+    build_data_table_html,
     build_preset_cards,
     build_privacy_notice_html,
     build_seat_grid_html,
@@ -95,6 +98,43 @@ def test_seat_grid_and_privacy_notice_support_english() -> None:
     assert 'aria-disabled="true"' in html
     assert "Privacy" in notice
     assert "does not upload student information" in notice
+
+
+def test_plain_data_table_localizes_columns_and_escapes_values() -> None:
+    html = build_data_table_html(
+        [
+            {
+                "student_name": '<script>alert("x")</script>',
+                "seat_id": "A1",
+                "recommended": True,
+            }
+        ],
+        columns=["student_name", "seat_id", "recommended"],
+        caption="Assignment <details>",
+        locale="en",
+    )
+
+    assert '<table class="seattrellis-data-table">' in html
+    assert '<th scope="col">Name</th>' in html
+    assert '<th scope="col">Seat</th>' in html
+    assert '<th scope="col">Recommended</th>' in html
+    assert "<script>" not in html
+    assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in html
+    assert 'aria-label="Assignment &lt;details&gt;"' in html
+    assert "<td>✓</td>" in html
+
+
+def test_web_app_avoids_dataframe_native_conversion() -> None:
+    app_source = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "seattrellis"
+        / "web"
+        / "app.py"
+    ).read_text(encoding="utf-8")
+
+    assert "st.dataframe(" not in app_source
+    assert "st.table(" not in app_source
 
 
 def test_candidate_selector_contains_recommended_only_once(

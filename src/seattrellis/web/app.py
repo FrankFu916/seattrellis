@@ -41,6 +41,7 @@ from seattrellis.web.components import (
     accessibility_styles,
     build_comparison_table,
     build_candidate_selector,
+    build_data_table_html,
     build_preset_cards,
     build_privacy_notice_html,
     build_seat_grid_html,
@@ -49,7 +50,6 @@ from seattrellis.web.components import (
 from seattrellis.web.i18n import (
     LANGUAGE_OPTIONS,
     normalize_locale,
-    table_column_labels,
     translate,
 )
 from seattrellis.web.interactive_panels import (
@@ -194,17 +194,6 @@ def _locale() -> str:
 
 def _t(key: str, **values: object) -> str:
     return translate(key, _locale(), **values)
-
-
-def _localized_columns(rows: list[dict[str, object]]) -> dict[str, str]:
-    if not rows:
-        return {}
-    labels = table_column_labels(_locale())
-    return {
-        key: labels[key]
-        for key in rows[0]
-        if key in labels
-    }
 
 
 def _history_warnings(report) -> list[str]:
@@ -510,10 +499,13 @@ def _render_candidate_detail(result: WebSolveResult, candidate_id: str) -> None:
         st.warning(_t("violation_items", items=hard.violations))
 
     rows = score_breakdown_rows(candidate)
-    st.dataframe(
-        rows,
-        width="stretch",
-        column_config=_localized_columns(rows),
+    st.markdown(
+        build_data_table_html(
+            rows,
+            caption=_t("plan_detail"),
+            locale=_locale(),
+        ),
+        unsafe_allow_html=True,
     )
 
 
@@ -523,10 +515,14 @@ def _render_comparison_view(result: WebSolveResult) -> None:
         return
     with st.expander(_t("candidate_comparison"), expanded=False):
         comp = build_comparison_table(result.artifact)
-        st.dataframe(
-            comp["rows"],
-            width="stretch",
-            column_config=_localized_columns(comp["rows"]),
+        st.markdown(
+            build_data_table_html(
+                comp["rows"],
+                columns=comp["columns"],
+                caption=_t("candidate_comparison"),
+                locale=_locale(),
+            ),
+            unsafe_allow_html=True,
         )
         st.caption(_t("comparison_caption"))
 
@@ -1208,10 +1204,13 @@ def _render_step_solve() -> None:
                     f"{quality.complete_snapshot_count}/{quality.snapshot_count}",
                 )
                 quality_rows = quality.rows()
-                st.dataframe(
-                    quality_rows,
-                    width="stretch",
-                    column_config=_localized_columns(quality_rows),
+                st.markdown(
+                    build_data_table_html(
+                        quality_rows,
+                        caption=_t("history_quality"),
+                        locale=_locale(),
+                    ),
+                    unsafe_allow_html=True,
                 )
                 if quality.warnings:
                     st.warning("\n".join(_history_warnings(quality)))
@@ -1380,10 +1379,13 @@ def _render_step_results() -> None:
     # --- Assignment table ---
     with st.expander(_t("assignment_table"), expanded=False):
         rows = assignment_rows(snapshot)
-        st.dataframe(
-            rows,
-            width="stretch",
-            column_config=_localized_columns(rows),
+        st.markdown(
+            build_data_table_html(
+                rows,
+                caption=_t("assignment_table"),
+                locale=_locale(),
+            ),
+            unsafe_allow_html=True,
         )
 
     _render_manual_edit_panel(
@@ -1674,10 +1676,13 @@ def _render_project_tab() -> None:
 
         with st.expander(_t("assignment_table"), expanded=False):
             rows = assignment_rows(snapshot)
-            st.dataframe(
-                rows,
-                width="stretch",
-                column_config=_localized_columns(rows),
+            st.markdown(
+                build_data_table_html(
+                    rows,
+                    caption=_t("assignment_table"),
+                    locale=_locale(),
+                ),
+                unsafe_allow_html=True,
             )
 
         _render_manual_edit_panel(
