@@ -32,6 +32,11 @@
 - Documented the release environments and the TestPyPI/PyPI Trusted Publishing
   process.
 
+### Fixed
+
+- `doctor` now checks installed package metadata without importing optional
+  native libraries, and reports demo files from the current workspace.
+
 ## 1.2.3 - 2026-07-03
 
 ### Fixed
