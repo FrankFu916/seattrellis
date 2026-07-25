@@ -13,7 +13,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from pydantic import ValidationError
+try:
+    from pydantic.v1 import ValidationError
+except ImportError:  # pragma: no cover - pydantic v1.
+    from pydantic import ValidationError
 
 try:
     import streamlit as st
@@ -24,6 +27,7 @@ except Exception as exc:  # pragma: no cover
 
 from seattrellis.io.json_files import InputFileError
 from seattrellis.models.candidate import CandidateSet
+from seattrellis.models.project import SeatTrellisProject
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import list_presets
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
@@ -53,25 +57,52 @@ from seattrellis.web.interactive_panels import (
     render_repair_panel as _render_repair_panel,
 )
 from seattrellis.web.keys import (
+    PROJECT_CANDIDATE_COUNT_INPUT,
+    PROJECT_CANDIDATE_SELECT,
     PROJECT_EXPORT_PREFIX,
     PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
     PROJECT_EXPORT_DOWNLOAD_REPORT,
+    PROJECT_INFO_BUTTON,
+    PROJECT_INFO_STATUS,
+    PROJECT_MODE_RADIO,
+    PROJECT_PATH_INPUT,
+    PROJECT_PATH_STATUS,
+    PROJECT_RESULTS_STATUS,
+    PROJECT_SEED_ENABLED,
+    PROJECT_SEED_INPUT,
+    PROJECT_SOLVE_BUTTON,
+    PROJECT_SOLVE_STATUS,
+    PROJECT_STRICT_CHECKBOX,
+    PROJECT_TIME_LIMIT_INPUT,
+    PROJECT_UPLOAD_INPUT,
+    PROJECT_USE_DEFAULT_CANDIDATES,
+    PROJECT_VALIDATE_BUTTON,
+    PROJECT_VALIDATE_STATUS,
     QUICK_CANDIDATE_SELECT,
     QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_CLEAR_UPLOADS_BUTTON,
+    QUICK_CONFIG_UPLOAD,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
     QUICK_EXPORT_DOWNLOAD_ARTIFACT,
     QUICK_EXPORT_DOWNLOAD_REPORT,
     QUICK_EXPORT_FORMAT_SELECT,
     QUICK_EXPORT_PREFIX,
     QUICK_GENERATE_BUTTON,
+    QUICK_HISTORY_UPLOAD,
     QUICK_INSPECT_HISTORY_BUTTON,
+    QUICK_LAYOUT_UPLOAD,
     QUICK_LOAD_DEMO_BUTTON,
+    QUICK_PRESET_SELECT,
+    QUICK_RETAINED_UPLOADS_STATUS,
     QUICK_RESULTS_STATUS,
+    QUICK_RULES_UPLOAD,
     QUICK_SOLVE_STATUS,
+    QUICK_STUDENTS_UPLOAD,
     QUICK_STEP_RADIO,
     UI_LANGUAGE_SELECT,
     export_prepare_key,
     export_prepared_download_key,
+    export_prepared_state_key,
     widget_region_key,
 )
 from seattrellis.web.workflow import (
@@ -108,6 +139,7 @@ _SS_DEFAULTS = {
     "project_path": None,
     "layout_loaded": None,
     "current_candidate_id": "recommended",
+    "result_origin": None,
     "demo_loaded": False,
     "demo_students_path": None,
     "demo_layout_path": None,
@@ -116,6 +148,10 @@ _SS_DEFAULTS = {
     "_qf_rules_name": None,
     "_qf_config_digest": None,
     "_qf_history_quality": None,
+    "_qf_students": None,
+    "_qf_layout": None,
+    "_qf_rules": None,
+    "_qf_history": None,
     "ui_locale": "zh",
     "quick_step_value": "load",
     "project_mode_value": "path",
@@ -215,12 +251,93 @@ def _history_warnings(report) -> list[str]:
     return messages
 
 
-def _reset_solve_state():
-    for k in ("solved", "result", "artifact_json", "report_json",
-              "output_dir", "project_path", "layout_loaded"):
-        st.session_state[k] = _SS_DEFAULTS[k]
-    st.session_state["_quick_editing_draft"] = None
-    st.session_state["_project_editing_draft"] = None
+def _reset_solve_state(origin: str, *, replace_active: bool = False) -> None:
+    """Discard derived state for one workspace without clearing the other."""
+
+    export_prefix = (
+        QUICK_EXPORT_PREFIX if origin == "quick" else PROJECT_EXPORT_PREFIX
+    )
+    st.session_state.pop(export_prepared_state_key(export_prefix), None)
+    st.session_state[f"_{origin}_editing_draft"] = None
+
+    active_origin = _ss("result_origin")
+    if replace_active and active_origin not in (None, origin):
+        active_export_prefix = (
+            QUICK_EXPORT_PREFIX
+            if active_origin == "quick"
+            else PROJECT_EXPORT_PREFIX
+        )
+        st.session_state.pop(
+            export_prepared_state_key(active_export_prefix),
+            None,
+        )
+        st.session_state[f"_{active_origin}_editing_draft"] = None
+    if not replace_active and active_origin not in (None, origin):
+        return
+
+    for key in (
+        "solved",
+        "result",
+        "artifact_json",
+        "report_json",
+        "output_dir",
+        "project_path",
+        "layout_loaded",
+        "current_candidate_id",
+        "result_origin",
+    ):
+        st.session_state[key] = _SS_DEFAULTS[key]
+
+
+def _invalidate_quick_solve() -> None:
+    """Clear results derived from quick-solve inputs or settings."""
+
+    st.session_state["_qf_history_quality"] = None
+    _reset_solve_state("quick")
+
+
+def _invalidate_project_solve() -> None:
+    """Clear results when the selected Project source changes."""
+
+    _reset_solve_state("project")
+
+
+def _sync_quick_upload(widget_key: str, cache_key: str) -> None:
+    """Persist an upload across wizard steps and invalidate stale results."""
+
+    st.session_state[cache_key] = st.session_state.get(widget_key)
+    _invalidate_quick_solve()
+
+
+def _clear_quick_uploads() -> None:
+    """Discard retained quick-solve files without changing other settings."""
+
+    for widget_key, cache_key in (
+        (QUICK_STUDENTS_UPLOAD, "_qf_students"),
+        (QUICK_LAYOUT_UPLOAD, "_qf_layout"),
+        (QUICK_RULES_UPLOAD, "_qf_rules"),
+        (QUICK_HISTORY_UPLOAD, "_qf_history"),
+    ):
+        st.session_state.pop(widget_key, None)
+        st.session_state[cache_key] = None
+    if _ss("_qf_rules_data") is None:
+        st.session_state["_qf_rules_name"] = None
+    _invalidate_quick_solve()
+
+
+def _retained_upload_names() -> list[str]:
+    """Return safe display names for files retained across wizard steps."""
+
+    retained: list[str] = []
+    for cache_key in ("_qf_students", "_qf_layout", "_qf_rules"):
+        uploaded = _ss(cache_key)
+        if uploaded is not None:
+            retained.append(Path(uploaded.name).name)
+    retained.extend(
+        Path(uploaded.name).name
+        for uploaded in (_ss("_qf_history") or [])
+    )
+    return retained
 
 
 def _restore_web_config(data: bytes) -> WebSessionConfig:
@@ -234,8 +351,9 @@ def _restore_web_config(data: bytes) -> WebSessionConfig:
     if _ss("_qf_config_digest") == digest:
         return config
 
+    _invalidate_quick_solve()
     preset_name = config.preset_name or ""
-    st.session_state[f"quick_preset_{_locale()}"] = preset_name
+    st.session_state[QUICK_PRESET_SELECT] = preset_name
     if preset_name:
         st.session_state["_qf_preset"] = preset_name
     else:
@@ -648,6 +766,7 @@ def _render_exports(
             file_name=result.artifact_path.name,
             mime="application/json",
             key=artifact_download_key,
+            on_click="ignore",
         )
     if result.report_path is not None:
         if report_bytes is None:
@@ -668,6 +787,7 @@ def _render_exports(
                     file_name=result.report_path.name,
                     mime="application/json",
                     key=report_download_key,
+                    on_click="ignore",
                 )
 
     export_signature = (
@@ -688,7 +808,7 @@ def _render_exports(
         page.scale,
         export_locale,
     )
-    prepared_key = f"{export_key}_prepared_download"
+    prepared_key = export_prepared_state_key(export_key)
     prepare_widget_key = export_prepare_key(export_key, output_format)
     with st.container(key=widget_region_key(prepare_widget_key)):
         prepare_requested = st.button(
@@ -764,6 +884,7 @@ def _render_exports(
                     file_name=prepared["file_name"],
                     mime=prepared["mime"],
                     key=download_widget_key,
+                    on_click="ignore",
                 )
             except (KeyError, TypeError) as exc:
                 st.warning(_t("export_unavailable", error=exc))
@@ -829,6 +950,7 @@ def _render_step_load_data() -> None:
         if load_demo:
             demo = demo_paths()
             if demo["students_csv"] and demo["layout"]:
+                _invalidate_quick_solve()
                 st.session_state["demo_loaded"] = True
                 st.session_state["demo_students_path"] = str(demo["students_csv"])
                 st.session_state["demo_layout_path"] = str(demo["layout"])
@@ -837,15 +959,15 @@ def _render_step_load_data() -> None:
                 )
                 # Auto-select the "daily" preset so the solve button is ready.
                 st.session_state["_qf_preset"] = "daily"
-                st.session_state[f"quick_preset_{_locale()}"] = "daily"
+                st.session_state[QUICK_PRESET_SELECT] = "daily"
                 # Clear any previously uploaded files so demo takes priority.
                 for k in ("_qf_students", "_qf_layout", "_qf_rules", "_qf_history"):
                     st.session_state.pop(k, None)
                 for k in (
-                    "quick_students",
-                    "quick_layout",
-                    "quick_rules",
-                    "quick_history",
+                    QUICK_STUDENTS_UPLOAD,
+                    QUICK_LAYOUT_UPLOAD,
+                    QUICK_RULES_UPLOAD,
+                    QUICK_HISTORY_UPLOAD,
                 ):
                     st.session_state.pop(k, None)
                 st.session_state["_qf_rules_data"] = None
@@ -859,11 +981,12 @@ def _render_step_load_data() -> None:
 
     st.divider()
     st.markdown(_t("restore_settings"))
-    config_file = st.file_uploader(
-        _t("web_config"),
-        type=["json"],
-        key="quick_config",
-    )
+    with st.container(key=widget_region_key(QUICK_CONFIG_UPLOAD)):
+        config_file = st.file_uploader(
+            _t("web_config"),
+            type=["json"],
+            key=QUICK_CONFIG_UPLOAD,
+        )
     if config_file is not None:
         try:
             restored = _restore_web_config(config_file.getvalue())
@@ -893,61 +1016,91 @@ def _render_step_load_data() -> None:
         if current_preset in preset_options
         else 0
     )
-    preset_widget_key = f"quick_preset_{_locale()}"
     preset_widget_index = (
-        None if preset_widget_key in st.session_state else preset_index
+        None if QUICK_PRESET_SELECT in st.session_state else preset_index
     )
-    students_file = st.file_uploader(
-        _t("students_file"),
-        type=["csv", "xlsx", "xlsm"],
-        key="quick_students",
-    )
-    layout_file = st.file_uploader(
-        _t("layout_file"),
-        type=["json"],
-        key="quick_layout",
-    )
-    preset_name = st.selectbox(
-        _t("preset"),
-        preset_options,
-        index=preset_widget_index,
-        format_func=lambda value: value or no_preset_label,
-        key=preset_widget_key,
-    )
+    with st.container(key=widget_region_key(QUICK_STUDENTS_UPLOAD)):
+        st.file_uploader(
+            _t("students_file"),
+            type=["csv", "xlsx", "xlsm"],
+            key=QUICK_STUDENTS_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_STUDENTS_UPLOAD, "_qf_students"),
+        )
+    with st.container(key=widget_region_key(QUICK_LAYOUT_UPLOAD)):
+        st.file_uploader(
+            _t("layout_file"),
+            type=["json"],
+            key=QUICK_LAYOUT_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_LAYOUT_UPLOAD, "_qf_layout"),
+        )
+    with st.container(key=widget_region_key(QUICK_PRESET_SELECT)):
+        preset_name = st.selectbox(
+            _t("preset"),
+            preset_options,
+            index=preset_widget_index,
+            format_func=lambda value: value or no_preset_label,
+            key=QUICK_PRESET_SELECT,
+            on_change=_invalidate_quick_solve,
+        )
     _render_preset_cards()
-    rules_file = st.file_uploader(
-        _t("rules_file"),
-        type=["json"],
-        key="quick_rules",
-    )
-    history_files = st.file_uploader(
-        _t("history_files"),
-        type=["json"],
-        accept_multiple_files=True,
-        key="quick_history",
-    )
+    with st.container(key=widget_region_key(QUICK_RULES_UPLOAD)):
+        st.file_uploader(
+            _t("rules_file"),
+            type=["json"],
+            key=QUICK_RULES_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_RULES_UPLOAD, "_qf_rules"),
+        )
+    with st.container(key=widget_region_key(QUICK_HISTORY_UPLOAD)):
+        st.file_uploader(
+            _t("history_files"),
+            type=["json"],
+            accept_multiple_files=True,
+            key=QUICK_HISTORY_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_HISTORY_UPLOAD, "_qf_history"),
+        )
 
-    # Store files in session for next step.
-    # Always update even when cleared, so stale state doesn't linger.
-    st.session_state["_qf_students"] = students_file
-    st.session_state["_qf_layout"] = layout_file
-    st.session_state["_qf_rules"] = rules_file
-    st.session_state["_qf_history"] = history_files
-    if rules_file is not None:
+    retained_uploads = _retained_upload_names()
+    if retained_uploads:
+        with st.container(
+            key=widget_region_key(QUICK_RETAINED_UPLOADS_STATUS)
+        ):
+            st.caption(
+                _t(
+                    "retained_uploads",
+                    names=", ".join(retained_uploads),
+                )
+            )
+        with st.container(
+            key=widget_region_key(QUICK_CLEAR_UPLOADS_BUTTON)
+        ):
+            clear_uploads = st.button(
+                _t("clear_uploads"),
+                key=QUICK_CLEAR_UPLOADS_BUTTON,
+            )
+        if clear_uploads:
+            _clear_quick_uploads()
+            st.rerun()
+
+    if _ss("_qf_rules") is not None:
         st.session_state["_qf_rules_data"] = None
-        st.session_state["_qf_rules_name"] = rules_file.name
+        st.session_state["_qf_rules_name"] = _ss("_qf_rules").name
     elif _ss("_qf_rules_data") is not None:
         st.caption(_t("restored_rules_in_use", name=_ss("_qf_rules_name")))
         if st.button(_t("clear_restored_rules"), key="clear_restored_rules"):
             st.session_state["_qf_rules_data"] = None
             st.session_state["_qf_rules_name"] = None
+            _invalidate_quick_solve()
             st.rerun()
     if preset_name:
         st.session_state["_qf_preset"] = preset_name
     else:
         st.session_state.pop("_qf_preset", None)
     # If user manually uploads files, clear demo flag.
-    if students_file is not None or layout_file is not None:
+    if _ss("_qf_students") is not None or _ss("_qf_layout") is not None:
         st.session_state["demo_loaded"] = False
         st.session_state["_qf_history_quality"] = None
 
@@ -1073,14 +1226,20 @@ def _render_step_solve() -> None:
             value=3,
             step=1,
             key=QUICK_CANDIDATE_COUNT_INPUT,
+            on_change=_invalidate_quick_solve,
         )
-    seed_enabled = st.checkbox(_t("custom_seed"), key="quick_seed_enabled")
+    seed_enabled = st.checkbox(
+        _t("custom_seed"),
+        key="quick_seed_enabled",
+        on_change=_invalidate_quick_solve,
+    )
     seed = st.number_input(
         "seed",
         value=42,
         step=1,
         disabled=not seed_enabled,
         key="quick_seed",
+        on_change=_invalidate_quick_solve,
     )
     time_limit_seconds = st.number_input(
         _t("time_limit"),
@@ -1089,6 +1248,7 @@ def _render_step_solve() -> None:
         value=3.0,
         step=0.5,
         key="quick_time_limit",
+        on_change=_invalidate_quick_solve,
     )
 
     try:
@@ -1121,7 +1281,7 @@ def _render_step_solve() -> None:
             key=QUICK_GENERATE_BUTTON,
         )
     if generate_requested:
-        _reset_solve_state()
+        _reset_solve_state("quick", replace_active=True)
         try:
             output_dir = _make_persistent_tempdir()
             (
@@ -1152,6 +1312,7 @@ def _render_step_solve() -> None:
 
             st.session_state["solved"] = True
             st.session_state["result"] = result
+            st.session_state["result_origin"] = "quick"
             st.session_state["output_dir"] = output_dir
 
             # Load layout for seat map.
@@ -1174,7 +1335,9 @@ def _render_step_solve() -> None:
 def _render_step_results() -> None:
     st.subheader(_t("results"))
 
-    result: WebSolveResult | None = _ss("result")
+    result: WebSolveResult | None = (
+        _ss("result") if _ss("result_origin") == "quick" else None
+    )
     if result is None:
         st.info(_t("solve_first"))
         return
@@ -1259,38 +1422,63 @@ def _render_project_tab() -> None:
     current_project_mode = _ss("project_mode_value")
     if current_project_mode not in project_method_labels:
         current_project_mode = "path"
-    tab_mode = st.radio(
-        _t("project_method"),
-        ["path", "upload"],
-        index=["path", "upload"].index(current_project_mode),
-        format_func=project_method_labels.__getitem__,
-        horizontal=True,
-        key=f"project_mode_{_locale()}",
-    )
+    with st.container(key=widget_region_key(PROJECT_MODE_RADIO)):
+        tab_mode = st.radio(
+            _t("project_method"),
+            ["path", "upload"],
+            index=["path", "upload"].index(current_project_mode),
+            format_func=project_method_labels.__getitem__,
+            horizontal=True,
+            key=PROJECT_MODE_RADIO,
+            on_change=_invalidate_project_solve,
+        )
     st.session_state["project_mode_value"] = tab_mode
 
     project_path: Path | None = None
 
     if tab_mode == "path":
-        project_path_text = st.text_input(
-            _t("project_path"),
-            value="examples/project.seattrellis.json",
-            key="project_path_text",
-        )
+        with st.container(key=widget_region_key(PROJECT_PATH_INPUT)):
+            project_path_text = st.text_input(
+                _t("project_path"),
+                value="examples/project.seattrellis.json",
+                key=PROJECT_PATH_INPUT,
+                on_change=_invalidate_project_solve,
+            )
         if project_path_text:
-            project_path = Path(project_path_text).expanduser()
+            try:
+                project_path = Path(project_path_text).expanduser()
+            except RuntimeError as exc:
+                with st.container(
+                    key=widget_region_key(PROJECT_PATH_STATUS)
+                ):
+                    _render_error(exc)
     else:
-        uploaded_project = st.file_uploader(
-            _t("project_upload"),
-            type=["json"],
-            key="project_upload",
-        )
+        with st.container(key=widget_region_key(PROJECT_UPLOAD_INPUT)):
+            uploaded_project = st.file_uploader(
+                _t("project_upload"),
+                type=["json"],
+                key=PROJECT_UPLOAD_INPUT,
+            )
         if uploaded_project is not None:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".seattrellis.json")
-            tmp.write(uploaded_project.getvalue())
-            tmp.close()
-            project_path = Path(tmp.name)
-            st.success(_t("uploaded", name=uploaded_project.name))
+            try:
+                raw_project = json.loads(uploaded_project.getvalue())
+                if hasattr(SeatTrellisProject, "model_validate"):
+                    project = SeatTrellisProject.model_validate(  # type: ignore[attr-defined]
+                        raw_project
+                    )
+                    project_data = project.model_dump(mode="json")  # type: ignore[attr-defined]
+                else:
+                    project = SeatTrellisProject.parse_obj(raw_project)
+                    project_data = json.loads(project.json())
+                st.success(_t("uploaded", name=uploaded_project.name))
+                st.code(
+                    json.dumps(project_data, ensure_ascii=False, indent=2),
+                    language="json",
+                )
+                st.info(_t("project_upload_manifest_only"))
+            except (UnicodeDecodeError, ValidationError, ValueError) as exc:
+                _render_error(exc)
+            return
 
     if project_path is None:
         return
@@ -1298,111 +1486,183 @@ def _render_project_tab() -> None:
     # --- Info & Validate ---
     info_col, validate_col = st.columns(2)
     with info_col:
-        if st.button(_t("read_project"), key="proj_info_btn"):
-            try:
-                st.code(project_info_for_web(project_path=project_path))
-            except (InputFileError, ValidationError, ValueError) as exc:
-                _render_error(exc)
+        with st.container(key=widget_region_key(PROJECT_INFO_BUTTON)):
+            info_requested = st.button(
+                _t("read_project"),
+                key=PROJECT_INFO_BUTTON,
+            )
+        if info_requested:
+            with st.container(key=widget_region_key(PROJECT_INFO_STATUS)):
+                try:
+                    st.code(project_info_for_web(project_path=project_path))
+                except (InputFileError, ValidationError, ValueError) as exc:
+                    _render_error(exc)
     with validate_col:
-        strict = st.checkbox(_t("strict_warnings"), key="proj_strict")
-        if st.button(_t("validate_project"), key="proj_validate_btn"):
-            try:
-                st.success(
-                    project_validate_for_web(project_path=project_path, strict=strict)
-                )
-            except (InputFileError, ValidationError, ValueError) as exc:
-                _render_error(exc)
+        with st.container(key=widget_region_key(PROJECT_STRICT_CHECKBOX)):
+            strict = st.checkbox(
+                _t("strict_warnings"),
+                key=PROJECT_STRICT_CHECKBOX,
+            )
+        with st.container(key=widget_region_key(PROJECT_VALIDATE_BUTTON)):
+            validate_requested = st.button(
+                _t("validate_project"),
+                key=PROJECT_VALIDATE_BUTTON,
+            )
+        if validate_requested:
+            with st.container(
+                key=widget_region_key(PROJECT_VALIDATE_STATUS)
+            ):
+                try:
+                    st.success(
+                        project_validate_for_web(
+                            project_path=project_path,
+                            strict=strict,
+                        )
+                    )
+                except (InputFileError, ValidationError, ValueError) as exc:
+                    _render_error(exc)
 
     # --- Solve ---
     st.subheader(_t("project_solve"))
-    use_project_candidates = st.checkbox(
-        _t("project_default_candidates"),
-        value=True,
-        key="proj_use_default",
-    )
-    project_candidate_count = st.number_input(
-        _t("candidate_count"),
-        min_value=1,
-        max_value=20,
-        value=3,
-        step=1,
-        disabled=use_project_candidates,
-        key="project_candidate_count",
-    )
-    project_seed_enabled = st.checkbox(
-        _t("project_custom_seed"),
-        key="proj_seed_enabled",
-    )
-    project_seed = st.number_input(
-        "project seed",
-        value=42,
-        step=1,
-        disabled=not project_seed_enabled,
-        key="proj_seed",
-    )
-    project_time_limit = st.number_input(
-        _t("project_time_limit"),
-        min_value=0.5,
-        max_value=30.0,
-        value=3.0,
-        step=0.5,
-        key="proj_time_limit",
-    )
+    with st.container(
+        key=widget_region_key(PROJECT_USE_DEFAULT_CANDIDATES)
+    ):
+        use_project_candidates = st.checkbox(
+            _t("project_default_candidates"),
+            value=True,
+            key=PROJECT_USE_DEFAULT_CANDIDATES,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_CANDIDATE_COUNT_INPUT)):
+        project_candidate_count = st.number_input(
+            _t("candidate_count"),
+            min_value=1,
+            max_value=20,
+            value=3,
+            step=1,
+            disabled=use_project_candidates,
+            key=PROJECT_CANDIDATE_COUNT_INPUT,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_SEED_ENABLED)):
+        project_seed_enabled = st.checkbox(
+            _t("project_custom_seed"),
+            key=PROJECT_SEED_ENABLED,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_SEED_INPUT)):
+        project_seed = st.number_input(
+            "project seed",
+            value=42,
+            step=1,
+            disabled=not project_seed_enabled,
+            key=PROJECT_SEED_INPUT,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_TIME_LIMIT_INPUT)):
+        project_time_limit = st.number_input(
+            _t("project_time_limit"),
+            min_value=0.5,
+            max_value=30.0,
+            value=3.0,
+            step=0.5,
+            key=PROJECT_TIME_LIMIT_INPUT,
+            on_change=_invalidate_project_solve,
+        )
 
-    if st.button(_t("solve_project"), type="primary", key="proj_solve_btn"):
-        _reset_solve_state()
-        try:
-            # Project output goes to the project's own output dir (persistent),
-            # so we don't need a persistent temp dir here.
-            result = project_solve_for_web(
-                project_path=project_path,
-                candidate_count=(
-                    None
-                    if use_project_candidates
-                    else int(project_candidate_count)
-                ),
-                seed=int(project_seed) if project_seed_enabled else None,
-                time_limit_seconds=float(project_time_limit),
-            )
-            st.session_state["solved"] = True
-            st.session_state["result"] = result
-            st.session_state["output_dir"] = str(result.artifact_path.parent)
-            st.session_state["project_path"] = str(project_path)
-            # Clear artifact_json so exports read from project dir.
-            st.session_state["artifact_json"] = None
-            st.session_state["report_json"] = None
+    with st.container(key=widget_region_key(PROJECT_SOLVE_BUTTON)):
+        solve_requested = st.button(
+            _t("solve_project"),
+            type="primary",
+            key=PROJECT_SOLVE_BUTTON,
+        )
+    if solve_requested:
+        _reset_solve_state("project", replace_active=True)
+        with st.container(key=widget_region_key(PROJECT_SOLVE_STATUS)):
+            try:
+                # Project output goes to its own persistent output directory.
+                result = project_solve_for_web(
+                    project_path=project_path,
+                    candidate_count=(
+                        None
+                        if use_project_candidates
+                        else int(project_candidate_count)
+                    ),
+                    seed=(
+                        int(project_seed)
+                        if project_seed_enabled
+                        else None
+                    ),
+                    time_limit_seconds=float(project_time_limit),
+                )
 
-            # Load layout from project.
-            from seattrellis.io.project import load_project_paths
+                from seattrellis.io.project import load_project_paths
 
-            _, paths = load_project_paths(
-                project_path, require_inputs=True, require_history=False
-            )
-            from seattrellis.io.json_files import load_layout
+                _, paths = load_project_paths(
+                    project_path,
+                    require_inputs=True,
+                    require_history=False,
+                )
+                from seattrellis.io.json_files import load_layout
 
-            st.session_state["layout_loaded"] = load_layout(paths.layout)
+                layout = load_layout(paths.layout)
 
-            st.success(_t("solve_complete"))
-        except (
-            InputFileError,
-            MissingOptionalDependencyError,
-            SeatTrellisSolveError,
-            ValidationError,
-            ValueError,
-        ) as exc:
-            _render_error(exc)
+                st.session_state["solved"] = True
+                st.session_state["result"] = result
+                st.session_state["result_origin"] = "project"
+                st.session_state["output_dir"] = str(
+                    result.artifact_path.parent
+                )
+                st.session_state["project_path"] = str(project_path)
+                # Project downloads read artifacts from the project's output dir.
+                st.session_state["artifact_json"] = None
+                st.session_state["report_json"] = None
+                st.session_state["layout_loaded"] = layout
+                st.success(_t("solve_complete"))
+            except (
+                InputFileError,
+                MissingOptionalDependencyError,
+                SeatTrellisSolveError,
+                ValidationError,
+                ValueError,
+            ) as exc:
+                _render_error(exc)
 
     # --- Results (if solved) ---
-    result: WebSolveResult | None = _ss("result")
+    result: WebSolveResult | None = (
+        _ss("result") if _ss("result_origin") == "project" else None
+    )
     proj_path_str: str | None = _ss("project_path")
     if result is not None and proj_path_str is not None:
         output_dir = Path(_ss("output_dir"))
         layout = _ss("layout_loaded")
 
         st.divider()
-        st.subheader(_t("project_results"))
+        with st.container(key=widget_region_key(PROJECT_RESULTS_STATUS)):
+            st.subheader(_t("project_results"))
+            if result.is_candidate_set:
+                st.success(
+                    _t(
+                        "candidate_result",
+                        count=len(result.artifact.candidates),
+                        candidate_id=result.artifact.recommended_candidate_id,
+                    )
+                )
+            else:
+                st.success(
+                    _t(
+                        "single_result",
+                        status=result.artifact.solver_status,
+                    )
+                )
 
-        candidate_id = _render_candidate_switcher(result, widget_key="project_candidate_selector") or "recommended"
+        candidate_id = (
+            _render_candidate_switcher(
+                result,
+                widget_key=PROJECT_CANDIDATE_SELECT,
+            )
+            or "recommended"
+        )
         snapshot = selected_snapshot(result, candidate_id)
 
         st.subheader(_t("seat_map"))

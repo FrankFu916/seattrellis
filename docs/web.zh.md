@@ -4,7 +4,7 @@
 
 ```bash
 python -m pip install -e ".[web,excel,image,pdf,docx]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 ## 功能概述
@@ -12,7 +12,8 @@ streamlit run src/seattrellis/web/app.py
 Web 端提供两个标签页：
 
 - **快速排座**：按“加载数据 → 配置与求解 → 查看结果”三步完成排座。支持一键 Demo、CSV/XLSX 学生名单、layout、preset、rules overlay 和多份历史 snapshot。
-- **Project workspace**：通过本机路径或上传 project JSON，复用项目配置进行校验、求解和导出。
+- **Project workspace**：本机 Project 路径可用于校验、求解和导出；单独上传
+  project JSON 只做格式校验和配置预览。
 
 左侧栏的“语言 / Language”可在简体中文和英文之间切换。切换语言只改变界面
 文字，不会清空已加载的数据、当前步骤或求解结果。
@@ -33,6 +34,13 @@ JSON 留档。
 - snapshot layout 是否与当前 layout 一致。
 
 Demo 会自动加载 `examples/history/` 中的虚构历史记录。
+
+## Project workspace
+
+输入本机 Project 文件路径后，可以读取配置、校验引用文件、求解候选方案并导出。
+单独上传的 project JSON 只包含清单，浏览器无法同时取得它引用的学生、layout、
+rules 和 history 文件，因此页面只会安全校验并显示配置，不会解析其中的服务端
+路径，也不会启用求解或导出。完整项目包上传将在后续版本提供。
 
 ## 保存和恢复设置
 
@@ -90,7 +98,10 @@ history 目录。重排完成后页面会显示实际改变座位的学生，并
 
 ## 隐私与临时文件
 
-所有求解均在本机完成。快速排座使用系统临时目录保存中间文件，并把下载所需 JSON 保存在当前 Streamlit 会话中。不要把真实学生数据、截图或导出文件提交到公开仓库。
+所有求解均在本机完成。快速排座使用系统临时目录保存中间文件，并把下载所需
+JSON 保存在当前 Streamlit 会话中。Project 路径模式会访问用户填写的本机路径，
+因此不要把该 Streamlit 服务开放给不受信任的网络用户。不要把真实学生数据、
+截图或导出文件提交到公开仓库。
 
 ## 键盘与小屏使用
 

@@ -65,15 +65,17 @@ Linux 开发机若尚未安装 Chromium 的系统依赖，使用
 `e2e/constraints.txt` 固定已验证的 Streamlit 与 Playwright 组合；项目 extras
 仍保留兼容范围，便于本地验证更新版本。
 
-当前黄金路径会启动独立的 Streamlit 进程，并真实执行：
+当前套件会启动独立的 Streamlit 进程，并在三个隔离浏览器会话中真实执行：
 
-1. 切换英文界面并加载 Demo；
-2. 使用 fallback backend 生成三个候选方案；
-3. 下载并解析 candidate set JSON；
-4. 启用 public 模板、姓名匿名化、A4 横向和英文内容；
-5. 生成并下载 Print HTML；
-6. 检查匿名姓名存在，原姓名、成绩、身高、视力和特殊需求没有泄漏；
-7. 确认页面没有 Streamlit exception，服务在下载后仍能通过 health check。
+1. Demo → 三个候选 → public 模板 → 姓名匿名化 → A4 横向英文 Print HTML，
+   同时检查全班原姓名、学号、成绩、身高、视力和特殊需求没有泄漏；
+2. 上传 CSV 学生名单、layout JSON 和 rules JSON，跨步骤返回后继续求解两个
+   候选，并从下载的 candidate set 验证学生数量、唯一座位和 fixed-seat 规则；
+3. 使用临时 Project 路径读取信息、校验、生成两个候选、切换非推荐候选，并
+   下载包含所选候选 ID 的解释报告。
+
+每条路径最后都会确认页面没有 Streamlit exception，并在下载后重新检查服务
+health endpoint。
 
 测试使用应用自有的 keyed region 与可访问名称定位控件，不依赖控件顺序或中文
 文案。CI 在 Ubuntu、Python 3.12 和 Chromium 上单独执行这组测试；失败时上传
@@ -81,10 +83,10 @@ Linux 开发机若尚未安装 Chromium 的系统依赖，使用
 
 后续浏览器覆盖按以下顺序扩充：
 
-1. 上传 CSV/JSON → 求解 → 下载 candidate set；
-2. Project 文件 → validate → solve → export；
-3. 拖拽或点击调整 → undo/redo → constraint diagnosis；
-4. 主要错误路径和键盘操作。
+1. 点击调整 → undo/redo → constraint diagnosis；
+2. 错误格式、不可行规则和超时状态；
+3. 完整键盘操作与焦点顺序；
+4. 后续项目包上传与 layout 编辑器。
 
 ## 性能基准
 
@@ -128,7 +130,7 @@ PNG 或 DOCX 依赖，也会自动覆盖这些导出路径。PDF 因依赖系统
 - `seattrellis export ... --format print-html`
 - `seattrellis project-validate ...`
 - `seattrellis project-solve ...`
-- `streamlit run src/seattrellis/web/app.py`
+- `streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1`
 
 Web 人工验收至少确认 quick solve、结果页、导出设置、Project 工作区能完成主流程。
 如果使用真实学校数据，应在本地完成测试，禁止把数据、截图、导出结果或日志提交到

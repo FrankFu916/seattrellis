@@ -4,7 +4,7 @@
 
 ```bash
 python -m pip install -e ".[web,excel,image,pdf,docx]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 The sidebar language switch changes the interface between Simplified Chinese
@@ -81,8 +81,12 @@ sensitive.
 
 The Project workspace can open a local project path or accept an uploaded
 project JSON file. A local path supports validation, solving, and export because
-its referenced files remain available. A standalone uploaded JSON file is most
-useful for inspecting the project configuration.
+its referenced files remain available. A standalone upload is validated and
+displayed without resolving its server-side paths; solving and export remain
+disabled until bundled Project upload is available.
+
+Path mode intentionally accesses the local path entered by the user. Do not
+expose this Streamlit service to untrusted network users.
 
 ## Downloads
 

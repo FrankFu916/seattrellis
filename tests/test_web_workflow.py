@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import importlib
+import json
 import py_compile
 import subprocess
 import sys
@@ -19,11 +20,21 @@ from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.web.keys import (
+    PROJECT_CANDIDATE_COUNT_INPUT,
+    PROJECT_EXPORT_PREFIX,
+    PROJECT_MODE_RADIO,
+    PROJECT_PATH_INPUT,
+    PROJECT_SOLVE_BUTTON,
+    PROJECT_UPLOAD_INPUT,
+    PROJECT_USE_DEFAULT_CANDIDATES,
+    PROJECT_VALIDATE_BUTTON,
     QUICK_CANDIDATE_COUNT_INPUT,
     QUICK_BATCH_MOVE_BUTTON,
     QUICK_BATCH_SEATS_SELECT,
     QUICK_BATCH_STUDENTS_SELECT,
     QUICK_CANVAS_MODE_SELECT,
+    QUICK_CLEAR_UPLOADS_BUTTON,
+    QUICK_CONFIG_UPLOAD,
     QUICK_EDIT_ACTION_SELECT,
     QUICK_EDIT_APPLY_BUTTON,
     QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
@@ -31,15 +42,19 @@ from seattrellis.web.keys import (
     QUICK_EXPORT_PREFIX,
     QUICK_GENERATE_BUTTON,
     QUICK_INSPECT_HISTORY_BUTTON,
+    QUICK_LAYOUT_UPLOAD,
     QUICK_LOAD_DEMO_BUTTON,
     QUICK_LOCK_SEAT_BUTTON,
     QUICK_LOCK_STUDENT_BUTTON,
     QUICK_REPAIR_BUTTON,
     QUICK_REDO_BUTTON,
+    QUICK_RULES_UPLOAD,
+    QUICK_STUDENTS_UPLOAD,
     QUICK_SWAP_BUTTON,
     QUICK_STEP_RADIO,
     QUICK_UNDO_BUTTON,
     export_prepare_key,
+    export_prepared_state_key,
 )
 
 
@@ -610,6 +625,348 @@ def test_streamlit_app_smoke() -> None:
     assert [uploader.label for uploader in app.file_uploader][0] == "Web 配置 JSON"
 
 
+def test_streamlit_uploads_survive_wizard_navigation_and_invalidate_results(
+    tmp_path,
+) -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    for key, path, mime_type in (
+        (QUICK_STUDENTS_UPLOAD, Path("tests/fixtures/students.csv"), "text/csv"),
+        (
+            QUICK_LAYOUT_UPLOAD,
+            Path("tests/fixtures/classroom.json"),
+            "application/json",
+        ),
+        (
+            QUICK_RULES_UPLOAD,
+            Path("tests/fixtures/rules.json"),
+            "application/json",
+        ),
+    ):
+        _control_by_key(app.file_uploader, key).upload(
+            path.name,
+            path.read_bytes(),
+            mime_type,
+        )
+        app.run(timeout=10)
+
+    assert app.session_state["_qf_students"].name == "students.csv"
+    assert app.session_state["_qf_layout"].name == "classroom.json"
+    assert app.session_state["_qf_rules"].name == "rules.json"
+
+    step = _control_by_key(app.radio, QUICK_STEP_RADIO)
+    step.set_value("solve")
+    app.run(timeout=10)
+    step = _control_by_key(app.radio, QUICK_STEP_RADIO)
+    step.set_value("load")
+    app.run(timeout=10)
+
+    assert app.session_state["_qf_students"].name == "students.csv"
+    assert any(
+        "跨步骤保留的输入文件" in caption.value
+        for caption in app.caption
+    )
+
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+
+    assert app.session_state["result"] is not None
+    assert app.session_state["result_origin"] == "quick"
+    assert app.session_state["solved"] is True
+
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(2)
+    app.run(timeout=10)
+    assert app.session_state["result"] is None
+    assert app.session_state["result_origin"] is None
+
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    assert app.session_state["result"] is not None
+
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("load")
+    app.run(timeout=10)
+    original_students = Path("tests/fixtures/students.csv").read_text(
+        encoding="utf-8"
+    )
+    updated_students = original_students.replace(
+        "STU004,Student004",
+        "STU004,Updated Student",
+    )
+    student_path = tmp_path / "students-updated.csv"
+    student_path.write_text(updated_students, encoding="utf-8")
+    _control_by_key(app.file_uploader, QUICK_STUDENTS_UPLOAD).upload(
+        student_path.name,
+        student_path.read_bytes(),
+        "text/csv",
+    )
+    app.run(timeout=10)
+    assert app.session_state["_qf_students"].name == student_path.name
+    assert app.session_state["_qf_students"].getvalue() == student_path.read_bytes()
+    assert app.session_state["solved"] is False
+    assert app.session_state["result"] is None
+    assert app.session_state["artifact_json"] is None
+    assert app.session_state["report_json"] is None
+    assert app.session_state["output_dir"] is None
+    assert app.session_state["layout_loaded"] is None
+
+    _control_by_key(app.button, QUICK_CLEAR_UPLOADS_BUTTON).click()
+    app.run(timeout=10)
+    assert app.session_state["_qf_students"] is None
+    assert app.session_state["_qf_layout"] is None
+    assert app.session_state["_qf_rules"] is None
+    assert app.session_state["_qf_history"] is None
+    app.run(timeout=10)
+    assert not any(
+        button.key == QUICK_CLEAR_UPLOADS_BUTTON for button in app.button
+    )
+    assert not app.exception
+
+
+def test_streamlit_clear_uploads_preserves_restored_rules_metadata() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    config = {
+        "kind": "seattrellis_web_config",
+        "schema_version": 1,
+        "preset_name": None,
+        "rules_overlay": {"seed": 99},
+        "candidate_count": 3,
+        "seed": None,
+        "time_limit_seconds": 3.0,
+    }
+    _control_by_key(app.file_uploader, QUICK_CONFIG_UPLOAD).upload(
+        "settings.json",
+        json.dumps(config).encode("utf-8"),
+        "application/json",
+    )
+    app.run(timeout=10)
+    students_path = Path("tests/fixtures/students.csv")
+    _control_by_key(app.file_uploader, QUICK_STUDENTS_UPLOAD).upload(
+        students_path.name,
+        students_path.read_bytes(),
+        "text/csv",
+    )
+    app.run(timeout=10)
+
+    assert app.session_state["_qf_rules_data"] == {"seed": 99}
+    assert app.session_state["_qf_rules_name"] == "restored.rules.json"
+    _control_by_key(app.button, QUICK_CLEAR_UPLOADS_BUTTON).click()
+    app.run(timeout=10)
+
+    assert app.session_state["_qf_students"] is None
+    assert app.session_state["_qf_rules_data"] == {"seed": 99}
+    assert app.session_state["_qf_rules_name"] == "restored.rules.json"
+    assert any(
+        "restored.rules.json" in caption.value for caption in app.caption
+    )
+    assert not app.exception
+
+
+def test_streamlit_loading_demo_invalidates_an_existing_quick_result() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, QUICK_CANDIDATE_COUNT_INPUT).set_value(1)
+    _control_by_key(app.button, QUICK_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+    assert app.session_state["result"] is not None
+
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("load")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+
+    assert app.session_state["result"] is None
+    assert app.session_state["result_origin"] is None
+    assert app.session_state["solved"] is False
+    assert not app.exception
+
+
+def test_streamlit_project_upload_only_inspects_the_manifest() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.radio, PROJECT_MODE_RADIO).set_value("upload")
+    app.run(timeout=10)
+
+    manifest = {
+        "kind": "seattrellis_project",
+        "schema_version": 1,
+        "name": "Uploaded Manifest",
+        "students": "../../private/students.csv",
+        "layout": "../../private/layout.json",
+        "rules": "../../private/rules.json",
+        "outputs_dir": "../../private/outputs",
+    }
+    _control_by_key(app.file_uploader, PROJECT_UPLOAD_INPUT).upload(
+        "uploaded.seattrellis.json",
+        json.dumps(manifest).encode("utf-8"),
+        "application/json",
+    )
+    app.run(timeout=10)
+
+    assert not app.exception
+    assert any(
+        "单独上传的清单无法取得" in message.value
+        for message in app.info
+    )
+    assert any("Uploaded Manifest" in block.value for block in app.code)
+    assert not any(
+        button.key == PROJECT_SOLVE_BUTTON
+        for button in app.button
+    )
+
+
+@pytest.mark.parametrize(
+    "name,payload",
+    [
+        ("invalid-json.seattrellis.json", b"{"),
+        (
+            "missing-fields.seattrellis.json",
+            json.dumps(
+                {
+                    "kind": "seattrellis_project",
+                    "schema_version": 1,
+                }
+            ).encode("utf-8"),
+        ),
+        (
+            "future-schema.seattrellis.json",
+            json.dumps(
+                {
+                    "kind": "seattrellis_project",
+                    "schema_version": 999,
+                    "students": "students.csv",
+                    "layout": "layout.json",
+                    "rules": "rules.json",
+                }
+            ).encode("utf-8"),
+        ),
+    ],
+)
+def test_streamlit_project_upload_reports_invalid_manifests(
+    name,
+    payload,
+) -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.radio, PROJECT_MODE_RADIO).set_value("upload")
+    app.run(timeout=10)
+    _control_by_key(app.file_uploader, PROJECT_UPLOAD_INPUT).upload(
+        name,
+        payload,
+        "application/json",
+    )
+    app.run(timeout=10)
+
+    assert app.error
+    assert not app.exception
+    assert not any(
+        button.key == PROJECT_SOLVE_BUTTON for button in app.button
+    )
+
+
+def test_streamlit_project_path_reports_unexpandable_home() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.text_input, PROJECT_PATH_INPUT).set_value(
+        "~seattrellis-user-that-does-not-exist/project.json"
+    )
+    app.run(timeout=10)
+
+    assert app.error
+    assert not app.exception
+    assert not any(
+        button.key == PROJECT_SOLVE_BUTTON for button in app.button
+    )
+
+
+def test_streamlit_project_path_validates_and_solves_in_isolation(tmp_path) -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.text_input, PROJECT_PATH_INPUT).set_value(
+        str(paths["project"])
+    )
+    app.run(timeout=10)
+    _control_by_key(app.button, PROJECT_VALIDATE_BUTTON).click()
+    app.run(timeout=10)
+
+    assert any(
+        message.value.startswith("Validation passed.")
+        for message in app.success
+    )
+
+    _control_by_key(
+        app.checkbox,
+        PROJECT_USE_DEFAULT_CANDIDATES,
+    ).set_value(False)
+    app.run(timeout=10)
+    _control_by_key(
+        app.number_input,
+        PROJECT_CANDIDATE_COUNT_INPUT,
+    ).set_value(1)
+    _control_by_key(app.button, PROJECT_SOLVE_BUTTON).click()
+    app.run(timeout=30)
+
+    result = app.session_state["result"]
+    assert isinstance(result.artifact, SeatingSnapshot)
+    assert result.artifact_path.parent == paths["project"].parent / "outputs"
+    assert result.artifact_path.name == "latest.snapshot.json"
+    assert app.session_state["result_origin"] == "project"
+
+    prepared_state_key = export_prepared_state_key(PROJECT_EXPORT_PREFIX)
+    _control_by_key(
+        app.button,
+        export_prepare_key(PROJECT_EXPORT_PREFIX, "print-html"),
+    ).click()
+    app.run(timeout=30)
+    assert app.session_state[prepared_state_key]["data"]
+
+    _control_by_key(app.button, PROJECT_SOLVE_BUTTON).click()
+    app.run(timeout=30)
+    assert prepared_state_key not in app.session_state
+    assert app.session_state["result_origin"] == "project"
+
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("load")
+    app.run(timeout=10)
+    _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
+    app.run(timeout=10)
+    assert app.session_state["result_origin"] == "project"
+    assert app.session_state["result"] is not None
+
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
+    app.run(timeout=10)
+    assert not any(
+        selectbox.key == QUICK_EXPORT_FORMAT_SELECT
+        for selectbox in app.selectbox
+    )
+    assert any(
+        "请先在“设置与求解”中生成座位表" in message.value
+        for message in app.info
+    )
+    assert not app.exception
+
+
 def test_streamlit_demo_rules_and_history_preview() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
@@ -713,6 +1070,14 @@ def test_streamlit_results_can_run_repair() -> None:
     app.run(timeout=30)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
+    prepared_state_key = export_prepared_state_key(QUICK_EXPORT_PREFIX)
+    _control_by_key(
+        app.button,
+        export_prepare_key(QUICK_EXPORT_PREFIX, "print-html"),
+    ).click()
+    app.run(timeout=30)
+    assert app.session_state[prepared_state_key]["data"]
+
     _control_by_key(app.selectbox, "quick_repair_backend").set_value("fallback")
     _control_by_key(app.button, QUICK_REPAIR_BUTTON).click()
     app.run(timeout=30)
@@ -722,6 +1087,7 @@ def test_streamlit_results_can_run_repair() -> None:
     assert isinstance(repaired.artifact, SeatingSnapshot)
     assert repaired.artifact.metadata["repair"]["history_count"] == 3
     assert repaired.artifact.metadata["repair"]["solver_backend"] == "fallback"
+    assert prepared_state_key not in app.session_state
 
 
 def test_streamlit_results_can_swap_undo_and_redo() -> None:
@@ -738,11 +1104,19 @@ def test_streamlit_results_can_swap_undo_and_redo() -> None:
     app.run(timeout=30)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("results")
     app.run(timeout=30)
+    prepared_state_key = export_prepared_state_key(QUICK_EXPORT_PREFIX)
+    _control_by_key(
+        app.button,
+        export_prepare_key(QUICK_EXPORT_PREFIX, "print-html"),
+    ).click()
+    app.run(timeout=30)
+    assert app.session_state[prepared_state_key]["data"]
 
     _control_by_key(app.button, QUICK_SWAP_BUTTON).click()
     app.run(timeout=30)
     edited = app.session_state["result"].artifact
     assert edited.metadata["manual_edit"]["operation_count"] == 1
+    assert prepared_state_key not in app.session_state
 
     _control_by_key(app.button, QUICK_UNDO_BUTTON).click()
     app.run(timeout=30)

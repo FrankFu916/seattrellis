@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Sequence
 
-from pydantic import ValidationError
+try:
+    from pydantic.v1 import ValidationError
+except ImportError:  # pragma: no cover - pydantic v1.
+    from pydantic import ValidationError
 
 try:
     import streamlit as st
@@ -36,9 +39,11 @@ from seattrellis.web.keys import (
     PROJECT_LOCK_STUDENT_SELECT,
     PROJECT_REDO_BUTTON,
     PROJECT_REPAIR_BUTTON,
+    PROJECT_EXPORT_PREFIX,
     PROJECT_SWAP_BUTTON,
     PROJECT_UNDO_BUTTON,
     QUICK_REDO_BUTTON,
+    QUICK_EXPORT_PREFIX,
     QUICK_EDIT_ACTION_SELECT,
     QUICK_EDIT_APPLY_BUTTON,
     QUICK_BATCH_MOVE_BUTTON,
@@ -52,6 +57,7 @@ from seattrellis.web.keys import (
     QUICK_REPAIR_BUTTON,
     QUICK_SWAP_BUTTON,
     QUICK_UNDO_BUTTON,
+    export_prepared_state_key,
 )
 from seattrellis.web.workflow import (
     WebEditingDraft,
@@ -180,6 +186,15 @@ def render_repair_panel(
             )
             st.session_state["report_json"] = None
             st.session_state["current_candidate_id"] = "recommended"
+            export_prefix = (
+                PROJECT_EXPORT_PREFIX
+                if project_path is not None
+                else QUICK_EXPORT_PREFIX
+            )
+            st.session_state.pop(
+                export_prepared_state_key(export_prefix),
+                None,
+            )
             st.success(translate("repair_complete"))
             st.rerun()
         except (
@@ -368,6 +383,13 @@ def render_manual_edit_panel(
                 None if project else draft.current_result.artifact_path.read_bytes()
             )
             st.session_state["report_json"] = None
+            export_prefix = (
+                PROJECT_EXPORT_PREFIX if project else QUICK_EXPORT_PREFIX
+            )
+            st.session_state.pop(
+                export_prepared_state_key(export_prefix),
+                None,
+            )
             st.success(translate("edit_complete"))
             st.rerun()
         except (EditingError, InputFileError, ValidationError, ValueError) as exc:

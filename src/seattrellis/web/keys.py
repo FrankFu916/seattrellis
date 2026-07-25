@@ -4,6 +4,14 @@ UI_LANGUAGE_SELECT = "ui_language_choice"
 
 QUICK_LOAD_DEMO_BUTTON = "quick_load_demo"
 QUICK_STEP_RADIO = "quick_step"
+QUICK_CONFIG_UPLOAD = "quick_config"
+QUICK_STUDENTS_UPLOAD = "quick_students"
+QUICK_LAYOUT_UPLOAD = "quick_layout"
+QUICK_PRESET_SELECT = "quick_preset"
+QUICK_RULES_UPLOAD = "quick_rules"
+QUICK_HISTORY_UPLOAD = "quick_history"
+QUICK_CLEAR_UPLOADS_BUTTON = "quick_clear_uploads"
+QUICK_RETAINED_UPLOADS_STATUS = "quick_retained_uploads"
 QUICK_INSPECT_HISTORY_BUTTON = "quick_inspect_history"
 QUICK_CANDIDATE_SELECT = "quick_candidate_selector"
 QUICK_SOLVE_STATUS = "quick_solve_status"
@@ -33,6 +41,24 @@ QUICK_EXPORT_PREFIX = "quick_export"
 PROJECT_EXPORT_DOWNLOAD_ARTIFACT = "project_export_download_artifact"
 PROJECT_EXPORT_DOWNLOAD_REPORT = "project_export_download_report"
 PROJECT_EXPORT_PREFIX = "project_export"
+PROJECT_MODE_RADIO = "project_mode"
+PROJECT_PATH_INPUT = "project_path_text"
+PROJECT_PATH_STATUS = "project_path_status"
+PROJECT_UPLOAD_INPUT = "project_upload"
+PROJECT_INFO_BUTTON = "project_info"
+PROJECT_INFO_STATUS = "project_info_status"
+PROJECT_VALIDATE_BUTTON = "project_validate"
+PROJECT_VALIDATE_STATUS = "project_validate_status"
+PROJECT_STRICT_CHECKBOX = "project_strict"
+PROJECT_USE_DEFAULT_CANDIDATES = "project_use_default_candidates"
+PROJECT_CANDIDATE_COUNT_INPUT = "project_candidate_count"
+PROJECT_SEED_ENABLED = "project_seed_enabled"
+PROJECT_SEED_INPUT = "project_seed"
+PROJECT_TIME_LIMIT_INPUT = "project_time_limit"
+PROJECT_SOLVE_BUTTON = "project_solve"
+PROJECT_SOLVE_STATUS = "project_solve_status"
+PROJECT_RESULTS_STATUS = "project_results_status"
+PROJECT_CANDIDATE_SELECT = "project_candidate_selector"
 PROJECT_REPAIR_BUTTON = "project_repair"
 PROJECT_SWAP_BUTTON = "project_swap_students"
 PROJECT_UNDO_BUTTON = "project_edit_undo"
@@ -59,6 +85,12 @@ def export_prepared_download_key(export_prefix: str) -> str:
     """Return the widget key for downloading a prepared export."""
 
     return f"{export_prefix}_download_prepared"
+
+
+def export_prepared_state_key(export_prefix: str) -> str:
+    """Return the session-state key for an on-demand export."""
+
+    return f"{export_prefix}_prepared_download"
 
 
 def widget_region_key(widget_key: str) -> str:

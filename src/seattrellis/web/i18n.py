@@ -100,6 +100,11 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "历史 snapshot JSON（可选，可多选）",
         "History snapshot JSON (optional, multiple files allowed)",
     ),
+    "retained_uploads": (
+        "跨步骤保留的输入文件：{names}",
+        "Input files retained across steps: {names}",
+    ),
+    "clear_uploads": ("清除已上传的输入文件", "Clear uploaded input files"),
     "restored_rules_in_use": (
         "当前使用配置文件中的 rules overlay：{name}",
         "Using the rules overlay from the settings file: {name}",
@@ -326,8 +331,10 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "Export full candidate comparison report",
     ),
     "export_all_candidates_help": (
-        "仅适用于 candidate set 的 HTML 和 Print HTML 导出。",
-        "Available only for candidate-set HTML and Print HTML exports.",
+        "仅适用于 candidate set 的 HTML 和 Print HTML 导出；报告只含方案级"
+        "聚合指标，不含学生明细。",
+        "Available only for candidate-set HTML and Print HTML exports. The "
+        "report contains plan-level aggregates, not student details.",
     ),
     "export_privacy_unsupported": (
         "模板与隐私设置仅适用于 Print HTML、PDF 和 DOCX。当前格式使用基础导出，"
@@ -367,6 +374,16 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "Upload a Project file (.seattrellis.json)",
     ),
     "uploaded": ("已上传：{name}", "Uploaded: {name}"),
+    "project_upload_manifest_only": (
+        "Project 清单已通过格式校验。单独上传的清单无法取得它引用的学生、"
+        "layout、rules 和 history 文件，因此不会启用校验、求解或导出。"
+        "完整操作请使用本机 Project 路径；项目包上传将在后续版本提供。",
+        "The Project manifest passed format validation. A standalone "
+        "manifest cannot access its referenced student, layout, rules, or "
+        "history files, so validation, solving, and export remain disabled. "
+        "Use a local Project path for the complete workflow; bundled upload "
+        "will be added later.",
+    ),
     "read_project": ("读取 project-info", "Read project info"),
     "strict_warnings": ("将 warnings 视为错误", "Treat warnings as errors"),
     "validate_project": ("校验 project", "Validate project"),
