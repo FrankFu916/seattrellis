@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.3.0 - 2026-07-25
+
 ### Added
 
 - Added the shared `ExportRequest`, `PrivacyOptions`, and `PageOptions`
