@@ -74,10 +74,15 @@ def load_seating_artifact(path: str | Path) -> SeatingSnapshot | CandidateSet:
 
 def write_json_model(model: BaseModel, path: str | Path) -> Path:
     output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8") as file:
-        json.dump(_model_to_data(model), file, ensure_ascii=False, indent=2)
-        file.write("\n")
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", encoding="utf-8") as file:
+            json.dump(_model_to_data(model), file, ensure_ascii=False, indent=2)
+            file.write("\n")
+    except OSError as exc:
+        raise InputFileError(
+            f"Could not write JSON file {output}: {exc}"
+        ) from exc
     return output
 
 

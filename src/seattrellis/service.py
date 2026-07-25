@@ -6,9 +6,8 @@ functions handle file loading, output paths, and command-oriented formatting.
 
 from __future__ import annotations
 
-import contextlib
-import io
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from math import isfinite
 from pathlib import Path
 from typing import Sequence
@@ -665,23 +664,19 @@ def run_doctor() -> str:
     lines.append(f"  Platform:     {sys.platform}")
 
     extras_status: list[tuple[str, str, str]] = []
-    for extra, import_name, pkg_name in [
-        ("solver", "ortools", "ortools"),
-        ("excel", "openpyxl", "openpyxl"),
-        ("image", "PIL", "Pillow"),
-        ("web", "streamlit", "streamlit"),
-        ("pdf", "weasyprint", "weasyprint"),
-        ("docx", "docx", "python-docx"),
+    for extra, package_name in [
+        ("solver", "ortools"),
+        ("excel", "openpyxl"),
+        ("image", "Pillow"),
+        ("web", "streamlit"),
+        ("pdf", "weasyprint"),
+        ("docx", "python-docx"),
     ]:
         try:
-            with (
-                contextlib.redirect_stdout(io.StringIO()),
-                contextlib.redirect_stderr(io.StringIO()),
-            ):
-                __import__(import_name)
-            extras_status.append((extra, "✅", pkg_name))
-        except Exception:
-            extras_status.append((extra, "❌", pkg_name))
+            version(package_name)
+            extras_status.append((extra, "✅", package_name))
+        except PackageNotFoundError:
+            extras_status.append((extra, "❌", package_name))
 
     lines.append("")
     lines.append("  Optional extras:")

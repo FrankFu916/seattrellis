@@ -92,6 +92,22 @@ def test_ortools_unknown_status_is_not_reported_as_infeasible(monkeypatch) -> No
 def test_doctor_reports_solver_backend(monkeypatch) -> None:
     monkeypatch.delenv("SEATTRELLIS_BACKEND", raising=False)
     monkeypatch.delenv("SEATTRELLIS_USE_ORTOOLS", raising=False)
+    original_import = builtins.__import__
+    optional_modules = {
+        "ortools",
+        "openpyxl",
+        "PIL",
+        "streamlit",
+        "weasyprint",
+        "docx",
+    }
+
+    def reject_optional_import(name, *args, **kwargs):
+        if name.split(".", maxsplit=1)[0] in optional_modules:
+            raise AssertionError(f"doctor imported optional module {name}")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject_optional_import)
 
     output = run_doctor()
 

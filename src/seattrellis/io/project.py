@@ -84,7 +84,13 @@ def resolve_project_paths(
             raise InputFileError(
                 f'Project reference "outputs_dir" is not a directory: {paths.outputs_dir}'
             )
-        paths.outputs_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            paths.outputs_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise InputFileError(
+                "Could not create Project outputs directory "
+                f"{paths.outputs_dir}: {exc}"
+            ) from exc
     return paths
 
 
