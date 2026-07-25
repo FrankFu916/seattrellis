@@ -173,7 +173,9 @@ jobs:
   release-assets:
     name: Attach verified distributions
     if: github.event_name == 'release'
-    needs: build
+    needs:
+      - build
+      - verify-pypi
     runs-on: ubuntu-latest
     permissions:
       contents: write
