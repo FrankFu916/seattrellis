@@ -49,11 +49,13 @@ def test_explicit_ortools_reports_missing_extra_without_env(monkeypatch) -> None
     monkeypatch.delenv("SEATTRELLIS_USE_ORTOOLS", raising=False)
     monkeypatch.setattr(ortools_backend, "cp_model", None)
     monkeypatch.setattr(ortools_backend, "_cp_model_unavailable", False)
+    monkeypatch.setattr(ortools_backend, "_cp_model_import_error", None)
     students = [Student(student_id="S1")]
     layout = ClassroomLayout(seats=[SeatNode(seat_id="A1", row=1, col=1)])
 
-    with pytest.raises(MissingOptionalDependencyError, match="OR-Tools solver"):
-        solve_seating(students, layout, RuleSet(), backend="ortools")
+    for _attempt in range(2):
+        with pytest.raises(MissingOptionalDependencyError, match="OR-Tools solver"):
+            solve_seating(students, layout, RuleSet(), backend="ortools")
 
 
 def test_explicit_native_reports_missing_extension(monkeypatch) -> None:

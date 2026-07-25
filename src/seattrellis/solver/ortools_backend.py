@@ -20,6 +20,7 @@ from seattrellis.solver.result import SeatingSolution
 
 cp_model = None
 _cp_model_unavailable = False
+_cp_model_import_error: Exception | None = None
 
 
 def solve_with_ortools(
@@ -105,17 +106,23 @@ def solve_with_ortools(
 
 
 def _load_cp_model():
-    global cp_model, _cp_model_unavailable
+    global cp_model, _cp_model_import_error, _cp_model_unavailable
     if cp_model is not None:
         return cp_model
     if _cp_model_unavailable:
-        return None
+        raise MissingOptionalDependencyError(
+            "OR-Tools solver",
+            "solver",
+        ) from _cp_model_import_error
     try:  # pragma: no cover - exercised when OR-Tools is installed and enabled.
         from ortools.sat.python import cp_model as loaded_cp_model
     except Exception as exc:  # pragma: no cover - local fallback path is tested.
         _cp_model_unavailable = True
+        _cp_model_import_error = exc
         raise MissingOptionalDependencyError("OR-Tools solver", "solver") from exc
     cp_model = loaded_cp_model
+    _cp_model_unavailable = False
+    _cp_model_import_error = None
     return cp_model
 
 
