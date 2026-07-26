@@ -6,14 +6,21 @@ requested, so normal Python installs keep working without a Rust toolchain.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from importlib import import_module
+from math import isfinite
 from types import ModuleType
+from typing import Any
 
 from seattrellis.optional import MissingOptionalDependencyError
 
-EXPECTED_NATIVE_API_VERSION = 1
-REQUIRED_NATIVE_CALLABLES = ("assignment_is_unique", "seat_distance")
+EXPECTED_NATIVE_API_VERSION = 2
+REQUIRED_NATIVE_CALLABLES = (
+    "assignment_is_unique",
+    "seat_distance",
+    "evaluate_problem",
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +67,77 @@ def require_native_core() -> ModuleType:
         ) from exc
     _validate_native_core(core)
     return core
+
+
+def evaluate_native_problem(
+    core: ModuleType,
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    """Evaluate one coarse, versioned DTO through the optional Rust core."""
+
+    payload = json.dumps(request, ensure_ascii=True, separators=(",", ":"))
+    response_text = core.evaluate_problem(payload)
+    try:
+        response = json.loads(response_text)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("Native evaluation returned invalid JSON.") from exc
+    if not isinstance(response, dict):
+        raise ValueError("Native evaluation response must be a JSON object.")
+    api_version = response.get("api_version")
+    if api_version != EXPECTED_NATIVE_API_VERSION:
+        raise ValueError(
+            "Incompatible native evaluation response: "
+            f"expected api_version {EXPECTED_NATIVE_API_VERSION}, found "
+            f"{api_version!r}."
+        )
+    required = {
+        "assignment_unique",
+        "hard_constraints_satisfied",
+        "checked_rule_count",
+        "violation_count",
+        "violation_codes",
+        "graph_distance_matrix",
+        "peer_mixing_gap_sum",
+        "peer_mixing_pair_count",
+        "peer_mixing_mean_gap",
+    }
+    missing = sorted(required - set(response))
+    if missing:
+        raise ValueError(
+            "Native evaluation response is missing field(s): " + ", ".join(missing)
+        )
+    for field_name in ("assignment_unique", "hard_constraints_satisfied"):
+        if not isinstance(response[field_name], bool):
+            raise ValueError(
+                f"Native evaluation field {field_name!r} must be a boolean."
+            )
+    for field_name in (
+        "checked_rule_count",
+        "violation_count",
+        "peer_mixing_pair_count",
+    ):
+        value = response[field_name]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(
+                f"Native evaluation field {field_name!r} must be a non-negative integer."
+            )
+    if not isinstance(response["violation_codes"], list) or not all(
+        isinstance(code, str) for code in response["violation_codes"]
+    ):
+        raise ValueError("Native evaluation violation_codes must be a string list.")
+    if not isinstance(response["graph_distance_matrix"], list):
+        raise ValueError("Native evaluation graph_distance_matrix must be a list.")
+    for field_name in ("peer_mixing_gap_sum", "peer_mixing_mean_gap"):
+        value = response[field_name]
+        if value is not None and (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not isfinite(float(value))
+        ):
+            raise ValueError(
+                f"Native evaluation field {field_name!r} must be finite or null."
+            )
+    return response
 
 
 def _load_native_core() -> ModuleType:

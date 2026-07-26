@@ -43,6 +43,9 @@
   state, and committed JSON Schema documents.
 - Added an experimental Rust validator package and explicit `native` validation
   mode while retaining the Python search backends.
+- Expanded the Rust spike to consume one versioned, identity-free DTO for graph
+  distances, hard-rule verification, and peer-mixing scoring, with differential
+  checks against the Python contract.
 - Added a real-browser Playwright acceptance test for the Web Demo-to-export
   workflow, including process cleanup, download and privacy checks, health
   verification, and CI failure artifacts.

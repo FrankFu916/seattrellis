@@ -9,7 +9,8 @@ Current behavior:
 - `--backend native` is explicit opt-in;
 - normal `auto`, `fallback`, and `ortools` flows do not require Rust;
 - the native backend currently delegates search to Python fallback, then uses
-  the Rust extension to verify assignment structure;
+  one versioned, identity-free DTO to precompute graph distances, verify
+  assignment structure and hard rules, and calculate a peer-mixing score;
 - if the extension is not installed, SeatTrellis reports a clear missing native
   backend error instead of silently falling back.
 
@@ -61,6 +62,8 @@ artifacts for inspection; they are not release assets and are not supported as
 public binary distributions yet. The native workspace has a Rust 1.83 MSRV;
 current stable Rust remains the recommended development toolchain.
 
-The native backend is not a release default until it proves a measurable benefit
-on the 40/50/60-student benchmark suite and passes Python/Rust differential
-tests for hard constraints and scoring.
+The native wheel contract runs Python/Rust differential checks for hard rules,
+graph topology and peer-mixing scoring. The v1.4 decision is to continue this
+work as an optional validator and precompute experiment, but not make it a
+default solver: the current search still runs in Python and therefore cannot
+yet demonstrate the required end-to-end speedup on 40/50/60-student cases.
