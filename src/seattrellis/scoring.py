@@ -17,6 +17,7 @@ from seattrellis.models.candidate import (
     CandidateSet,
     HardConstraintSummary,
     PlanComparisonEntry,
+    PlanComparisonExplanation,
     PlanComparisonReport,
     PlanScore,
     ScoreBreakdown,
@@ -197,6 +198,7 @@ def build_plan_comparison_report(
     *,
     history_snapshots: Sequence[SeatingSnapshot] | None = None,
 ) -> PlanComparisonReport:
+    recommended = candidate_set.get_candidate(candidate_set.recommended_candidate_id)
     baseline = _history_baseline_scores(
         candidate_set.candidates[0].snapshot.students,
         candidate_set.candidates[0].snapshot.layout,
@@ -213,18 +215,45 @@ def build_plan_comparison_report(
         ]
         ranked = sorted(available, key=lambda item: (-item[1], item[0]))
         low_ranked = sorted(available, key=lambda item: (item[1], item[0]))
-        advantages = [
-            f"{DIMENSION_LABELS[name]}: {_rating_text(score)}"
+        explanations = [
+            PlanComparisonExplanation(
+                kind="strength",
+                dimension=name,
+                score=score,
+                rating=_rating(score),
+            )
             for name, score in ranked[:2]
             if score >= 65
         ]
-        if not advantages and ranked:
+        if not explanations and ranked:
             name, score = ranked[0]
-            advantages = [f"best relative dimension is {DIMENSION_LABELS[name]} ({score:.1f})"]
-        costs = [
-            f"{DIMENSION_LABELS[name]}: {_rating_text(score)}"
+            explanations = [
+                PlanComparisonExplanation(
+                    kind="best_available",
+                    dimension=name,
+                    score=score,
+                    rating=_rating(score),
+                )
+            ]
+        explanations.extend(
+            PlanComparisonExplanation(
+                kind="trade_off",
+                dimension=name,
+                score=score,
+                rating=_rating(score),
+            )
             for name, score in low_ranked[:2]
             if score < 65
+        )
+        advantages = [
+            _legacy_explanation_text(explanation)
+            for explanation in explanations
+            if explanation.kind != "trade_off"
+        ]
+        costs = [
+            _legacy_explanation_text(explanation)
+            for explanation in explanations
+            if explanation.kind == "trade_off"
         ]
         history_comparison = {
             "fair_rotation": _compare_with_baseline(
@@ -239,21 +268,34 @@ def build_plan_comparison_report(
             PlanComparisonEntry(
                 candidate_id=candidate.candidate_id,
                 total_score=candidate.total_score,
+                score_delta_from_recommended=round(
+                    candidate.total_score - recommended.total_score,
+                    6,
+                ),
                 hard_constraints_satisfied=candidate.hard_constraints_satisfied,
+                hard_constraint_checked_count=(
+                    candidate.score.breakdown.hard_constraint_summary.checked_rule_count
+                ),
+                hard_constraint_violation_count=(
+                    candidate.score.breakdown.hard_constraint_summary.violation_count
+                ),
                 dimension_scores={
                     name: dimension.score for name, dimension in dimensions.items()
                 },
+                explanations=explanations,
                 advantages=advantages,
                 costs=costs,
                 history_comparison=history_comparison,
             )
         )
     return PlanComparisonReport(
+        created_at=candidate_set.created_at,
         candidate_count=len(entries),
         recommended_candidate_id=candidate_set.recommended_candidate_id,
         candidates=entries,
         warnings=candidate_set.warnings,
         metadata={
+            "recommendation_method_code": "highest_valid_weighted_total",
             "recommendation_method": (
                 "Highest weighted total among hard-constraint-satisfying candidates; "
                 "ties are resolved by candidate_id."
@@ -265,6 +307,18 @@ def build_plan_comparison_report(
             ),
         },
     )
+
+
+def _legacy_explanation_text(explanation: PlanComparisonExplanation) -> str:
+    """Keep the existing English fields readable for older consumers."""
+
+    label = DIMENSION_LABELS.get(
+        explanation.dimension,
+        explanation.dimension.replace("_", " "),
+    )
+    if explanation.kind == "best_available":
+        return f"best relative dimension is {label} ({explanation.score:.1f})"
+    return f"{label}: {_rating_text(explanation.score)}"
 
 
 def refresh_recommendation(candidate_set: CandidateSet) -> None:

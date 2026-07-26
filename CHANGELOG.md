@@ -11,6 +11,9 @@
   and macOS, with short-lived CI artifacts for inspection.
 - Added candidate comparison reports with recommendation, score, constraint,
   and history explanations.
+- Candidate reports now include score differences from the recommendation,
+  hard-constraint check counts, and fully localized Chinese and English
+  explanations without exposing individual violation details.
 - Added JSON Schema export and normalization commands for versioned project
   artifacts and editor protocol messages.
 - Added RuleSet schema versioning, migration dry runs, and automatic backups

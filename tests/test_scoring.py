@@ -8,6 +8,8 @@ from seattrellis.models.candidate import (
     CandidatePlan,
     CandidateSet,
     HardConstraintSummary,
+    PlanComparisonEntry,
+    PlanComparisonReport,
     PlanScore,
     ScoreBreakdown,
     ScoreDimension,
@@ -807,6 +809,130 @@ class TestBuildPlanComparisonReport:
         assert report.candidate_count == 1
         assert report.recommended_candidate_id == "candidate_01"
         assert len(report.candidates) == 1
+
+    def test_includes_stable_deltas_constraint_counts_and_explanations(
+        self,
+    ) -> None:
+        snap = _snapshot(rules=_disabled_rules())
+        recommended_breakdown = _empty_breakdown()
+        recommended_breakdown.fair_rotation_score = ScoreDimension(
+            status="available",
+            score=88.0,
+            raw_value=88.0,
+            weight=5,
+            rating="high",
+        )
+        recommended_breakdown.hard_constraint_summary = HardConstraintSummary(
+            satisfied=True,
+            checked_rule_count=8,
+            violation_count=0,
+        )
+        alternate_breakdown = _empty_breakdown()
+        alternate_breakdown.fair_rotation_score = ScoreDimension(
+            status="available",
+            score=70.0,
+            raw_value=70.0,
+            weight=5,
+            rating="medium",
+        )
+        alternate_breakdown.score_balance_score = ScoreDimension(
+            status="available",
+            score=40.0,
+            raw_value=40.0,
+            weight=5,
+            rating="low",
+        )
+        alternate_breakdown.hard_constraint_summary = HardConstraintSummary(
+            satisfied=False,
+            checked_rule_count=8,
+            violation_count=2,
+            violations=["private rule detail", "another private detail"],
+        )
+        candidate_set = CandidateSet(
+            created_at=datetime(2026, 2, 3, 4, 5, 6, tzinfo=timezone.utc),
+            candidates=[
+                CandidatePlan(
+                    candidate_id="candidate_01",
+                    snapshot=snap,
+                    score=PlanScore(total=80.0, breakdown=alternate_breakdown),
+                    hard_constraints_satisfied=False,
+                ),
+                CandidatePlan(
+                    candidate_id="candidate_02",
+                    snapshot=snap,
+                    score=PlanScore(total=90.0, breakdown=recommended_breakdown),
+                    hard_constraints_satisfied=True,
+                ),
+            ],
+            recommended_candidate_id="candidate_02",
+        )
+
+        first = build_plan_comparison_report(candidate_set)
+        second = build_plan_comparison_report(candidate_set)
+
+        assert first.json() == second.json()
+        assert "private rule detail" not in first.json()
+        assert "another private detail" not in first.json()
+        assert first.created_at == candidate_set.created_at
+        assert first.metadata["recommendation_method_code"] == (
+            "highest_valid_weighted_total"
+        )
+        alternate, recommended = first.candidates
+        assert alternate.score_delta_from_recommended == -10.0
+        assert recommended.score_delta_from_recommended == 0.0
+        assert alternate.hard_constraint_checked_count == 8
+        assert alternate.hard_constraint_violation_count == 2
+        assert recommended.hard_constraint_checked_count == 8
+        assert recommended.hard_constraint_violation_count == 0
+        assert [
+            (item.kind, item.dimension, item.score, item.rating)
+            for item in alternate.explanations
+        ] == [
+            ("strength", "fair_rotation_score", 70.0, "medium"),
+            ("trade_off", "score_balance_score", 40.0, "low"),
+        ]
+        assert alternate.advantages == ["fair rotation: medium (70.0)"]
+        assert alternate.costs == ["score balance: low (40.0)"]
+
+    def test_rejects_report_with_missing_recommended_candidate(self) -> None:
+        with pytest.raises(ValueError, match="recommended_candidate_id"):
+            PlanComparisonReport(
+                candidate_count=1,
+                recommended_candidate_id="candidate_02",
+                candidates=[
+                    PlanComparisonEntry(
+                        candidate_id="candidate_01",
+                        total_score=80.0,
+                        hard_constraints_satisfied=True,
+                    )
+                ],
+            )
+
+    def test_legacy_entry_defaults_are_declared_nullable(self) -> None:
+        entry = PlanComparisonEntry(
+            candidate_id="candidate_01",
+            total_score=80.0,
+            hard_constraints_satisfied=True,
+        )
+
+        assert entry.dict()["score_delta_from_recommended"] is None
+        entry_schema = PlanComparisonReport.schema()["definitions"][
+            "PlanComparisonEntry"
+        ]["properties"]
+        assert entry_schema["score_delta_from_recommended"]["type"] == [
+            "number",
+            "null",
+        ]
+        for field_name in (
+            "hard_constraint_checked_count",
+            "hard_constraint_violation_count",
+        ):
+            assert entry_schema[field_name]["type"] == ["integer", "null"]
+        explanation_score_schema = PlanComparisonReport.schema()["definitions"][
+            "PlanComparisonExplanation"
+        ]["properties"]["score"]
+        assert explanation_score_schema["minimum"] == 0
+        assert explanation_score_schema["maximum"] == 100
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,12 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
+from seattrellis.models.candidate import (
+    CandidateSet,
+    PlanComparisonEntry,
+    PlanComparisonExplanation,
+    PlanComparisonReport,
+)
 from seattrellis.service_types import PageOptions, normalize_export_locale, score_text
 
 
@@ -18,6 +23,7 @@ _TEXT: dict[str, tuple[str, str]] = {
     "scores": ("评分对比", "Score comparison"),
     "candidate": ("候选方案", "Candidate"),
     "total": ("总分", "Total"),
+    "score_delta": ("与推荐差值", "Difference from recommended"),
     "hard": ("硬约束", "Hard constraints"),
     "passed": ("通过", "Passed"),
     "failed": ("未通过", "Failed"),
@@ -26,6 +32,20 @@ _TEXT: dict[str, tuple[str, str]] = {
     "history": ("历史对比", "History comparison"),
     "not_available": ("无", "None"),
     "seat_count": ("座位数", "Assignments"),
+    "recommendation_highest_valid_weighted_total": (
+        "在满足全部硬约束的方案中选择加权总分最高者；同分时按方案 ID 排序。",
+        "Select the highest weighted total among plans that satisfy every hard "
+        "constraint; ties are resolved by candidate ID.",
+    ),
+    "rating_high": ("较高", "high"),
+    "rating_medium": ("中等", "medium"),
+    "rating_low": ("较低", "low"),
+    "rating_not_available": ("不可用", "not available"),
+    "best_available": ("相对较好的维度", "Best relative dimension"),
+    "checked_violations": (
+        "已检查 {checked} 项，违反 {violations} 项",
+        "{checked} checked, {violations} violations",
+    ),
 }
 
 
@@ -37,6 +57,20 @@ _DIMENSION_LABELS: dict[str, tuple[str, str]] = {
     "vision_preference_score": ("视力偏好", "Vision preference"),
     "diversity_score": ("多样性", "Diversity"),
     "stability_score": ("稳定性", "Stability"),
+}
+
+
+_HISTORY_LABELS: dict[str, tuple[str, str]] = {
+    "fair_rotation": ("公平轮换", "Fair rotation"),
+    "avoid_recent_neighbors": ("避免重复邻座", "Neighbor repetition"),
+}
+
+
+_HISTORY_VALUES: dict[str, tuple[str, str]] = {
+    "improved": ("优于最近历史方案", "Improved from recent history"),
+    "similar": ("与最近历史方案接近", "Similar to recent history"),
+    "worse": ("低于最近历史方案", "Worse than recent history"),
+    "not_available": ("无可比历史", "No comparable history"),
 }
 
 
@@ -76,7 +110,7 @@ def render_candidate_report_html(
     recommended = candidate_set.get_candidate(report.recommended_candidate_id)
     dimensions = _dimension_keys(report)
     created_at = candidate_set.created_at or report.created_at
-    method = str(report.metadata.get("recommendation_method", ""))
+    method = _recommendation_method(report, locale)
 
     warning_html = ""
     warnings = list(
@@ -151,12 +185,18 @@ def _score_table(
     headers = [
         _t("candidate", locale),
         _t("total", locale),
+        _t("score_delta", locale),
         _t("hard", locale),
         *[_dimension_label(key, locale) for key in dimensions],
         _t("advantages", locale),
         _t("costs", locale),
         _t("history", locale),
     ]
+    recommended_score = next(
+        entry.total_score
+        for entry in report.candidates
+        if entry.candidate_id == report.recommended_candidate_id
+    )
     rows = []
     for entry in report.candidates:
         recommended_badge = (
@@ -164,21 +204,33 @@ def _score_table(
             if entry.candidate_id == report.recommended_candidate_id
             else ""
         )
-        hard = (
+        hard_status = (
             f'<span class="pass">{escape(_t("passed", locale))}</span>'
             if entry.hard_constraints_satisfied
             else f'<span class="fail">{escape(_t("failed", locale))}</span>'
         )
+        constraint_summary = _hard_constraint_summary(entry, locale)
+        hard = hard_status
+        if constraint_summary:
+            hard += (
+                '<div class="details">'
+                + escape(constraint_summary)
+                + "</div>"
+            )
+        score_delta = entry.score_delta_from_recommended
+        if score_delta is None:
+            score_delta = entry.total_score - recommended_score
         cells = [
             f'<span class="candidate">{escape(entry.candidate_id)}</span>{recommended_badge}',
             score_text(entry.total_score),
+            _score_delta_text(score_delta),
             hard,
             *[
                 escape(score_text(entry.dimension_scores.get(dimension)))
                 for dimension in dimensions
             ],
-            _list_html(entry.advantages, locale),
-            _list_html(entry.costs, locale),
+            _explanations_html(entry, locale, trade_off=False),
+            _explanations_html(entry, locale, trade_off=True),
             _history_html(entry.history_comparison, locale),
         ]
         rows.append("<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>")
@@ -210,11 +262,52 @@ def _list_html(items: list[str], locale: str) -> str:
     ) + "</ul></div>"
 
 
+def _explanations_html(
+    entry: PlanComparisonEntry,
+    locale: str,
+    *,
+    trade_off: bool,
+) -> str:
+    kind = "trade_off" if trade_off else None
+    explanations = [
+        explanation
+        for explanation in entry.explanations
+        if (explanation.kind == "trade_off") == (kind == "trade_off")
+    ]
+    if explanations:
+        return '<div class="details"><ul>' + "".join(
+            f"<li>{escape(_explanation_text(explanation, locale))}</li>"
+            for explanation in explanations
+        ) + "</ul></div>"
+    return _list_html(entry.costs if trade_off else entry.advantages, locale)
+
+
+def _explanation_text(
+    explanation: PlanComparisonExplanation,
+    locale: str,
+) -> str:
+    dimension = _dimension_label(explanation.dimension, locale)
+    if explanation.kind == "best_available":
+        if locale == "en":
+            return (
+                f'{_t("best_available", locale)}: {dimension} '
+                f"({explanation.score:.1f})"
+            )
+        return (
+            f'{_t("best_available", locale)}：{dimension}'
+            f"（{explanation.score:.1f}）"
+        )
+    rating = _t(f"rating_{explanation.rating}", locale)
+    if locale != "en":
+        return f"{dimension}：{rating}（{explanation.score:.1f}）"
+    return f"{dimension}: {rating} ({explanation.score:.1f})"
+
+
 def _history_html(items: dict[str, str], locale: str) -> str:
     if not items:
         return escape(_t("not_available", locale))
     return '<div class="details"><ul>' + "".join(
-        f"<li>{escape(str(key))}: {escape(str(value))}</li>"
+        f"<li>{escape(_history_comparison_text(key, value, locale))}</li>"
         for key, value in items.items()
     ) + "</ul></div>"
 
@@ -226,6 +319,43 @@ def _metric(label: str, value: str) -> str:
         f'<div class="value">{escape(value)}</div>'
         "</div>"
     )
+
+
+def _score_delta_text(value: float) -> str:
+    if abs(value) < 0.000_001:
+        return "0.0"
+    return f"{value:+.1f}"
+
+
+def _hard_constraint_summary(
+    entry: PlanComparisonEntry,
+    locale: str,
+) -> str:
+    checked = entry.hard_constraint_checked_count
+    violations = entry.hard_constraint_violation_count
+    if checked is None or violations is None:
+        return ""
+    if locale == "en":
+        noun = "violation" if violations == 1 else "violations"
+        return f"{checked} checked, {violations} {noun}"
+    return _t("checked_violations", locale).format(
+        checked=checked,
+        violations=violations,
+    )
+
+
+def _history_comparison_text(key: object, value: object, locale: str) -> str:
+    label = _localized_pair(_HISTORY_LABELS, key, locale)
+    comparison = _localized_pair(_HISTORY_VALUES, value, locale)
+    separator = ": " if locale == "en" else "："
+    return f"{label}{separator}{comparison}"
+
+
+def _recommendation_method(report: PlanComparisonReport, locale: str) -> str:
+    method_code = report.metadata.get("recommendation_method_code")
+    if method_code == "highest_valid_weighted_total":
+        return _t("recommendation_highest_valid_weighted_total", locale)
+    return str(report.metadata.get("recommendation_method", ""))
 
 
 def _warning_notice(count: int, locale: str) -> str:
@@ -246,6 +376,18 @@ def _dimension_label(key: str, locale: str) -> str:
         pair = _DIMENSION_LABELS[key]
         return pair[1] if locale == "en" else pair[0]
     return key.replace("_", " ")
+
+
+def _localized_pair(
+    values: dict[str, tuple[str, str]],
+    key: object,
+    locale: str,
+) -> str:
+    text = str(key)
+    pair = values.get(text)
+    if pair is None:
+        return text.replace("_", " ")
+    return pair[1] if locale == "en" else pair[0]
 
 
 def _t(key: str, locale: str) -> str:
