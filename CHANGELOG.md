@@ -69,6 +69,8 @@
 
 ### Fixed
 
+- Project Web sessions now keep solve, edit, repair, and export artifacts in
+  separate working directories instead of sharing mutable `latest.*` files.
 - Web PDF export now rejects unsupported all-candidate requests instead of
   silently exporting only the recommended plan.
 - Sparse layout coordinates no longer expand the Web seat map into thousands

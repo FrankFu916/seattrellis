@@ -538,25 +538,32 @@ def project_validate_for_web(*, project_path: str | Path, strict: bool = False) 
 def project_solve_for_web(
     *,
     project_path: str | Path,
+    output_dir: str | Path,
     candidate_count: int | None = None,
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
 ) -> WebSolveResult:
+    """Solve Project inputs into a caller-owned, session-scoped directory."""
     if candidate_count is not None and not 1 <= candidate_count <= 20:
         raise ValueError("candidate_count must be between 1 and 20")
     if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
         raise ValueError("time_limit_seconds must be a finite number >= 0.1")
-    project, paths = load_project_paths(
+    project, _paths = load_project_paths(
         project_path,
         require_inputs=True,
         require_history=True,
-        create_outputs=True,
     )
     count = project.default_candidates if candidate_count is None else candidate_count
-    artifact_path = paths.outputs_dir / (
-        "latest.snapshot.json" if count == 1 else "latest.candidates.json"
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    artifact_path = output_root / (
+        "seattrellis.snapshot.json"
+        if count == 1
+        else "seattrellis.candidates.json"
     )
-    report_path = paths.outputs_dir / "latest.plan-report.json" if count > 1 else None
+    report_path = (
+        output_root / "seattrellis.plan-report.json" if count > 1 else None
+    )
 
     written_path, summary = project_solve(
         project_path=project_path,
@@ -625,6 +632,7 @@ def project_repair_for_web(
     result: WebSolveResult,
     *,
     project_path: str | Path,
+    output_dir: str | Path,
     candidate_id: str = "recommended",
     affected_students: Sequence[str] = (),
     locked_students: Sequence[str] = (),
@@ -634,10 +642,14 @@ def project_repair_for_web(
     time_limit_seconds: float = 3.0,
     backend: str = "auto",
 ) -> WebSolveResult:
-    """Repair a Project artifact while reusing its configured history."""
+    """Repair a Project artifact in its session while reusing Project history."""
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_path = output_root / "seattrellis.repaired.snapshot.json"
     written_path, summary = project_repair(
         project_path=project_path,
         snapshot_path=result.artifact_path,
+        output_path=output_path,
         candidate_id=candidate_id if result.is_candidate_set else None,
         affected_students=affected_students,
         locked_students=locked_students,

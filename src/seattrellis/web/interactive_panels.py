@@ -168,6 +168,7 @@ def render_repair_panel(
                 repaired = project_repair_for_web(
                     result,
                     project_path=project_path,
+                    output_dir=output_dir,
                     **common,
                 )
             else:
@@ -180,11 +181,7 @@ def render_repair_panel(
                     **common,
                 )
             st.session_state["result"] = repaired
-            st.session_state["artifact_json"] = (
-                None
-                if project_path is not None
-                else repaired.artifact_path.read_bytes()
-            )
+            st.session_state["artifact_json"] = repaired.artifact_path.read_bytes()
             st.session_state["report_json"] = None
             st.session_state["current_candidate_id"] = "recommended"
             st.session_state[f"_{prefix}_editing_draft"] = begin_web_editing(
@@ -385,7 +382,7 @@ def render_manual_edit_panel(
             st.session_state[state_key] = draft
             st.session_state["result"] = draft.current_result
             st.session_state["artifact_json"] = (
-                None if project else draft.current_result.artifact_path.read_bytes()
+                draft.current_result.artifact_path.read_bytes()
             )
             st.session_state["report_json"] = None
             export_prefix = (

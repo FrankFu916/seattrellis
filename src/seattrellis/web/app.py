@@ -737,8 +737,8 @@ def _render_exports(
         scale=float(page_scale),
     )
 
-    # Use in-memory bytes when available (quick-solve tab); fall back to
-    # reading from disk (project tab where files live in project outputs).
+    # Prefer the bytes captured when the result was created. Derived results
+    # can still fall back to their session-scoped artifact on disk.
     artifact_bytes: bytes | None = _ss("artifact_json")
     report_bytes: bytes | None = _ss("report_json")
 
@@ -1583,9 +1583,13 @@ def _render_project_tab() -> None:
         _reset_solve_state("project", replace_active=True)
         with st.container(key=widget_region_key(PROJECT_SOLVE_STATUS)):
             try:
-                # Project output goes to its own persistent output directory.
+                # Each browser session owns its result files. The Project
+                # inputs remain shared, but one session cannot overwrite
+                # another session's displayed or exported result.
+                output_dir = _make_persistent_tempdir()
                 result = project_solve_for_web(
                     project_path=project_path,
+                    output_dir=output_dir,
                     candidate_count=(
                         None
                         if use_project_candidates
@@ -1613,13 +1617,14 @@ def _render_project_tab() -> None:
                 st.session_state["solved"] = True
                 st.session_state["result"] = result
                 st.session_state["result_origin"] = "project"
-                st.session_state["output_dir"] = str(
-                    result.artifact_path.parent
-                )
+                st.session_state["output_dir"] = output_dir
                 st.session_state["project_path"] = str(project_path)
-                # Project downloads read artifacts from the project's output dir.
-                st.session_state["artifact_json"] = None
-                st.session_state["report_json"] = None
+                st.session_state["artifact_json"] = result.artifact_path.read_bytes()
+                st.session_state["report_json"] = (
+                    result.report_path.read_bytes()
+                    if result.report_path is not None
+                    else None
+                )
                 st.session_state["layout_loaded"] = layout
                 st.success(_t("solve_complete"))
             except (

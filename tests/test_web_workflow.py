@@ -572,11 +572,13 @@ def test_web_export_missing_image_extra_is_friendly(monkeypatch, tmp_path) -> No
 def test_project_web_workflow_info_validate_solve_and_export(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
     project_path = paths["project"]
+    session_dir = tmp_path / "web-session"
 
     info = workflow.project_info_for_web(project_path=project_path)
     validation = workflow.project_validate_for_web(project_path=project_path)
     result = workflow.project_solve_for_web(
         project_path=project_path,
+        output_dir=session_dir,
         candidate_count=3,
     )
     html_path = workflow.project_export_for_web(
@@ -589,8 +591,8 @@ def test_project_web_workflow_info_validate_solve_and_export(tmp_path) -> None:
     assert "Project: Demo Class" in info
     assert "Validation passed." in validation
     assert isinstance(result.artifact, CandidateSet)
-    assert result.artifact_path == project_path.parent / "outputs" / "latest.candidates.json"
-    assert result.report_path == project_path.parent / "outputs" / "latest.plan-report.json"
+    assert result.artifact_path == session_dir / "seattrellis.candidates.json"
+    assert result.report_path == session_dir / "seattrellis.plan-report.json"
     assert result.report is not None
     assert len(result.artifact.candidates) == 3
     assert html_path.exists()
@@ -600,7 +602,10 @@ def test_project_web_workflow_info_validate_solve_and_export(tmp_path) -> None:
 def test_project_web_workflow_uses_project_default_candidates(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
 
-    result = workflow.project_solve_for_web(project_path=paths["project"])
+    result = workflow.project_solve_for_web(
+        project_path=paths["project"],
+        output_dir=tmp_path / "web-session",
+    )
 
     assert isinstance(result.artifact, CandidateSet)
     assert len(result.artifact.candidates) == 5
@@ -611,30 +616,75 @@ def test_project_web_workflow_can_override_to_single_snapshot(tmp_path) -> None:
 
     result = workflow.project_solve_for_web(
         project_path=paths["project"],
+        output_dir=tmp_path / "web-session",
         candidate_count=1,
     )
 
     assert isinstance(result.artifact, SeatingSnapshot)
-    assert result.artifact_path == paths["project"].parent / "outputs" / "latest.snapshot.json"
+    assert result.artifact_path == (
+        tmp_path / "web-session" / "seattrellis.snapshot.json"
+    )
     assert result.report is None
+
+
+def test_project_web_results_are_isolated_between_sessions(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    first_session = tmp_path / "session-a"
+    second_session = tmp_path / "session-b"
+
+    first = workflow.project_solve_for_web(
+        project_path=paths["project"],
+        output_dir=first_session,
+        candidate_count=2,
+        seed=17,
+    )
+    first_artifact = first.artifact_path.read_bytes()
+    assert first.report_path is not None
+    first_report = first.report_path.read_bytes()
+
+    second = workflow.project_solve_for_web(
+        project_path=paths["project"],
+        output_dir=second_session,
+        candidate_count=2,
+        seed=29,
+    )
+
+    assert first.artifact_path.parent == first_session
+    assert second.artifact_path.parent == second_session
+    assert first.report_path.parent == first_session
+    assert second.report_path is not None
+    assert second.report_path.parent == second_session
+    assert first.artifact_path.read_bytes() == first_artifact
+    assert first.report_path.read_bytes() == first_report
+    assert not (
+        paths["project"].parent / "outputs" / "latest.candidates.json"
+    ).exists()
+    assert not (
+        paths["project"].parent / "outputs" / "latest.plan-report.json"
+    ).exists()
 
 
 def test_project_web_workflow_repairs_with_project_history(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    session_dir = tmp_path / "web-session"
     result = workflow.project_solve_for_web(
         project_path=paths["project"],
+        output_dir=session_dir,
         candidate_count=2,
     )
 
     repaired = workflow.project_repair_for_web(
         result,
         project_path=paths["project"],
+        output_dir=session_dir,
         backend="fallback",
     )
 
     assert isinstance(repaired.artifact, SeatingSnapshot)
     assert repaired.artifact.metadata["repair"]["history_count"] == 3
-    assert repaired.artifact_path.parent == paths["project"].parent / "outputs"
+    assert repaired.artifact_path == (
+        session_dir / "seattrellis.repaired.snapshot.json"
+    )
 
 
 def test_web_workflow_module_does_not_import_streamlit(monkeypatch) -> None:
@@ -978,9 +1028,13 @@ def test_streamlit_project_path_validates_and_solves_in_isolation(tmp_path) -> N
 
     result = app.session_state["result"]
     assert isinstance(result.artifact, SeatingSnapshot)
-    assert result.artifact_path.parent == paths["project"].parent / "outputs"
-    assert result.artifact_path.name == "latest.snapshot.json"
+    assert result.artifact_path.parent != paths["project"].parent / "outputs"
+    assert result.artifact_path.name == "seattrellis.snapshot.json"
+    assert Path(app.session_state["output_dir"]) == result.artifact_path.parent
+    assert app.session_state["artifact_json"] == result.artifact_path.read_bytes()
+    assert app.session_state["report_json"] is None
     assert app.session_state["result_origin"] == "project"
+    first_output_dir = result.artifact_path.parent
 
     prepared_state_key = export_prepared_state_key(PROJECT_EXPORT_PREFIX)
     _control_by_key(
@@ -990,10 +1044,21 @@ def test_streamlit_project_path_validates_and_solves_in_isolation(tmp_path) -> N
     app.run(timeout=30)
     assert app.session_state[prepared_state_key]["data"]
 
+    _control_by_key(
+        app.number_input,
+        PROJECT_CANDIDATE_COUNT_INPUT,
+    ).set_value(2)
+    app.run(timeout=10)
     _control_by_key(app.button, PROJECT_SOLVE_BUTTON).click()
     app.run(timeout=30)
     assert prepared_state_key not in app.session_state
     assert app.session_state["result_origin"] == "project"
+    second_result = app.session_state["result"]
+    assert isinstance(second_result.artifact, CandidateSet)
+    assert second_result.artifact_path.parent != first_output_dir
+    assert second_result.report_path is not None
+    assert app.session_state["artifact_json"] == second_result.artifact_path.read_bytes()
+    assert app.session_state["report_json"] == second_result.report_path.read_bytes()
 
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("load")
     app.run(timeout=10)
