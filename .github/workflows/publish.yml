@@ -27,7 +27,7 @@ jobs:
       version: ${{ steps.package-version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Check package version consistency
@@ -83,7 +83,7 @@ jobs:
       - publish-testpypi
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Download the published wheel from TestPyPI
@@ -139,7 +139,7 @@ jobs:
       - publish-pypi
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Download the published wheel from PyPI
