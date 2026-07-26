@@ -186,6 +186,10 @@ def render_repair_panel(
             )
             st.session_state["report_json"] = None
             st.session_state["current_candidate_id"] = "recommended"
+            st.session_state[f"_{prefix}_editing_draft"] = begin_web_editing(
+                repaired
+            )
+            st.session_state[f"_{prefix}_canvas_source_seat"] = None
             export_prefix = (
                 PROJECT_EXPORT_PREFIX
                 if project_path is not None
@@ -196,7 +200,6 @@ def render_repair_panel(
                 None,
             )
             st.success(translate("repair_complete"))
-            st.rerun()
         except (
             InputFileError,
             MissingOptionalDependencyError,
