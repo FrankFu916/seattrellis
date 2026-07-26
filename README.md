@@ -34,7 +34,7 @@ python -m pip install -e .
 seattrellis --help
 ```
 
-最小安装支持 CLI help、CSV 输入、JSON layout/rules/snapshot/candidate set、内置规则 preset、本地 project workspace、deterministic fallback solver、多方案生成与评分，以及不依赖重库的 HTML 导出。
+最小安装支持 CLI help、CSV 输入、JSON layout/rules/snapshot/candidate set、内置规则 preset、本地 project workspace、seeded fallback solver、多方案生成与评分，以及不依赖重库的 HTML 导出。
 
 ### 常用本地安装
 
@@ -51,13 +51,15 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-`all` extra 包含 OR-Tools、Excel、PNG、PDF、Word 和 Streamlit 相关依赖；`dev` extra 包含测试和构建工具，`docs` extra 用于构建文档站。
+`all` extra 包含 OR-Tools、Excel、PNG、PDF、Word 和 Streamlit 相关依赖；
+`dev` extra 包含测试和构建工具，`e2e` extra 用于真实浏览器验收，`docs`
+extra 用于构建文档站。
 
 ### 网页端
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
@@ -116,7 +118,7 @@ seattrellis export --snapshot outputs/daily.snapshot.json --format html
 
 ## 求解器
 
-默认使用内置 deterministic fallback solver，确保示例和小型排座流程无需重依赖即可运行。可选 OR-Tools CP-SAT 支持保留在 `solver` extra 中：
+默认使用内置 seeded fallback solver，确保示例和小型排座流程无需重依赖即可运行。它在完成固定尝试预算时，相同输入与 seed 会得到稳定结果；若墙钟时间限制提前终止求解（snapshot 中 `metrics.stopped_by_time_limit` 为 `true`），不同机器可能完成不同数量的尝试，因此最终方案不承诺逐字节一致。可选 OR-Tools CP-SAT 支持保留在 `solver` extra 中：
 
 ```bash
 python -m pip install -e ".[solver]"

@@ -1,0 +1,661 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://frankfu916.github.io/seattrellis/schemas/seating-snapshot.schema.json",
+  "title": "SeatTrellis Seating Snapshot",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "title": "Schema Version",
+      "default": "1.0",
+      "type": "string"
+    },
+    "created_at": {
+      "title": "Created At",
+      "type": "string",
+      "format": "date-time"
+    },
+    "seed": {
+      "title": "Seed",
+      "default": 42,
+      "type": "integer"
+    },
+    "metadata": {
+      "title": "Metadata",
+      "type": "object"
+    },
+    "students": {
+      "title": "Students",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Student"
+      }
+    },
+    "layout": {
+      "$ref": "#/definitions/ClassroomLayout"
+    },
+    "rules": {
+      "$ref": "#/definitions/RuleSet"
+    },
+    "assignments": {
+      "title": "Assignments",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SeatAssignment"
+      }
+    },
+    "solver_status": {
+      "title": "Solver Status",
+      "type": "string"
+    },
+    "objective_value": {
+      "title": "Objective Value",
+      "type": "number"
+    },
+    "metrics": {
+      "title": "Metrics",
+      "type": "object"
+    }
+  },
+  "required": [
+    "students",
+    "layout",
+    "rules",
+    "assignments",
+    "solver_status"
+  ],
+  "definitions": {
+    "Student": {
+      "title": "Student",
+      "description": "A student record.\n\nOnly one stable identifier is required: either ``student_id`` or ``name``.\nProject-specific columns can be stored in ``attributes``.",
+      "type": "object",
+      "properties": {
+        "student_id": {
+          "title": "Student Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "gender": {
+          "title": "Gender",
+          "type": "string"
+        },
+        "height_cm": {
+          "title": "Height Cm",
+          "type": "number"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "vision": {
+          "title": "Vision",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "notes": {
+          "title": "Notes",
+          "type": "string"
+        },
+        "tags": {
+          "title": "Tags",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "needs": {
+          "title": "Needs",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attributes": {
+          "title": "Attributes",
+          "type": "object"
+        }
+      }
+    },
+    "SeatNode": {
+      "title": "SeatNode",
+      "description": "A physical or logical seat node in the classroom graph.",
+      "type": "object",
+      "properties": {
+        "seat_id": {
+          "title": "Seat Id",
+          "type": "string"
+        },
+        "row": {
+          "title": "Row",
+          "type": "integer"
+        },
+        "col": {
+          "title": "Col",
+          "type": "integer"
+        },
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "default": true,
+          "type": "boolean"
+        },
+        "zone": {
+          "title": "Zone",
+          "type": "string"
+        },
+        "near_window": {
+          "title": "Near Window",
+          "default": false,
+          "type": "boolean"
+        },
+        "near_door": {
+          "title": "Near Door",
+          "default": false,
+          "type": "boolean"
+        },
+        "near_platform": {
+          "title": "Near Platform",
+          "default": false,
+          "type": "boolean"
+        },
+        "near_ac": {
+          "title": "Near Ac",
+          "default": false,
+          "type": "boolean"
+        },
+        "tags": {
+          "title": "Tags",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attributes": {
+          "title": "Attributes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "seat_id",
+        "row",
+        "col"
+      ]
+    },
+    "AdjacencyConfig": {
+      "title": "AdjacencyConfig",
+      "description": "Rules for generating a seat adjacency graph.",
+      "type": "object",
+      "properties": {
+        "include_horizontal": {
+          "title": "Include Horizontal",
+          "default": true,
+          "type": "boolean"
+        },
+        "include_vertical": {
+          "title": "Include Vertical",
+          "default": false,
+          "type": "boolean"
+        },
+        "include_diagonal": {
+          "title": "Include Diagonal",
+          "default": false,
+          "type": "boolean"
+        },
+        "max_row_delta": {
+          "title": "Max Row Delta",
+          "default": 1,
+          "type": "integer"
+        },
+        "max_col_delta": {
+          "title": "Max Col Delta",
+          "default": 1,
+          "type": "integer"
+        },
+        "max_distance": {
+          "title": "Max Distance",
+          "type": "number"
+        },
+        "use_xy_distance": {
+          "title": "Use Xy Distance",
+          "default": true,
+          "type": "boolean"
+        },
+        "custom_edges": {
+          "title": "Custom Edges",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "ClassroomLayout": {
+      "title": "ClassroomLayout",
+      "description": "A classroom layout represented by seat nodes and adjacency settings.",
+      "type": "object",
+      "properties": {
+        "layout_id": {
+          "title": "Layout Id",
+          "default": "default-layout",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "default": "Classroom",
+          "type": "string"
+        },
+        "seats": {
+          "title": "Seats",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SeatNode"
+          }
+        },
+        "adjacency": {
+          "$ref": "#/definitions/AdjacencyConfig"
+        },
+        "metadata": {
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "seats"
+      ]
+    },
+    "FixedSeatRule": {
+      "title": "FixedSeatRule",
+      "type": "object",
+      "properties": {
+        "student": {
+          "title": "Student",
+          "type": "string"
+        },
+        "seat_id": {
+          "title": "Seat Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "student",
+        "seat_id"
+      ],
+      "additionalProperties": false
+    },
+    "PairRule": {
+      "title": "PairRule",
+      "type": "object",
+      "properties": {
+        "students": {
+          "title": "Students",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "students"
+      ],
+      "additionalProperties": false
+    },
+    "MinDistanceRule": {
+      "title": "MinDistanceRule",
+      "type": "object",
+      "properties": {
+        "students": {
+          "title": "Students",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "distance": {
+          "title": "Distance",
+          "type": "number"
+        },
+        "metric": {
+          "title": "Metric",
+          "default": "euclidean",
+          "enum": [
+            "euclidean",
+            "graph"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "students",
+        "distance"
+      ],
+      "additionalProperties": false
+    },
+    "HardRules": {
+      "title": "HardRules",
+      "type": "object",
+      "properties": {
+        "fixed_seats": {
+          "title": "Fixed Seats",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FixedSeatRule"
+          }
+        },
+        "must_be_adjacent": {
+          "title": "Must Be Adjacent",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PairRule"
+          }
+        },
+        "cannot_be_adjacent": {
+          "title": "Cannot Be Adjacent",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PairRule"
+          }
+        },
+        "min_distance": {
+          "title": "Min Distance",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MinDistanceRule"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "WeightedRule": {
+      "title": "WeightedRule",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "default": false,
+          "type": "boolean"
+        },
+        "weight": {
+          "title": "Weight",
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SeatPositionCategory": {
+      "title": "SeatPositionCategory",
+      "description": "An enumeration.",
+      "enum": [
+        "front",
+        "back",
+        "middle",
+        "side",
+        "corner",
+        "near_window",
+        "near_door",
+        "near_platform",
+        "near_ac",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "FairRotationRule": {
+      "title": "FairRotationRule",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "default": false,
+          "type": "boolean"
+        },
+        "weight": {
+          "title": "Weight",
+          "default": 1,
+          "type": "integer"
+        },
+        "avoid_repeating_categories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SeatPositionCategory"
+          }
+        },
+        "lookback": {
+          "title": "Lookback",
+          "default": 4,
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "NeighborRelationType": {
+      "title": "NeighborRelationType",
+      "description": "An enumeration.",
+      "enum": [
+        "desk_mate",
+        "horizontal",
+        "vertical",
+        "diagonal",
+        "adjacent_any",
+        "within_distance"
+      ],
+      "type": "string"
+    },
+    "AvoidRecentNeighborsRule": {
+      "title": "AvoidRecentNeighborsRule",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "default": false,
+          "type": "boolean"
+        },
+        "weight": {
+          "title": "Weight",
+          "default": 1,
+          "type": "integer"
+        },
+        "relation_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NeighborRelationType"
+          }
+        },
+        "lookback": {
+          "title": "Lookback",
+          "default": 4,
+          "type": "integer"
+        },
+        "max_recent_count": {
+          "title": "Max Recent Count",
+          "default": 1,
+          "type": "integer"
+        },
+        "within_distance": {
+          "title": "Within Distance",
+          "default": 2,
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CoolingRule": {
+      "title": "CoolingRule",
+      "description": "Cooling period between repeated desk-mate / neighbor assignments.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "default": false,
+          "type": "boolean"
+        },
+        "weight": {
+          "title": "Weight",
+          "default": 1,
+          "type": "integer"
+        },
+        "cooling_period": {
+          "title": "Cooling Period",
+          "default": 3,
+          "type": "integer"
+        },
+        "relation_types": {
+          "title": "Relation Types",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SoftRules": {
+      "title": "SoftRules",
+      "type": "object",
+      "properties": {
+        "vision_front": {
+          "$ref": "#/definitions/WeightedRule"
+        },
+        "height_back": {
+          "$ref": "#/definitions/WeightedRule"
+        },
+        "randomize": {
+          "$ref": "#/definitions/WeightedRule"
+        },
+        "score_balance": {
+          "$ref": "#/definitions/WeightedRule"
+        },
+        "fair_rotation": {
+          "$ref": "#/definitions/FairRotationRule"
+        },
+        "avoid_recent_neighbors": {
+          "$ref": "#/definitions/AvoidRecentNeighborsRule"
+        },
+        "cooling": {
+          "$ref": "#/definitions/CoolingRule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "GroupRule": {
+      "title": "GroupRule",
+      "description": "Defines a named group of students for separation or togetherness rules.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "students": {
+          "title": "Students",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "separate": {
+          "title": "Separate",
+          "default": false,
+          "type": "boolean"
+        },
+        "together": {
+          "title": "Together",
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "RuleSet": {
+      "title": "RuleSet",
+      "type": "object",
+      "properties": {
+        "seed": {
+          "title": "Seed",
+          "default": 42,
+          "type": "integer"
+        },
+        "hard": {
+          "$ref": "#/definitions/HardRules"
+        },
+        "soft": {
+          "$ref": "#/definitions/SoftRules"
+        },
+        "groups": {
+          "title": "Groups",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GroupRule"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SeatAssignment": {
+      "title": "SeatAssignment",
+      "type": "object",
+      "properties": {
+        "student_key": {
+          "title": "Student Key",
+          "type": "string"
+        },
+        "student_name": {
+          "title": "Student Name",
+          "type": "string"
+        },
+        "seat_id": {
+          "title": "Seat Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_key",
+        "student_name",
+        "seat_id"
+      ]
+    }
+  },
+  "x-seattrellis-artifact": "seating-snapshot",
+  "x-seattrellis-schema-version": "1.0"
+}

@@ -11,7 +11,7 @@ python -m pip install -e .
 seattrellis --help
 ```
 
-The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot/candidate set, built-in rules presets, local project workspaces, the deterministic fallback solver, multi-candidate generation and scoring, and HTML export without heavy optional libraries.
+The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot/candidate set, built-in rules presets, local project workspaces, the seeded fallback solver, multi-candidate generation and scoring, and HTML export without heavy optional libraries.
 
 ### Common Local Install
 
@@ -28,13 +28,15 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-The `all` extra includes OR-Tools, Excel, PNG, and Streamlit dependencies. The `dev` extra includes test and build tools.
+The `all` extra includes OR-Tools, Excel, PNG, and Streamlit dependencies.
+The `dev` extra includes test and build tools, while the `e2e` extra installs
+the real-browser acceptance runner.
 
 ### Web UI
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
@@ -85,16 +87,16 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 5 --output outputs/candidates.json --report outputs/plan-report.json
 ```
 
-`--candidates 1` preserves the old behaviour and writes a normal snapshot. `--candidates N` repeatedly solves with a deterministic seed sequence and an exact-assignment exclusion constraint, writing a `kind: "candidate_set"` JSON artifact. Candidate generation is heuristic, but every candidate must still satisfy every hard constraint. If the feasible space cannot supply enough distinct plans, SeatTrellis keeps the plans it found and records a warning.
+`--candidates 1` preserves the old behaviour and writes a normal snapshot. `--candidates N` repeatedly solves with a fixed seed sequence and an exact-assignment exclusion constraint, writing a `kind: "candidate_set"` JSON artifact. Candidate generation is heuristic, but every candidate must still satisfy every hard constraint. If a wall-clock deadline stops fallback early, machines may complete different numbers of internal attempts; inspect `metrics.stopped_by_time_limit` before treating outputs as reproducible. If the feasible space cannot supply enough distinct plans, SeatTrellis keeps the plans it found and records a warning.
 
 ### Optional OR-Tools Solver
 
 ```bash
 python -m pip install -e ".[solver]"
-SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --backend ortools
 ```
 
-SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is set. If the `solver` extra is missing, the CLI prints the install command and exits with a non-zero status.
+`--backend ortools` explicitly asks SeatTrellis to import OR-Tools. If the `solver` extra is missing, the CLI prints the install command and exits with a non-zero status. The legacy `SEATTRELLIS_USE_ORTOOLS=1` environment variable remains supported.
 
 ## Validation
 
@@ -141,6 +143,84 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 Exported files are written to `outputs/`, which is ignored by Git.
 
+## Manual Edits
+
+After solving, use `edit` to apply command-style adjustments to a snapshot and
+then export the edited draft:
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation swap:STU001:STU002 \
+  --output outputs/neighbor-aware-edited.snapshot.json
+
+seattrellis export \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --format html \
+  --output outputs/neighbor-aware-edited.html
+```
+
+Repeated `--operation` values run in order. By default the command writes a
+draft and prints hard-constraint diagnostics; with `--strict`, a hard-constraint
+violation fails the command and leaves the output file unwritten.
+When the input is a candidate set, `edit` selects the recommended candidate by
+default; pass `--candidate candidate_02` to choose a specific candidate.
+
+Run a multi-student permutation as one atomic, undoable operation:
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation "batch-move:STU001=R1C2,STU002=R1C1" \
+  --output outputs/batch-edited.snapshot.json
+```
+
+If a target seat is occupied, its occupant must also be part of the batch. Any
+conflict rejects the whole operation without a partial edit.
+
+To save or replay a group of edits, place operations in a JSON file and pass
+`--operations-file`. The file can be an operation list or an object with an
+`operations` list. File operations always run before inline `--operation`
+values:
+
+```json
+{
+  "operations": [
+    {
+      "kind": "swap_students",
+      "payload": {
+        "first_student": "STU001",
+        "second_student": "STU002"
+      }
+    }
+  ]
+}
+```
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operations-file adjustments.json \
+  --output outputs/neighbor-aware-edited.snapshot.json
+```
+
+Use `repair` to re-solve only a small group after locking parts of a draft.
+With `--affected-student`, every other seated student remains in place:
+
+```bash
+seattrellis repair \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --affected-student STU001 \
+  --affected-student STU002 \
+  --lock-seat R4C3 \
+  --backend fallback \
+  --output outputs/neighbor-aware-repaired.snapshot.json
+```
+
+`repair` reuses the `metadata.lock_state` saved by editing by default. Pass
+`--ignore-saved-locks` to ignore it; without `--affected-student`, every
+unlocked student may be re-arranged.
+
 ## Project Workflow
 
 ```bash
@@ -156,11 +236,17 @@ seattrellis project-validate --project examples/project.seattrellis.json
 # Solve
 seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
 
+# Edit
+seattrellis project-edit --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --operation swap:STU001:STU002 --output outputs/project-edited.snapshot.json
+
+# Re-solve the affected students after editing
+seattrellis project-repair --project examples/project.seattrellis.json --snapshot outputs/project-edited.snapshot.json --affected-student STU001 --affected-student STU002 --backend fallback --output outputs/project-repaired.snapshot.json
+
 # Export
-seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html
+seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project-repaired.snapshot.json --format html --output outputs/project-repaired.html
 ```
 
-`project-init` creates a lightweight local project file; `project-info` checks its settings and path status; `project-validate`, `project-solve`, and `project-export` reuse the existing validation, solving, and export logic. A project file stores relative paths and defaults only — it does not embed student lists or seating data. Relative paths are resolved from the project file's directory.
+`project-init` creates a lightweight local project file; `project-info` checks its settings and path status; `project-validate`, `project-solve`, `project-edit`, `project-repair`, and `project-export` reuse the existing validation, solving, manual editing, local repair, and export logic. A project file stores relative paths and defaults only — it does not embed student lists or seating data. Relative paths are resolved from the project file's directory.
 
 ## Multi-Candidate Scoring Dimensions
 
@@ -175,7 +261,15 @@ Each candidate in a candidate set contains its snapshot, seed, solver backend, t
 
 Missing history, disabled rules, or insufficient fields produce `not_available` instead of an invented score. The total is a 0–100 weighted average of available dimensions using rule weights. The recommended candidate is the highest-scoring hard-valid plan, with `candidate_id` as a deterministic tie-breaker. Scores support comparison and explanation; they do not claim global optimality.
 
-Snapshots and candidate sets are different formats, and old snapshots remain readable. When `export` receives a candidate set, it exports the recommended candidate by default or a selected ID such as `--candidate candidate_03`.
+Snapshots and candidate sets are different formats, and old snapshots remain readable. When `export` receives a candidate set, it exports the recommended candidate by default or a selected ID such as `--candidate candidate_03`. To export the full candidate comparison report, use:
+
+```bash
+seattrellis export --snapshot outputs/candidates.json --candidate-scope all --format html --output outputs/candidate-comparison.html
+```
+
+The comparison report contains plan-level aggregate metrics only. It does not
+include names, student IDs, grades, notes, needs, height, or vision data,
+regardless of the selected template or field-visibility options.
 
 ## Next Steps
 

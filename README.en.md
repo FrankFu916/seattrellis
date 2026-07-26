@@ -47,7 +47,7 @@ python -m pip install -e .
 seattrellis --help
 ```
 
-The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot/candidate-set files, built-in rules presets, local project workspaces, the deterministic fallback solver, multi-candidate scoring, and HTML export without heavy optional libraries.
+The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot/candidate-set files, built-in rules presets, the seeded fallback solver, local project workspaces, multi-candidate scoring, and HTML export without heavy optional libraries.
 
 ### Common Local Install
 
@@ -70,7 +70,7 @@ The `all` extra includes OR-Tools, Excel, PNG, PDF, Word, and Streamlit dependen
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
@@ -160,7 +160,7 @@ Snapshots and candidate sets are different formats, and old snapshots remain rea
 
 ## Solver
 
-SeatTrellis uses a deterministic built-in fallback solver by default so the demo and small seating workflows run without heavy solver dependencies. Optional OR-Tools CP-SAT support is available through the `solver` extra:
+SeatTrellis uses a seeded built-in fallback solver by default so the demo and small seating workflows run without heavy solver dependencies. Results are stable for the same inputs and seed when the fixed attempt budget completes. If the wall-clock deadline stops the search early (`metrics.stopped_by_time_limit` is `true` in the snapshot), different machines may finish different numbers of attempts, so byte-for-byte reproducibility is not guaranteed. Optional OR-Tools CP-SAT support is available through the `solver` extra:
 
 ```bash
 python -m pip install -e ".[solver]"

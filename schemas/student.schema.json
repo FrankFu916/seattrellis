@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://frankfu916.github.io/seattrellis/schemas/student.schema.json",
+  "title": "SeatTrellis Student",
+  "description": "A student record.\n\nOnly one stable identifier is required: either ``student_id`` or ``name``.\nProject-specific columns can be stored in ``attributes``.",
+  "type": "object",
+  "properties": {
+    "student_id": {
+      "title": "Student Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "gender": {
+      "title": "Gender",
+      "type": "string"
+    },
+    "height_cm": {
+      "title": "Height Cm",
+      "type": "number"
+    },
+    "score": {
+      "title": "Score",
+      "type": "number"
+    },
+    "vision": {
+      "title": "Vision",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "notes": {
+      "title": "Notes",
+      "type": "string"
+    },
+    "tags": {
+      "title": "Tags",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "needs": {
+      "title": "Needs",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "attributes": {
+      "title": "Attributes",
+      "type": "object"
+    }
+  },
+  "x-seattrellis-artifact": "student"
+}

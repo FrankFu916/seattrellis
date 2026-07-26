@@ -8,12 +8,92 @@ without the ``web`` extra.
 from __future__ import annotations
 
 from html import escape as html_escape
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from seattrellis.models.candidate import CandidatePlan, CandidateSet
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.snapshot import SeatingSnapshot
-from seattrellis.web.i18n import normalize_locale, translate
+from seattrellis.web.i18n import normalize_locale, table_column_labels, translate
+
+
+def build_data_table_html(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    caption: str,
+    locale: str = "zh",
+    columns: Sequence[str] | None = None,
+) -> str:
+    """Render a small, accessible table without pandas or Arrow conversion.
+
+    Streamlit's dataframe element converts Python records through pandas and
+    pyarrow. That native conversion is unnecessary for the compact tables in
+    SeatTrellis and can terminate the whole Web process when the underlying
+    libraries are ABI-incompatible. Keeping table rendering in plain HTML also
+    makes escaping, column order, and accessibility explicit.
+    """
+
+    locale = normalize_locale(locale)
+    resolved_columns = list(columns or (rows[0].keys() if rows else ()))
+    if not resolved_columns:
+        return '<p class="seattrellis-empty-table"><em>—</em></p>'
+
+    labels = table_column_labels(locale)
+    header_html = "".join(
+        f'<th scope="col">{html_escape(labels.get(column, column))}</th>'
+        for column in resolved_columns
+    )
+    body_html = "".join(
+        "<tr>"
+        + "".join(
+            f"<td>{html_escape(_table_cell_text(row.get(column)))}</td>"
+            for column in resolved_columns
+        )
+        + "</tr>"
+        for row in rows
+    )
+    if not body_html:
+        body_html = (
+            f'<tr><td colspan="{len(resolved_columns)}" '
+            'class="seattrellis-empty-cell">—</td></tr>'
+        )
+
+    escaped_caption = html_escape(caption, quote=True)
+    return (
+        "<style>"
+        ".seattrellis-table-scroll{overflow-x:auto;margin:.35rem 0 1rem;"
+        "border:1px solid rgba(128,128,128,.22);border-radius:.65rem;}"
+        ".seattrellis-data-table{width:100%;border-collapse:collapse;"
+        "font-size:.9rem;line-height:1.4;}"
+        ".seattrellis-data-table th,.seattrellis-data-table td{"
+        "padding:.58rem .7rem;text-align:left;white-space:nowrap;"
+        "border-bottom:1px solid rgba(128,128,128,.18);}"
+        ".seattrellis-data-table th{font-weight:600;"
+        "background:rgba(128,128,128,.08);}"
+        ".seattrellis-data-table tbody tr:last-child td{border-bottom:0;}"
+        ".seattrellis-data-table tbody tr:hover{background:rgba(128,128,128,.05);}"
+        ".seattrellis-table-caption{position:absolute;width:1px;height:1px;"
+        "padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);"
+        "white-space:nowrap;border:0;}"
+        ".seattrellis-empty-cell{text-align:center!important;color:#777;}"
+        "</style>"
+        f'<div class="seattrellis-table-scroll" role="region" '
+        f'aria-label="{escaped_caption}" tabindex="0">'
+        '<table class="seattrellis-data-table">'
+        f'<caption class="seattrellis-table-caption">{escaped_caption}</caption>'
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{body_html}</tbody>"
+        "</table></div>"
+    )
+
+
+def _table_cell_text(value: object) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "✓" if value else "—"
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return ", ".join(str(item) for item in value) or "—"
+    return str(value)
 
 
 def build_seat_grid_html(
@@ -43,20 +123,19 @@ def build_seat_grid_html(
     if not layout.seats:
         return f"<p><em>{html_escape(translate('empty_layout', locale))}</em></p>"
 
-    # Determine grid dimensions from max row/col.
-    max_row = max(seat.row for seat in layout.seats)
-    max_col = max(seat.col for seat in layout.seats)
+    row_values, col_values = layout_grid_axes(layout.seats)
 
     assignment_map: dict[str, str] = {}
     if snapshot is not None:
         for a in snapshot.assignments:
             assignment_map[a.seat_id] = a.student_name or a.student_key
+    seat_by_position = {(seat.row, seat.col): seat for seat in layout.seats}
 
     rows_html: list[str] = []
-    for r in range(1, max_row + 1):
+    for r in row_values:
         cells: list[str] = []
-        for c in range(1, max_col + 1):
-            seat = _find_seat(layout.seats, r, c)
+        for c in col_values:
+            seat = seat_by_position.get((r, c))
             if seat is None:
                 cells.append('<div class="seat-cell empty-cell"></div>')
                 continue
@@ -95,6 +174,21 @@ def build_seat_grid_html(
         f'aria-label="{html_escape(translate("seat_grid_label", locale), quote=True)}">'
         + "".join(rows_html)
         + "</div>"
+    )
+
+
+def layout_grid_axes(seats: Sequence[SeatNode]) -> tuple[list[int], list[int]]:
+    """Return compact row and column axes for a sparse classroom layout.
+
+    Layout coordinates are identifiers rather than a license to allocate every
+    intervening cell. Explicit disabled seats can still represent intentional
+    gaps, while malformed coordinates cannot expand a small layout into a huge
+    browser grid.
+    """
+
+    return (
+        sorted({seat.row for seat in seats}),
+        sorted({seat.col for seat in seats}),
     )
 
 
@@ -454,13 +548,6 @@ div[data-testid="stDownloadButton"] button {
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _find_seat(seats: list[SeatNode], row: int, col: int) -> SeatNode | None:
-    for seat in seats:
-        if seat.row == row and seat.col == col:
-            return seat
-    return None
 
 
 def _tag_color_classes(seat: SeatNode) -> str:

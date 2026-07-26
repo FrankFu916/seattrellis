@@ -202,6 +202,40 @@ def test_teacher_html_privacy_options_hide_every_sensitive_field(
     assert "学生 01" in html
 
 
+def test_anonymized_html_omits_identity_bearing_free_form_details(
+    tmp_path,
+) -> None:
+    snapshot = _sensitive_snapshot()
+    snapshot.metadata["rules_summary"] = "Keep SECRET_STUDENT near the front"
+    snapshot.metadata["warnings"] = ["SECRET_STUDENT has no stable ID"]
+    candidate = _candidate(snapshot)
+    hard = candidate.score.breakdown.hard_constraint_summary
+    hard.satisfied = False
+    hard.violation_count = 1
+    hard.violations = ["fixed_seats is not satisfied for SECRET_STUDENT"]
+    privacy = PrintPrivacyOptions(anonymize=True)
+
+    teacher_html = export_print_html(
+        snapshot,
+        tmp_path / "anonymous-teacher.html",
+        template="teacher",
+        privacy=privacy,
+    ).read_text(encoding="utf-8")
+    report_html = export_print_html(
+        snapshot,
+        tmp_path / "anonymous-report.html",
+        template="report",
+        privacy=privacy,
+        candidate=candidate,
+    ).read_text(encoding="utf-8")
+
+    assert "Student 01" not in teacher_html
+    assert "学生 01" in teacher_html
+    assert "SECRET_STUDENT" not in teacher_html
+    assert "SECRET_STUDENT" not in report_html
+    assert "1 违规" in report_html
+
+
 def test_export_request_public_defaults_are_safe() -> None:
     request = ExportRequest(output_format="print-html")
 
@@ -382,7 +416,54 @@ def test_docx_renders_english_teacher_labels(tmp_path) -> None:
     assert "学生明细" not in document_xml
 
 
-def test_service_export_rejects_unimplemented_all_candidate_scope(tmp_path) -> None:
+def test_service_export_all_candidate_scope_writes_comparison_report(tmp_path) -> None:
+    snapshot = _sensitive_snapshot()
+    candidate = _candidate(snapshot)
+    artifact_path = write_json_model(
+        CandidateSet(
+            candidates=[candidate],
+            recommended_candidate_id=candidate.candidate_id,
+            warnings=["SECRET_STUDENT appears in a source warning"],
+        ),
+        tmp_path / "candidates.json",
+    )
+    request = ExportRequest(
+        output_format="html",
+        output_path=tmp_path / "all.html",
+        candidate_scope="all",
+        locale="en",
+        template="teacher",
+        privacy=PrivacyOptions(
+            hide_scores=False,
+            hide_notes=False,
+            hide_special_needs=False,
+            anonymize=False,
+            show_height=True,
+            show_vision=True,
+        ),
+    )
+
+    report_path = service_export(snapshot_path=artifact_path, request=request)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "Candidate comparison report" in report
+    assert "candidate_&lt;01&gt;" in report
+    assert "Recommended" in report
+    assert "Score comparison" in report
+    assert "1 warning is attached to this candidate set" in report
+    assert "SECRET_STUDENT" not in report
+    for sensitive_value in (
+        "alert(&quot;student&quot;)",
+        "SECRET_NOTE",
+        "SECRET_NEED",
+        "SECRET_TAG",
+        "SECRET_VISION",
+        "&lt;Unsafe Classroom&gt;",
+    ):
+        assert sensitive_value not in report
+
+
+def test_service_export_all_candidate_scope_requires_candidate_set(tmp_path) -> None:
     snapshot_path = write_json_model(
         _sensitive_snapshot(),
         tmp_path / "snapshot.json",
@@ -393,8 +474,27 @@ def test_service_export_rejects_unimplemented_all_candidate_scope(tmp_path) -> N
         candidate_scope="all",
     )
 
-    with pytest.raises(ValueError, match="candidate-set reports"):
+    with pytest.raises(ValueError, match="requires a candidate set"):
         service_export(snapshot_path=snapshot_path, request=request)
+
+
+def test_service_export_all_candidate_scope_rejects_non_html_formats(tmp_path) -> None:
+    snapshot = _sensitive_snapshot()
+    artifact_path = write_json_model(
+        CandidateSet(
+            candidates=[_candidate(snapshot)],
+            recommended_candidate_id="candidate_<01>",
+        ),
+        tmp_path / "candidates.json",
+    )
+    request = ExportRequest(
+        output_format="docx",
+        output_path=tmp_path / "all.docx",
+        candidate_scope="all",
+    )
+
+    with pytest.raises(ValueError, match="supports only html and print-html"):
+        service_export(snapshot_path=artifact_path, request=request)
 
 
 def test_pdf_has_valid_header_and_nonempty_content(tmp_path) -> None:

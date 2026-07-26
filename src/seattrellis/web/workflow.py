@@ -4,18 +4,26 @@ import json
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from math import isfinite
 from pathlib import Path
 from typing import Any, Sequence
+from uuid import uuid4
 
+from seattrellis.editing import (
+    EditingOperation,
+    lock_state_from_snapshot,
+)
 from seattrellis.service import (
+    edit_snapshot,
     export,
     export_extension,
     project_export,
     project_info,
+    project_repair,
     project_solve,
     project_validate,
+    repair_snapshot,
     score_text,
     solve_with_report,
 )
@@ -58,6 +66,169 @@ class WebSolveResult:
         if isinstance(warnings, list):
             return tuple(str(warning) for warning in warnings)
         return ()
+
+
+@dataclass(frozen=True)
+class WebEditingDraft:
+    """Replayable manual-edit state that survives Streamlit reruns."""
+
+    source_result: WebSolveResult
+    current_result: WebSolveResult
+    candidate_id: str
+    operations: tuple[EditingOperation, ...] = ()
+    redo_operations: tuple[EditingOperation, ...] = ()
+    operation_batches: tuple[tuple[EditingOperation, ...], ...] = ()
+    redo_operation_batches: tuple[tuple[EditingOperation, ...], ...] = ()
+    initial_locked_students: tuple[str, ...] = ()
+    initial_locked_seats: tuple[str, ...] = ()
+    draft_id: str = field(default_factory=lambda: uuid4().hex)
+    revision: int = 0
+    applied_command_ids: tuple[str, ...] = ()
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self.operation_batches or self.operations)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self.redo_operation_batches or self.redo_operations)
+
+
+def begin_web_editing(
+    result: WebSolveResult,
+    candidate_id: str = "recommended",
+) -> WebEditingDraft:
+    """Create an edit draft from the displayed snapshot and its saved locks."""
+    snapshot = selected_snapshot(result, candidate_id)
+    lock_state = lock_state_from_snapshot(snapshot)
+    return WebEditingDraft(
+        source_result=result,
+        current_result=result,
+        candidate_id=candidate_id,
+        initial_locked_students=lock_state.locked_students,
+        initial_locked_seats=lock_state.locked_seats,
+    )
+
+
+def apply_web_edit(
+    draft: WebEditingDraft,
+    operation: EditingOperation,
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Apply one command by replaying the active operation log."""
+    return apply_web_edits(draft, (operation,), output_dir=output_dir)
+
+
+def apply_web_edits(
+    draft: WebEditingDraft,
+    new_operations: Sequence[EditingOperation],
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Apply one or more operations atomically as a single draft revision."""
+    new_operations = tuple(new_operations)
+    if not new_operations:
+        raise ValueError("At least one editing operation is required.")
+    operations = (*draft.operations, *new_operations)
+    current = _write_web_edit(draft, operations, output_dir=output_dir)
+    return replace(
+        draft,
+        current_result=current,
+        operations=operations,
+        redo_operations=(),
+        operation_batches=(*draft.operation_batches, new_operations),
+        redo_operation_batches=(),
+        revision=draft.revision + 1,
+    )
+
+
+def undo_web_edit(
+    draft: WebEditingDraft,
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Undo the latest command and retain it for redo."""
+    if not draft.operations:
+        raise ValueError("There is no editing operation to undo.")
+    batch = (
+        draft.operation_batches[-1]
+        if draft.operation_batches
+        else (draft.operations[-1],)
+    )
+    operations = draft.operations[: -len(batch)]
+    current = (
+        draft.source_result
+        if not operations
+        else _write_web_edit(draft, operations, output_dir=output_dir)
+    )
+    return replace(
+        draft,
+        current_result=current,
+        operations=operations,
+        redo_operations=(*draft.redo_operations, *batch),
+        operation_batches=(
+            draft.operation_batches[:-1] if draft.operation_batches else ()
+        ),
+        redo_operation_batches=(*draft.redo_operation_batches, batch),
+        revision=draft.revision + 1,
+    )
+
+
+def redo_web_edit(
+    draft: WebEditingDraft,
+    *,
+    output_dir: str | Path,
+) -> WebEditingDraft:
+    """Reapply the most recently undone command."""
+    if not draft.redo_operations:
+        raise ValueError("There is no editing operation to redo.")
+    batch = (
+        draft.redo_operation_batches[-1]
+        if draft.redo_operation_batches
+        else (draft.redo_operations[-1],)
+    )
+    operations = (*draft.operations, *batch)
+    current = _write_web_edit(draft, operations, output_dir=output_dir)
+    return replace(
+        draft,
+        current_result=current,
+        operations=operations,
+        redo_operations=draft.redo_operations[: -len(batch)],
+        operation_batches=(*draft.operation_batches, batch),
+        redo_operation_batches=(
+            draft.redo_operation_batches[:-1]
+            if draft.redo_operation_batches
+            else ()
+        ),
+        revision=draft.revision + 1,
+    )
+
+
+def _write_web_edit(
+    draft: WebEditingDraft,
+    operations: Sequence[EditingOperation],
+    *,
+    output_dir: str | Path,
+) -> WebSolveResult:
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_path = output_root / "seattrellis.edited.snapshot.json"
+    written_path, summary = edit_snapshot(
+        snapshot_path=draft.source_result.artifact_path,
+        output_path=output_path,
+        operations=operations,
+        candidate_id=(
+            draft.candidate_id if draft.source_result.is_candidate_set else None
+        ),
+        locked_students=draft.initial_locked_students,
+        locked_seats=draft.initial_locked_seats,
+    )
+    return WebSolveResult(
+        artifact_path=written_path,
+        artifact=load_snapshot(written_path),
+        summary=summary,
+    )
 
 
 @dataclass(frozen=True)
@@ -331,6 +502,31 @@ def solve_for_web(
     )
 
 
+def expand_user_path(path_text: str) -> Path:
+    """Expand a leading home marker or reject it consistently across platforms."""
+    if (
+        path_text.startswith("~")
+        and len(path_text) > 1
+        and path_text[1] not in {"/", "\\"}
+    ):
+        raise ValueError(
+            "Named home-directory shortcuts are not portable; use ~/ or an "
+            f"absolute path instead: {path_text}"
+        )
+    path = Path(path_text)
+    try:
+        expanded = path.expanduser()
+    except RuntimeError as exc:
+        raise ValueError(
+            f"Could not expand the home directory in path: {path_text}"
+        ) from exc
+    if path_text.startswith("~") and expanded == path:
+        raise ValueError(
+            f"Could not expand the home directory in path: {path_text}"
+        )
+    return expanded
+
+
 def project_info_for_web(*, project_path: str | Path) -> str:
     return project_info(project_path=project_path)
 
@@ -342,25 +538,32 @@ def project_validate_for_web(*, project_path: str | Path, strict: bool = False) 
 def project_solve_for_web(
     *,
     project_path: str | Path,
+    output_dir: str | Path,
     candidate_count: int | None = None,
     seed: int | None = None,
     time_limit_seconds: float = 3.0,
 ) -> WebSolveResult:
+    """Solve Project inputs into a caller-owned, session-scoped directory."""
     if candidate_count is not None and not 1 <= candidate_count <= 20:
         raise ValueError("candidate_count must be between 1 and 20")
     if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
         raise ValueError("time_limit_seconds must be a finite number >= 0.1")
-    project, paths = load_project_paths(
+    project, _paths = load_project_paths(
         project_path,
         require_inputs=True,
         require_history=True,
-        create_outputs=True,
     )
     count = project.default_candidates if candidate_count is None else candidate_count
-    artifact_path = paths.outputs_dir / (
-        "latest.snapshot.json" if count == 1 else "latest.candidates.json"
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    artifact_path = output_root / (
+        "seattrellis.snapshot.json"
+        if count == 1
+        else "seattrellis.candidates.json"
     )
-    report_path = paths.outputs_dir / "latest.plan-report.json" if count > 1 else None
+    report_path = (
+        output_root / "seattrellis.plan-report.json" if count > 1 else None
+    )
 
     written_path, summary = project_solve(
         project_path=project_path,
@@ -381,6 +584,84 @@ def project_solve_for_web(
         artifact=artifact,
         report_path=report_path if report_path is not None and report_path.exists() else None,
         report=report,
+        summary=summary,
+    )
+
+
+def repair_for_web(
+    result: WebSolveResult,
+    *,
+    output_dir: str | Path,
+    candidate_id: str = "recommended",
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+) -> WebSolveResult:
+    """Repair the currently displayed artifact and return a Web-ready snapshot."""
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_path = output_root / "seattrellis.repaired.snapshot.json"
+    written_path, summary = repair_snapshot(
+        snapshot_path=result.artifact_path,
+        output_path=output_path,
+        candidate_id=candidate_id if result.is_candidate_set else None,
+        affected_students=affected_students,
+        locked_students=locked_students,
+        locked_seats=locked_seats,
+        history_paths=history_paths,
+        history_dir=history_dir,
+        reuse_saved_locks=reuse_saved_locks,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
+    )
+    return WebSolveResult(
+        artifact_path=written_path,
+        artifact=load_snapshot(written_path),
+        summary=summary,
+    )
+
+
+def project_repair_for_web(
+    result: WebSolveResult,
+    *,
+    project_path: str | Path,
+    output_dir: str | Path,
+    candidate_id: str = "recommended",
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+) -> WebSolveResult:
+    """Repair a Project artifact in its session while reusing Project history."""
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_path = output_root / "seattrellis.repaired.snapshot.json"
+    written_path, summary = project_repair(
+        project_path=project_path,
+        snapshot_path=result.artifact_path,
+        output_path=output_path,
+        candidate_id=candidate_id if result.is_candidate_set else None,
+        affected_students=affected_students,
+        locked_students=locked_students,
+        locked_seats=locked_seats,
+        reuse_saved_locks=reuse_saved_locks,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
+    )
+    return WebSolveResult(
+        artifact_path=written_path,
+        artifact=load_snapshot(written_path),
         summary=summary,
     )
 
@@ -406,11 +687,16 @@ def project_export_for_web(
     if request is not None:
         if request.output_format != normalized_format:
             raise ValueError("request output format does not match output_format.")
+        request_candidate_id = (
+            None
+            if request.candidate_scope == "all"
+            else candidate_id if result.is_candidate_set else None
+        )
         if normalized_format == "pdf":
             return _export_pdf_in_subprocess(
                 snapshot_path=result.artifact_path,
                 output_path=output_path,
-                candidate_id=candidate_id if result.is_candidate_set else None,
+                candidate_id=request_candidate_id,
                 request=request,
             )
         return export(
@@ -418,9 +704,7 @@ def project_export_for_web(
             request=replace(
                 request,
                 output_path=output_path,
-                candidate_id=(
-                    candidate_id if result.is_candidate_set else None
-                ),
+                candidate_id=request_candidate_id,
             ),
         )
     return project_export(
@@ -476,17 +760,22 @@ def export_for_web(
     if request is not None:
         if request.output_format != normalized_format:
             raise ValueError("request output format does not match output_format.")
+        request_candidate_id = (
+            None
+            if request.candidate_scope == "all"
+            else candidate_id if result.is_candidate_set else None
+        )
         if normalized_format == "pdf":
             return _export_pdf_in_subprocess(
                 snapshot_path=result.artifact_path,
                 output_path=output_path,
-                candidate_id=candidate_id if result.is_candidate_set else None,
+                candidate_id=request_candidate_id,
                 request=request,
             )
         request = replace(
             request,
             output_path=output_path,
-            candidate_id=candidate_id if result.is_candidate_set else None,
+            candidate_id=request_candidate_id,
         )
         return export(
             snapshot_path=result.artifact_path,
@@ -508,6 +797,11 @@ def _export_pdf_in_subprocess(
     request: ExportRequest,
 ) -> Path:
     """Run Web PDF export out-of-process to isolate native Pango/Cairo crashes."""
+    if request.candidate_scope == "all":
+        raise ValueError(
+            "candidate_scope='all' currently supports only html and "
+            "print-html exports."
+        )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     privacy = request.resolved_privacy
     cmd = [

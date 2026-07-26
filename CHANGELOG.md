@@ -2,6 +2,101 @@
 
 ## Unreleased
 
+### Added
+
+- Added explicit `auto`, `fallback`, `ortools`, and source-only `native`
+  backend selection with shared compiled-problem and result contracts.
+- Added repeatable synthetic 40/50/60-student benchmark tooling and reports.
+- Added Python 3.11 and 3.12 native-extension wheel checks on Linux, Windows,
+  and macOS, with short-lived CI artifacts for inspection.
+- Added candidate comparison reports with recommendation, score, constraint,
+  and history explanations.
+- Added JSON Schema export and normalization commands for versioned project
+  artifacts and editor protocol messages.
+- Added UI-neutral manual editing sessions, replayable operation files, and
+  Project commands for editing saved candidates.
+- Added lock-aware constrained re-solving for global or student-scoped repair,
+  including saved lock state, empty-seat reservation, history-aware fairness,
+  and post-solve anchor verification.
+- Added Web controls for locking students or seats and running global or
+  student-scoped repair with selectable Python, OR-Tools, or native backends.
+- Added replayable Web manual swaps with immediate hard-constraint diagnostics
+  and undo/redo support; edited drafts remain available to export or repair.
+- Added Web controls for moving students to empty seats, placing them in an
+  unseated area, and seating them again without implicitly displacing others.
+- Added undoable Web student and seat locks that filter invalid manual moves
+  and flow directly into saved-lock constrained repair.
+- Added atomic batch moves across the domain, CLI operation files and inline
+  syntax, and Web multi-selection with one-step undo/redo.
+- Added an accessible interactive seating grid for direct click-to-move,
+  click-to-swap, and seat-lock toggling through the shared command log.
+- Added a versioned editor command/state protocol with atomic command batches,
+  optimistic revision checks, duplicate-command protection, minimized frontend
+  state, and committed JSON Schema documents.
+- Added an experimental Rust validator package and explicit `native` validation
+  mode while retaining the Python search backends.
+- Added a real-browser Playwright acceptance test for the Web Demo-to-export
+  workflow, including process cleanup, download and privacy checks, health
+  verification, and CI failure artifacts.
+- Expanded real-browser coverage to uploaded CSV/JSON inputs and the local
+  Project validate/solve/candidate/export workflow.
+
+### Changed
+
+- Documentation now distinguishes seeded fallback behavior from reproducible
+  runs that complete their fixed attempt budget without a wall-clock cutoff.
+- Removed the misleading `native` extra. The experimental Rust extension is
+  built separately from a matching source checkout and currently acts only as
+  a post-solve validator for the Python fallback backend.
+- Moved stateful Web editing and repair controls out of the page entry point
+  into a dedicated adapter module while keeping workflow code Streamlit-free.
+- Raised the Web extra's minimum Streamlit version to 1.50, matching the
+  keyed-widget identity and layout behavior used by the application.
+- Quick-solve uploads now survive wizard navigation and invalidate stale
+  results when inputs change.
+- Standalone Project manifest uploads are validated and previewed without
+  resolving server-side paths; full Project operations require a local path.
+- Quick solve and Project results no longer appear in the other workspace, and
+  preparing a new result or manual edit now discards stale export downloads.
+- The checked-in Streamlit configuration and documented commands bind the Web
+  app to the local machine by default.
+- Project output-directory and JSON write failures now produce user-facing file
+  errors instead of uncaught operating-system exceptions.
+- Full candidate comparison reports now have an explicit aggregate-only privacy
+  invariant backed by sensitive-field regression coverage.
+- `doctor` now checks installed package metadata without importing optional
+  native or Web runtimes into the diagnostic process.
+
+### Fixed
+
+- Quick Solve now stores uploaded files by role, so identically named layout
+  and rules files cannot overwrite each other.
+- Project Web sessions now keep solve, edit, repair, and export artifacts in
+  separate working directories instead of sharing mutable `latest.*` files.
+- Web PDF export now rejects unsupported all-candidate requests instead of
+  silently exporting only the recommended plan.
+- Sparse layout coordinates no longer expand the Web seat map into thousands
+  of empty rows or columns.
+- Web repair now starts a fresh editing session immediately, so the first
+  post-repair lock or move action is not lost on newer Streamlit versions.
+- Manually edited snapshots now use an explicit draft status, retain source
+  provenance, and stop presenting stale solver scores, objectives, or metrics
+  as current results.
+- Schema migrations now replace files atomically and preserve the original
+  artifact if the final write cannot be completed.
+- Candidate comparison and anonymized reports no longer embed potentially
+  identifying free-form warning or rule text.
+- Web result tables no longer use the pandas/Arrow conversion path that could
+  crash the Streamlit server after a solve.
+- Manual edits now inherit persisted student and seat locks while still
+  allowing explicit unlock commands.
+- Repeated OR-Tools requests consistently report a missing optional dependency
+  instead of failing with an internal attribute error.
+- The fallback backend now applies its deadline during the deterministic first
+  attempt, candidate ranking, and objective calculation.
+- OR-Tools timeout and unknown statuses are no longer reported as proof of an
+  infeasible seating problem.
+
 ## 1.3.0 - 2026-07-25
 
 ### Added

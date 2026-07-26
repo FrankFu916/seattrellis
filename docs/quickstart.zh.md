@@ -11,7 +11,7 @@ python -m pip install -e .
 seattrellis --help
 ```
 
-最小安装支持 CLI help、CSV 输入、JSON layout/rules/snapshot/candidate set、内置规则 preset、本地 project workspace、deterministic fallback solver、多方案生成与评分，以及不依赖重库的 HTML 导出。
+最小安装支持 CLI help、CSV 输入、JSON layout/rules/snapshot/candidate set、内置规则 preset、本地 project workspace、seeded fallback solver、多方案生成与评分，以及不依赖重库的 HTML 导出。
 
 ### 常用本地安装
 
@@ -28,13 +28,14 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-`all` extra 包含 OR-Tools、Excel、PNG 和 Streamlit 相关依赖；`dev` extra 包含测试和构建工具。
+`all` extra 包含 OR-Tools、Excel、PNG 和 Streamlit 相关依赖；`dev` extra
+包含测试和构建工具，`e2e` extra 用于真实浏览器验收。
 
 ### 网页端
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py
+streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
@@ -91,10 +92,10 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 
 ```bash
 python -m pip install -e ".[solver]"
-SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --backend ortools
 ```
 
-只有设置 `SEATTRELLIS_USE_ORTOOLS=1` 时才会尝试导入 OR-Tools。若未安装 `solver` extra，CLI 会提示安装命令并以非零退出码结束。
+`--backend ortools` 会显式尝试导入 OR-Tools。若未安装 `solver` extra，CLI 会提示安装命令并以非零退出码结束。旧的 `SEATTRELLIS_USE_ORTOOLS=1` 仍然兼容。
 
 ## 验证
 
@@ -141,6 +142,79 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format png
 
 导出文件会写入 `outputs/`。该目录已被 `.gitignore` 忽略。
 
+## 手动微调
+
+求解后可以用 `edit` 对 snapshot 做命令式微调，再把新草稿导出：
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation swap:STU001:STU002 \
+  --output outputs/neighbor-aware-edited.snapshot.json
+
+seattrellis export \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --format html \
+  --output outputs/neighbor-aware-edited.html
+```
+
+多次 `--operation` 会按顺序执行。默认会保存草稿并显示 hard constraint 诊断；
+加 `--strict` 后，若调整违反 hard constraints 则不会写出文件。
+如果输入的是 candidate set，`edit` 默认选择 recommended candidate，也可以用
+`--candidate candidate_02` 指定候选。
+
+批量换位可作为一条原子操作执行并一次撤销：
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operation "batch-move:STU001=R1C2,STU002=R1C1" \
+  --output outputs/batch-edited.snapshot.json
+```
+
+目标座位已有学生时，该学生必须也在同一批次内；任何冲突都会使整个批次失败。
+
+若要保存或重放一组调整，可把操作写进 JSON 文件，再通过 `--operations-file` 读取。
+文件为操作数组，或包含 `operations` 数组的对象；文件操作会先于命令行中的
+`--operation` 执行：
+
+```json
+{
+  "operations": [
+    {
+      "kind": "swap_students",
+      "payload": {
+        "first_student": "STU001",
+        "second_student": "STU002"
+      }
+    }
+  ]
+}
+```
+
+```bash
+seattrellis edit \
+  --snapshot outputs/neighbor-aware.snapshot.json \
+  --operations-file adjustments.json \
+  --output outputs/neighbor-aware-edited.snapshot.json
+```
+
+如果老师已锁定部分座位，需要仅调整一小部分学生，可运行 `repair`。指定
+`--affected-student` 后，其他已入座学生会保留原位：
+
+```bash
+seattrellis repair \
+  --snapshot outputs/neighbor-aware-edited.snapshot.json \
+  --affected-student STU001 \
+  --affected-student STU002 \
+  --lock-seat R4C3 \
+  --backend fallback \
+  --output outputs/neighbor-aware-repaired.snapshot.json
+```
+
+`repair` 默认继承编辑草稿保存的 `metadata.lock_state`。`--ignore-saved-locks`
+可忽略它；不传 `--affected-student` 则会重新安排所有未锁定学生。
+
 ## Project 工作流
 
 ```bash
@@ -156,11 +230,20 @@ seattrellis project-validate --project examples/project.seattrellis.json
 # 求解
 seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
 
+# 微调
+seattrellis project-edit --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --operation swap:STU001:STU002 --output outputs/project-edited.snapshot.json
+
+# 锁定后重排（也可省略 --snapshot，使用最新 artifact）
+seattrellis project-repair --project examples/project.seattrellis.json --snapshot outputs/project-edited.snapshot.json --affected-student STU001 --affected-student STU002 --backend fallback --output outputs/project-repaired.snapshot.json
+
 # 导出
-seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html
+seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project-repaired.snapshot.json --format html --output outputs/project-repaired.html
 ```
 
-`project-init` 创建轻量的本地项目文件；`project-info` 检查配置和路径状态；`project-validate`、`project-solve`、`project-export` 分别复用现有校验、求解和导出逻辑。project 文件只保存相对路径和默认配置，不嵌入学生名单或座位数据；其中的相对路径始终相对于 project 文件所在目录解析。
+`project-init` 创建轻量的本地项目文件；`project-info` 检查配置和路径状态；
+`project-validate`、`project-solve`、`project-edit`、`project-repair`、`project-export`
+分别复用现有校验、求解、人工调整、局部修复和导出逻辑。project 文件只保存相对路径和默认配置，不嵌入学生名单
+或座位数据；其中的相对路径始终相对于 project 文件所在目录解析。
 
 ## 多方案评分维度
 
@@ -175,7 +258,14 @@ candidate set 中每个方案包含 snapshot、seed、solver backend、总分、
 
 缺少历史、规则未启用或字段不足时，相关维度明确标记为 `not_available`，不会虚构分数。总分是可用维度按规则权重计算的 0–100 加权平均；推荐方案是在满足 hard constraints 的候选中总分最高者，同分时按 `candidate_id` 稳定排序。评分用于比较和解释，不代表全局最优。
 
-普通 snapshot 与 candidate set 是两种不同格式，旧 snapshot 仍可读取。`export` 收到 candidate set 时默认导出 recommended candidate，也可以用 `--candidate candidate_03` 指定。
+普通 snapshot 与 candidate set 是两种不同格式，旧 snapshot 仍可读取。`export` 收到 candidate set 时默认导出 recommended candidate，也可以用 `--candidate candidate_03` 指定。若要导出完整候选集比较报告，使用：
+
+```bash
+seattrellis export --snapshot outputs/candidates.json --candidate-scope all --format html --output outputs/candidate-comparison.html
+```
+
+候选比较报告只包含方案级聚合指标，不展示姓名、学号、学生成绩、备注、特殊需求、
+身高或视力；选择不同模板或字段开关也不会扩大这类报告的内容。
 
 ## 继续阅读
 

@@ -10,5 +10,6 @@ seattrellis pair-report \
   --top 10
 ```
 
-`avoid_recent_neighbors` 与 `cooling` soft rules 可使用这些记录降低近期重复关系。它们不会放松 fixed seats、adjacency 或 minimum-distance hard rules。
-
+`avoid_recent_neighbors` soft rule 可使用这些记录降低近期重复关系。`cooling`
+字段目前仍是 model-only：会被解析和保留，但不会影响求解或评分。历史规则不会
+放松 fixed seats、adjacency 或 minimum-distance hard rules。

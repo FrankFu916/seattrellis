@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://frankfu916.github.io/seattrellis/schemas/project.schema.json",
+  "title": "SeatTrellis Project",
+  "description": "Portable configuration for a local SeatTrellis project workspace.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "title": "Kind",
+      "default": "seattrellis_project",
+      "enum": [
+        "seattrellis_project"
+      ],
+      "type": "string"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "default": 1,
+      "type": "integer"
+    },
+    "name": {
+      "title": "Name",
+      "default": "SeatTrellis Project",
+      "type": "string"
+    },
+    "students": {
+      "title": "Students",
+      "type": "string"
+    },
+    "layout": {
+      "title": "Layout",
+      "type": "string"
+    },
+    "rules": {
+      "title": "Rules",
+      "type": "string"
+    },
+    "history_dir": {
+      "title": "History Dir",
+      "type": "string"
+    },
+    "outputs_dir": {
+      "title": "Outputs Dir",
+      "default": "outputs",
+      "type": "string"
+    },
+    "default_candidates": {
+      "title": "Default Candidates",
+      "default": 5,
+      "type": "integer"
+    },
+    "default_candidate": {
+      "title": "Default Candidate",
+      "default": "recommended",
+      "type": "string"
+    },
+    "default_export_format": {
+      "title": "Default Export Format",
+      "default": "html",
+      "enum": [
+        "html",
+        "excel",
+        "png"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "students",
+    "layout",
+    "rules"
+  ],
+  "additionalProperties": false,
+  "x-seattrellis-artifact": "project",
+  "x-seattrellis-schema-version": 1
+}

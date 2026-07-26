@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   minimal:
     name: Minimal / ${{ matrix.os }} / Python ${{ matrix.python-version }}
@@ -62,31 +65,96 @@ jobs:
         run: |
           python -m pip install -e ".[docs]"
           mkdocs build --strict
-      - name: README command smoke test
+      - name: Run Rust core tests
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        shell: bash
+        run: cargo test --manifest-path native/Cargo.toml
+      - name: CLI workflow smoke test
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: python scripts/smoke_cli.py --optional auto --time-limit 3
+
+  native-extension:
+    name: Native extension / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            native/seattrellis_native/pyproject.toml
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install application and native build tool
         run: |
-          seattrellis --help
-          tmpdir="$(mktemp -d)"
-          cd "$tmpdir"
-          seattrellis init-demo
-          seattrellis presets list
-          seattrellis presets show daily
-          seattrellis presets export daily --output outputs/daily.rules.json
-          seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
-          seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history --output outputs/daily.snapshot.json
-          seattrellis project-info --project examples/project.seattrellis.json
-          seattrellis project-validate --project examples/project.seattrellis.json
-          seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
-          seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html
-          seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
-          seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-          seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-          seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
-          seattrellis export --snapshot outputs/neighbor-aware.snapshot.json --format html --output outputs/neighbor-aware.html
-          seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 3 --output outputs/candidates.json --report outputs/plan-report.json
-          seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html
-          seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history
-          seattrellis export --snapshot outputs/latest.snapshot.json --format excel
-          seattrellis export --snapshot outputs/latest.snapshot.json --format png
-          seattrellis export --snapshot outputs/latest.snapshot.json --format html
+          python -m pip install --upgrade pip
+          python -m pip install -e . maturin pytest
+      - name: Build the optional native extension wheel
+        run: >-
+          python -m maturin build
+          --release
+          --manifest-path native/seattrellis_native/Cargo.toml
+          --interpreter python
+          --out dist/native
+      - name: Retain the experimental native wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: dist/native/*.whl
+          if-no-files-found: error
+          retention-days: 14
+      - name: Install the optional native extension wheel
+        run: >-
+          python -m pip install
+          --no-index
+          --find-links dist/native
+          --force-reinstall
+          --no-deps
+          seattrellis-native
+      - name: Verify the installed native backend
+        run: python -m pytest tests/test_solver_backend_contract.py
+
+  web-e2e:
+    name: Web E2E / Ubuntu / Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            e2e/constraints.txt
+      - name: Install Web application and browser test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -c e2e/constraints.txt -e ".[web,e2e]"
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run real-browser acceptance test
+        env:
+          SEATTRELLIS_E2E_RESULTS: test-results
+        run: >-
+          python -m pytest e2e
+          --browser=chromium
+          --tracing=retain-on-failure
+          --screenshot=only-on-failure
+          --output=test-results/playwright
+          --basetemp=.e2e-tmp
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-e2e-failure
+          path: test-results/
+          if-no-files-found: ignore

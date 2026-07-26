@@ -2,6 +2,7 @@
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.e2e-tmp/
 .mypy_cache/
 .ruff_cache/
 .venv/
@@ -9,6 +10,8 @@ venv/
 dist/
 site/
 build/
+target/
+test-results/
 outputs/
 exports/
 snapshots/

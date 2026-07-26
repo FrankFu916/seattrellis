@@ -84,7 +84,10 @@ Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and
 | `fair_rotation` | Prefer rotating seat categories based on historical snapshots |
 | `avoid_recent_neighbors` | Prefer reducing repeated desk-mate and neighbor relationships from history |
 
-`seed` controls reproducibility. The same inputs and seed should produce stable output.
+`seed` fixes the pseudorandom sequence. The fallback backend produces stable output for
+the same inputs and seed when its fixed attempt budget completes. A wall-clock timeout
+can stop different machines after different numbers of attempts, so timed-out results
+are not guaranteed to match. Snapshots record this as `metrics.stopped_by_time_limit`.
 
 ## Scenario Presets
 

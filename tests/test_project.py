@@ -108,6 +108,34 @@ def test_project_path_errors_name_the_referenced_field(tmp_path) -> None:
         resolve_project_paths(project, project_path, require_inputs=True, require_history=True)
 
 
+def test_project_output_failures_are_reported_as_input_errors(tmp_path) -> None:
+    blocked_parent = tmp_path / "blocked"
+    blocked_parent.write_text("not a directory", encoding="utf-8")
+    project = SeatTrellisProject(
+        students="students.csv",
+        layout="classroom.json",
+        rules="rules.json",
+        outputs_dir="blocked/outputs",
+    )
+    project_path = tmp_path / "project.seattrellis.json"
+
+    with pytest.raises(
+        InputFileError,
+        match="Could not create Project outputs directory",
+    ):
+        resolve_project_paths(
+            project,
+            project_path,
+            create_outputs=True,
+        )
+
+    with pytest.raises(InputFileError, match="Could not write JSON file"):
+        write_project(
+            project,
+            blocked_parent / "project.seattrellis.json",
+        )
+
+
 def test_project_cli_init_info_validate_solve_and_export(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
     project_path = paths["project"]

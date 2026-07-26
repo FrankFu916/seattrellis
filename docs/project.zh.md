@@ -11,6 +11,7 @@ seattrellis project-init   # 创建 project 文件
 seattrellis project-info   # 查看配置和路径状态
 seattrellis project-validate  # 校验输入文件
 seattrellis project-solve     # 求解
+seattrellis project-edit      # 人工微调
 seattrellis project-export    # 导出
 ```
 
@@ -44,7 +45,10 @@ Project 文件不嵌入学生名单、历史 snapshot 或导出结果。移动�
 
 ## 校验与输出
 
-`project-info` 显示解析后的路径状态；`project-validate` 检查输入和规则冲突；`project-solve` 将结果写入 `outputs_dir`；`project-export` 默认使用项目中的候选和导出格式设置。命令行参数可以覆盖候选数量、seed、时间限制、候选 ID 和输出路径。
+`project-info` 显示解析后的路径状态；`project-validate` 检查输入和规则冲突；
+`project-solve` 将结果写入 `outputs_dir`；`project-edit` 可对最新产物或指定
+snapshot/candidate set 执行人工微调；`project-export` 默认使用项目中的候选和导出
+格式设置。命令行参数可以覆盖候选数量、seed、时间限制、候选 ID 和输出路径。
 
 ## 相关文档
 

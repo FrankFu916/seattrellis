@@ -28,16 +28,17 @@ dependencies = [
 solver = ["ortools>=9.15,<9.16"]
 excel = ["openpyxl>=3.1"]
 image = ["Pillow>=9.4"]
-web = ["streamlit>=1.30"]
+web = ["streamlit>=1.50,<2"]
 pdf = ["weasyprint>=60", "cffi>=2.0"]
 docx = ["python-docx>=1.0"]
 dev = ["pytest>=7.0", "build>=1.2", "pypdf>=5"]
+e2e = ["playwright>=1.40,<2", "pytest-playwright>=0.5,<1"]
 docs = ["mkdocs-material==9.*"]
 all = [
   "ortools>=9.15,<9.16",
   "openpyxl>=3.1",
   "Pillow>=9.4",
-  "streamlit>=1.30",
+  "streamlit>=1.50,<2",
   "weasyprint>=60",
   "cffi>=2.0",
   "python-docx>=1.0",
@@ -59,3 +60,6 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 addopts = "-q"
+markers = [
+  "e2e: real-browser acceptance tests that require Playwright",
+]

@@ -6,8 +6,10 @@ functions handle file loading, output paths, and command-oriented formatting.
 
 from __future__ import annotations
 
-import os
 import sys
+from copy import deepcopy
+from dataclasses import replace
+from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from math import isfinite
 from pathlib import Path
@@ -16,7 +18,14 @@ from typing import Sequence
 from seattrellis import __version__
 from seattrellis.candidates import generate_candidate_set
 from seattrellis.demo import create_demo_files
-from seattrellis.exporters import export_snapshot
+from seattrellis.editing import (
+    EditingLockState,
+    EditingOperation,
+    EditingSession,
+    lock_state_from_snapshot,
+    snapshot_with_lock_state,
+)
+from seattrellis.exporters import export_candidate_report_html, export_snapshot
 from seattrellis.history import (
     build_fairness_report,
     build_pair_history,
@@ -57,8 +66,11 @@ from seattrellis.presets import (
     load_rules_with_preset,
     preset_context_warnings,
 )
-from seattrellis.scoring import build_plan_comparison_report
+from seattrellis.scoring import build_plan_comparison_report, evaluate_hard_constraints
+from seattrellis.repair import compile_repair_context
 from seattrellis.service_types import (
+    EditInput,
+    EditOutput,
     ExportRequest,
     HistoryReportInput,
     HistoryReportOutput,
@@ -66,6 +78,8 @@ from seattrellis.service_types import (
     PairReportOutput,
     ProjectInfoInput,
     ProjectInfoOutput,
+    RepairInput,
+    RepairOutput,
     SolveInput,
     SolveOutput,
     ValidateInput,
@@ -73,7 +87,13 @@ from seattrellis.service_types import (
     export_extension,
     score_text,
 )
-from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.solver import SeatTrellisSolveError, solve_seating
+from seattrellis.solver.backend import (
+    SOLVER_BACKENDS,
+    normalize_solver_backend,
+    resolve_solver_backend,
+    solver_backend_environment_summary,
+)
 
 
 # In-memory operations
@@ -96,6 +116,7 @@ def compute_solve(input: SolveInput) -> SolveOutput:
         history_count=len(snapshots),
         rules=input.rules,
     )
+    runtime_warnings = _dedupe_warnings([*validation.warnings, *preset_warnings])
 
     seat_history = build_seat_history(input.students, input.layout, snapshots)
     pair_rule = input.rules.soft.avoid_recent_neighbors
@@ -120,19 +141,20 @@ def compute_solve(input: SolveInput) -> SolveOutput:
         history_snapshots=snapshots,
         options=options,
         time_limit_seconds=input.time_limit_seconds,
+        backend=input.backend,
     )
 
     _apply_preset_metadata(
         candidate_set,
         preset_name=input.preset_name,
         rules_overlay=False,
-        warnings=preset_warnings,
+        warnings=runtime_warnings,
     )
 
     if input.candidate_count == 1:
         fairness = candidate_set.candidates[0].snapshot.metrics.get("fairness", {})
         summary = _format_solve_fairness_summary(fairness) if fairness else None
-        summary = _append_warnings(summary, preset_warnings)
+        summary = _append_warnings(summary, runtime_warnings)
     else:
         summary = _format_candidate_set_summary(candidate_set)
 
@@ -141,6 +163,7 @@ def compute_solve(input: SolveInput) -> SolveOutput:
     return SolveOutput(
         candidate_set=candidate_set,
         preset_warnings=preset_warnings,
+        warnings=runtime_warnings,
         summary=summary,
         plan_comparison_report=report,
     )
@@ -151,6 +174,171 @@ def compute_validate(input: ValidateInput) -> ValidateOutput:
     report = validate_loaded_inputs(input.students, input.layout, input.rules)
     report.raise_for_errors(strict=input.strict)
     return ValidateOutput(report=report, formatted=report.format_success())
+
+
+def compute_edit(input: EditInput) -> EditOutput:
+    """Apply manual editing commands to a loaded snapshot."""
+    saved_lock_state = lock_state_from_snapshot(input.snapshot)
+    explicit_lock_state = EditingLockState.from_values(
+        locked_students=input.locked_students,
+        locked_seats=input.locked_seats,
+    )
+    initial_lock_state = EditingLockState.from_values(
+        locked_students=(
+            *saved_lock_state.locked_students,
+            *explicit_lock_state.locked_students,
+        ),
+        locked_seats=(
+            *saved_lock_state.locked_seats,
+            *explicit_lock_state.locked_seats,
+        ),
+    )
+    session = EditingSession.from_snapshot(
+        input.snapshot,
+        locked_students=initial_lock_state.locked_students,
+        locked_seats=initial_lock_state.locked_seats,
+    )
+    summary = session.hard_constraint_summary()
+    for operation in input.operations:
+        summary = session.apply(operation)
+
+    lock_state = session.lock_state
+    result = EditOutput(
+        snapshot=snapshot_with_lock_state(session.current_snapshot(), lock_state),
+        hard_constraints=summary,
+        unseated_students=session.unseated_students(),
+        locked_students=sorted(session.locked_students),
+        locked_seats=sorted(session.locked_seats),
+        operation_log=session.operation_log,
+        lock_state=lock_state,
+    )
+    return replace(
+        result,
+        snapshot=_snapshot_with_edit_metadata(result.snapshot, result),
+    )
+
+
+def compute_repair(input: RepairInput) -> RepairOutput:
+    """Re-solve a draft while preserving requested local anchors."""
+
+    input_lock_state = input.lock_state or EditingLockState()
+    explicit_lock_state = EditingLockState.from_values(
+        locked_students=input.locked_students,
+        locked_seats=input.locked_seats,
+    )
+    context = compile_repair_context(
+        input.snapshot,
+        affected_students=input.affected_students,
+        locked_students=(
+            *input_lock_state.locked_students,
+            *explicit_lock_state.locked_students,
+        ),
+        locked_seats=(
+            *input_lock_state.locked_seats,
+            *explicit_lock_state.locked_seats,
+        ),
+        reuse_saved_locks=input.reuse_saved_locks,
+    )
+    seed = input.snapshot.seed if input.seed is None else input.seed
+    history_snapshots = list(input.history_snapshots)
+    history = build_seat_history(
+        input.snapshot.students,
+        input.snapshot.layout,
+        history_snapshots,
+    )
+    pair_rule = input.snapshot.rules.soft.avoid_recent_neighbors
+    pair_history = build_pair_history(
+        input.snapshot.students,
+        input.snapshot.layout,
+        history_snapshots,
+        lookback=pair_rule.lookback,
+        within_distance=pair_rule.within_distance,
+    )
+    solution = solve_seating(
+        input.snapshot.students,
+        context.solver_layout,
+        context.solver_rules,
+        history=history,
+        pair_history=pair_history,
+        seed=seed,
+        time_limit_seconds=input.time_limit_seconds,
+        backend=input.backend,
+    )
+    metadata = dict(input.snapshot.metadata)
+    previous_repair = metadata.get("repair")
+    if isinstance(previous_repair, dict):
+        repair_history = metadata.get("repair_history", [])
+        if not isinstance(repair_history, list):
+            repair_history = []
+        metadata["repair_history"] = [*repair_history, previous_repair]
+    metadata["repair"] = {
+        "locked_students": context.locked_students,
+        "locked_seats": context.locked_seats,
+        "mutable_students": context.mutable_students,
+        "fixed_assignments": context.fixed_assignments,
+        "temporary_fixed_assignments": context.temporary_fixed_assignments,
+        "reserved_empty_seats": context.reserved_empty_seats,
+        "reuse_saved_locks": input.reuse_saved_locks,
+        "history_count": len(history_snapshots),
+        "solver_backend": solution.metrics.get("solver_backend_effective"),
+    }
+    snapshot = solution.to_snapshot(
+        students=input.snapshot.students,
+        layout=input.snapshot.layout,
+        rules=input.snapshot.rules,
+        seed=seed,
+        metadata=metadata,
+    )
+    lock_state = EditingLockState.from_values(
+        locked_students=context.locked_students,
+        locked_seats=context.locked_seats,
+    )
+    snapshot = snapshot_with_lock_state(snapshot, lock_state)
+    metadata = dict(snapshot.metadata)
+    repair_constraints = evaluate_hard_constraints(
+        snapshot.assignments,
+        snapshot.students,
+        context.solver_layout,
+        context.solver_rules,
+    )
+    if not repair_constraints.satisfied:
+        raise SeatTrellisSolveError(
+            "Repair solver returned a snapshot that violates repair anchors."
+        )
+    hard_constraints = EditingSession.from_snapshot(snapshot).hard_constraint_summary()
+    if not hard_constraints.satisfied:
+        raise SeatTrellisSolveError(
+            "Repair solver returned a snapshot that violates hard constraints."
+        )
+    original_assignments = {
+        assignment.student_key: assignment.seat_id
+        for assignment in input.snapshot.assignments
+    }
+    changed_students = sorted(
+        assignment.student_key
+        for assignment in snapshot.assignments
+        if original_assignments.get(assignment.student_key) != assignment.seat_id
+    )
+    metadata["repair"]["changed_students"] = changed_students
+    metadata["repair"]["anchor_constraints_satisfied"] = repair_constraints.satisfied
+    if hasattr(snapshot, "model_copy"):
+        snapshot = snapshot.model_copy(  # type: ignore[attr-defined,assignment]
+            update={"metadata": metadata}
+        )
+    else:
+        snapshot = snapshot.copy(update={"metadata": metadata})
+    snapshot = _snapshot_with_repair_provenance(snapshot)
+    return RepairOutput(
+        snapshot=snapshot,
+        hard_constraints=hard_constraints,
+        locked_students=context.locked_students,
+        locked_seats=context.locked_seats,
+        lock_state=lock_state,
+        mutable_students=context.mutable_students,
+        fixed_assignments=context.fixed_assignments,
+        reserved_empty_seats=context.reserved_empty_seats,
+        changed_students=changed_students,
+    )
 
 
 def compute_history_report(input: HistoryReportInput) -> HistoryReportOutput:
@@ -230,6 +418,7 @@ def solve(
     candidate_count: int = 1,
     seed: int | None = None,
     report_path: str | Path | None = None,
+    backend: str = "auto",
 ) -> Path:
     path, _summary = solve_with_report(
         students_path=students_path,
@@ -243,6 +432,7 @@ def solve(
         candidate_count=candidate_count,
         seed=seed,
         report_path=report_path,
+        backend=backend,
     )
     return path
 
@@ -260,11 +450,13 @@ def solve_with_report(
     candidate_count: int = 1,
     seed: int | None = None,
     report_path: str | Path | None = None,
+    backend: str = "auto",
 ) -> tuple[Path, str | None]:
     if not 1 <= candidate_count <= 20:
         raise ValueError("candidate_count must be between 1 and 20")
     if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
         raise ValueError("time_limit_seconds must be a finite number >= 0.1")
+    backend = normalize_solver_backend(backend)
 
     students = read_students(students_path)
     layout = load_layout(layout_path)
@@ -286,10 +478,12 @@ def solve_with_report(
             candidate_count=candidate_count,
             seed=seed,
             time_limit_seconds=time_limit_seconds,
+            backend=backend,
         )
     )
     candidate_set = result.candidate_set
     preset_warnings = result.preset_warnings or []
+    runtime_warnings = result.warnings or preset_warnings
     summary = result.summary
 
     # Re-apply preset metadata with full context (rules_overlay, etc.)
@@ -297,7 +491,7 @@ def solve_with_report(
         candidate_set,
         preset_name=preset.name if preset is not None else None,
         rules_overlay=rules_path is not None and preset is not None,
-        warnings=preset_warnings,
+        warnings=runtime_warnings,
     )
 
     if candidate_count == 1:
@@ -305,7 +499,7 @@ def solve_with_report(
         path = write_json_model(snapshot, output_path)
         fairness = snapshot.metrics.get("fairness", {})
         summary = _format_solve_fairness_summary(fairness) if fairness else None
-        summary = _append_warnings(summary, preset_warnings)
+        summary = _append_warnings(summary, runtime_warnings)
     else:
         path = write_json_model(candidate_set, output_path)
         summary = _format_candidate_set_summary(candidate_set)
@@ -346,13 +540,25 @@ def export(
         if candidate_id is not None and candidate_id != request.candidate_id:
             raise ValueError("candidate_id conflicts with request.candidate_id.")
 
+    artifact = load_seating_artifact(snapshot_path)
     if request.candidate_scope == "all":
-        raise ValueError(
-            "candidate_scope='all' is reserved for candidate-set reports and is "
-            "not supported by single-plan export yet."
+        if not isinstance(artifact, CandidateSet):
+            raise ValueError("candidate_scope='all' requires a candidate set artifact.")
+        if request.candidate_id is not None:
+            raise ValueError("candidate_id cannot be combined with candidate_scope='all'.")
+        if request.output_format not in {"html", "print-html"}:
+            raise ValueError(
+                "candidate_scope='all' currently supports only html and print-html exports."
+            )
+        report = build_plan_comparison_report(artifact)
+        return export_candidate_report_html(
+            artifact,
+            report,
+            request.resolved_output_path,
+            page=request.page,
+            locale=request.locale,
         )
 
-    artifact = load_seating_artifact(snapshot_path)
     selected_candidate: CandidatePlan | None = None
     if isinstance(artifact, CandidateSet):
         selected_candidate = artifact.get_candidate(
@@ -370,6 +576,103 @@ def export(
         candidate=selected_candidate,
         request=request,
     )
+
+
+def edit_snapshot(
+    *,
+    snapshot_path: str | Path,
+    output_path: str | Path = "outputs/edited.snapshot.json",
+    operations: Sequence[EditingOperation],
+    candidate_id: str | None = None,
+    default_candidate_id: str = "recommended",
+    locked_students: Sequence[str] | None = None,
+    locked_seats: Sequence[str] | None = None,
+    strict: bool = False,
+) -> tuple[Path, str]:
+    """Apply manual edit commands to a snapshot or selected candidate."""
+    operations = list(operations)
+    if not operations:
+        raise ValueError("At least one editing operation is required.")
+    candidate_id = str(candidate_id).strip() if candidate_id is not None else None
+    if candidate_id == "":
+        raise ValueError("candidate_id cannot be empty.")
+
+    artifact = load_seating_artifact(snapshot_path)
+    if isinstance(artifact, CandidateSet):
+        selected_candidate = artifact.get_candidate(candidate_id or default_candidate_id)
+        snapshot = _snapshot_with_candidate_metadata(selected_candidate)
+    else:
+        if candidate_id is not None:
+            raise ValueError("--candidate can only be used when editing a candidate set.")
+        snapshot = artifact
+
+    result = compute_edit(
+        EditInput(
+            snapshot=snapshot,
+            operations=operations,
+            locked_students=tuple(locked_students or ()),
+            locked_seats=tuple(locked_seats or ()),
+        )
+    )
+    if strict and not result.hard_constraints.satisfied:
+        raise ValueError(_format_edit_strict_failure(result))
+
+    path = write_json_model(result.snapshot, output_path)
+    return path, _format_edit_summary(result)
+
+
+def repair_snapshot(
+    *,
+    snapshot_path: str | Path,
+    output_path: str | Path = "outputs/repaired.snapshot.json",
+    candidate_id: str | None = None,
+    default_candidate_id: str = "recommended",
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+) -> tuple[Path, str]:
+    """Re-solve a snapshot or selected candidate while preserving draft locks."""
+
+    candidate_id = str(candidate_id).strip() if candidate_id is not None else None
+    if candidate_id == "":
+        raise ValueError("candidate_id cannot be empty.")
+    backend = normalize_solver_backend(backend)
+
+    artifact = load_seating_artifact(snapshot_path)
+    if isinstance(artifact, CandidateSet):
+        selected_candidate = artifact.get_candidate(candidate_id or default_candidate_id)
+        snapshot = _snapshot_with_candidate_metadata(selected_candidate)
+    else:
+        if candidate_id is not None:
+            raise ValueError("--candidate can only be used when repairing a candidate set.")
+        snapshot = artifact
+
+    history_snapshots = load_history_snapshots(
+        history_paths=history_paths,
+        history_dir=history_dir,
+    )
+
+    result = compute_repair(
+        RepairInput(
+            snapshot=snapshot,
+            affected_students=affected_students,
+            locked_students=locked_students,
+            locked_seats=locked_seats,
+            reuse_saved_locks=reuse_saved_locks,
+            history_snapshots=history_snapshots,
+            seed=seed,
+            time_limit_seconds=time_limit_seconds,
+            backend=backend,
+        )
+    )
+    path = write_json_model(result.snapshot, output_path)
+    return path, _format_repair_summary(result)
 
 
 def run_doctor() -> str:
@@ -426,9 +729,26 @@ def run_doctor() -> str:
         f"    {'✅ exists' if outputs_dir.is_dir() else '⚠️  does not exist yet'}"
     )
 
-    ortools_env = os.environ.get("SEATTRELLIS_USE_ORTOOLS")
+    backend_env = solver_backend_environment_summary()
+    requested_backend = "auto"
+    effective_backend = resolve_solver_backend(requested_backend)
     lines.append("")
-    lines.append(f"  SEATTRELLIS_USE_ORTOOLS: {ortools_env or '(not set)'}")
+    lines.append("  Solver backend:")
+    lines.append(f"    Default request: {requested_backend}")
+    lines.append(f"    Effective default: {effective_backend}")
+    lines.append(f"    Supported: {', '.join(SOLVER_BACKENDS)}")
+    lines.append(f"    SEATTRELLIS_BACKEND: {backend_env['SEATTRELLIS_BACKEND']}")
+    lines.append(f"    SEATTRELLIS_USE_ORTOOLS: {backend_env['SEATTRELLIS_USE_ORTOOLS']}")
+    try:
+        native_version = version("seattrellis-native")
+    except PackageNotFoundError:
+        native_line = "not installed"
+    else:
+        native_line = (
+            f"installed ({native_version}; compatibility is checked only "
+            "when selected)"
+        )
+    lines.append(f"    Native extension: {native_line}")
 
     lines.append("")
     lines.append(
@@ -582,6 +902,7 @@ def project_solve(
     time_limit_seconds: float = 3.0,
     output_path: str | Path | None = None,
     report_path: str | Path | None = None,
+    backend: str = "auto",
 ) -> tuple[Path, str | None]:
     project, paths = load_project_paths(
         project_path,
@@ -607,6 +928,78 @@ def project_solve(
         candidate_count=count,
         seed=seed,
         report_path=report_path,
+        backend=backend,
+    )
+
+
+def project_edit(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    snapshot_path: str | Path | None = None,
+    candidate_id: str | None = None,
+    operations: Sequence[EditingOperation],
+    output_path: str | Path | None = None,
+    strict: bool = False,
+) -> tuple[Path, str]:
+    project, paths = load_project_paths(project_path, create_outputs=True)
+    selected_snapshot = (
+        Path(snapshot_path)
+        if snapshot_path is not None
+        else find_latest_project_artifact(paths.outputs_dir)
+    )
+    if output_path is None:
+        output_path = _edited_snapshot_output_path(selected_snapshot, paths.outputs_dir)
+    return edit_snapshot(
+        snapshot_path=selected_snapshot,
+        output_path=output_path,
+        operations=operations,
+        candidate_id=candidate_id,
+        default_candidate_id=project.default_candidate,
+        strict=strict,
+    )
+
+
+def project_repair(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    snapshot_path: str | Path | None = None,
+    candidate_id: str | None = None,
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    reuse_saved_locks: bool = True,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+    output_path: str | Path | None = None,
+) -> tuple[Path, str]:
+    """Re-solve the latest or selected project artifact with draft locks."""
+
+    project, paths = load_project_paths(
+        project_path,
+        require_history=True,
+        create_outputs=True,
+    )
+    selected_snapshot = (
+        Path(snapshot_path)
+        if snapshot_path is not None
+        else find_latest_project_artifact(paths.outputs_dir)
+    )
+    if output_path is None:
+        output_path = _repaired_snapshot_output_path(selected_snapshot, paths.outputs_dir)
+    return repair_snapshot(
+        snapshot_path=selected_snapshot,
+        output_path=output_path,
+        candidate_id=candidate_id,
+        default_candidate_id=project.default_candidate,
+        affected_students=affected_students,
+        locked_students=locked_students,
+        locked_seats=locked_seats,
+        history_dir=paths.history_dir,
+        reuse_saved_locks=reuse_saved_locks,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
     )
 
 
@@ -685,18 +1078,19 @@ def _apply_preset_metadata(
     rules_overlay: bool,
     warnings: Sequence[str],
 ) -> None:
-    if preset_name is None:
-        return
-    metadata = {
-        "name": preset_name,
-        "user_rules_overlay": rules_overlay,
-    }
-    candidate_set.metadata["preset"] = metadata
+    metadata = None
+    if preset_name is not None:
+        metadata = {
+            "name": preset_name,
+            "user_rules_overlay": rules_overlay,
+        }
+        candidate_set.metadata["preset"] = metadata
     for warning in warnings:
         if warning not in candidate_set.warnings:
             candidate_set.warnings.append(warning)
     for candidate in candidate_set.candidates:
-        candidate.snapshot.metadata["preset"] = metadata
+        if metadata is not None:
+            candidate.snapshot.metadata["preset"] = metadata
         if warnings:
             candidate.snapshot.metadata["warnings"] = list(warnings)
 
@@ -710,6 +1104,14 @@ def _append_warnings(
         ["Warnings:", *(f"- {warning}" for warning in warnings)]
     )
     return f"{summary}\n\n{warning_text}" if summary else warning_text
+
+
+def _dedupe_warnings(warnings: Sequence[str]) -> list[str]:
+    deduped: list[str] = []
+    for warning in warnings:
+        if warning not in deduped:
+            deduped.append(warning)
+    return deduped
 
 
 def _dimension_rating(rating: str) -> str:
@@ -745,6 +1147,120 @@ def _snapshot_with_candidate_metadata(candidate: CandidatePlan) -> SeatingSnapsh
     return candidate.snapshot.copy(update={"metadata": metadata})
 
 
+def _snapshot_with_edit_metadata(
+    snapshot: SeatingSnapshot,
+    result: EditOutput,
+) -> SeatingSnapshot:
+    metadata = dict(snapshot.metadata)
+    candidate = metadata.pop("candidate", None)
+    if isinstance(candidate, dict):
+        metadata["source_candidate"] = candidate
+    repair = metadata.pop("repair", None)
+    if isinstance(repair, dict):
+        metadata["source_repair"] = repair
+
+    prior_edit = metadata.pop("manual_edit", None)
+    prior_operations: list[object] = []
+    prior_operation_count = 0
+    if isinstance(prior_edit, dict):
+        stored_operations = prior_edit.get("operations")
+        if isinstance(stored_operations, list):
+            prior_operations = deepcopy(stored_operations)
+        stored_count = prior_edit.get("operation_count")
+        if isinstance(stored_count, int) and stored_count >= 0:
+            prior_operation_count = stored_count
+        else:
+            prior_operation_count = len(prior_operations)
+
+    new_operations = [
+        {
+            "kind": record.operation.kind,
+            "payload": deepcopy(record.operation.payload),
+        }
+        for record in result.operation_log
+    ]
+    source_solution = metadata.get("source_solution")
+    if not isinstance(source_solution, dict) or snapshot.solver_status != "MANUAL_DRAFT":
+        metadata["source_solution"] = {
+            "created_at": snapshot.created_at.isoformat(),
+            "solver_status": snapshot.solver_status,
+            "objective_value": snapshot.objective_value,
+            "metrics": deepcopy(snapshot.metrics),
+        }
+
+    operation_count = prior_operation_count + len(new_operations)
+    edited_at = datetime.now(timezone.utc)
+    metadata["manual_edit"] = {
+        "edited_at": edited_at.isoformat(),
+        "operation_count": operation_count,
+        "operations": [*prior_operations, *new_operations],
+        "locked_students": list(result.locked_students),
+        "locked_seats": list(result.locked_seats),
+        "unseated_students": list(result.unseated_students),
+        "hard_constraints_satisfied": result.hard_constraints.satisfied,
+        "violation_count": result.hard_constraints.violation_count,
+    }
+    current_metrics = {
+        "manual_edit": {
+            "operation_count": operation_count,
+            "hard_constraints_satisfied": result.hard_constraints.satisfied,
+            "violation_count": result.hard_constraints.violation_count,
+        }
+    }
+    updates = {
+        "created_at": edited_at,
+        "metadata": metadata,
+        "solver_status": "MANUAL_DRAFT",
+        "objective_value": None,
+        "metrics": current_metrics,
+    }
+    if hasattr(snapshot, "model_copy"):
+        return snapshot.model_copy(  # type: ignore[attr-defined,return-value]
+            update=updates
+        )
+    return snapshot.copy(update=updates)
+
+
+def _snapshot_with_repair_provenance(snapshot: SeatingSnapshot) -> SeatingSnapshot:
+    """Keep candidate origin without retaining stale pre-repair score metadata."""
+
+    metadata = dict(snapshot.metadata)
+    candidate = metadata.pop("candidate", None)
+    if isinstance(candidate, dict):
+        metadata["source_candidate"] = candidate
+    manual_edit = metadata.pop("manual_edit", None)
+    if isinstance(manual_edit, dict):
+        metadata["source_manual_edit"] = manual_edit
+
+    source_candidate = metadata.get("source_candidate")
+    repair = metadata.get("repair")
+    if isinstance(source_candidate, dict) and isinstance(repair, dict):
+        repair = dict(repair)
+        repair["source_candidate_id"] = source_candidate.get("candidate_id")
+        metadata["repair"] = repair
+    if hasattr(snapshot, "model_copy"):
+        return snapshot.model_copy(  # type: ignore[attr-defined,return-value]
+            update={"metadata": metadata}
+        )
+    return snapshot.copy(update={"metadata": metadata})
+
+
+def _edited_snapshot_output_path(selected_snapshot: Path, outputs_dir: Path) -> Path:
+    name = selected_snapshot.name
+    for suffix in (".candidates.json", ".snapshot.json", ".json"):
+        if name.endswith(suffix):
+            return outputs_dir / f"{name.removesuffix(suffix)}.edited.snapshot.json"
+    return outputs_dir / f"{selected_snapshot.stem}.edited.snapshot.json"
+
+
+def _repaired_snapshot_output_path(selected_snapshot: Path, outputs_dir: Path) -> Path:
+    name = selected_snapshot.name
+    for suffix in (".candidates.json", ".snapshot.json", ".json"):
+        if name.endswith(suffix):
+            return outputs_dir / f"{name.removesuffix(suffix)}.repaired.snapshot.json"
+    return outputs_dir / f"{selected_snapshot.stem}.repaired.snapshot.json"
+
+
 def _format_solve_fairness_summary(fairness: object) -> str | None:
     if not isinstance(fairness, dict):
         return None
@@ -768,6 +1284,64 @@ def _format_solve_fairness_summary(fairness: object) -> str | None:
         ", ".join(cost_parts) if cost_parts else f"enabled_rules={enabled_rules}"
     )
     return f"Fairness: history snapshots={history_count}, {suffix}."
+
+
+def _format_edit_summary(result: EditOutput) -> str:
+    hard = result.hard_constraints
+    lines = [
+        "Manual edit summary:",
+        f"- operations: {len(result.operation_log)}",
+        f"- unseated students: {_format_preview(result.unseated_students)}",
+        f"- locked students: {_format_preview(result.locked_students)}",
+        f"- locked seats: {_format_preview(result.locked_seats)}",
+        (
+            f"- hard constraints: {'satisfied' if hard.satisfied else 'not satisfied'} "
+            f"({hard.violation_count} violation(s))"
+        ),
+    ]
+    if hard.violations:
+        lines.append("Violations:")
+        lines.extend(f"- {violation}" for violation in hard.violations[:10])
+        if len(hard.violations) > 10:
+            lines.append(f"- ... {len(hard.violations) - 10} more")
+    return "\n".join(lines)
+
+
+def _format_edit_strict_failure(result: EditOutput) -> str:
+    violations = "\n".join(
+        f"- {violation}" for violation in result.hard_constraints.violations[:10]
+    )
+    return (
+        "Manual edits did not satisfy hard constraints; no snapshot was written."
+        + (f"\n{violations}" if violations else "")
+    )
+
+
+def _format_repair_summary(result: RepairOutput) -> str:
+    hard = result.hard_constraints
+    lines = [
+        "Repair summary:",
+        f"- mutable students: {_format_preview(result.mutable_students)}",
+        f"- fixed assignments: {len(result.fixed_assignments)}",
+        f"- changed students: {_format_preview(result.changed_students)}",
+        f"- locked students: {_format_preview(result.locked_students)}",
+        f"- locked seats: {_format_preview(result.locked_seats)}",
+        f"- reserved empty seats: {_format_preview(result.reserved_empty_seats)}",
+        (
+            f"- hard constraints: {'satisfied' if hard.satisfied else 'not satisfied'} "
+            f"({hard.violation_count} violation(s))"
+        ),
+    ]
+    return "\n".join(lines)
+
+
+def _format_preview(values: Sequence[str]) -> str:
+    if not values:
+        return "none"
+    preview = ", ".join(values[:5])
+    if len(values) > 5:
+        return f"{preview}, ... ({len(values)} total)"
+    return preview
 
 
 def _friendly_error(exc: Exception) -> str:

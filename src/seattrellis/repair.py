@@ -1,0 +1,307 @@
+"""Compile a manual seating draft into a constrained re-solve request.
+
+This module intentionally contains no file or UI handling. It translates
+temporary locks and a local repair scope into solver constraints while keeping
+the original project rules unchanged in the resulting snapshot.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable, Sequence, TypeVar
+
+try:
+    from pydantic.v1 import BaseModel
+except ImportError:  # pragma: no cover - pydantic v1.
+    from pydantic import BaseModel
+
+from seattrellis.editing import (
+    LOCK_STATE_METADATA_KEY,
+    EditingSession,
+    lock_state_from_snapshot,
+)
+from seattrellis.models.layout import ClassroomLayout, SeatNode
+from seattrellis.models.rules import FixedSeatRule, RuleSet
+from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.solver import compile_problem
+
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+@dataclass(frozen=True)
+class RepairContext:
+    """Solver inputs and trace data derived from one seating draft."""
+
+    solver_layout: ClassroomLayout
+    solver_rules: RuleSet
+    locked_students: list[str]
+    locked_seats: list[str]
+    mutable_students: list[str]
+    fixed_assignments: dict[str, str]
+    temporary_fixed_assignments: dict[str, str]
+    reserved_empty_seats: list[str]
+
+
+def compile_repair_context(
+    snapshot: SeatingSnapshot,
+    *,
+    affected_students: Sequence[str] = (),
+    locked_students: Sequence[str] = (),
+    locked_seats: Sequence[str] = (),
+    reuse_saved_locks: bool = True,
+) -> RepairContext:
+    """Prepare a one-time constrained solve without mutating the draft.
+
+    When a local scope is supplied, every currently assigned student outside
+    that scope is fixed to the draft seat. Without a local scope, only explicit
+    or saved locks are fixed and the remaining students may be globally
+    re-arranged. Students without a current seat are always movable.
+    """
+
+    saved_students, saved_seats = (
+        _saved_locks(snapshot) if reuse_saved_locks else ([], [])
+    )
+    combined_students = _normalized_values(
+        [*_normalized_values(saved_students), *_normalized_values(locked_students)]
+    )
+    combined_seats = _normalized_values(
+        [*_normalized_values(saved_seats), *_normalized_values(locked_seats)]
+    )
+
+    session = EditingSession.from_snapshot(
+        snapshot,
+        locked_students=combined_students,
+        locked_seats=combined_seats,
+    )
+    known_students = {student.key for student in snapshot.students}
+    requested_affected = _normalized_values(affected_students)
+    unknown = sorted(set(requested_affected) - known_students)
+    if unknown:
+        raise ValueError(
+            "Affected students are unknown: " + ", ".join(unknown) + "."
+        )
+
+    assignments_by_student = session.assignment_by_student()
+    assignments_by_seat = session.assignment_by_seat()
+    baseline_fixed = _baseline_fixed_assignments(snapshot)
+    unseated_locks = sorted(
+        student_key
+        for student_key in combined_students
+        if student_key not in assignments_by_student
+    )
+    if unseated_locks:
+        raise ValueError(
+            "Locked students must have a current seat before re-solving: "
+            + ", ".join(unseated_locks)
+            + "."
+        )
+
+    conflicting_students = sorted(set(requested_affected) & set(combined_students))
+    if conflicting_students:
+        raise ValueError(
+            "Affected students cannot also be locked: "
+            + ", ".join(conflicting_students)
+            + "."
+        )
+
+    locked_occupants = {
+        assignment.student_key
+        for seat_id, assignment in assignments_by_seat.items()
+        if seat_id in combined_seats
+    }
+    conflicting_seat_occupants = sorted(
+        set(requested_affected) & locked_occupants
+    )
+    if conflicting_seat_occupants:
+        raise ValueError(
+            "Affected students occupy locked seats: "
+            + ", ".join(conflicting_seat_occupants)
+            + "."
+        )
+
+    if requested_affected:
+        fixed_students = set(assignments_by_student) - set(requested_affected)
+    else:
+        fixed_students = set()
+    fixed_students.update(combined_students)
+    fixed_students.update(locked_occupants)
+
+    requested_fixed_assignments = {
+        student_key: assignments_by_student[student_key].seat_id
+        for student_key in sorted(fixed_students)
+    }
+    reserved_empty_seats = sorted(
+        seat_id for seat_id in combined_seats if seat_id not in assignments_by_seat
+    )
+    reserved_fixed_conflicts = sorted(
+        (student_key, seat_id)
+        for student_key, seat_id in baseline_fixed.items()
+        if seat_id in reserved_empty_seats
+    )
+    if reserved_fixed_conflicts:
+        details = ", ".join(
+            f"{student_key}->{seat_id}"
+            for student_key, seat_id in reserved_fixed_conflicts
+        )
+        raise ValueError(
+            "Cannot reserve an empty locked seat required by existing hard rules: "
+            + details
+            + "."
+        )
+    solver_layout = _layout_with_reserved_seats(snapshot.layout, reserved_empty_seats)
+    temporary_fixed_assignments = _validated_temporary_fixed_assignments(
+        requested_fixed_assignments,
+        baseline_fixed,
+    )
+    fixed_assignments = {**baseline_fixed, **temporary_fixed_assignments}
+    solver_rules = _rules_with_temporary_fixed_assignments(
+        snapshot,
+        temporary_fixed_assignments,
+    )
+    mutable_students = sorted(known_students - set(fixed_assignments))
+
+    return RepairContext(
+        solver_layout=solver_layout,
+        solver_rules=solver_rules,
+        locked_students=combined_students,
+        locked_seats=combined_seats,
+        mutable_students=mutable_students,
+        fixed_assignments=fixed_assignments,
+        temporary_fixed_assignments=temporary_fixed_assignments,
+        reserved_empty_seats=reserved_empty_seats,
+    )
+
+
+def _validated_temporary_fixed_assignments(
+    requested_fixed_assignments: dict[str, str],
+    baseline_fixed: dict[str, str],
+) -> dict[str, str]:
+    """Validate anchors against source fixed-seat rules."""
+
+    baseline_by_seat = {
+        seat_id: student_key for student_key, seat_id in baseline_fixed.items()
+    }
+    temporary_fixed: dict[str, str] = {}
+    for student_key, seat_id in requested_fixed_assignments.items():
+        required_seat = baseline_fixed.get(student_key)
+        if required_seat is not None and required_seat != seat_id:
+            raise ValueError(
+                f"Cannot preserve {student_key} at {seat_id}: existing hard rules "
+                f"fix the student to {required_seat}."
+            )
+        required_student = baseline_by_seat.get(seat_id)
+        if required_student is not None and required_student != student_key:
+            raise ValueError(
+                f"Cannot preserve {student_key} at {seat_id}: existing hard rules "
+                f"fix {required_student} to that seat."
+            )
+        if required_seat is None:
+            temporary_fixed[student_key] = seat_id
+
+    return temporary_fixed
+
+
+def _rules_with_temporary_fixed_assignments(
+    snapshot: SeatingSnapshot,
+    temporary_fixed_assignments: dict[str, str],
+) -> RuleSet:
+    """Clone source rules and add already validated one-time anchors."""
+
+    rules = _copy_model(snapshot.rules)
+    for student_key, seat_id in temporary_fixed_assignments.items():
+        rules.hard.fixed_seats.append(FixedSeatRule(student=student_key, seat_id=seat_id))
+    return rules
+
+
+def _baseline_fixed_assignments(snapshot: SeatingSnapshot) -> dict[str, str]:
+    """Resolve the source rules to stable student keys and seat identifiers."""
+
+    baseline_problem = compile_problem(
+        snapshot.students,
+        snapshot.layout,
+        snapshot.rules,
+    )
+    return {
+        snapshot.students[student_index].key: baseline_problem.seats[seat_index].seat_id
+        for student_index, seat_index in baseline_problem.rules_compiled.fixed_seats.items()
+    }
+
+
+def _layout_with_reserved_seats(
+    layout: ClassroomLayout,
+    reserved_seat_ids: Iterable[str],
+) -> ClassroomLayout:
+    """Temporarily disable empty locked seats for one solver invocation."""
+
+    reserved = set(reserved_seat_ids)
+    if not reserved:
+        return layout
+    seats = [
+        _copy_seat(seat, enabled=False) if seat.seat_id in reserved else _copy_seat(seat)
+        for seat in layout.seats
+    ]
+    adjacency = _copy_model(layout.adjacency)
+    adjacency.custom_edges = [
+        edge
+        for edge in adjacency.custom_edges
+        if edge[0] not in reserved and edge[1] not in reserved
+    ]
+    return ClassroomLayout(
+        layout_id=layout.layout_id,
+        name=layout.name,
+        seats=seats,
+        adjacency=adjacency,
+        metadata=dict(layout.metadata),
+    )
+
+
+def _copy_seat(seat: SeatNode, *, enabled: bool | None = None) -> SeatNode:
+    if enabled is None:
+        return _copy_model(seat)
+    if hasattr(seat, "model_copy"):
+        return seat.model_copy(  # type: ignore[attr-defined,return-value]
+            update={"enabled": enabled}
+        )
+    return seat.copy(update={"enabled": enabled})
+
+
+def _copy_model(model: ModelT) -> ModelT:
+    if hasattr(model, "model_copy"):
+        return model.model_copy(deep=True)  # type: ignore[attr-defined,return-value]
+    return model.copy(deep=True)  # type: ignore[return-value]
+
+
+def _saved_locks(snapshot: SeatingSnapshot) -> tuple[list[str], list[str]]:
+    """Read the formal state first, then tolerate older draft metadata."""
+
+    formal = lock_state_from_snapshot(snapshot)
+    if LOCK_STATE_METADATA_KEY in snapshot.metadata:
+        return list(formal.locked_students), list(formal.locked_seats)
+    for key in ("lock_state", "manual_edit", "repair"):
+        stored = snapshot.metadata.get(key)
+        if not isinstance(stored, dict):
+            continue
+        return (
+            _normalized_values(stored.get("locked_students", ())),
+            _normalized_values(stored.get("locked_seats", ())),
+        )
+    return (
+        [],
+        [],
+    )
+
+
+def _normalized_values(values: object) -> list[str]:
+    if isinstance(values, str):
+        candidates = [values]
+    elif isinstance(values, Iterable):
+        candidates = values
+    else:
+        return []
+    normalized: list[str] = []
+    for value in candidates:
+        text = str(value).strip()
+        if text and text not in normalized:
+            normalized.append(text)
+    return sorted(normalized)

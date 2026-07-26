@@ -1,0 +1,22 @@
+[package]
+name = "seattrellis_native"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Experimental native core helpers for SeatTrellis."
+readme = "README.md"
+homepage = "https://github.com/FrankFu916/seattrellis"
+repository = "https://github.com/FrankFu916/seattrellis"
+keywords = ["classroom", "seating", "optimization", "rust", "pyo3"]
+
+[lib]
+name = "seattrellis_native"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+pyo3 = { version = "0.22" }
+seattrellis_core = { path = "../seattrellis_core" }

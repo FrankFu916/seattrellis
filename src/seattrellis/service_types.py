@@ -5,9 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
-from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
+from seattrellis.models.candidate import (
+    CandidateSet,
+    HardConstraintSummary,
+    PlanComparisonReport,
+)
 from seattrellis.models.history import FairnessReport, PairHistoryReport
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.io.project import ProjectPaths
@@ -16,6 +20,10 @@ from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.io.validation import ValidationReport
+from seattrellis.solver.backend import SolverBackend, normalize_solver_backend
+
+if TYPE_CHECKING:
+    from seattrellis.editing import EditingLockState, EditingOperation, EditingRecord
 
 
 ExportTemplate = Literal["public", "teacher", "report"]
@@ -179,6 +187,10 @@ class SolveInput:
     candidate_count: int = 1
     seed: int | None = None
     time_limit_seconds: float = 3.0
+    backend: SolverBackend = "auto"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "backend", normalize_solver_backend(self.backend))
 
 
 @dataclass(frozen=True)
@@ -187,6 +199,7 @@ class SolveOutput:
 
     candidate_set: CandidateSet
     preset_warnings: list[str] | None = None
+    warnings: list[str] | None = None
     summary: str | None = None
     plan_comparison_report: PlanComparisonReport | None = None
 
@@ -207,6 +220,65 @@ class ValidateOutput:
 
     report: ValidationReport
     formatted: str
+
+
+@dataclass(frozen=True)
+class EditInput:
+    """Pure in-memory manual editing request."""
+
+    snapshot: SeatingSnapshot
+    operations: Sequence[EditingOperation] = field(default_factory=tuple)
+    locked_students: Sequence[str] = field(default_factory=tuple)
+    locked_seats: Sequence[str] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class EditOutput:
+    """Pure in-memory manual editing result."""
+
+    snapshot: SeatingSnapshot
+    hard_constraints: HardConstraintSummary
+    unseated_students: list[str]
+    locked_students: list[str]
+    locked_seats: list[str]
+    operation_log: tuple[EditingRecord, ...]
+    lock_state: EditingLockState
+
+
+@dataclass(frozen=True)
+class RepairInput:
+    """Request a constrained re-solve from a manual seating draft."""
+
+    snapshot: SeatingSnapshot
+    affected_students: Sequence[str] = field(default_factory=tuple)
+    locked_students: Sequence[str] = field(default_factory=tuple)
+    locked_seats: Sequence[str] = field(default_factory=tuple)
+    lock_state: EditingLockState | None = None
+    reuse_saved_locks: bool = True
+    history_snapshots: Sequence[SeatingSnapshot] = field(default_factory=tuple)
+    seed: int | None = None
+    time_limit_seconds: float = 3.0
+    backend: SolverBackend = "auto"
+
+    def __post_init__(self) -> None:
+        if not isfinite(self.time_limit_seconds) or self.time_limit_seconds < 0.1:
+            raise ValueError("time_limit_seconds must be a finite number >= 0.1")
+        object.__setattr__(self, "backend", normalize_solver_backend(self.backend))
+
+
+@dataclass(frozen=True)
+class RepairOutput:
+    """Result and trace data for a constrained re-solve."""
+
+    snapshot: SeatingSnapshot
+    hard_constraints: HardConstraintSummary
+    locked_students: list[str]
+    locked_seats: list[str]
+    lock_state: EditingLockState
+    mutable_students: list[str]
+    fixed_assignments: dict[str, str]
+    reserved_empty_seats: list[str]
+    changed_students: list[str]
 
 
 @dataclass(frozen=True)

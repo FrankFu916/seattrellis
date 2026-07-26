@@ -17,8 +17,8 @@
 | `score_balance` | 是 | 输入提示 | fallback / CP-SAT | 独立评分 | 已实现，名称待澄清 |
 | `fair_rotation` | 是 | 历史提示 | fallback / CP-SAT | 独立评分 | 已实现 |
 | `avoid_recent_neighbors` | 是 | 历史提示 | fallback / CP-SAT | 独立评分 | 已实现 |
-| `groups` | 是 | 否 | 否 | 否 | 仅模型 |
-| `cooling` | 是 | 否 | 否 | 否 | 仅模型 |
+| `groups` | 是 | warning | 否 | 否 | model-only |
+| `cooling` | 是 | warning | 否 | 否 | model-only |
 
 ## 已知语义问题
 
@@ -32,13 +32,11 @@
 ### `groups` 与 `cooling`
 
 这两个字段已在模型、历史 changelog 和部分文档中出现，但当前求解路径没有读取
-它们。进入新成绩分组和多期轮换功能前，必须选择并完成其中一种处理：
+它们。v1.4 起，`validate` 和 `solve` 会明确输出 model-only warning；普通模式
+允许继续运行，`validate --strict` 会把 warning 视为失败。
 
-1. 实现验证、fallback、CP-SAT、结果复核和测试；
-2. 明确标记 experimental/model-only，并在输入校验时发出 warning；
-3. 按弃用策略迁移到新的版本化 RuleSet。
-
-在处理完成前，不得把它们计入对外功能数量。
+在真正实现验证、fallback、OR-Tools、结果复核和测试前，不得把它们计入对外
+功能数量。
 
 ## 新规则准入清单
 

@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://frankfu916.github.io/seattrellis/schemas/classroom-layout.schema.json",
+  "title": "SeatTrellis Classroom Layout",
+  "description": "A classroom layout represented by seat nodes and adjacency settings.",
+  "type": "object",
+  "properties": {
+    "layout_id": {
+      "title": "Layout Id",
+      "default": "default-layout",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "default": "Classroom",
+      "type": "string"
+    },
+    "seats": {
+      "title": "Seats",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SeatNode"
+      }
+    },
+    "adjacency": {
+      "$ref": "#/definitions/AdjacencyConfig"
+    },
+    "metadata": {
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "seats"
+  ],
+  "definitions": {
+    "SeatNode": {
+      "title": "SeatNode",
+      "description": "A physical or logical seat node in the classroom graph.",
+      "type": "object",
+      "properties": {
+        "seat_id": {
+          "title": "Seat Id",
+          "type": "string"
+        },
+        "row": {
+          "title": "Row",
+          "type": "integer"
+        },
+        "col": {
+          "title": "Col",
+          "type": "integer"
+        },
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "default": true,
+          "type": "boolean"
+        },
+        "zone": {
+          "title": "Zone",
+          "type": "string"
+        },
+        "near_window": {
+          "title": "Near Window",
+          "default": false,
+          "type": "boolean"
+        },
+        "near_door": {
+          "title": "Near Door",
+          "default": false,
+          "type": "boolean"
+        },
+        "near_platform": {
+          "title": "Near Platform",
+          "default": false,
+          "type": "boolean"
+        },
+        "near_ac": {
+          "title": "Near Ac",
+          "default": false,
+          "type": "boolean"
+        },
+        "tags": {
+          "title": "Tags",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attributes": {
+          "title": "Attributes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "seat_id",
+        "row",
+        "col"
+      ]
+    },
+    "AdjacencyConfig": {
+      "title": "AdjacencyConfig",
+      "description": "Rules for generating a seat adjacency graph.",
+      "type": "object",
+      "properties": {
+        "include_horizontal": {
+          "title": "Include Horizontal",
+          "default": true,
+          "type": "boolean"
+        },
+        "include_vertical": {
+          "title": "Include Vertical",
+          "default": false,
+          "type": "boolean"
+        },
+        "include_diagonal": {
+          "title": "Include Diagonal",
+          "default": false,
+          "type": "boolean"
+        },
+        "max_row_delta": {
+          "title": "Max Row Delta",
+          "default": 1,
+          "type": "integer"
+        },
+        "max_col_delta": {
+          "title": "Max Col Delta",
+          "default": 1,
+          "type": "integer"
+        },
+        "max_distance": {
+          "title": "Max Distance",
+          "type": "number"
+        },
+        "use_xy_distance": {
+          "title": "Use Xy Distance",
+          "default": true,
+          "type": "boolean"
+        },
+        "custom_edges": {
+          "title": "Custom Edges",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "x-seattrellis-artifact": "classroom-layout"
+}

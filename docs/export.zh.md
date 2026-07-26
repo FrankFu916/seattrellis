@@ -22,6 +22,13 @@ seattrellis export --snapshot outputs/candidates.json --candidate recommended --
 
 # 导出指定候选方案
 seattrellis export --snapshot outputs/candidates.json --candidate candidate_03 --format html
+
+# 导出完整候选集比较报告
+seattrellis export \
+  --snapshot outputs/candidates.json \
+  --candidate-scope all \
+  --format html \
+  --output outputs/candidate-comparison.html
 ```
 
 ## 模板与隐私
@@ -40,6 +47,11 @@ seattrellis export --snapshot outputs/candidates.json --candidate candidate_03 -
 打印 HTML、PDF 和 Word 已支持 A4 横向/纵向、5–30 mm 页边距和
 0.5–2.0 缩放。CLI 和 Web 均可选择模板、隐私字段、方向、缩放与中英文内容，
 原有命令行和 Python 调用保持兼容。
+
+完整候选集比较报告使用 `--candidate-scope all` 导出，目前支持 `html` 和
+`print-html`。报告包含推荐方案、总分、各评分维度、hard constraint 状态、
+优势、代价和历史对比摘要。它只呈现方案级聚合指标，不读取或展示姓名、学号、
+学生成绩、备注、特殊需求、身高或视力；模板和字段开关不会扩大这类报告的内容。
 
 PDF 依赖系统中文字体与 WeasyPrint 运行库，具体见 [字体策略](font-strategy.zh.md)。异形或超大教室可能需要使用浏览器打印功能手动调整缩放。
 

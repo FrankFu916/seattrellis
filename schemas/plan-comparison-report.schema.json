@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://frankfu916.github.io/seattrellis/schemas/plan-comparison-report.schema.json",
+  "title": "SeatTrellis Plan Comparison Report",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "title": "Schema Version",
+      "default": "0.2.2",
+      "type": "string"
+    },
+    "kind": {
+      "title": "Kind",
+      "default": "plan_comparison_report",
+      "enum": [
+        "plan_comparison_report"
+      ],
+      "type": "string"
+    },
+    "created_at": {
+      "title": "Created At",
+      "type": "string",
+      "format": "date-time"
+    },
+    "candidate_count": {
+      "title": "Candidate Count",
+      "type": "integer"
+    },
+    "recommended_candidate_id": {
+      "title": "Recommended Candidate Id",
+      "type": "string"
+    },
+    "candidates": {
+      "title": "Candidates",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PlanComparisonEntry"
+      }
+    },
+    "warnings": {
+      "title": "Warnings",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "candidate_count",
+    "recommended_candidate_id",
+    "candidates"
+  ],
+  "definitions": {
+    "PlanComparisonEntry": {
+      "title": "PlanComparisonEntry",
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "total_score": {
+          "title": "Total Score",
+          "type": "number"
+        },
+        "hard_constraints_satisfied": {
+          "title": "Hard Constraints Satisfied",
+          "type": "boolean"
+        },
+        "dimension_scores": {
+          "title": "Dimension Scores",
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "advantages": {
+          "title": "Advantages",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "costs": {
+          "title": "Costs",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "history_comparison": {
+          "title": "History Comparison",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "total_score",
+        "hard_constraints_satisfied"
+      ]
+    }
+  },
+  "x-seattrellis-artifact": "plan-comparison-report",
+  "x-seattrellis-schema-version": "0.2.2"
+}

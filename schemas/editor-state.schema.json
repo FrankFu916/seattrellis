@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://frankfu916.github.io/seattrellis/schemas/editor-state.schema.json",
+  "title": "SeatTrellis Editor State",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "title": "Kind",
+      "enum": [
+        "seattrellis_editor_state"
+      ],
+      "type": "string"
+    },
+    "protocol_version": {
+      "title": "Protocol Version",
+      "enum": [
+        "1.0"
+      ],
+      "type": "string"
+    },
+    "draft_id": {
+      "title": "Draft Id",
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "revision": {
+      "title": "Revision",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "candidate_id": {
+      "title": "Candidate Id",
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "undo_depth": {
+      "title": "Undo Depth",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "redo_depth": {
+      "title": "Redo Depth",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "students": {
+      "title": "Students",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EditorStudentState"
+      }
+    },
+    "seats": {
+      "title": "Seats",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EditorSeatState"
+      }
+    },
+    "hard_constraints": {
+      "$ref": "#/definitions/EditorHardConstraintState"
+    }
+  },
+  "required": [
+    "kind",
+    "protocol_version",
+    "draft_id",
+    "revision",
+    "undo_depth",
+    "redo_depth",
+    "students",
+    "seats",
+    "hard_constraints"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "EditorStudentState": {
+      "title": "EditorStudentState",
+      "type": "object",
+      "properties": {
+        "student_key": {
+          "title": "Student Key",
+          "minLength": 1,
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "seat_id": {
+          "title": "Seat Id",
+          "minLength": 1,
+          "type": "string"
+        },
+        "locked": {
+          "title": "Locked",
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "student_key",
+        "display_name"
+      ],
+      "additionalProperties": false
+    },
+    "EditorSeatState": {
+      "title": "EditorSeatState",
+      "type": "object",
+      "properties": {
+        "seat_id": {
+          "title": "Seat Id",
+          "minLength": 1,
+          "type": "string"
+        },
+        "row": {
+          "title": "Row",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "col": {
+          "title": "Col",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "student_key": {
+          "title": "Student Key",
+          "minLength": 1,
+          "type": "string"
+        },
+        "locked": {
+          "title": "Locked",
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "seat_id",
+        "row",
+        "col",
+        "enabled"
+      ],
+      "additionalProperties": false
+    },
+    "EditorHardConstraintState": {
+      "title": "EditorHardConstraintState",
+      "type": "object",
+      "properties": {
+        "satisfied": {
+          "title": "Satisfied",
+          "type": "boolean"
+        },
+        "checked_rule_count": {
+          "title": "Checked Rule Count",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "violation_count": {
+          "title": "Violation Count",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "violations": {
+          "title": "Violations",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "satisfied",
+        "checked_rule_count",
+        "violation_count"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "x-seattrellis-artifact": "editor-state",
+  "x-seattrellis-schema-version": "1.0"
+}

@@ -100,6 +100,11 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "历史 snapshot JSON（可选，可多选）",
         "History snapshot JSON (optional, multiple files allowed)",
     ),
+    "retained_uploads": (
+        "跨步骤保留的输入文件：{names}",
+        "Input files retained across steps: {names}",
+    ),
+    "clear_uploads": ("清除已上传的输入文件", "Clear uploaded input files"),
     "restored_rules_in_use": (
         "当前使用配置文件中的 rules overlay：{name}",
         "Using the rules overlay from the settings file: {name}",
@@ -204,6 +209,96 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "⭐ marks the recommendation.",
     ),
     "assignment_table": ("📋 分配明细表", "📋 Assignment details"),
+    "manual_edit_title": ("✏️ 人工调整", "✏️ Manual adjustment"),
+    "manual_edit_help": (
+        "交换、移动、移出或重新入座后会立即检查硬约束；"
+        "所有调整均可撤销或重做。",
+        "Swap, move, unseat, or reseat students and immediately recheck "
+        "hard constraints. Every change can be undone or redone.",
+    ),
+    "first_student": ("第一名学生", "First student"),
+    "second_student": ("第二名学生", "Second student"),
+    "swap_students": ("交换座位", "Swap seats"),
+    "other_edit_action": ("其他调整", "Other adjustment"),
+    "action_move": ("移动到空座", "Move to an empty seat"),
+    "action_unseat": ("移出座位", "Move to unseated area"),
+    "action_seat": ("安排未入座学生", "Seat an unseated student"),
+    "student_to_edit": ("学生", "Student"),
+    "target_empty_seat": ("目标空座", "Target empty seat"),
+    "apply_edit": ("应用调整", "Apply adjustment"),
+    "unseated_count": ("未入座学生：{count}", "Unseated students: {count}"),
+    "lock_controls": ("锁定状态", "Locks"),
+    "lock_summary": (
+        "已锁定学生 {students} 人，座位 {seats} 个。",
+        "{students} students and {seats} seats locked.",
+    ),
+    "student_lock_target": ("学生锁定对象", "Student lock target"),
+    "seat_lock_target": ("座位锁定对象", "Seat lock target"),
+    "lock_student": ("锁定学生", "Lock student"),
+    "unlock_student": ("解锁学生", "Unlock student"),
+    "lock_seat": ("锁定座位", "Lock seat"),
+    "unlock_seat": ("解锁座位", "Unlock seat"),
+    "batch_move_title": ("批量移动", "Batch move"),
+    "batch_move_help": (
+        "按选择顺序将学生与目标座位一一配对；整个批次一次完成，也只需撤销一次。",
+        "Students and target seats are paired in selection order. "
+        "The whole batch is applied and undone as one command.",
+    ),
+    "batch_students": ("批量选择学生", "Students to move"),
+    "batch_target_seats": ("批量目标座位", "Target seats"),
+    "batch_pairing": ("配对预览：{pairs}", "Pairing preview: {pairs}"),
+    "batch_count_mismatch": (
+        "学生与目标座位数量必须相同。",
+        "Select the same number of students and target seats.",
+    ),
+    "apply_batch_move": ("执行批量移动", "Apply batch move"),
+    "seat_canvas_title": ("座位图快捷操作", "Interactive seating map"),
+    "seat_canvas_help": (
+        "先点击一名学生的座位，再点击空座进行移动，或点击另一名学生进行交换。",
+        "Select an occupied source seat, then choose an empty seat to move "
+        "or another occupied seat to swap.",
+    ),
+    "seat_canvas_mode": ("座位图模式", "Map mode"),
+    "canvas_mode_move": ("移动 / 交换", "Move / swap"),
+    "canvas_mode_lock": ("锁定 / 解锁座位", "Lock / unlock seats"),
+    "canvas_source_selected": (
+        "已选择起点：{seat} · {student}",
+        "Source selected: {seat} · {student}",
+    ),
+    "canvas_choose_occupied": (
+        "请先选择一个已入座学生的座位。",
+        "Choose an occupied student seat first.",
+    ),
+    "canvas_selection_cleared": ("已取消起点选择。", "Source selection cleared."),
+    "empty_seat": ("空座", "Empty"),
+    "disabled_seat": ("不可用", "Disabled"),
+    "locked_marker": ("已锁定", "Locked"),
+    "no_empty_seats": ("当前没有可用空座。", "There are no available empty seats."),
+    "no_unseated_students": ("当前没有未入座学生。", "There are no unseated students."),
+    "undo": ("撤销", "Undo"),
+    "redo": ("重做", "Redo"),
+    "edit_complete": ("人工调整已保存。", "Manual adjustment saved."),
+    "edit_operations": ("已应用操作：{count}", "Applied operations: {count}"),
+    "edit_hard_passed": ("调整后硬约束通过。", "Hard constraints pass after editing."),
+    "edit_hard_failed": (
+        "调整后有 {count} 项硬约束违规：{items}",
+        "The edited draft has {count} hard-constraint violations: {items}",
+    ),
+    "repair_title": ("🛠️ 锁定与局部重排", "🛠️ Lock & repair"),
+    "repair_help": (
+        "选择受影响学生时，仅重新安排这些学生；不选择则在锁定条件下全局重排。",
+        "Select affected students for a local repair. Leave the selection empty for a global re-solve with locks.",
+    ),
+    "affected_students": ("受影响学生", "Affected students"),
+    "locked_students": ("锁定学生当前位置", "Keep students in current seats"),
+    "locked_seats": ("锁定座位", "Locked seats"),
+    "reuse_saved_locks": ("沿用快照中已保存的锁定", "Reuse locks saved in the snapshot"),
+    "repair_backend": ("求解后端", "Solver backend"),
+    "repair_time_limit": ("重排时限（秒）", "Repair time limit (seconds)"),
+    "run_repair": ("执行局部重排", "Run repair"),
+    "repair_complete": ("局部重排完成。", "Repair complete."),
+    "repair_changes": ("本次调整学生：{students}", "Students moved: {students}"),
+    "repair_no_changes": ("本次重排未改变座位。", "No seats changed in this repair."),
     "exports": ("📥 导出", "📥 Exports"),
     "export_settings": ("导出模板与隐私设置", "Export template and privacy"),
     "export_template": ("模板", "Template"),
@@ -230,6 +325,16 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "非 JSON 文件会在点击生成后再创建，避免页面加载时触发可选导出依赖。",
         "Non-JSON files are created only after you click prepare, so optional "
         "export dependencies are not loaded during page rendering.",
+    ),
+    "export_all_candidates": (
+        "导出完整候选集比较报告",
+        "Export full candidate comparison report",
+    ),
+    "export_all_candidates_help": (
+        "仅适用于 candidate set 的 HTML 和 Print HTML 导出；报告只含方案级"
+        "聚合指标，不含学生明细。",
+        "Available only for candidate-set HTML and Print HTML exports. The "
+        "report contains plan-level aggregates, not student details.",
     ),
     "export_privacy_unsupported": (
         "模板与隐私设置仅适用于 Print HTML、PDF 和 DOCX。当前格式使用基础导出，"
@@ -269,6 +374,16 @@ Legacy `.xls` files are not supported; save them as `.xlsx` or CSV first. Use UT
         "Upload a Project file (.seattrellis.json)",
     ),
     "uploaded": ("已上传：{name}", "Uploaded: {name}"),
+    "project_upload_manifest_only": (
+        "Project 清单已通过格式校验。单独上传的清单无法取得它引用的学生、"
+        "layout、rules 和 history 文件，因此不会启用校验、求解或导出。"
+        "完整操作请使用本机 Project 路径；项目包上传将在后续版本提供。",
+        "The Project manifest passed format validation. A standalone "
+        "manifest cannot access its referenced student, layout, rules, or "
+        "history files, so validation, solving, and export remain disabled. "
+        "Use a local Project path for the complete workflow; bundled upload "
+        "will be added later.",
+    ),
     "read_project": ("读取 project-info", "Read project info"),
     "strict_warnings": ("将 warnings 视为错误", "Treat warnings as errors"),
     "validate_project": ("校验 project", "Validate project"),

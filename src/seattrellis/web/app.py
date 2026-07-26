@@ -1,7 +1,7 @@
 """SeatTrellis Streamlit web UI — v0.4.0.
 
-Privacy-first, local-only.  All business logic lives in ``web/workflow.py``
-and ``web/components.py`` so this module stays thin.
+Privacy-first, local-only. Business logic lives in ``web/workflow.py``;
+stateful editing controls live in ``web/interactive_panels.py``.
 """
 
 from __future__ import annotations
@@ -13,7 +13,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from pydantic import ValidationError
+try:
+    from pydantic.v1 import ValidationError
+except ImportError:  # pragma: no cover - pydantic v1.
+    from pydantic import ValidationError
 
 try:
     import streamlit as st
@@ -24,6 +27,7 @@ except Exception as exc:  # pragma: no cover
 
 from seattrellis.io.json_files import InputFileError
 from seattrellis.models.candidate import CandidateSet
+from seattrellis.models.project import SeatTrellisProject
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import list_presets
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
@@ -37,6 +41,7 @@ from seattrellis.web.components import (
     accessibility_styles,
     build_comparison_table,
     build_candidate_selector,
+    build_data_table_html,
     build_preset_cards,
     build_privacy_notice_html,
     build_seat_grid_html,
@@ -45,8 +50,60 @@ from seattrellis.web.components import (
 from seattrellis.web.i18n import (
     LANGUAGE_OPTIONS,
     normalize_locale,
-    table_column_labels,
     translate,
+)
+from seattrellis.web.interactive_panels import (
+    render_manual_edit_panel as _render_manual_edit_panel,
+    render_repair_panel as _render_repair_panel,
+)
+from seattrellis.web.keys import (
+    PROJECT_CANDIDATE_COUNT_INPUT,
+    PROJECT_CANDIDATE_SELECT,
+    PROJECT_EXPORT_PREFIX,
+    PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
+    PROJECT_EXPORT_DOWNLOAD_REPORT,
+    PROJECT_INFO_BUTTON,
+    PROJECT_INFO_STATUS,
+    PROJECT_MODE_RADIO,
+    PROJECT_PATH_INPUT,
+    PROJECT_PATH_STATUS,
+    PROJECT_RESULTS_STATUS,
+    PROJECT_SEED_ENABLED,
+    PROJECT_SEED_INPUT,
+    PROJECT_SOLVE_BUTTON,
+    PROJECT_SOLVE_STATUS,
+    PROJECT_STRICT_CHECKBOX,
+    PROJECT_TIME_LIMIT_INPUT,
+    PROJECT_UPLOAD_INPUT,
+    PROJECT_USE_DEFAULT_CANDIDATES,
+    PROJECT_VALIDATE_BUTTON,
+    PROJECT_VALIDATE_STATUS,
+    QUICK_CANDIDATE_SELECT,
+    QUICK_CANDIDATE_COUNT_INPUT,
+    QUICK_CLEAR_UPLOADS_BUTTON,
+    QUICK_CONFIG_UPLOAD,
+    QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX,
+    QUICK_EXPORT_DOWNLOAD_ARTIFACT,
+    QUICK_EXPORT_DOWNLOAD_REPORT,
+    QUICK_EXPORT_FORMAT_SELECT,
+    QUICK_EXPORT_PREFIX,
+    QUICK_GENERATE_BUTTON,
+    QUICK_HISTORY_UPLOAD,
+    QUICK_INSPECT_HISTORY_BUTTON,
+    QUICK_LAYOUT_UPLOAD,
+    QUICK_LOAD_DEMO_BUTTON,
+    QUICK_PRESET_SELECT,
+    QUICK_RETAINED_UPLOADS_STATUS,
+    QUICK_RESULTS_STATUS,
+    QUICK_RULES_UPLOAD,
+    QUICK_SOLVE_STATUS,
+    QUICK_STUDENTS_UPLOAD,
+    QUICK_STEP_RADIO,
+    UI_LANGUAGE_SELECT,
+    export_prepare_key,
+    export_prepared_download_key,
+    export_prepared_state_key,
+    widget_region_key,
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
@@ -55,6 +112,7 @@ from seattrellis.web.workflow import (
     build_rules_preview,
     candidate_summary_rows,
     demo_paths,
+    expand_user_path,
     export_for_web,
     load_demo_layout,
     load_demo_snapshot,
@@ -82,6 +140,7 @@ _SS_DEFAULTS = {
     "project_path": None,
     "layout_loaded": None,
     "current_candidate_id": "recommended",
+    "result_origin": None,
     "demo_loaded": False,
     "demo_students_path": None,
     "demo_layout_path": None,
@@ -90,9 +149,15 @@ _SS_DEFAULTS = {
     "_qf_rules_name": None,
     "_qf_config_digest": None,
     "_qf_history_quality": None,
+    "_qf_students": None,
+    "_qf_layout": None,
+    "_qf_rules": None,
+    "_qf_history": None,
     "ui_locale": "zh",
     "quick_step_value": "load",
     "project_mode_value": "path",
+    "_quick_editing_draft": None,
+    "_project_editing_draft": None,
 }
 
 # Persistent temp dirs that survive Streamlit re-runs.
@@ -129,17 +194,6 @@ def _locale() -> str:
 
 def _t(key: str, **values: object) -> str:
     return translate(key, _locale(), **values)
-
-
-def _localized_columns(rows: list[dict[str, object]]) -> dict[str, str]:
-    if not rows:
-        return {}
-    labels = table_column_labels(_locale())
-    return {
-        key: labels[key]
-        for key in rows[0]
-        if key in labels
-    }
 
 
 def _history_warnings(report) -> list[str]:
@@ -187,10 +241,93 @@ def _history_warnings(report) -> list[str]:
     return messages
 
 
-def _reset_solve_state():
-    for k in ("solved", "result", "artifact_json", "report_json",
-              "output_dir", "project_path", "layout_loaded"):
-        st.session_state[k] = _SS_DEFAULTS[k]
+def _reset_solve_state(origin: str, *, replace_active: bool = False) -> None:
+    """Discard derived state for one workspace without clearing the other."""
+
+    export_prefix = (
+        QUICK_EXPORT_PREFIX if origin == "quick" else PROJECT_EXPORT_PREFIX
+    )
+    st.session_state.pop(export_prepared_state_key(export_prefix), None)
+    st.session_state[f"_{origin}_editing_draft"] = None
+
+    active_origin = _ss("result_origin")
+    if replace_active and active_origin not in (None, origin):
+        active_export_prefix = (
+            QUICK_EXPORT_PREFIX
+            if active_origin == "quick"
+            else PROJECT_EXPORT_PREFIX
+        )
+        st.session_state.pop(
+            export_prepared_state_key(active_export_prefix),
+            None,
+        )
+        st.session_state[f"_{active_origin}_editing_draft"] = None
+    if not replace_active and active_origin not in (None, origin):
+        return
+
+    for key in (
+        "solved",
+        "result",
+        "artifact_json",
+        "report_json",
+        "output_dir",
+        "project_path",
+        "layout_loaded",
+        "current_candidate_id",
+        "result_origin",
+    ):
+        st.session_state[key] = _SS_DEFAULTS[key]
+
+
+def _invalidate_quick_solve() -> None:
+    """Clear results derived from quick-solve inputs or settings."""
+
+    st.session_state["_qf_history_quality"] = None
+    _reset_solve_state("quick")
+
+
+def _invalidate_project_solve() -> None:
+    """Clear results when the selected Project source changes."""
+
+    _reset_solve_state("project")
+
+
+def _sync_quick_upload(widget_key: str, cache_key: str) -> None:
+    """Persist an upload across wizard steps and invalidate stale results."""
+
+    st.session_state[cache_key] = st.session_state.get(widget_key)
+    _invalidate_quick_solve()
+
+
+def _clear_quick_uploads() -> None:
+    """Discard retained quick-solve files without changing other settings."""
+
+    for widget_key, cache_key in (
+        (QUICK_STUDENTS_UPLOAD, "_qf_students"),
+        (QUICK_LAYOUT_UPLOAD, "_qf_layout"),
+        (QUICK_RULES_UPLOAD, "_qf_rules"),
+        (QUICK_HISTORY_UPLOAD, "_qf_history"),
+    ):
+        st.session_state.pop(widget_key, None)
+        st.session_state[cache_key] = None
+    if _ss("_qf_rules_data") is None:
+        st.session_state["_qf_rules_name"] = None
+    _invalidate_quick_solve()
+
+
+def _retained_upload_names() -> list[str]:
+    """Return safe display names for files retained across wizard steps."""
+
+    retained: list[str] = []
+    for cache_key in ("_qf_students", "_qf_layout", "_qf_rules"):
+        uploaded = _ss(cache_key)
+        if uploaded is not None:
+            retained.append(Path(uploaded.name).name)
+    retained.extend(
+        Path(uploaded.name).name
+        for uploaded in (_ss("_qf_history") or [])
+    )
+    return retained
 
 
 def _restore_web_config(data: bytes) -> WebSessionConfig:
@@ -204,8 +341,9 @@ def _restore_web_config(data: bytes) -> WebSessionConfig:
     if _ss("_qf_config_digest") == digest:
         return config
 
+    _invalidate_quick_solve()
     preset_name = config.preset_name or ""
-    st.session_state[f"quick_preset_{_locale()}"] = preset_name
+    st.session_state[QUICK_PRESET_SELECT] = preset_name
     if preset_name:
         st.session_state["_qf_preset"] = preset_name
     else:
@@ -238,8 +376,9 @@ def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
     demo_loaded = bool(_ss("demo_loaded"))
 
     if students_file is not None and layout_file is not None:
-        students_path = input_root / Path(students_file.name).name
-        layout_path = input_root / Path(layout_file.name).name
+        students_suffix = Path(students_file.name).suffix.lower() or ".csv"
+        students_path = input_root / f"students{students_suffix}"
+        layout_path = input_root / "layout.json"
         students_path.write_bytes(students_file.getvalue())
         layout_path.write_bytes(layout_file.getvalue())
     elif demo_loaded:
@@ -253,7 +392,7 @@ def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
     rules_path: Path | None = None
     rules_file = _ss("_qf_rules")
     if rules_file is not None:
-        rules_path = input_root / Path(rules_file.name).name
+        rules_path = input_root / "rules.json"
         rules_path.write_bytes(rules_file.getvalue())
     else:
         restored_rules = _current_rules_data()
@@ -266,8 +405,7 @@ def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
 
     history_paths: list[Path] = []
     for index, history_file in enumerate(_ss("_qf_history") or [], start=1):
-        safe_name = Path(history_file.name).name
-        history_path = input_root / f"history-{index:02d}-{safe_name}"
+        history_path = input_root / f"history-{index:02d}.snapshot.json"
         history_path.write_bytes(history_file.getvalue())
         history_paths.append(history_path)
     if not history_paths and demo_loaded and _ss("demo_history_dir"):
@@ -304,14 +442,17 @@ def _render_seat_map(snapshot, layout) -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
-def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candidate_selector") -> str | None:
+def _render_candidate_switcher(
+    result: WebSolveResult,
+    widget_key: str = QUICK_CANDIDATE_SELECT,
+) -> str | None:
     """Render candidate selector and return the chosen candidate ID."""
     if not result.is_candidate_set:
         return "recommended"
 
     options = build_candidate_selector(result.artifact, locale=_locale())
-    labels = [opt["label"] for opt in options]
     ids = [opt["id"] for opt in options]
+    labels_by_id = {opt["id"]: opt["label"] for opt in options}
 
     current = _ss("current_candidate_id")
     try:
@@ -319,17 +460,14 @@ def _render_candidate_switcher(result: WebSolveResult, widget_key: str = "candid
     except ValueError:
         idx = 0
 
-    selected_label = st.selectbox(
-        _t("candidate_choice"),
-        labels,
-        index=idx,
-        key=f"{widget_key}_{_locale()}",
-    )
-    try:
-        selected_idx = labels.index(selected_label)
-    except ValueError:
-        selected_idx = 0
-    selected_id = ids[selected_idx]
+    with st.container(key=widget_region_key(widget_key)):
+        selected_id = st.selectbox(
+            _t("candidate_choice"),
+            ids,
+            index=idx,
+            format_func=labels_by_id.__getitem__,
+            key=widget_key,
+        )
     st.session_state["current_candidate_id"] = selected_id
     return selected_id
 
@@ -361,10 +499,13 @@ def _render_candidate_detail(result: WebSolveResult, candidate_id: str) -> None:
         st.warning(_t("violation_items", items=hard.violations))
 
     rows = score_breakdown_rows(candidate)
-    st.dataframe(
-        rows,
-        width="stretch",
-        column_config=_localized_columns(rows),
+    st.markdown(
+        build_data_table_html(
+            rows,
+            caption=_t("plan_detail"),
+            locale=_locale(),
+        ),
+        unsafe_allow_html=True,
     )
 
 
@@ -374,10 +515,14 @@ def _render_comparison_view(result: WebSolveResult) -> None:
         return
     with st.expander(_t("candidate_comparison"), expanded=False):
         comp = build_comparison_table(result.artifact)
-        st.dataframe(
-            comp["rows"],
-            width="stretch",
-            column_config=_localized_columns(comp["rows"]),
+        st.markdown(
+            build_data_table_html(
+                comp["rows"],
+                columns=comp["columns"],
+                caption=_t("candidate_comparison"),
+                locale=_locale(),
+            ),
+            unsafe_allow_html=True,
         )
         st.caption(_t("comparison_caption"))
 
@@ -418,7 +563,11 @@ def _render_exports(
 ) -> None:
     """Render download buttons for all export formats."""
     st.subheader(_t("exports"))
-    export_key = "project_export" if project_path is not None else "quick_export"
+    export_key = (
+        PROJECT_EXPORT_PREFIX
+        if project_path is not None
+        else QUICK_EXPORT_PREFIX
+    )
     export_formats = {
         "print-html": ("Print HTML", "text/html"),
         "pdf": ("PDF", "application/pdf"),
@@ -435,14 +584,37 @@ def _render_exports(
     }
     configurable_formats = {"print-html", "pdf", "docx"}
     with st.expander(_t("export_settings"), expanded=True):
+        export_format_key = (
+            f"{export_key}_format"
+            if project_path is not None
+            else QUICK_EXPORT_FORMAT_SELECT
+        )
         output_format = st.selectbox(
             _t("export_format"),
             list(export_formats),
             format_func=lambda value: export_formats[value][0],
-            key=f"{export_key}_format",
+            key=export_format_key,
         )
         export_label, mime = export_formats[output_format]
         st.caption(_t("export_on_demand"))
+        supports_candidate_report = (
+            result.is_candidate_set and output_format in {"html", "print-html"}
+        )
+        candidate_scope = "selected"
+        if result.is_candidate_set:
+            all_candidates_key = (
+                f"{export_key}_all_candidates"
+                if project_path is not None
+                else QUICK_EXPORT_ALL_CANDIDATES_CHECKBOX
+            )
+            all_candidates = st.checkbox(
+                _t("export_all_candidates"),
+                value=False,
+                disabled=not supports_candidate_report,
+                key=all_candidates_key,
+                help=_t("export_all_candidates_help"),
+            )
+            candidate_scope = "all" if all_candidates and supports_candidate_report else "selected"
 
         template_labels = {
             "public": _t("template_public"),
@@ -461,13 +633,14 @@ def _render_exports(
             and st.session_state[template_key] not in template_options
         ):
             st.session_state[template_key] = "public"
-        template = st.selectbox(
-            _t("export_template"),
-            template_options,
-            format_func=template_labels.__getitem__,
-            key=template_key,
-            disabled=not supports_privacy_options,
-        )
+        with st.container(key=widget_region_key(template_key)):
+            template = st.selectbox(
+                _t("export_template"),
+                template_options,
+                format_func=template_labels.__getitem__,
+                key=template_key,
+                disabled=not supports_privacy_options,
+            )
         defaults = PrivacyOptions.for_template(template)
         st.caption(_t("privacy_defaults"))
         privacy_columns = st.columns(2)
@@ -505,22 +678,26 @@ def _render_exports(
                 disabled=not defaults.show_vision or not supports_privacy_options,
                 key=f"{export_key}_hide_vision_{template}",
             )
-            anonymize = st.checkbox(
-                _t("anonymize_names"),
-                value=False,
-                disabled=not supports_privacy_options,
-                key=f"{export_key}_anonymize_{template}",
-            )
+            anonymize_key = f"{export_key}_anonymize_{template}"
+            with st.container(key=widget_region_key(anonymize_key)):
+                anonymize = st.checkbox(
+                    _t("anonymize_names"),
+                    value=False,
+                    disabled=not supports_privacy_options,
+                    key=anonymize_key,
+                )
 
         page_columns = st.columns(3)
         with page_columns[0]:
-            orientation = st.selectbox(
-                _t("page_orientation"),
-                ["portrait", "landscape"],
-                format_func=lambda value: _t(f"orientation_{value}"),
-                key=f"{export_key}_orientation",
-                disabled=not supports_privacy_options,
-            )
+            orientation_key = f"{export_key}_orientation"
+            with st.container(key=widget_region_key(orientation_key)):
+                orientation = st.selectbox(
+                    _t("page_orientation"),
+                    ["portrait", "landscape"],
+                    format_func=lambda value: _t(f"orientation_{value}"),
+                    key=orientation_key,
+                    disabled=not supports_privacy_options,
+                )
         with page_columns[1]:
             page_scale = st.number_input(
                 _t("page_scale"),
@@ -532,14 +709,20 @@ def _render_exports(
                 disabled=not supports_privacy_options,
             )
         with page_columns[2]:
-            export_locale = st.selectbox(
-                _t("export_locale"),
-                ["zh", "en"],
-                index=0 if _locale() == "zh" else 1,
-                format_func=lambda value: "简体中文" if value == "zh" else "English",
-                key=f"{export_key}_locale",
-                disabled=not supports_privacy_options,
-            )
+            locale_key = f"{export_key}_locale"
+            with st.container(key=widget_region_key(locale_key)):
+                export_locale = st.selectbox(
+                    _t("export_locale"),
+                    ["zh", "en"],
+                    index=0 if _locale() == "zh" else 1,
+                    format_func=(
+                        lambda value: "简体中文"
+                        if value == "zh"
+                        else "English"
+                    ),
+                    key=locale_key,
+                    disabled=not supports_privacy_options,
+                )
 
     privacy = PrivacyOptions(
         hide_scores=hide_scores,
@@ -554,8 +737,8 @@ def _render_exports(
         scale=float(page_scale),
     )
 
-    # Use in-memory bytes when available (quick-solve tab); fall back to
-    # reading from disk (project tab where files live in project outputs).
+    # Prefer the bytes captured when the result was created. Derived results
+    # can still fall back to their session-scoped artifact on disk.
     artifact_bytes: bytes | None = _ss("artifact_json")
     report_bytes: bytes | None = _ss("report_json")
 
@@ -568,12 +751,20 @@ def _render_exports(
 
     # JSON artifact download
     artifact_label = "candidate set JSON" if result.is_candidate_set else "snapshot JSON"
-    st.download_button(
-        _t("download", label=artifact_label),
-        data=artifact_bytes,
-        file_name=result.artifact_path.name,
-        mime="application/json",
+    artifact_download_key = (
+        PROJECT_EXPORT_DOWNLOAD_ARTIFACT
+        if project_path is not None
+        else QUICK_EXPORT_DOWNLOAD_ARTIFACT
     )
+    with st.container(key=widget_region_key(artifact_download_key)):
+        st.download_button(
+            _t("download", label=artifact_label),
+            data=artifact_bytes,
+            file_name=result.artifact_path.name,
+            mime="application/json",
+            key=artifact_download_key,
+            on_click="ignore",
+        )
     if result.report_path is not None:
         if report_bytes is None:
             try:
@@ -581,12 +772,20 @@ def _render_exports(
             except (FileNotFoundError, OSError):
                 report_bytes = None
         if report_bytes is not None:
-            st.download_button(
-                _t("download", label="plan report JSON"),
-                data=report_bytes,
-                file_name=result.report_path.name,
-                mime="application/json",
+            report_download_key = (
+                PROJECT_EXPORT_DOWNLOAD_REPORT
+                if project_path is not None
+                else QUICK_EXPORT_DOWNLOAD_REPORT
             )
+            with st.container(key=widget_region_key(report_download_key)):
+                st.download_button(
+                    _t("download", label="plan report JSON"),
+                    data=report_bytes,
+                    file_name=result.report_path.name,
+                    mime="application/json",
+                    key=report_download_key,
+                    on_click="ignore",
+                )
 
     export_signature = (
         str(result.artifact_path),
@@ -594,6 +793,7 @@ def _render_exports(
         str(project_path) if project_path is not None else "",
         output_format,
         candidate_id,
+        candidate_scope,
         template,
         privacy.hide_scores,
         privacy.hide_notes,
@@ -605,24 +805,30 @@ def _render_exports(
         page.scale,
         export_locale,
     )
-    prepared_key = f"{export_key}_prepared_download"
-    if st.button(
-        _t("prepare_export", label=export_label),
-        key=f"{export_key}_prepare_{output_format}",
-    ):
+    prepared_key = export_prepared_state_key(export_key)
+    prepare_widget_key = export_prepare_key(export_key, output_format)
+    with st.container(key=widget_region_key(prepare_widget_key)):
+        prepare_requested = st.button(
+            _t("prepare_export", label=export_label),
+            key=prepare_widget_key,
+        )
+    if prepare_requested:
         st.session_state.pop(prepared_key, None)
         try:
             request = None
-            if output_format in configurable_formats:
+            if output_format in configurable_formats or candidate_scope == "all":
                 request = ExportRequest(
                     output_format=output_format,
                     template=template,
-                    privacy=privacy,
+                    privacy=privacy if output_format in configurable_formats else None,
                     page=page,
                     locale=export_locale,
                     candidate_id=(
-                        candidate_id if result.is_candidate_set else None
+                        candidate_id
+                        if result.is_candidate_set and candidate_scope == "selected"
+                        else None
                     ),
+                    candidate_scope=candidate_scope,
                 )
             if project_path is None:
                 output_path = export_for_web(
@@ -665,17 +871,20 @@ def _render_exports(
 
     prepared = st.session_state.get(prepared_key)
     if prepared and prepared.get("signature") == export_signature:
-        st.success(_t("export_ready", label=prepared["label"]))
-        try:
-            st.download_button(
-                _t("download", label=prepared["label"]),
-                data=prepared["data"],
-                file_name=prepared["file_name"],
-                mime=prepared["mime"],
-                key=f"{export_key}_download_prepared",
-            )
-        except (KeyError, TypeError) as exc:
-            st.warning(_t("export_unavailable", error=exc))
+        download_widget_key = export_prepared_download_key(export_key)
+        with st.container(key=widget_region_key(download_widget_key)):
+            st.success(_t("export_ready", label=prepared["label"]))
+            try:
+                st.download_button(
+                    _t("download", label=prepared["label"]),
+                    data=prepared["data"],
+                    file_name=prepared["file_name"],
+                    mime=prepared["mime"],
+                    key=download_widget_key,
+                    on_click="ignore",
+                )
+            except (KeyError, TypeError) as exc:
+                st.warning(_t("export_unavailable", error=exc))
 
 
 # ---------------------------------------------------------------------------
@@ -695,14 +904,15 @@ def _render_quick_solve_tab() -> None:
     current_step = _ss("quick_step_value")
     if current_step not in step_labels:
         current_step = "load"
-    step = st.radio(
-        _t("steps"),
-        ["load", "solve", "results"],
-        index=["load", "solve", "results"].index(current_step),
-        format_func=step_labels.__getitem__,
-        horizontal=True,
-        key=f"quick_step_{_locale()}",
-    )
+    with st.container(key=widget_region_key(QUICK_STEP_RADIO)):
+        step = st.radio(
+            _t("steps"),
+            ["load", "solve", "results"],
+            index=["load", "solve", "results"].index(current_step),
+            format_func=step_labels.__getitem__,
+            horizontal=True,
+            key=QUICK_STEP_RADIO,
+        )
     st.session_state["quick_step_value"] = step
 
     # --- Step 1: Load data ---
@@ -727,9 +937,17 @@ def _render_step_load_data() -> None:
     st.markdown(_t("quick_start"))
     demo_col1, demo_col2 = st.columns([1, 3])
     with demo_col1:
-        if st.button(_t("load_demo"), type="primary", width="stretch"):
+        with st.container(key=widget_region_key(QUICK_LOAD_DEMO_BUTTON)):
+            load_demo = st.button(
+                _t("load_demo"),
+                type="primary",
+                width="stretch",
+                key=QUICK_LOAD_DEMO_BUTTON,
+            )
+        if load_demo:
             demo = demo_paths()
             if demo["students_csv"] and demo["layout"]:
+                _invalidate_quick_solve()
                 st.session_state["demo_loaded"] = True
                 st.session_state["demo_students_path"] = str(demo["students_csv"])
                 st.session_state["demo_layout_path"] = str(demo["layout"])
@@ -738,15 +956,15 @@ def _render_step_load_data() -> None:
                 )
                 # Auto-select the "daily" preset so the solve button is ready.
                 st.session_state["_qf_preset"] = "daily"
-                st.session_state[f"quick_preset_{_locale()}"] = "daily"
+                st.session_state[QUICK_PRESET_SELECT] = "daily"
                 # Clear any previously uploaded files so demo takes priority.
                 for k in ("_qf_students", "_qf_layout", "_qf_rules", "_qf_history"):
                     st.session_state.pop(k, None)
                 for k in (
-                    "quick_students",
-                    "quick_layout",
-                    "quick_rules",
-                    "quick_history",
+                    QUICK_STUDENTS_UPLOAD,
+                    QUICK_LAYOUT_UPLOAD,
+                    QUICK_RULES_UPLOAD,
+                    QUICK_HISTORY_UPLOAD,
                 ):
                     st.session_state.pop(k, None)
                 st.session_state["_qf_rules_data"] = None
@@ -760,11 +978,12 @@ def _render_step_load_data() -> None:
 
     st.divider()
     st.markdown(_t("restore_settings"))
-    config_file = st.file_uploader(
-        _t("web_config"),
-        type=["json"],
-        key="quick_config",
-    )
+    with st.container(key=widget_region_key(QUICK_CONFIG_UPLOAD)):
+        config_file = st.file_uploader(
+            _t("web_config"),
+            type=["json"],
+            key=QUICK_CONFIG_UPLOAD,
+        )
     if config_file is not None:
         try:
             restored = _restore_web_config(config_file.getvalue())
@@ -794,61 +1013,91 @@ def _render_step_load_data() -> None:
         if current_preset in preset_options
         else 0
     )
-    preset_widget_key = f"quick_preset_{_locale()}"
     preset_widget_index = (
-        None if preset_widget_key in st.session_state else preset_index
+        None if QUICK_PRESET_SELECT in st.session_state else preset_index
     )
-    students_file = st.file_uploader(
-        _t("students_file"),
-        type=["csv", "xlsx", "xlsm"],
-        key="quick_students",
-    )
-    layout_file = st.file_uploader(
-        _t("layout_file"),
-        type=["json"],
-        key="quick_layout",
-    )
-    preset_name = st.selectbox(
-        _t("preset"),
-        preset_options,
-        index=preset_widget_index,
-        format_func=lambda value: value or no_preset_label,
-        key=preset_widget_key,
-    )
+    with st.container(key=widget_region_key(QUICK_STUDENTS_UPLOAD)):
+        st.file_uploader(
+            _t("students_file"),
+            type=["csv", "xlsx", "xlsm"],
+            key=QUICK_STUDENTS_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_STUDENTS_UPLOAD, "_qf_students"),
+        )
+    with st.container(key=widget_region_key(QUICK_LAYOUT_UPLOAD)):
+        st.file_uploader(
+            _t("layout_file"),
+            type=["json"],
+            key=QUICK_LAYOUT_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_LAYOUT_UPLOAD, "_qf_layout"),
+        )
+    with st.container(key=widget_region_key(QUICK_PRESET_SELECT)):
+        preset_name = st.selectbox(
+            _t("preset"),
+            preset_options,
+            index=preset_widget_index,
+            format_func=lambda value: value or no_preset_label,
+            key=QUICK_PRESET_SELECT,
+            on_change=_invalidate_quick_solve,
+        )
     _render_preset_cards()
-    rules_file = st.file_uploader(
-        _t("rules_file"),
-        type=["json"],
-        key="quick_rules",
-    )
-    history_files = st.file_uploader(
-        _t("history_files"),
-        type=["json"],
-        accept_multiple_files=True,
-        key="quick_history",
-    )
+    with st.container(key=widget_region_key(QUICK_RULES_UPLOAD)):
+        st.file_uploader(
+            _t("rules_file"),
+            type=["json"],
+            key=QUICK_RULES_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_RULES_UPLOAD, "_qf_rules"),
+        )
+    with st.container(key=widget_region_key(QUICK_HISTORY_UPLOAD)):
+        st.file_uploader(
+            _t("history_files"),
+            type=["json"],
+            accept_multiple_files=True,
+            key=QUICK_HISTORY_UPLOAD,
+            on_change=_sync_quick_upload,
+            args=(QUICK_HISTORY_UPLOAD, "_qf_history"),
+        )
 
-    # Store files in session for next step.
-    # Always update even when cleared, so stale state doesn't linger.
-    st.session_state["_qf_students"] = students_file
-    st.session_state["_qf_layout"] = layout_file
-    st.session_state["_qf_rules"] = rules_file
-    st.session_state["_qf_history"] = history_files
-    if rules_file is not None:
+    retained_uploads = _retained_upload_names()
+    if retained_uploads:
+        with st.container(
+            key=widget_region_key(QUICK_RETAINED_UPLOADS_STATUS)
+        ):
+            st.caption(
+                _t(
+                    "retained_uploads",
+                    names=", ".join(retained_uploads),
+                )
+            )
+        with st.container(
+            key=widget_region_key(QUICK_CLEAR_UPLOADS_BUTTON)
+        ):
+            clear_uploads = st.button(
+                _t("clear_uploads"),
+                key=QUICK_CLEAR_UPLOADS_BUTTON,
+            )
+        if clear_uploads:
+            _clear_quick_uploads()
+            st.rerun()
+
+    if _ss("_qf_rules") is not None:
         st.session_state["_qf_rules_data"] = None
-        st.session_state["_qf_rules_name"] = rules_file.name
+        st.session_state["_qf_rules_name"] = _ss("_qf_rules").name
     elif _ss("_qf_rules_data") is not None:
         st.caption(_t("restored_rules_in_use", name=_ss("_qf_rules_name")))
         if st.button(_t("clear_restored_rules"), key="clear_restored_rules"):
             st.session_state["_qf_rules_data"] = None
             st.session_state["_qf_rules_name"] = None
+            _invalidate_quick_solve()
             st.rerun()
     if preset_name:
         st.session_state["_qf_preset"] = preset_name
     else:
         st.session_state.pop("_qf_preset", None)
     # If user manually uploads files, clear demo flag.
-    if students_file is not None or layout_file is not None:
+    if _ss("_qf_students") is not None or _ss("_qf_layout") is not None:
         st.session_state["demo_loaded"] = False
         st.session_state["_qf_history_quality"] = None
 
@@ -912,7 +1161,14 @@ def _render_step_solve() -> None:
     )
     if has_history:
         with st.expander(_t("history_quality"), expanded=False):
-            if st.button(_t("inspect_history"), key="inspect_history"):
+            with st.container(
+                key=widget_region_key(QUICK_INSPECT_HISTORY_BUTTON)
+            ):
+                inspect_history = st.button(
+                    _t("inspect_history"),
+                    key=QUICK_INSPECT_HISTORY_BUTTON,
+                )
+            if inspect_history:
                 try:
                     (
                         students_path,
@@ -948,10 +1204,13 @@ def _render_step_solve() -> None:
                     f"{quality.complete_snapshot_count}/{quality.snapshot_count}",
                 )
                 quality_rows = quality.rows()
-                st.dataframe(
-                    quality_rows,
-                    width="stretch",
-                    column_config=_localized_columns(quality_rows),
+                st.markdown(
+                    build_data_table_html(
+                        quality_rows,
+                        caption=_t("history_quality"),
+                        locale=_locale(),
+                    ),
+                    unsafe_allow_html=True,
                 )
                 if quality.warnings:
                     st.warning("\n".join(_history_warnings(quality)))
@@ -959,21 +1218,28 @@ def _render_step_solve() -> None:
                     st.success(_t("history_consistent"))
 
     # Solve settings
-    candidate_count = st.number_input(
-        _t("candidate_count"),
-        min_value=1,
-        max_value=20,
-        value=3,
-        step=1,
-        key="quick_candidate_count",
+    with st.container(key=widget_region_key(QUICK_CANDIDATE_COUNT_INPUT)):
+        candidate_count = st.number_input(
+            _t("candidate_count"),
+            min_value=1,
+            max_value=20,
+            value=3,
+            step=1,
+            key=QUICK_CANDIDATE_COUNT_INPUT,
+            on_change=_invalidate_quick_solve,
+        )
+    seed_enabled = st.checkbox(
+        _t("custom_seed"),
+        key="quick_seed_enabled",
+        on_change=_invalidate_quick_solve,
     )
-    seed_enabled = st.checkbox(_t("custom_seed"), key="quick_seed_enabled")
     seed = st.number_input(
         "seed",
         value=42,
         step=1,
         disabled=not seed_enabled,
         key="quick_seed",
+        on_change=_invalidate_quick_solve,
     )
     time_limit_seconds = st.number_input(
         _t("time_limit"),
@@ -982,6 +1248,7 @@ def _render_step_solve() -> None:
         value=3.0,
         step=0.5,
         key="quick_time_limit",
+        on_change=_invalidate_quick_solve,
     )
 
     try:
@@ -1006,8 +1273,15 @@ def _render_step_solve() -> None:
         _render_error(exc)
 
     ready = has_rules and has_files
-    if st.button(_t("generate"), type="primary", disabled=not ready):
-        _reset_solve_state()
+    with st.container(key=widget_region_key(QUICK_GENERATE_BUTTON)):
+        generate_requested = st.button(
+            _t("generate"),
+            type="primary",
+            disabled=not ready,
+            key=QUICK_GENERATE_BUTTON,
+        )
+    if generate_requested:
+        _reset_solve_state("quick", replace_active=True)
         try:
             output_dir = _make_persistent_tempdir()
             (
@@ -1038,6 +1312,7 @@ def _render_step_solve() -> None:
 
             st.session_state["solved"] = True
             st.session_state["result"] = result
+            st.session_state["result_origin"] = "quick"
             st.session_state["output_dir"] = output_dir
 
             # Load layout for seat map.
@@ -1045,7 +1320,8 @@ def _render_step_solve() -> None:
 
             st.session_state["layout_loaded"] = load_layout(layout_path)
 
-            st.success(_t("solve_complete_next"))
+            with st.container(key=widget_region_key(QUICK_SOLVE_STATUS)):
+                st.success(_t("solve_complete_next"))
         except (
             InputFileError,
             MissingOptionalDependencyError,
@@ -1059,7 +1335,9 @@ def _render_step_solve() -> None:
 def _render_step_results() -> None:
     st.subheader(_t("results"))
 
-    result: WebSolveResult | None = _ss("result")
+    result: WebSolveResult | None = (
+        _ss("result") if _ss("result_origin") == "quick" else None
+    )
     if result is None:
         st.info(_t("solve_first"))
         return
@@ -1068,16 +1346,17 @@ def _render_step_results() -> None:
     layout = _ss("layout_loaded")
 
     # --- Success / warnings ---
-    if result.is_candidate_set:
-        st.success(
-            _t(
-                "candidate_result",
-                count=len(result.artifact.candidates),
-                candidate_id=result.artifact.recommended_candidate_id,
+    with st.container(key=widget_region_key(QUICK_RESULTS_STATUS)):
+        if result.is_candidate_set:
+            st.success(
+                _t(
+                    "candidate_result",
+                    count=len(result.artifact.candidates),
+                    candidate_id=result.artifact.recommended_candidate_id,
+                )
             )
-        )
-    else:
-        st.success(_t("single_result", status=result.artifact.solver_status))
+        else:
+            st.success(_t("single_result", status=result.artifact.solver_status))
 
     if result.warnings:
         st.warning("\n".join(result.warnings))
@@ -1100,11 +1379,30 @@ def _render_step_results() -> None:
     # --- Assignment table ---
     with st.expander(_t("assignment_table"), expanded=False):
         rows = assignment_rows(snapshot)
-        st.dataframe(
-            rows,
-            width="stretch",
-            column_config=_localized_columns(rows),
+        st.markdown(
+            build_data_table_html(
+                rows,
+                caption=_t("assignment_table"),
+                locale=_locale(),
+            ),
+            unsafe_allow_html=True,
         )
+
+    _render_manual_edit_panel(
+        result,
+        candidate_id,
+        output_dir=output_dir,
+        translate=_t,
+        render_error=_render_error,
+    )
+    _render_repair_panel(
+        result,
+        candidate_id,
+        output_dir=output_dir,
+        translate=_t,
+        render_error=_render_error,
+        quick_history_paths=lambda: _materialize_quick_inputs()[3],
+    )
 
     # --- Exports ---
     _render_exports(result, output_dir, candidate_id)
@@ -1127,38 +1425,63 @@ def _render_project_tab() -> None:
     current_project_mode = _ss("project_mode_value")
     if current_project_mode not in project_method_labels:
         current_project_mode = "path"
-    tab_mode = st.radio(
-        _t("project_method"),
-        ["path", "upload"],
-        index=["path", "upload"].index(current_project_mode),
-        format_func=project_method_labels.__getitem__,
-        horizontal=True,
-        key=f"project_mode_{_locale()}",
-    )
+    with st.container(key=widget_region_key(PROJECT_MODE_RADIO)):
+        tab_mode = st.radio(
+            _t("project_method"),
+            ["path", "upload"],
+            index=["path", "upload"].index(current_project_mode),
+            format_func=project_method_labels.__getitem__,
+            horizontal=True,
+            key=PROJECT_MODE_RADIO,
+            on_change=_invalidate_project_solve,
+        )
     st.session_state["project_mode_value"] = tab_mode
 
     project_path: Path | None = None
 
     if tab_mode == "path":
-        project_path_text = st.text_input(
-            _t("project_path"),
-            value="examples/project.seattrellis.json",
-            key="project_path_text",
-        )
+        with st.container(key=widget_region_key(PROJECT_PATH_INPUT)):
+            project_path_text = st.text_input(
+                _t("project_path"),
+                value="examples/project.seattrellis.json",
+                key=PROJECT_PATH_INPUT,
+                on_change=_invalidate_project_solve,
+            )
         if project_path_text:
-            project_path = Path(project_path_text).expanduser()
+            try:
+                project_path = expand_user_path(project_path_text)
+            except ValueError as exc:
+                with st.container(
+                    key=widget_region_key(PROJECT_PATH_STATUS)
+                ):
+                    _render_error(exc)
     else:
-        uploaded_project = st.file_uploader(
-            _t("project_upload"),
-            type=["json"],
-            key="project_upload",
-        )
+        with st.container(key=widget_region_key(PROJECT_UPLOAD_INPUT)):
+            uploaded_project = st.file_uploader(
+                _t("project_upload"),
+                type=["json"],
+                key=PROJECT_UPLOAD_INPUT,
+            )
         if uploaded_project is not None:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".seattrellis.json")
-            tmp.write(uploaded_project.getvalue())
-            tmp.close()
-            project_path = Path(tmp.name)
-            st.success(_t("uploaded", name=uploaded_project.name))
+            try:
+                raw_project = json.loads(uploaded_project.getvalue())
+                if hasattr(SeatTrellisProject, "model_validate"):
+                    project = SeatTrellisProject.model_validate(  # type: ignore[attr-defined]
+                        raw_project
+                    )
+                    project_data = project.model_dump(mode="json")  # type: ignore[attr-defined]
+                else:
+                    project = SeatTrellisProject.parse_obj(raw_project)
+                    project_data = json.loads(project.json())
+                st.success(_t("uploaded", name=uploaded_project.name))
+                st.code(
+                    json.dumps(project_data, ensure_ascii=False, indent=2),
+                    language="json",
+                )
+                st.info(_t("project_upload_manifest_only"))
+            except (UnicodeDecodeError, ValidationError, ValueError) as exc:
+                _render_error(exc)
+            return
 
     if project_path is None:
         return
@@ -1166,111 +1489,188 @@ def _render_project_tab() -> None:
     # --- Info & Validate ---
     info_col, validate_col = st.columns(2)
     with info_col:
-        if st.button(_t("read_project"), key="proj_info_btn"):
-            try:
-                st.code(project_info_for_web(project_path=project_path))
-            except (InputFileError, ValidationError, ValueError) as exc:
-                _render_error(exc)
+        with st.container(key=widget_region_key(PROJECT_INFO_BUTTON)):
+            info_requested = st.button(
+                _t("read_project"),
+                key=PROJECT_INFO_BUTTON,
+            )
+        if info_requested:
+            with st.container(key=widget_region_key(PROJECT_INFO_STATUS)):
+                try:
+                    st.code(project_info_for_web(project_path=project_path))
+                except (InputFileError, ValidationError, ValueError) as exc:
+                    _render_error(exc)
     with validate_col:
-        strict = st.checkbox(_t("strict_warnings"), key="proj_strict")
-        if st.button(_t("validate_project"), key="proj_validate_btn"):
-            try:
-                st.success(
-                    project_validate_for_web(project_path=project_path, strict=strict)
-                )
-            except (InputFileError, ValidationError, ValueError) as exc:
-                _render_error(exc)
+        with st.container(key=widget_region_key(PROJECT_STRICT_CHECKBOX)):
+            strict = st.checkbox(
+                _t("strict_warnings"),
+                key=PROJECT_STRICT_CHECKBOX,
+            )
+        with st.container(key=widget_region_key(PROJECT_VALIDATE_BUTTON)):
+            validate_requested = st.button(
+                _t("validate_project"),
+                key=PROJECT_VALIDATE_BUTTON,
+            )
+        if validate_requested:
+            with st.container(
+                key=widget_region_key(PROJECT_VALIDATE_STATUS)
+            ):
+                try:
+                    st.success(
+                        project_validate_for_web(
+                            project_path=project_path,
+                            strict=strict,
+                        )
+                    )
+                except (InputFileError, ValidationError, ValueError) as exc:
+                    _render_error(exc)
 
     # --- Solve ---
     st.subheader(_t("project_solve"))
-    use_project_candidates = st.checkbox(
-        _t("project_default_candidates"),
-        value=True,
-        key="proj_use_default",
-    )
-    project_candidate_count = st.number_input(
-        _t("candidate_count"),
-        min_value=1,
-        max_value=20,
-        value=3,
-        step=1,
-        disabled=use_project_candidates,
-        key="project_candidate_count",
-    )
-    project_seed_enabled = st.checkbox(
-        _t("project_custom_seed"),
-        key="proj_seed_enabled",
-    )
-    project_seed = st.number_input(
-        "project seed",
-        value=42,
-        step=1,
-        disabled=not project_seed_enabled,
-        key="proj_seed",
-    )
-    project_time_limit = st.number_input(
-        _t("project_time_limit"),
-        min_value=0.5,
-        max_value=30.0,
-        value=3.0,
-        step=0.5,
-        key="proj_time_limit",
-    )
+    with st.container(
+        key=widget_region_key(PROJECT_USE_DEFAULT_CANDIDATES)
+    ):
+        use_project_candidates = st.checkbox(
+            _t("project_default_candidates"),
+            value=True,
+            key=PROJECT_USE_DEFAULT_CANDIDATES,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_CANDIDATE_COUNT_INPUT)):
+        project_candidate_count = st.number_input(
+            _t("candidate_count"),
+            min_value=1,
+            max_value=20,
+            value=3,
+            step=1,
+            disabled=use_project_candidates,
+            key=PROJECT_CANDIDATE_COUNT_INPUT,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_SEED_ENABLED)):
+        project_seed_enabled = st.checkbox(
+            _t("project_custom_seed"),
+            key=PROJECT_SEED_ENABLED,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_SEED_INPUT)):
+        project_seed = st.number_input(
+            "project seed",
+            value=42,
+            step=1,
+            disabled=not project_seed_enabled,
+            key=PROJECT_SEED_INPUT,
+            on_change=_invalidate_project_solve,
+        )
+    with st.container(key=widget_region_key(PROJECT_TIME_LIMIT_INPUT)):
+        project_time_limit = st.number_input(
+            _t("project_time_limit"),
+            min_value=0.5,
+            max_value=30.0,
+            value=3.0,
+            step=0.5,
+            key=PROJECT_TIME_LIMIT_INPUT,
+            on_change=_invalidate_project_solve,
+        )
 
-    if st.button(_t("solve_project"), type="primary", key="proj_solve_btn"):
-        _reset_solve_state()
-        try:
-            # Project output goes to the project's own output dir (persistent),
-            # so we don't need a persistent temp dir here.
-            result = project_solve_for_web(
-                project_path=project_path,
-                candidate_count=(
-                    None
-                    if use_project_candidates
-                    else int(project_candidate_count)
-                ),
-                seed=int(project_seed) if project_seed_enabled else None,
-                time_limit_seconds=float(project_time_limit),
-            )
-            st.session_state["solved"] = True
-            st.session_state["result"] = result
-            st.session_state["output_dir"] = str(result.artifact_path.parent)
-            st.session_state["project_path"] = str(project_path)
-            # Clear artifact_json so exports read from project dir.
-            st.session_state["artifact_json"] = None
-            st.session_state["report_json"] = None
+    with st.container(key=widget_region_key(PROJECT_SOLVE_BUTTON)):
+        solve_requested = st.button(
+            _t("solve_project"),
+            type="primary",
+            key=PROJECT_SOLVE_BUTTON,
+        )
+    if solve_requested:
+        _reset_solve_state("project", replace_active=True)
+        with st.container(key=widget_region_key(PROJECT_SOLVE_STATUS)):
+            try:
+                # Each browser session owns its result files. The Project
+                # inputs remain shared, but one session cannot overwrite
+                # another session's displayed or exported result.
+                output_dir = _make_persistent_tempdir()
+                result = project_solve_for_web(
+                    project_path=project_path,
+                    output_dir=output_dir,
+                    candidate_count=(
+                        None
+                        if use_project_candidates
+                        else int(project_candidate_count)
+                    ),
+                    seed=(
+                        int(project_seed)
+                        if project_seed_enabled
+                        else None
+                    ),
+                    time_limit_seconds=float(project_time_limit),
+                )
 
-            # Load layout from project.
-            from seattrellis.io.project import load_project_paths
+                from seattrellis.io.project import load_project_paths
 
-            _, paths = load_project_paths(
-                project_path, require_inputs=True, require_history=False
-            )
-            from seattrellis.io.json_files import load_layout
+                _, paths = load_project_paths(
+                    project_path,
+                    require_inputs=True,
+                    require_history=False,
+                )
+                from seattrellis.io.json_files import load_layout
 
-            st.session_state["layout_loaded"] = load_layout(paths.layout)
+                layout = load_layout(paths.layout)
 
-            st.success(_t("solve_complete"))
-        except (
-            InputFileError,
-            MissingOptionalDependencyError,
-            SeatTrellisSolveError,
-            ValidationError,
-            ValueError,
-        ) as exc:
-            _render_error(exc)
+                st.session_state["solved"] = True
+                st.session_state["result"] = result
+                st.session_state["result_origin"] = "project"
+                st.session_state["output_dir"] = output_dir
+                st.session_state["project_path"] = str(project_path)
+                st.session_state["artifact_json"] = result.artifact_path.read_bytes()
+                st.session_state["report_json"] = (
+                    result.report_path.read_bytes()
+                    if result.report_path is not None
+                    else None
+                )
+                st.session_state["layout_loaded"] = layout
+                st.success(_t("solve_complete"))
+            except (
+                InputFileError,
+                MissingOptionalDependencyError,
+                SeatTrellisSolveError,
+                ValidationError,
+                ValueError,
+            ) as exc:
+                _render_error(exc)
 
     # --- Results (if solved) ---
-    result: WebSolveResult | None = _ss("result")
+    result: WebSolveResult | None = (
+        _ss("result") if _ss("result_origin") == "project" else None
+    )
     proj_path_str: str | None = _ss("project_path")
     if result is not None and proj_path_str is not None:
         output_dir = Path(_ss("output_dir"))
         layout = _ss("layout_loaded")
 
         st.divider()
-        st.subheader(_t("project_results"))
+        with st.container(key=widget_region_key(PROJECT_RESULTS_STATUS)):
+            st.subheader(_t("project_results"))
+            if result.is_candidate_set:
+                st.success(
+                    _t(
+                        "candidate_result",
+                        count=len(result.artifact.candidates),
+                        candidate_id=result.artifact.recommended_candidate_id,
+                    )
+                )
+            else:
+                st.success(
+                    _t(
+                        "single_result",
+                        status=result.artifact.solver_status,
+                    )
+                )
 
-        candidate_id = _render_candidate_switcher(result, widget_key="project_candidate_selector") or "recommended"
+        candidate_id = (
+            _render_candidate_switcher(
+                result,
+                widget_key=PROJECT_CANDIDATE_SELECT,
+            )
+            or "recommended"
+        )
         snapshot = selected_snapshot(result, candidate_id)
 
         st.subheader(_t("seat_map"))
@@ -1281,11 +1681,31 @@ def _render_project_tab() -> None:
 
         with st.expander(_t("assignment_table"), expanded=False):
             rows = assignment_rows(snapshot)
-            st.dataframe(
-                rows,
-                width="stretch",
-                column_config=_localized_columns(rows),
+            st.markdown(
+                build_data_table_html(
+                    rows,
+                    caption=_t("assignment_table"),
+                    locale=_locale(),
+                ),
+                unsafe_allow_html=True,
             )
+
+        _render_manual_edit_panel(
+            result,
+            candidate_id,
+            output_dir=output_dir,
+            translate=_t,
+            render_error=_render_error,
+            project=True,
+        )
+        _render_repair_panel(
+            result,
+            candidate_id,
+            output_dir=output_dir,
+            translate=_t,
+            render_error=_render_error,
+            project_path=Path(proj_path_str),
+        )
 
         _render_exports(result, output_dir, candidate_id, Path(proj_path_str))
 
@@ -1300,11 +1720,13 @@ st.set_page_config(
     page_icon="🏫",
     layout="wide",
 )
-language_label = st.sidebar.selectbox(
-    "语言 / Language",
-    list(LANGUAGE_OPTIONS),
-    key="ui_language_choice",
-)
+with st.sidebar:
+    with st.container(key=widget_region_key(UI_LANGUAGE_SELECT)):
+        language_label = st.selectbox(
+            "语言 / Language",
+            list(LANGUAGE_OPTIONS),
+            key=UI_LANGUAGE_SELECT,
+        )
 st.session_state["ui_locale"] = LANGUAGE_OPTIONS[language_label]
 st.markdown(accessibility_styles(), unsafe_allow_html=True)
 st.markdown(

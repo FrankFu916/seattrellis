@@ -84,7 +84,9 @@ soft 规则是偏好，不保证一定满足。每条规则包含 `enabled` 和�
 | `fair_rotation` | 基于历史 snapshot 的座位类别轮换偏好 |
 | `avoid_recent_neighbors` | 基于历史 snapshot 的同桌/相邻关系回避偏好 |
 
-`seed` 控制可复现性。相同输入和 seed 应生成稳定结果。
+`seed` 固定伪随机序列。fallback 完成固定尝试预算时，相同输入和 seed 会生成稳定
+结果；如果墙钟时间限制提前停止求解，不同机器可能完成不同数量的尝试，此时结果
+不保证完全一致。snapshot 的 `metrics.stopped_by_time_limit` 会记录这一情况。
 
 ## 场景 preset
 

@@ -9,14 +9,17 @@
 
 - `compute_solve(SolveInput) -> SolveOutput`
 - `compute_validate(ValidateInput) -> ValidateOutput`
+- `compute_edit(EditInput) -> EditOutput`
+- `compute_repair(RepairInput) -> RepairOutput`
 - `compute_history_report(HistoryReportInput) -> HistoryReportOutput`
 - `compute_pair_report(PairReportInput) -> PairReportOutput`
 - `compute_project_info(ProjectInfoInput) -> ProjectInfoOutput`
 
 ## 文件接口
 
-`solve`、`solve_with_report`、`run_validate`、`run_history_report`、
-`run_pair_report` 和 `project_*` 函数接受文件路径，供 CLI 和 Web 共用。
+`solve`、`solve_with_report`、`edit_snapshot`、`repair_snapshot`、`run_validate`、
+`run_history_report`、`run_pair_report` 和 `project_*` 函数接受文件路径，
+供 CLI 和 Web 共用。
 导出使用 `seattrellis.service.export` 或
 `seattrellis.exporters.export_snapshot`。新的适配器应构造
 `ExportRequest`，而不是自行组合模板和页面参数：
@@ -38,11 +41,115 @@ export(
 ```
 
 `PrivacyOptions.for_template("public")` 默认隐藏成绩、备注、特殊需求、身高和
-视力。`candidate_scope="all"` 已保留给 v1.4 的候选集报告；当前单方案导出会
-明确拒绝该值，不会静默只导出一个方案。
+视力。`candidate_scope="all"` 可把 candidate set 导出为完整候选比较 HTML
+报告；snapshot 或非 HTML 格式会明确拒绝该值，不会静默只导出一个方案。
+
+## 人工调整草稿
+
+`seattrellis.editing` 提供 UI 无关的人工调整模型。Web、桌面端或未来的
+React 编辑器应通过 `EditingSession` 执行交换、移动、移出座位、锁定和撤销/重做，
+不要把这些规则散落在界面状态中：
+
+```python
+from seattrellis.editing import EditingSession
+
+session = EditingSession.from_snapshot(snapshot)
+session.lock_seat("R1C1")
+summary = session.swap_students("S001", "S018")
+session.batch_move({"S002": "R2C2", "S003": "R2C3"})
+
+if not summary.satisfied:
+    print(summary.violations)
+```
+
+编辑草稿允许临时出现未入座学生，但会拒绝重复座位、重复学生、未知学生和禁用座位。
+每次成功操作都会返回 hard constraint 诊断；当前锁状态通过 `EditingLockState` 和
+`metadata.lock_state` 在内存和文件工作流中保持一致。局部自动修复由 service 层完成，
+不在编辑层直接实现。
+
+`batch_move` 会先验证全部映射再一次更新 assignments。学生和目标座位必须唯一；
+占用目标座位的学生必须也参与批次，因此可表达循环换位，但不会隐式移出第三方。
+任一锁定、未知或冲突映射都会拒绝整个命令，undo/redo 也把它视作单条操作。
+
+适配器如果已经把 UI 操作整理成命令序列，可以直接调用服务层：
+
+```python
+from seattrellis.editing import EditingOperation
+from seattrellis.service import compute_edit
+from seattrellis.service_types import EditInput
+
+result = compute_edit(
+    EditInput(
+        snapshot=snapshot,
+        operations=[
+            EditingOperation(
+                kind="swap_students",
+                payload={"first_student": "S001", "second_student": "S018"},
+            ),
+            EditingOperation(kind="lock_seat", payload={"seat_id": "R1C1"}),
+        ],
+    )
+)
+```
+
+`EditOutput.snapshot` 是新的草稿 snapshot；`locked_students`、`locked_seats`、
+`unseated_students`、`lock_state` 和 `hard_constraints` 可直接用于界面状态和实时诊断。
+文件接口 `edit_snapshot` 可直接读取普通 snapshot；如果输入是 candidate set，
+默认选择 recommended candidate，也可以传入 `candidate_id` 指定候选。输出始终是
+普通草稿 snapshot，并在 `metadata.manual_edit` 记录本次操作摘要。
+
+需要锁定后重排时，调用 `compute_repair(RepairInput)` 或 `repair_snapshot`。如果提供
+`affected_students`，未在名单中的当前已入座学生会临时固定在原座；锁定的空座会临时从
+求解可用座位中移除。`RepairInput` 可接收 `EditOutput.lock_state` 和历史 snapshots，
+保证纯内存 UI、CLI 和 Project 工作流具有相同锁定和公平性语义。原始 `RuleSet` 不会被
+修改，临时固定关系、有效固定关系和输出差异写入 `metadata.repair`，供 UI 展示和审计。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
-单独测试。
+单独测试。`seattrellis.web.interactive_panels` 是 Streamlit 专用适配层，只消费
+workflow API 和显式页面回调；领域规则、操作重放和 repair 语义不得放入该模块。
+
+React/SVG 或桌面编辑器应使用版本化协议读取状态并提交命令：
+
+```python
+from seattrellis.editing_protocol import (
+    EDITOR_PROTOCOL_VERSION,
+    EditorCommandEnvelope,
+)
+from seattrellis.web.editor_protocol import (
+    build_editor_state_for_web,
+    dispatch_editor_command_for_web,
+)
+
+state = build_editor_state_for_web(draft)
+command = EditorCommandEnvelope.parse_obj(
+    {
+        "kind": "seattrellis_editor_command",
+        "protocol_version": EDITOR_PROTOCOL_VERSION,
+        "command_id": "swap-001",
+        "draft_id": state.draft_id,
+        "base_revision": state.revision,
+        "action": "apply",
+        "operations": [
+            {
+                "kind": "swap_students",
+                "payload": {
+                    "first_student": "S001",
+                    "second_student": "S018",
+                },
+            }
+        ],
+    }
+)
+draft = dispatch_editor_command_for_web(
+    draft,
+    command,
+    output_dir="outputs/editor",
+)
+```
+
+一个 envelope 内的 operations 会原子执行，并作为一个批次撤销。错误 `draft_id`、
+旧 revision 或重复 `command_id` 会抛出 `EditorProtocolConflictError`；校验或执行
+失败时不会写入部分结果。字段与并发语义见[编辑器协议](editor-protocol.md)。
 
 读取 snapshot、candidate set 或 project 时应检查 `schema_version`。
 以下划线开头的函数属于内部实现，不在兼容承诺内。字段定义见

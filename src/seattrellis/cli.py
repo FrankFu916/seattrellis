@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
+from typing import Mapping
 
+from seattrellis.editing import (
+    EditingOperation,
+    EditingOperationKind,
+    EditingPayloadValue,
+)
 from seattrellis.io.json_files import InputFileError
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import (
@@ -11,8 +18,14 @@ from seattrellis.presets import (
     format_preset_list,
     get_preset,
 )
+from seattrellis.schema import (
+    format_json_schema_artifacts,
+    write_json_schema_files,
+)
+from seattrellis.schema_migration import migrate_json_file
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.solver.backend import SOLVER_BACKENDS
 
 try:
     import typer
@@ -35,6 +48,7 @@ def _build_export_request(
     orientation: str,
     scale: float,
     locale: str,
+    candidate_scope: str = "selected",
 ) -> ExportRequest:
     privacy = None
     if any(
@@ -66,6 +80,7 @@ def _build_export_request(
         page=PageOptions(orientation=orientation, scale=scale),
         locale=locale,
         candidate_id=candidate_id,
+        candidate_scope=candidate_scope,
     )
 
 
@@ -78,7 +93,12 @@ if typer is not None:
         help="List, inspect, and export built-in rules presets.",
         no_args_is_help=True,
     )
+    schema_app = typer.Typer(
+        help="Export JSON Schemas and normalize versioned JSON artifacts.",
+        no_args_is_help=True,
+    )
     app.add_typer(presets_app, name="presets")
+    app.add_typer(schema_app, name="schema")
 
     # --version callback
     def _version_callback(value: bool) -> None:
@@ -119,6 +139,38 @@ if typer is not None:
             lambda: typer.echo(f"Preset rules written to {export_preset(preset, output)}")
         )
 
+    @schema_app.command("list", help="List public JSON Schema documents.")
+    def schema_list_command() -> None:
+        typer.echo(format_json_schema_artifacts())
+
+    @schema_app.command("export", help="Write public JSON Schema files.")
+    def schema_export_command(
+        output_dir: Path = typer.Option(
+            Path("schemas"),
+            "--output-dir",
+            "-o",
+            help="Directory for generated schema files.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                "JSON Schema files written:\n"
+                + "\n".join(str(path) for path in write_json_schema_files(output_dir))
+            )
+        )
+
+    @schema_app.command("migrate", help="Validate and rewrite a versioned JSON artifact.")
+    def schema_migrate_command(
+        input_path: Path = typer.Option(..., "--input", "-i", help="Artifact JSON path."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Migrated JSON path."),
+        in_place: bool = typer.Option(False, "--in-place", help="Rewrite the input file in place."),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_schema_migration(
+                migrate_json_file(input_path, output=output, in_place=in_place)
+            )
+        )
+
     @app.command("doctor", help="Check environment: Python, optional deps, examples, outputs.")
     def doctor_command() -> None:
         _run_typer_action(lambda: typer.echo(run_doctor()))
@@ -149,6 +201,11 @@ if typer is not None:
         history: list[Path] = typer.Option([], "--history", help="Historical snapshot JSON path. Can be repeated."),
         history_dir: Path | None = typer.Option(None, "--history-dir", help="Directory containing historical *.snapshot.json files."),
         time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit in seconds."),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
+        ),
         candidates: int = typer.Option(1, "--candidates", help="Number of distinct candidate plans to generate (1-20)."),
         seed: int | None = typer.Option(None, "--seed", help="Override the rules-file seed."),
         report: Path | None = typer.Option(None, "--report", help="Optional plan comparison report JSON path."),
@@ -164,6 +221,7 @@ if typer is not None:
                     history_paths=history,
                     history_dir=history_dir,
                     time_limit_seconds=time_limit_seconds,
+                    backend=backend,
                     candidate_count=candidates,
                     seed=seed,
                     report_path=report,
@@ -211,6 +269,11 @@ if typer is not None:
             None,
             "--candidate",
             help="Candidate ID for a candidate set, or 'recommended'.",
+        ),
+        candidate_scope: str = typer.Option(
+            "selected",
+            "--candidate-scope",
+            help="Candidate scope: selected or all.",
         ),
         template: str = typer.Option(
             "public",
@@ -269,8 +332,151 @@ if typer is not None:
                             orientation=orientation,
                             scale=scale,
                             locale=locale,
+                            candidate_scope=candidate_scope,
                         ),
                     )
+                )
+            )
+        )
+
+    @app.command(
+        "edit",
+        help="Apply manual edit operations to a snapshot or candidate set.",
+    )
+    def edit_command(
+        snapshot: Path = typer.Option(..., "--snapshot", help="Snapshot or candidate-set JSON path."),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID for a candidate set, or 'recommended'.",
+        ),
+        operation: list[str] = typer.Option(
+            [],
+            "--operation",
+            "--op",
+            help=(
+                "Operation to apply, repeatable and ordered. Examples: "
+                "swap:STU001:STU002, move:STU003:R2C2, unseat:STU004, "
+                "lock-seat:R1C1."
+            ),
+        ),
+        operations_file: Path | None = typer.Option(
+            None,
+            "--operations-file",
+            help=(
+                "JSON operation log to apply before any --operation values. "
+                "Use a list or an object with an operations list."
+            ),
+        ),
+        output: Path = typer.Option(
+            Path("outputs/edited.snapshot.json"),
+            "--output",
+            "-o",
+            help="Edited snapshot output path.",
+        ),
+        strict: bool = typer.Option(
+            False,
+            "--strict",
+            help="Fail instead of writing when hard constraints are not satisfied.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_edit_result(
+                edit_snapshot(
+                    snapshot_path=snapshot,
+                    output_path=output,
+                    operations=_parse_edit_operations(
+                        operation,
+                        operations_file=operations_file,
+                    ),
+                    candidate_id=candidate,
+                    strict=strict,
+                )
+            )
+        )
+
+    @app.command(
+        "repair",
+        help="Re-solve a seating draft while preserving locks or a local scope.",
+    )
+    def repair_command(
+        snapshot: Path = typer.Option(
+            ...,
+            "--snapshot",
+            help="Snapshot or candidate-set JSON path.",
+        ),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID for a candidate set, or 'recommended'.",
+        ),
+        affected_student: list[str] = typer.Option(
+            [],
+            "--affected-student",
+            help="Student key to include in the local repair. Can be repeated.",
+        ),
+        lock_student: list[str] = typer.Option(
+            [],
+            "--lock-student",
+            help="Keep a student's current seat for this re-solve. Can be repeated.",
+        ),
+        lock_seat: list[str] = typer.Option(
+            [],
+            "--lock-seat",
+            help="Keep a seat's occupant or reserve an empty seat. Can be repeated.",
+        ),
+        history: list[Path] = typer.Option(
+            [],
+            "--history",
+            help="Historical snapshot JSON path. Can be repeated.",
+        ),
+        history_dir: Path | None = typer.Option(
+            None,
+            "--history-dir",
+            help="Directory containing historical *.snapshot.json files.",
+        ),
+        ignore_saved_locks: bool = typer.Option(
+            False,
+            "--ignore-saved-locks",
+            help="Do not reuse locks recorded by a prior edit operation.",
+        ),
+        seed: int | None = typer.Option(
+            None,
+            "--seed",
+            help="Override the source snapshot seed.",
+        ),
+        time_limit_seconds: float = typer.Option(
+            3.0,
+            "--time-limit",
+            help="Solver time limit in seconds.",
+        ),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
+        ),
+        output: Path = typer.Option(
+            Path("outputs/repaired.snapshot.json"),
+            "--output",
+            "-o",
+            help="Repaired snapshot output path.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_repair_result(
+                repair_snapshot(
+                    snapshot_path=snapshot,
+                    output_path=output,
+                    candidate_id=candidate,
+                    affected_students=affected_student,
+                    locked_students=lock_student,
+                    locked_seats=lock_seat,
+                    history_paths=history,
+                    history_dir=history_dir,
+                    reuse_saved_locks=not ignore_saved_locks,
+                    seed=seed,
+                    time_limit_seconds=time_limit_seconds,
+                    backend=backend,
                 )
             )
         )
@@ -373,6 +579,11 @@ if typer is not None:
         candidates: int | None = typer.Option(None, "--candidates", help="Override the default candidate count."),
         seed: int | None = typer.Option(None, "--seed", help="Override the rules-file seed."),
         time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit in seconds."),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
+        ),
         output: Path | None = typer.Option(None, "--output", "-o", help="Override the output JSON path."),
         report: Path | None = typer.Option(None, "--report", help="Optional plan comparison report JSON path."),
     ) -> None:
@@ -383,8 +594,143 @@ if typer is not None:
                     candidate_count=candidates,
                     seed=seed,
                     time_limit_seconds=time_limit_seconds,
+                    backend=backend,
                     output_path=output,
                     report_path=report,
+                )
+            )
+        )
+
+    @app.command("project-edit", help="Apply manual edits to a project seating artifact.")
+    def project_edit_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        snapshot: Path | None = typer.Option(
+            None,
+            "--snapshot",
+            help="Snapshot or candidate-set JSON path. Defaults to latest project artifact.",
+        ),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID, or 'recommended'.",
+        ),
+        operation: list[str] = typer.Option(
+            [],
+            "--operation",
+            "--op",
+            help="Operation to apply, repeatable and ordered.",
+        ),
+        operations_file: Path | None = typer.Option(
+            None,
+            "--operations-file",
+            help=(
+                "JSON operation log to apply before any --operation values. "
+                "Use a list or an object with an operations list."
+            ),
+        ),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Edited snapshot output path."),
+        strict: bool = typer.Option(
+            False,
+            "--strict",
+            help="Fail instead of writing when hard constraints are not satisfied.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_edit_result(
+                project_edit(
+                    project_path=project,
+                    snapshot_path=snapshot,
+                    candidate_id=candidate,
+                    operations=_parse_edit_operations(
+                        operation,
+                        operations_file=operations_file,
+                    ),
+                    output_path=output,
+                    strict=strict,
+                )
+            )
+        )
+
+    @app.command(
+        "project-repair",
+        help="Re-solve the latest or selected project artifact with draft locks.",
+    )
+    def project_repair_command(
+        project: Path = typer.Option(
+            Path("seattrellis.project.json"),
+            "--project",
+            help="Project JSON path.",
+        ),
+        snapshot: Path | None = typer.Option(
+            None,
+            "--snapshot",
+            help="Snapshot or candidate-set JSON path. Defaults to latest project artifact.",
+        ),
+        candidate: str | None = typer.Option(
+            None,
+            "--candidate",
+            help="Candidate ID, or 'recommended'.",
+        ),
+        affected_student: list[str] = typer.Option(
+            [],
+            "--affected-student",
+            help="Student key to include in the local repair. Can be repeated.",
+        ),
+        lock_student: list[str] = typer.Option(
+            [],
+            "--lock-student",
+            help="Keep a student's current seat. Can be repeated.",
+        ),
+        lock_seat: list[str] = typer.Option(
+            [],
+            "--lock-seat",
+            help="Keep an occupant or reserve an empty seat. Can be repeated.",
+        ),
+        ignore_saved_locks: bool = typer.Option(
+            False,
+            "--ignore-saved-locks",
+            help="Do not reuse locks recorded by a prior edit operation.",
+        ),
+        seed: int | None = typer.Option(
+            None,
+            "--seed",
+            help="Override the source snapshot seed.",
+        ),
+        time_limit_seconds: float = typer.Option(
+            3.0,
+            "--time-limit",
+            help="Solver time limit in seconds.",
+        ),
+        backend: str = typer.Option(
+            "auto",
+            "--backend",
+            help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}.",
+        ),
+        output: Path | None = typer.Option(
+            None,
+            "--output",
+            "-o",
+            help="Repaired snapshot output path.",
+        ),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_repair_result(
+                project_repair(
+                    project_path=project,
+                    snapshot_path=snapshot,
+                    candidate_id=candidate,
+                    affected_students=affected_student,
+                    locked_students=lock_student,
+                    locked_seats=lock_seat,
+                    reuse_saved_locks=not ignore_saved_locks,
+                    seed=seed,
+                    time_limit_seconds=time_limit_seconds,
+                    backend=backend,
+                    output_path=output,
                 )
             )
         )
@@ -424,13 +770,17 @@ else:
 
 from seattrellis.service import (  # noqa: E402, F401
     # Public API
+    edit_snapshot,
     export,
     init_demo,
+    project_edit,
     project_export,
     project_info,
     project_init,
     project_solve,
     project_validate,
+    project_repair,
+    repair_snapshot,
     run_doctor,
     run_history_report,
     run_pair_report,
@@ -479,6 +829,16 @@ def _run_argparse() -> None:
     preset_export_parser.add_argument("preset")
     preset_export_parser.add_argument("--output", "-o", default=None)
 
+    schema_parser = subparsers.add_parser("schema", help="Manage JSON Schemas and migrations.")
+    schema_subparsers = schema_parser.add_subparsers(dest="schema_command", required=True)
+    schema_subparsers.add_parser("list", help="List public JSON Schema documents.")
+    schema_export_parser = schema_subparsers.add_parser("export", help="Write public JSON Schema files.")
+    schema_export_parser.add_argument("--output-dir", "-o", default="schemas")
+    schema_migrate_parser = schema_subparsers.add_parser("migrate", help="Validate and rewrite a versioned JSON artifact.")
+    schema_migrate_parser.add_argument("--input", "-i", required=True)
+    schema_migrate_parser.add_argument("--output", "-o", default=None)
+    schema_migrate_parser.add_argument("--in-place", action="store_true")
+
     solve_parser = subparsers.add_parser("solve", help="Generate a seating snapshot.")
     solve_parser.add_argument("--students", required=True)
     solve_parser.add_argument("--layout", required=True)
@@ -488,6 +848,7 @@ def _run_argparse() -> None:
     solve_parser.add_argument("--history", action="append", default=[])
     solve_parser.add_argument("--history-dir", default=None)
     solve_parser.add_argument("--time-limit", type=float, default=3.0)
+    solve_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
     solve_parser.add_argument("--candidates", type=int, default=1)
     solve_parser.add_argument("--seed", type=int, default=None)
     solve_parser.add_argument("--report", default=None)
@@ -507,6 +868,11 @@ def _run_argparse() -> None:
     export_parser.add_argument("--output", "-o", default=None)
     export_parser.add_argument("--candidate", default=None)
     export_parser.add_argument(
+        "--candidate-scope",
+        choices=["selected", "all"],
+        default="selected",
+    )
+    export_parser.add_argument(
         "--template",
         choices=["public", "teacher", "report"],
         default="public",
@@ -524,6 +890,34 @@ def _run_argparse() -> None:
     )
     export_parser.add_argument("--page-scale", type=float, default=1.0)
     export_parser.add_argument("--locale", choices=["zh", "en"], default="zh")
+
+    edit_parser = subparsers.add_parser(
+        "edit",
+        help="Apply manual edits to a snapshot or candidate set.",
+    )
+    edit_parser.add_argument("--snapshot", required=True)
+    edit_parser.add_argument("--candidate", default=None)
+    edit_parser.add_argument("--operation", "--op", dest="operations", action="append", default=[])
+    edit_parser.add_argument("--operations-file", default=None)
+    edit_parser.add_argument("--output", "-o", default="outputs/edited.snapshot.json")
+    edit_parser.add_argument("--strict", action="store_true")
+
+    repair_parser = subparsers.add_parser(
+        "repair",
+        help="Re-solve a seating draft while preserving locks or a local scope.",
+    )
+    repair_parser.add_argument("--snapshot", required=True)
+    repair_parser.add_argument("--candidate", default=None)
+    repair_parser.add_argument("--affected-student", action="append", default=[])
+    repair_parser.add_argument("--lock-student", action="append", default=[])
+    repair_parser.add_argument("--lock-seat", action="append", default=[])
+    repair_parser.add_argument("--history", action="append", default=[])
+    repair_parser.add_argument("--history-dir", default=None)
+    repair_parser.add_argument("--ignore-saved-locks", action="store_true")
+    repair_parser.add_argument("--seed", type=int, default=None)
+    repair_parser.add_argument("--time-limit", type=float, default=3.0)
+    repair_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
+    repair_parser.add_argument("--output", "-o", default="outputs/repaired.snapshot.json")
 
     history_parser = subparsers.add_parser("history-report", help="Summarize historical seating snapshots.")
     history_parser.add_argument("--students", required=True)
@@ -564,8 +958,34 @@ def _run_argparse() -> None:
     project_solve_parser.add_argument("--candidates", type=int, default=None)
     project_solve_parser.add_argument("--seed", type=int, default=None)
     project_solve_parser.add_argument("--time-limit", type=float, default=3.0)
+    project_solve_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
     project_solve_parser.add_argument("--output", "-o", default=None)
     project_solve_parser.add_argument("--report", default=None)
+
+    project_edit_parser = subparsers.add_parser("project-edit", help="Edit a project artifact.")
+    project_edit_parser.add_argument("--project", default="seattrellis.project.json")
+    project_edit_parser.add_argument("--snapshot", default=None)
+    project_edit_parser.add_argument("--candidate", default=None)
+    project_edit_parser.add_argument("--operation", "--op", dest="operations", action="append", default=[])
+    project_edit_parser.add_argument("--operations-file", default=None)
+    project_edit_parser.add_argument("--output", "-o", default=None)
+    project_edit_parser.add_argument("--strict", action="store_true")
+
+    project_repair_parser = subparsers.add_parser(
+        "project-repair",
+        help="Re-solve a project artifact while preserving locks or a local scope.",
+    )
+    project_repair_parser.add_argument("--project", default="seattrellis.project.json")
+    project_repair_parser.add_argument("--snapshot", default=None)
+    project_repair_parser.add_argument("--candidate", default=None)
+    project_repair_parser.add_argument("--affected-student", action="append", default=[])
+    project_repair_parser.add_argument("--lock-student", action="append", default=[])
+    project_repair_parser.add_argument("--lock-seat", action="append", default=[])
+    project_repair_parser.add_argument("--ignore-saved-locks", action="store_true")
+    project_repair_parser.add_argument("--seed", type=int, default=None)
+    project_repair_parser.add_argument("--time-limit", type=float, default=3.0)
+    project_repair_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
+    project_repair_parser.add_argument("--output", "-o", default=None)
 
     project_export_parser = subparsers.add_parser("project-export", help="Export a project artifact.")
     project_export_parser.add_argument("--project", default="seattrellis.project.json")
@@ -589,6 +1009,22 @@ def _run_argparse() -> None:
             print(format_preset(get_preset(args.preset)))
         elif args.preset_command == "export":
             print(f"Preset rules written to {export_preset(args.preset, args.output)}")
+    elif args.command == "schema":
+        if args.schema_command == "list":
+            print(format_json_schema_artifacts())
+        elif args.schema_command == "export":
+            paths = write_json_schema_files(args.output_dir)
+            print("JSON Schema files written:")
+            for path in paths:
+                print(path)
+        elif args.schema_command == "migrate":
+            _print_schema_migration(
+                migrate_json_file(
+                    args.input,
+                    output=args.output,
+                    in_place=args.in_place,
+                )
+            )
     elif args.command == "solve":
         path, summary = solve_with_report(
             students_path=args.students,
@@ -599,6 +1035,7 @@ def _run_argparse() -> None:
             history_paths=args.history,
             history_dir=args.history_dir,
             time_limit_seconds=args.time_limit,
+            backend=args.backend,
             candidate_count=args.candidates,
             seed=args.seed,
             report_path=args.report,
@@ -635,9 +1072,40 @@ def _run_argparse() -> None:
                 orientation=args.orientation,
                 scale=args.page_scale,
                 locale=args.locale,
+                candidate_scope=args.candidate_scope,
             ),
         )
         print(f"Export written to {path}")
+    elif args.command == "edit":
+        path, summary = edit_snapshot(
+            snapshot_path=args.snapshot,
+            output_path=args.output,
+            operations=_parse_edit_operations(
+                args.operations,
+                operations_file=args.operations_file,
+            ),
+            candidate_id=args.candidate,
+            strict=args.strict,
+        )
+        print(f"Edited snapshot written to {path}")
+        print(summary)
+    elif args.command == "repair":
+        path, summary = repair_snapshot(
+            snapshot_path=args.snapshot,
+            output_path=args.output,
+            candidate_id=args.candidate,
+            affected_students=args.affected_student,
+            locked_students=args.lock_student,
+            locked_seats=args.lock_seat,
+            history_paths=args.history,
+            history_dir=args.history_dir,
+            reuse_saved_locks=not args.ignore_saved_locks,
+            seed=args.seed,
+            time_limit_seconds=args.time_limit,
+            backend=args.backend,
+        )
+        print(f"Repaired snapshot written to {path}")
+        print(summary)
     elif args.command == "history-report":
         print(
             run_history_report(
@@ -683,12 +1151,43 @@ def _run_argparse() -> None:
             candidate_count=args.candidates,
             seed=args.seed,
             time_limit_seconds=args.time_limit,
+            backend=args.backend,
             output_path=args.output,
             report_path=args.report,
         )
         print(f"{_solve_output_label(summary)} written to {path}")
         if summary:
             print(summary)
+    elif args.command == "project-edit":
+        path, summary = project_edit(
+            project_path=args.project,
+            snapshot_path=args.snapshot,
+            candidate_id=args.candidate,
+            operations=_parse_edit_operations(
+                args.operations,
+                operations_file=args.operations_file,
+            ),
+            output_path=args.output,
+            strict=args.strict,
+        )
+        print(f"Edited snapshot written to {path}")
+        print(summary)
+    elif args.command == "project-repair":
+        path, summary = project_repair(
+            project_path=args.project,
+            snapshot_path=args.snapshot,
+            candidate_id=args.candidate,
+            affected_students=args.affected_student,
+            locked_students=args.lock_student,
+            locked_seats=args.lock_seat,
+            reuse_saved_locks=not args.ignore_saved_locks,
+            seed=args.seed,
+            time_limit_seconds=args.time_limit,
+            backend=args.backend,
+            output_path=args.output,
+        )
+        print(f"Repaired snapshot written to {path}")
+        print(summary)
     elif args.command == "project-export":
         path = project_export(
             project_path=args.project,
@@ -719,6 +1218,232 @@ def _print_solve_result(result: tuple[Path, str | None]) -> None:
     typer.echo(f"{_solve_output_label(summary)} written to {path}")
     if summary:
         typer.echo(summary)
+
+
+def _print_edit_result(result: tuple[Path, str]) -> None:
+    path, summary = result
+    typer.echo(f"Edited snapshot written to {path}")
+    typer.echo(summary)
+
+
+def _print_repair_result(result: tuple[Path, str]) -> None:
+    path, summary = result
+    typer.echo(f"Repaired snapshot written to {path}")
+    typer.echo(summary)
+
+
+def _print_schema_migration(result) -> None:
+    message = (
+        f"{result.artifact} schema_version {result.schema_version!r} "
+        f"written to {result.output_path}"
+    )
+    if typer is not None:
+        typer.echo(message)
+    else:
+        print(message)
+
+
+def _parse_edit_operations(
+    values: list[str],
+    *,
+    operations_file: str | Path | None = None,
+) -> list[EditingOperation]:
+    """Collect file-backed operations before inline operations.
+
+    A saved operation log is deliberately applied first, then any inline
+    operations are appended. This produces a deterministic order across both
+    Typer and argparse entry points.
+    """
+
+    operations: list[EditingOperation] = []
+    if operations_file is not None:
+        operations.extend(_load_edit_operations_file(Path(operations_file)))
+    operations.extend(_parse_edit_operation(value) for value in values)
+    if not operations:
+        raise ValueError(
+            "Provide at least one --operation value or an --operations-file."
+        )
+    return operations
+
+
+def _load_edit_operations_file(path: Path) -> list[EditingOperation]:
+    """Read a portable JSON operation log used by the CLI and future UIs."""
+
+    try:
+        contents = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValueError(f"Editing operation file not found: {path}") from exc
+    except OSError as exc:
+        raise ValueError(f"Editing operation file could not be read: {path}") from exc
+    try:
+        data = json.loads(contents)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Editing operation file is not valid JSON: {path}") from exc
+
+    if isinstance(data, list):
+        entries = data
+    elif isinstance(data, dict):
+        entries = data.get("operations")
+        if entries is None:
+            raise ValueError(
+                f"Editing operation file {path} must contain an 'operations' list."
+            )
+    else:
+        raise ValueError(
+            f"Editing operation file {path} must be a JSON list or object."
+        )
+    if not isinstance(entries, list):
+        raise ValueError(
+            f"Editing operation file {path} must contain an 'operations' list."
+        )
+
+    operations: list[EditingOperation] = []
+    for index, entry in enumerate(entries, start=1):
+        operations.append(
+            _parse_edit_operation_mapping(
+                entry,
+                source=f"Editing operation file {path}, item {index}",
+            )
+        )
+    return operations
+
+
+def _parse_edit_operation_mapping(
+    entry: object,
+    *,
+    source: str,
+) -> EditingOperation:
+    if not isinstance(entry, dict):
+        raise ValueError(f"{source} must be an object with kind and payload.")
+    raw_kind = entry.get("kind")
+    if not isinstance(raw_kind, str) or not raw_kind.strip():
+        raise ValueError(f"{source} must contain a non-empty string kind.")
+    payload = entry.get("payload")
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"{source} must contain a payload object.")
+
+    normalized_payload: dict[str, EditingPayloadValue] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            raise ValueError(f"{source} payload keys must be strings.")
+        normalized_payload[key] = _normalize_edit_payload_value(
+            value,
+            source=f"{source} payload.{key}",
+        )
+
+    kind = _normalize_edit_operation_kind(raw_kind)
+    return EditingOperation(
+        kind=kind,
+        payload=normalized_payload,
+    )
+
+
+def _parse_edit_operation(value: str) -> EditingOperation:
+    text = str(value).strip()
+    if not text:
+        raise ValueError("Editing operation cannot be empty.")
+    parts = [part.strip() for part in text.split(":")]
+    kind = _normalize_edit_operation_kind(parts[0])
+    if kind == "swap_students":
+        _require_operation_parts(text, parts, 3)
+        return EditingOperation(
+            kind="swap_students",
+            payload={"first_student": parts[1], "second_student": parts[2]},
+        )
+    if kind in {"move_student", "seat_student"}:
+        _require_operation_parts(text, parts, 3)
+        return EditingOperation(
+            kind=kind,
+            payload={"student_key": parts[1], "seat_id": parts[2]},
+        )
+    if kind == "batch_move":
+        _require_operation_parts(text, parts, 2)
+        moves: list[dict[str, str]] = []
+        for index, item in enumerate(parts[1].split(","), start=1):
+            pair = [part.strip() for part in item.split("=", 1)]
+            if len(pair) != 2 or not pair[0] or not pair[1]:
+                raise ValueError(
+                    f"Invalid batch move item {index} in operation {text!r}. "
+                    "Use STUDENT=SEAT pairs separated by commas."
+                )
+            moves.append({"student_key": pair[0], "seat_id": pair[1]})
+        return EditingOperation(kind="batch_move", payload={"moves": moves})
+    if kind in {"unseat_student", "lock_student", "unlock_student"}:
+        _require_operation_parts(text, parts, 2)
+        return EditingOperation(
+            kind=kind,
+            payload={"student_key": parts[1]},
+        )
+    _require_operation_parts(text, parts, 2)
+    return EditingOperation(
+        kind=kind,
+        payload={"seat_id": parts[1]},
+    )
+
+
+def _normalize_edit_operation_kind(value: str) -> EditingOperationKind:
+    name = str(value).replace("-", "_").strip().lower()
+    aliases: dict[str, EditingOperationKind] = {
+        "swap": "swap_students",
+        "swap_students": "swap_students",
+        "move": "move_student",
+        "move_student": "move_student",
+        "batch": "batch_move",
+        "batch_move": "batch_move",
+        "seat": "seat_student",
+        "seat_student": "seat_student",
+        "unseat": "unseat_student",
+        "unseat_student": "unseat_student",
+        "lock_student": "lock_student",
+        "unlock_student": "unlock_student",
+        "lock_seat": "lock_seat",
+        "unlock_seat": "unlock_seat",
+    }
+    kind = aliases.get(name)
+    if kind is None:
+        raise ValueError(
+            f"Unsupported editing operation {value!r}. "
+            "Use swap, move, batch-move, seat, unseat, lock-student, "
+            "unlock-student, "
+            "lock-seat, or unlock-seat."
+        )
+    return kind
+
+
+def _normalize_edit_payload_value(
+    value: object,
+    *,
+    source: str,
+) -> EditingPayloadValue:
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, list):
+        return [
+            _normalize_edit_payload_value(item, source=f"{source}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, Mapping):
+        normalized: dict[str, EditingPayloadValue] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{source} object keys must be strings.")
+            normalized[key] = _normalize_edit_payload_value(
+                item,
+                source=f"{source}.{key}",
+            )
+        return normalized
+    raise ValueError(
+        f"{source} must contain only strings, booleans, null, lists, or objects."
+    )
+
+
+def _require_operation_parts(text: str, parts: list[str], expected: int) -> None:
+    if len(parts) != expected or any(not part for part in parts[1:]):
+        examples = (
+            "swap:STU001:STU002, move:STU003:R2C2, unseat:STU004, "
+            "lock-seat:R1C1"
+        )
+        raise ValueError(f"Invalid editing operation {text!r}. Examples: {examples}.")
 
 
 if __name__ == "__main__":
