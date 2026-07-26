@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -247,6 +249,47 @@ def test_schema_migrate_in_place_replaces_the_source_atomically(tmp_path) -> Non
 
     assert result.output_path == source
     assert load_snapshot(source).schema_version == SNAPSHOT_SCHEMA_VERSION
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes are not portable")
+def test_schema_migrate_preserves_destination_mode_and_secures_new_files(
+    tmp_path,
+) -> None:
+    source = tmp_path / "snapshot.json"
+    source.write_bytes(Path("examples/history/week1.snapshot.json").read_bytes())
+    source.chmod(0o644)
+    in_place_source = tmp_path / "in-place.json"
+    in_place_source.write_bytes(source.read_bytes())
+    in_place_source.chmod(0o640)
+    existing_output = tmp_path / "existing.json"
+    existing_output.write_text("{}", encoding="utf-8")
+    existing_output.chmod(0o600)
+
+    migrate_json_file(in_place_source, in_place=True)
+    migrate_json_file(source, output=existing_output)
+    new_output = tmp_path / "new.json"
+    migrate_json_file(source, output=new_output)
+
+    assert stat.S_IMODE(in_place_source.stat().st_mode) == 0o640
+    assert stat.S_IMODE(existing_output.stat().st_mode) == 0o600
+    assert stat.S_IMODE(new_output.stat().st_mode) == 0o600
+
+
+def test_schema_migrate_preserves_unknown_extension_fields(tmp_path) -> None:
+    source = tmp_path / "snapshot.json"
+    data = json.loads(
+        Path("examples/history/week1.snapshot.json").read_text(encoding="utf-8")
+    )
+    data["vendor_extension"] = {"revision": 3}
+    data["students"][0]["school_extension"] = {"house": "green"}
+    source.write_text(json.dumps(data), encoding="utf-8")
+    output = tmp_path / "migrated.json"
+
+    migrate_json_file(source, output=output)
+
+    migrated = json.loads(output.read_text(encoding="utf-8"))
+    assert migrated["vendor_extension"] == {"revision": 3}
+    assert migrated["students"][0]["school_extension"] == {"house": "green"}
 
 
 def test_schema_migrate_in_place_preserves_source_when_replace_fails(

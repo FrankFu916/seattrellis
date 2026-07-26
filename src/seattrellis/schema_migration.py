@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import tempfile
@@ -14,7 +15,7 @@ try:
 except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import BaseModel, ValidationError
 
-from seattrellis.io.json_files import InputFileError, read_json, write_json_model
+from seattrellis.io.json_files import InputFileError, read_json
 from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
 from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.snapshot import SeatingSnapshot
@@ -45,8 +46,13 @@ def migrate_json_file(
 
     source_path = Path(source)
     output_path = _resolve_output_path(source_path, output=output, in_place=in_place)
-    artifact, model = parse_migratable_artifact(read_json(source_path), source_path)
-    _write_json_model_atomically(model, output_path, mode_source=source_path)
+    source_data = read_json(source_path)
+    artifact, model = parse_migratable_artifact(source_data, source_path)
+    normalized_data = _model_to_data(model)
+    _write_json_data_atomically(
+        _merge_normalized_data(source_data, normalized_data),
+        output_path,
+    )
     schema_version = getattr(model, "schema_version")
     return SchemaMigrationResult(
         artifact=artifact,
@@ -122,14 +128,12 @@ def _same_path(left: Path, right: Path) -> bool:
         return left.absolute() == right.absolute()
 
 
-def _write_json_model_atomically(
-    model: BaseModel,
-    output: Path,
-    *,
-    mode_source: Path,
-) -> None:
+def _write_json_data_atomically(data: dict[str, Any], output: Path) -> None:
     """Write a complete sibling file before atomically replacing the destination."""
 
+    existing_mode = (
+        stat.S_IMODE(output.stat().st_mode) if output.exists() else None
+    )
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(
@@ -145,8 +149,11 @@ def _write_json_model_atomically(
 
     temporary = Path(temporary_name)
     try:
-        write_json_model(model, temporary)
-        os.chmod(temporary, stat.S_IMODE(mode_source.stat().st_mode))
+        with temporary.open("w", encoding="utf-8") as file:
+            json.dump(data, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+        if existing_mode is not None:
+            os.chmod(temporary, existing_mode)
         with temporary.open("rb") as file:
             os.fsync(file.fileno())
         os.replace(temporary, output)
@@ -164,6 +171,38 @@ def _write_json_model_atomically(
         except OSError:
             # A failed cleanup must not hide the original migration error.
             pass
+
+
+def _model_to_data(model: BaseModel) -> dict[str, Any]:
+    if hasattr(model, "model_dump"):
+        return model.model_dump(mode="json")  # type: ignore[attr-defined,no-any-return]
+    return json.loads(model.json())
+
+
+def _merge_normalized_data(original: Any, normalized: Any) -> Any:
+    """Overlay validated values while retaining unknown extension fields.
+
+    Migrations validate and normalize fields understood by this version, but a
+    newer producer may have added names that an older SeatTrellis installation
+    does not know yet. Keeping those names makes a no-op migration forward-safe
+    instead of silently deleting data.
+    """
+
+    if isinstance(original, dict) and isinstance(normalized, dict):
+        merged = dict(original)
+        for key, value in normalized.items():
+            merged[key] = _merge_normalized_data(original.get(key), value)
+        return merged
+    if (
+        isinstance(original, list)
+        and isinstance(normalized, list)
+        and len(original) == len(normalized)
+    ):
+        return [
+            _merge_normalized_data(original_item, normalized_item)
+            for original_item, normalized_item in zip(original, normalized)
+        ]
+    return normalized
 
 
 def _format_error(error: dict[str, Any]) -> str:
