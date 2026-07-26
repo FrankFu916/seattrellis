@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import stat
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,7 +46,7 @@ def migrate_json_file(
     source_path = Path(source)
     output_path = _resolve_output_path(source_path, output=output, in_place=in_place)
     artifact, model = parse_migratable_artifact(read_json(source_path), source_path)
-    write_json_model(model, output_path)
+    _write_json_model_atomically(model, output_path, mode_source=source_path)
     schema_version = getattr(model, "schema_version")
     return SchemaMigrationResult(
         artifact=artifact,
@@ -103,7 +106,64 @@ def _resolve_output_path(
         return source
     if output is None:
         raise ValueError("Schema migration requires --output unless --in-place is set.")
-    return Path(output)
+    output_path = Path(output)
+    if _same_path(source, output_path):
+        raise ValueError(
+            "Use --in-place to rewrite the input file; --output must name a "
+            "different path."
+        )
+    return output_path
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except (OSError, RuntimeError):
+        return left.absolute() == right.absolute()
+
+
+def _write_json_model_atomically(
+    model: BaseModel,
+    output: Path,
+    *,
+    mode_source: Path,
+) -> None:
+    """Write a complete sibling file before atomically replacing the destination."""
+
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+        )
+        os.close(descriptor)
+    except OSError as exc:
+        raise InputFileError(
+            f"Could not prepare migrated JSON file {output}: {exc}"
+        ) from exc
+
+    temporary = Path(temporary_name)
+    try:
+        write_json_model(model, temporary)
+        os.chmod(temporary, stat.S_IMODE(mode_source.stat().st_mode))
+        with temporary.open("rb") as file:
+            os.fsync(file.fileno())
+        os.replace(temporary, output)
+    except InputFileError:
+        raise
+    except OSError as exc:
+        raise InputFileError(
+            f"Could not atomically write migrated JSON file {output}: {exc}"
+        ) from exc
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # A failed cleanup must not hide the original migration error.
+            pass
 
 
 def _format_error(error: dict[str, Any]) -> str:

@@ -237,6 +237,50 @@ def test_schema_migrate_current_snapshot_and_project(tmp_path) -> None:
     assert load_project(project_output).schema_version == PROJECT_SCHEMA_VERSION
 
 
+def test_schema_migrate_in_place_replaces_the_source_atomically(tmp_path) -> None:
+    source = tmp_path / "snapshot.json"
+    source.write_bytes(
+        Path("examples/history/week1.snapshot.json").read_bytes()
+    )
+
+    result = migrate_json_file(source, in_place=True)
+
+    assert result.output_path == source
+    assert load_snapshot(source).schema_version == SNAPSHOT_SCHEMA_VERSION
+
+
+def test_schema_migrate_in_place_preserves_source_when_replace_fails(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "snapshot.json"
+    source.write_bytes(
+        Path("examples/history/week1.snapshot.json").read_bytes()
+    )
+    original = source.read_bytes()
+
+    def fail_replace(_source, _destination) -> None:
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr("seattrellis.schema_migration.os.replace", fail_replace)
+
+    with pytest.raises(InputFileError, match="Could not atomically write"):
+        migrate_json_file(source, in_place=True)
+
+    assert source.read_bytes() == original
+    assert not list(tmp_path.glob(f".{source.name}.*.tmp"))
+
+
+def test_schema_migrate_rejects_output_that_resolves_to_input(tmp_path) -> None:
+    source = tmp_path / "snapshot.json"
+    source.write_bytes(
+        Path("examples/history/week1.snapshot.json").read_bytes()
+    )
+
+    with pytest.raises(ValueError, match="Use --in-place"):
+        migrate_json_file(source, output=source.parent / "." / source.name)
+
+
 def test_schema_migrate_command_requires_output_or_in_place(tmp_path) -> None:
     result = subprocess.run(
         [

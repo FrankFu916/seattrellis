@@ -67,6 +67,8 @@
 
 ### Fixed
 
+- Schema migrations now replace files atomically and preserve the original
+  artifact if the final write cannot be completed.
 - Candidate comparison and anonymized reports no longer embed potentially
   identifying free-form warning or rule text.
 - Web result tables no longer use the pandas/Arrow conversion path that could
