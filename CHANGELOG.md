@@ -69,6 +69,8 @@
 
 ### Fixed
 
+- Web PDF export now rejects unsupported all-candidate requests instead of
+  silently exporting only the recommended plan.
 - Sparse layout coordinates no longer expand the Web seat map into thousands
   of empty rows or columns.
 - Web repair now starts a fresh editing session immediately, so the first

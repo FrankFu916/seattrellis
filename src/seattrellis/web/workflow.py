@@ -785,6 +785,11 @@ def _export_pdf_in_subprocess(
     request: ExportRequest,
 ) -> Path:
     """Run Web PDF export out-of-process to isolate native Pango/Cairo crashes."""
+    if request.candidate_scope == "all":
+        raise ValueError(
+            "candidate_scope='all' currently supports only html and "
+            "print-html exports."
+        )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     privacy = request.resolved_privacy
     cmd = [

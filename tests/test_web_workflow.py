@@ -433,6 +433,41 @@ def test_web_pdf_export_reports_worker_crash(monkeypatch, tmp_path) -> None:
         )
 
 
+def test_web_pdf_export_rejects_all_candidate_scope_before_worker(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    result = workflow.solve_for_web(
+        students_path="examples/students.csv",
+        layout_path="examples/classroom.json",
+        preset_name="random",
+        output_dir=tmp_path / "solve",
+        candidate_count=2,
+    )
+    request = ExportRequest(output_format="pdf", candidate_scope="all")
+
+    def unexpected_run(*_args, **_kwargs):
+        raise AssertionError("PDF worker must not run for an unsupported scope")
+
+    monkeypatch.setattr(workflow.subprocess, "run", unexpected_run)
+
+    with pytest.raises(ValueError, match="only html and print-html"):
+        workflow.export_for_web(
+            result,
+            output_format="pdf",
+            output_dir=tmp_path / "quick-exports",
+            request=request,
+        )
+    with pytest.raises(ValueError, match="only html and print-html"):
+        workflow.project_export_for_web(
+            result,
+            project_path=tmp_path / "project.json",
+            output_format="pdf",
+            output_dir=tmp_path / "project-exports",
+            request=request,
+        )
+
+
 def test_web_export_rejects_request_format_mismatch(tmp_path) -> None:
     result = workflow.solve_for_web(
         students_path="examples/students.csv",
