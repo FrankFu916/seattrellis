@@ -10,11 +10,8 @@ from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.student import Student
 from seattrellis.solver.backend import normalize_solver_backend, resolve_solver_backend
-from seattrellis.solver.errors import SeatTrellisSolveError
-from seattrellis.solver.fallback_backend import solve_with_fallback
-from seattrellis.solver.native_backend import solve_with_native
-from seattrellis.solver.ortools_backend import solve_with_ortools
 from seattrellis.solver.problem import compile_problem
+from seattrellis.solver.registry import get_solver_backend
 from seattrellis.solver.result import SeatingSolution
 
 
@@ -45,25 +42,8 @@ def solve_seating(
 
     requested_backend = normalize_solver_backend(backend)
     effective_backend = resolve_solver_backend(requested_backend)
-    if effective_backend == "ortools":
-        return solve_with_ortools(
-            problem,
-            history,
-            pair_history,
-            seed,
-            time_limit_seconds,
-            requested_backend,
-        )
-    if effective_backend == "native":
-        return solve_with_native(
-            problem,
-            history,
-            pair_history,
-            seed,
-            time_limit_seconds,
-            requested_backend,
-        )
-    return solve_with_fallback(
+    solver_backend = get_solver_backend(effective_backend)
+    return solver_backend.solve(
         problem,
         history,
         pair_history,

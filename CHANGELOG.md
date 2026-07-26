@@ -43,6 +43,8 @@
 
 ### Changed
 
+- Solver selection now uses a common backend protocol and capability registry,
+  while preserving the existing CLI and service backend names.
 - Updated the optional native binding to PyO3 0.29 and maturin 1.14, declared
   Rust 1.83 as its minimum supported toolchain, and added Python 3.13 and 3.14
   package metadata.
