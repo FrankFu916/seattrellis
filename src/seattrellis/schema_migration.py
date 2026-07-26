@@ -131,11 +131,12 @@ def _same_path(left: Path, right: Path) -> bool:
 def _write_json_data_atomically(data: dict[str, Any], output: Path) -> None:
     """Write a complete sibling file before atomically replacing the destination."""
 
-    existing_mode = (
-        stat.S_IMODE(output.stat().st_mode) if output.exists() else None
-    )
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            existing_mode = stat.S_IMODE(output.stat().st_mode)
+        except FileNotFoundError:
+            existing_mode = None
         descriptor, temporary_name = tempfile.mkstemp(
             dir=output.parent,
             prefix=f".{output.name}.",
@@ -152,10 +153,10 @@ def _write_json_data_atomically(data: dict[str, Any], output: Path) -> None:
         with temporary.open("w", encoding="utf-8") as file:
             json.dump(data, file, ensure_ascii=False, indent=2)
             file.write("\n")
+            file.flush()
+            os.fsync(file.fileno())
         if existing_mode is not None:
             os.chmod(temporary, existing_mode)
-        with temporary.open("rb") as file:
-            os.fsync(file.fileno())
         os.replace(temporary, output)
     except InputFileError:
         raise

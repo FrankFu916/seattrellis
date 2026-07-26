@@ -103,7 +103,7 @@ def test_project_path_validates_solves_and_exports_selected_candidate(
         page,
         PROJECT_EXPORT_DOWNLOAD_ARTIFACT,
         tmp_path / "project.candidates.json",
-        expected_filename="latest.candidates.json",
+        expected_filename="seattrellis.candidates.json",
     )
     candidate_set = json.loads(candidate_path.read_text(encoding="utf-8"))
     assert len(candidate_set["candidates"]) == 2
