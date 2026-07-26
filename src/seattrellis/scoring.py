@@ -28,7 +28,8 @@ from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student, student_needs_front
-from seattrellis.solver.adjacency import build_adjacency_edges, graph_distance, normalize_edge, seat_distance
+from seattrellis.solver.adjacency import build_adjacency_edges
+from seattrellis.solver.assignment_validator import validate_assignment
 
 
 DIMENSION_LABELS = {
@@ -86,81 +87,13 @@ def evaluate_hard_constraints(
     layout: ClassroomLayout,
     rules: RuleSet,
 ) -> HardConstraintSummary:
-    violations: list[str] = []
-    assignment_by_student = {assignment.student_key: assignment.seat_id for assignment in assignments}
-    assigned_students = [assignment.student_key for assignment in assignments]
-    assigned_seats = [assignment.seat_id for assignment in assignments]
-    enabled_seats = {seat.seat_id for seat in layout.enabled_seats}
-    reference_map = _student_reference_map(students)
-    edges = build_adjacency_edges(layout)
-    checked = 3
-
-    if len(assigned_students) != len(set(assigned_students)):
-        violations.append("A student is assigned more than once.")
-    if len(assigned_seats) != len(set(assigned_seats)):
-        violations.append("A seat is assigned more than once.")
-    expected_students = {student.key for student in students}
-    if set(assigned_students) != expected_students:
-        violations.append("Assignments do not contain every current student exactly once.")
-    unknown_seats = sorted(set(assigned_seats) - enabled_seats)
-    if unknown_seats:
-        violations.append(f"Assignments use unknown or disabled seats: {', '.join(unknown_seats)}.")
-
-    for rule in rules.hard.fixed_seats:
-        checked += 1
-        student_key = reference_map.get(rule.student)
-        if student_key is None or assignment_by_student.get(student_key) != rule.seat_id:
-            violations.append(f"fixed_seats is not satisfied for {rule.student!r}.")
-
-    for label, pair_rules, expected_adjacent in (
-        ("must_be_adjacent", rules.hard.must_be_adjacent, True),
-        ("cannot_be_adjacent", rules.hard.cannot_be_adjacent, False),
-    ):
-        for rule in pair_rules:
-            checked += 1
-            first_key = reference_map.get(rule.students[0])
-            second_key = reference_map.get(rule.students[1])
-            first_seat = assignment_by_student.get(first_key or "")
-            second_seat = assignment_by_student.get(second_key or "")
-            adjacent = (
-                first_seat is not None
-                and second_seat is not None
-                and normalize_edge(first_seat, second_seat) in edges
-            )
-            if adjacent != expected_adjacent:
-                violations.append(f"{label} is not satisfied for {rule.students!r}.")
-
-    seat_by_id = {seat.seat_id: seat for seat in layout.seats}
-    for rule in rules.hard.min_distance:
-        checked += 1
-        first_key = reference_map.get(rule.students[0])
-        second_key = reference_map.get(rule.students[1])
-        first_seat = seat_by_id.get(assignment_by_student.get(first_key or "", ""))
-        second_seat = seat_by_id.get(assignment_by_student.get(second_key or "", ""))
-        if first_seat is None or second_seat is None:
-            violations.append(f"min_distance cannot be evaluated for {rule.students!r}.")
-            continue
-        distance = (
-            graph_distance(layout, first_seat.seat_id, second_seat.seat_id)
-            if rule.metric == "graph"
-            else seat_distance(first_seat, second_seat)
-        )
-        if distance < rule.distance:
-            violations.append(f"min_distance is not satisfied for {rule.students!r}.")
-
+    result = validate_assignment(assignments, students, layout, rules)
     return HardConstraintSummary(
-        satisfied=not violations,
-        checked_rule_count=checked,
-        violation_count=len(violations),
-        violations=violations,
-        details={
-            "student_count": len(students),
-            "assignment_count": len(assignments),
-            "fixed_seat_count": len(rules.hard.fixed_seats),
-            "must_be_adjacent_count": len(rules.hard.must_be_adjacent),
-            "cannot_be_adjacent_count": len(rules.hard.cannot_be_adjacent),
-            "min_distance_count": len(rules.hard.min_distance),
-        },
+        satisfied=result.satisfied,
+        checked_rule_count=result.checked_rule_count,
+        violation_count=result.violation_count,
+        violations=list(result.violations),
+        details=dict(result.details),
     )
 
 
@@ -626,16 +559,6 @@ def _rating(score: float) -> str:
 
 def _rating_text(score: float) -> str:
     return f"{_rating(score)} ({score:.1f})"
-
-
-def _student_reference_map(students: Sequence[Student]) -> dict[str, str]:
-    refs: dict[str, str] = {}
-    for student in students:
-        if student.student_id:
-            refs[student.student_id] = student.key
-        if student.name:
-            refs[student.name] = student.key
-    return refs
 
 
 def _assignment_distance(first: dict[str, str], second: dict[str, str]) -> float:
