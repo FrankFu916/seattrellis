@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import isfinite
 from typing import Sequence
 
 from seattrellis import __version__
@@ -12,7 +13,9 @@ from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.scoring import apply_diversity_scores, refresh_recommendation, score_snapshot
 from seattrellis.optional import MissingOptionalDependencyError
-from seattrellis.solver import SeatTrellisSolveError, solve_seating
+from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.solver.cp_sat import solve_compiled
+from seattrellis.solver.problem import compile_problem
 
 
 def generate_candidate_set(
@@ -27,6 +30,8 @@ def generate_candidate_set(
     time_limit_seconds: float = 3.0,
     backend: str = "auto",
 ) -> CandidateSet:
+    if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be a finite number >= 0.1")
     options = options or MultiSolveOptions(seed=rules.seed)
     snapshots = list(history_snapshots or [])
     latest_snapshot = snapshots[-1] if snapshots else None
@@ -34,16 +39,15 @@ def generate_candidate_set(
     excluded_assignments: list[dict[str, str]] = []
     warnings: list[str] = []
     failed_attempts = 0
+    problem = compile_problem(students, layout, rules)
 
     for attempt_index in range(options.attempt_limit):
         if len(candidates) >= options.candidate_count:
             break
         candidate_seed = options.seed + attempt_index
         try:
-            solution = solve_seating(
-                students,
-                layout,
-                rules,
+            solution = solve_compiled(
+                problem,
                 history=history,
                 pair_history=pair_history,
                 seed=candidate_seed,

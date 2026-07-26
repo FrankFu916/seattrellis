@@ -6,6 +6,7 @@ from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
 from seattrellis.solver import cp_sat
 from seattrellis.solver.backend import CONCRETE_SOLVER_BACKENDS
 from seattrellis.solver.protocol import SolverBackendProtocol
+from seattrellis.solver.problem import compile_problem
 from seattrellis.solver.registry import get_solver_backend, registered_solver_backends
 
 
@@ -80,3 +81,33 @@ def test_solve_entrypoint_dispatches_through_registry(monkeypatch) -> None:
     assert recorded["seed"] == 17
     assert recorded["time_limit_seconds"] == 2.5
     assert recorded["requested_backend"] == "fallback"
+
+
+def test_compiled_entrypoint_preserves_fallback_behavior() -> None:
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+    layout = ClassroomLayout(
+        seats=[
+            SeatNode(seat_id="A1", row=1, col=1),
+            SeatNode(seat_id="A2", row=1, col=2),
+        ]
+    )
+    rules = RuleSet(seed=17)
+
+    compatible = cp_sat.solve_seating(
+        students,
+        layout,
+        rules,
+        backend="fallback",
+        time_limit_seconds=2.5,
+    )
+    compiled = cp_sat.solve_compiled(
+        compile_problem(students, layout, rules),
+        backend="fallback",
+        time_limit_seconds=2.5,
+    )
+
+    assert compiled.assignment_map == compatible.assignment_map
+    assert compiled.solver_status == compatible.solver_status
+    assert compiled.objective_value == compatible.objective_value
+    assert compiled.metrics["solver_backend_requested"] == "fallback"
+    assert compiled.metrics["solver_backend_effective"] == "fallback"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
 
 from seattrellis.io.validation import validate_loaded_inputs
@@ -53,6 +53,25 @@ class CompiledProblem:
     @property
     def seat_index_by_id(self) -> dict[str, int]:
         return self.topology.seat_index_by_id
+
+    def with_excluded_assignments(
+        self,
+        excluded_assignments: Sequence[Mapping[str, str]],
+    ) -> CompiledProblem:
+        """Return a lightweight solve view with new candidate exclusions.
+
+        Student and seat indexes are resolved against the existing topology;
+        validation, rule compilation, adjacency and distance matrices are not
+        rebuilt.
+        """
+
+        return replace(
+            self,
+            excluded_assignments=_compile_excluded_assignments(
+                self.topology,
+                excluded_assignments,
+            ),
+        )
 
 
 def compile_problem(

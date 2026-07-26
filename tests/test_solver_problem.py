@@ -58,6 +58,21 @@ def test_compiled_problem_resolves_candidate_exclusions() -> None:
     assert problem.excluded_assignments == [{0: 0, 1: 1}]
 
 
+def test_replacing_candidate_exclusions_reuses_compiled_topology() -> None:
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+    problem = compile_problem(students, _layout(), RuleSet())
+
+    excluded_problem = problem.with_excluded_assignments(
+        [{"S1": "A1", "S2": "A2"}]
+    )
+
+    assert excluded_problem is not problem
+    assert excluded_problem.topology is problem.topology
+    assert excluded_problem.rules_compiled is problem.rules_compiled
+    assert problem.excluded_assignments == []
+    assert excluded_problem.excluded_assignments == [{0: 0, 1: 1}]
+
+
 def test_compiled_problem_rejects_exclusions_for_disabled_or_unknown_seats() -> None:
     students = [Student(student_id="S1"), Student(student_id="S2")]
 

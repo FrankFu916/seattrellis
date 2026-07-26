@@ -5,6 +5,7 @@ import json
 import pytest
 
 from seattrellis import cli
+from seattrellis import candidates as candidates_module
 from seattrellis.candidates import generate_candidate_set
 from seattrellis.history import build_pair_history, build_seat_history, load_history_snapshots
 from seattrellis.io.json_files import (
@@ -21,6 +22,7 @@ from seattrellis.models.rules import RuleSet
 from seattrellis.models.student import Student
 from seattrellis.solver.adjacency import build_adjacency_edges, normalize_edge
 from seattrellis.solver import ortools_backend
+from seattrellis.solver import problem as problem_module
 
 
 def _example_inputs():
@@ -96,6 +98,48 @@ def test_generate_three_distinct_scored_candidates() -> None:
         candidate.score.breakdown.avoid_recent_neighbors_score.status == "available"
         for candidate in candidate_set.candidates
     )
+
+
+def test_generate_three_candidates_compiles_topology_once(monkeypatch) -> None:
+    students = [
+        Student(student_id=f"S{index}", name=f"Student{index}")
+        for index in range(1, 4)
+    ]
+    layout = ClassroomLayout(
+        seats=[
+            SeatNode(seat_id=f"A{index}", row=1, col=index)
+            for index in range(1, 4)
+        ]
+    )
+    rules = RuleSet(seed=7)
+    compile_count = 0
+    precompute_count = 0
+    original_compile = candidates_module.compile_problem
+    original_precompute = problem_module.precompute_topology
+
+    def counting_compile(*args, **kwargs):
+        nonlocal compile_count
+        compile_count += 1
+        return original_compile(*args, **kwargs)
+
+    def counting_precompute(*args, **kwargs):
+        nonlocal precompute_count
+        precompute_count += 1
+        return original_precompute(*args, **kwargs)
+
+    monkeypatch.setattr(candidates_module, "compile_problem", counting_compile)
+    monkeypatch.setattr(problem_module, "precompute_topology", counting_precompute)
+
+    candidate_set = generate_candidate_set(
+        students,
+        layout,
+        rules,
+        options=MultiSolveOptions(candidate_count=3, seed=7),
+    )
+
+    assert len(candidate_set.candidates) == 3
+    assert compile_count == 1
+    assert precompute_count == 1
 
 
 def test_candidate_generation_is_reproducible_for_seed() -> None:

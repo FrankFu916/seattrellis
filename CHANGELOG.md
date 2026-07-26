@@ -55,6 +55,8 @@
   while preserving the existing CLI and service backend names.
 - Solver backends now share stable indexes, indexed adjacency, and precomputed
   Euclidean and graph-distance matrices through `CompiledProblem`.
+- Multi-candidate generation now compiles and precomputes each problem once,
+  reusing a lightweight exclusion view for subsequent candidates.
 - Updated the optional native binding to PyO3 0.29 and maturin 1.14, declared
   Rust 1.83 as its minimum supported toolchain, and added Python 3.13 and 3.14
   package metadata.

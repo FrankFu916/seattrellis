@@ -7,11 +7,13 @@ from seattrellis.io.students import read_students
 from seattrellis.scoring import evaluate_hard_constraints
 from seattrellis.solver import native_backend
 from seattrellis.solver import solve_seating
+from seattrellis.solver.cp_sat import solve_compiled
 from seattrellis.solver.native import (
     EXPECTED_NATIVE_API_VERSION,
     native_core_status,
     require_native_core,
 )
+from seattrellis.solver.problem import compile_problem
 
 
 def _fixture_problem():
@@ -29,6 +31,21 @@ def test_backend_contract_for_hard_constraints(backend: str) -> None:
     students, layout, rules = _fixture_problem()
 
     solution = solve_seating(students, layout, rules, seed=rules.seed, backend=backend)
+
+    _assert_solution_contract(solution, students, layout, rules, backend)
+
+
+@pytest.mark.parametrize("backend", ["fallback", "ortools"])
+def test_compiled_backend_contract_for_hard_constraints(backend: str) -> None:
+    if backend == "ortools":
+        pytest.importorskip("ortools.sat.python.cp_model")
+    students, layout, rules = _fixture_problem()
+
+    solution = solve_compiled(
+        compile_problem(students, layout, rules),
+        seed=rules.seed,
+        backend=backend,
+    )
 
     _assert_solution_contract(solution, students, layout, rules, backend)
 
