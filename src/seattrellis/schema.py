@@ -11,6 +11,7 @@ from typing import TypeVar
 SNAPSHOT_SCHEMA_VERSION = "1.0"
 CANDIDATE_SCHEMA_VERSION = "0.2.2"
 PROJECT_SCHEMA_VERSION = 1
+RULESET_SCHEMA_VERSION = 1
 EDITOR_PROTOCOL_VERSION = "1.0"
 JSON_SCHEMA_DRAFT = "http://json-schema.org/draft-07/schema#"
 
@@ -46,6 +47,7 @@ JSON_SCHEMA_ARTIFACTS: tuple[JsonSchemaArtifact, ...] = (
         file_name="ruleset.schema.json",
         title="SeatTrellis RuleSet",
         model_path="seattrellis.models.rules:RuleSet",
+        schema_version=RULESET_SCHEMA_VERSION,
     ),
     JsonSchemaArtifact(
         name="seating-snapshot",
@@ -102,7 +104,9 @@ def require_schema_version(
     if type(value) is not type(expected) or value != expected:
         raise ValueError(
             f"Unsupported {artifact} schema_version {value!r}; "
-            f"expected {expected!r}."
+            f"expected {expected!r}. Use a compatible SeatTrellis release and run "
+            "'seattrellis schema migrate --input <file> --dry-run' before "
+            "replacing the original file."
         )
     return expected
 

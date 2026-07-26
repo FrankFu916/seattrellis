@@ -21,7 +21,7 @@ CLI、文件格式和 service API 的不兼容变更必须通过新的 MAJOR 版
 | `CandidateSet` / `PlanComparisonReport` | `"0.2.2"` | v0.2.2 |
 | `SeatTrellisProject` | `1` | v0.2.3 |
 | `EditorCommandEnvelope` / `EditorStateEnvelope` | `protocol_version: "1.0"` | v1.4 开发周期 |
-| `RuleSet` (JSON) | 无独立版本 | — |
+| `RuleSet` (JSON) | `1` | v1.4 开发周期 |
 
 当前读取器只接受表中的版本。新增可选字段时可以保留版本号；字段改名、类型
 变化或语义变化需要新的 schema 版本，并应同时提供迁移说明。
@@ -39,8 +39,15 @@ seattrellis schema export --output-dir schemas
 稳定入口：
 
 ```bash
+seattrellis schema migrate --input input.json --dry-run
 seattrellis schema migrate --input input.json --output output.json
+seattrellis schema migrate --input input.json --in-place
 ```
+
+`--dry-run` 只验证和报告目标版本，不创建文件。覆盖已有目标或使用 `--in-place`
+时默认先创建同目录备份（`.bak`、`.bak.1` 等）；只有调用方已经另行备份时才使用
+`--no-backup`。旧版未带 `schema_version` 的 RuleSet 继续按版本 1 读取，重新导出或
+迁移后会显式写入版本。
 
 Editor command/state 是短期传输契约，不是长期保存的 snapshot 或 project 产物，
 因此不由 `schema migrate` 处理。客户端必须显式发送 `protocol_version`；不支持的

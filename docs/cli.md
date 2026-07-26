@@ -196,9 +196,10 @@ seattrellis repair \
   --output outputs/neighbor-aware-repaired.snapshot.json
 ```
 
-提供一个或多个 `--affected-student` 时，其他当前已入座学生会固定在草稿位置，
-因此只有受影响学生和当前未入座学生会被重新安排。未提供时，所有未锁定学生都可以
-重新排座。`--lock-student` 保留该学生当前座位；`--lock-seat` 保留当前座位上的学生，
+提供一个或多个 `--affected-student` 时，程序会自动加入与其存在 hard rule 或当前
+座位相邻关系的一阶学生，其他当前已入座学生会固定在草稿位置。因此只有有效范围和
+当前未入座学生会被重新安排。未提供时，所有未锁定学生都可以重新排座。
+`--lock-student` 保留该学生当前座位；`--lock-seat` 保留当前座位上的学生，
 若该座位为空则临时预留为空座。默认会继承 `metadata.lock_state` 中的锁；使用
 `--ignore-saved-locks` 可忽略它们。`--history` 与 `--history-dir` 可传入历史方案，
 保证公平轮换和近期邻座规则在局部修复时仍生效。
@@ -206,6 +207,8 @@ seattrellis repair \
 `project-repair` 对 Project 工作流提供相同能力，未提供 `--snapshot` 时会使用最新
 project artifact，并自动读取 project 配置的 `history_dir`。若锁定和原有 hard
 fixed-seat 规则矛盾，命令会在写出任何文件前失败，而不会静默改变老师的规则。
+求解因锁或局部范围不可行时，错误信息会列出有效范围，并给出需要解锁或扩大范围的
+下一步操作。
 
 ## Schema 工具
 
@@ -215,8 +218,16 @@ fixed-seat 规则矛盾，命令会在写出任何文件前失败，而不会静
 seattrellis schema export --output-dir schemas
 ```
 
-当前迁移命令支持对现行版本 snapshot、candidate set、plan comparison report 和
-project JSON 做验证与规范化写回：
+当前迁移命令支持对现行版本 ruleset、snapshot、candidate set、plan comparison
+report 和 project JSON 做验证与规范化写回。可先只验证，不写盘：
+
+```bash
+seattrellis schema migrate \
+  --input examples/rules.json \
+  --dry-run
+```
+
+确认后再规范化写回：
 
 ```bash
 seattrellis schema migrate \
@@ -224,4 +235,6 @@ seattrellis schema migrate \
   --output outputs/week1.migrated.snapshot.json
 ```
 
-旧版本迁移会在未来 schema 版本变更时加入；未知版本仍会明确报错。
+覆盖已有文件时会先创建 `.bak` 备份；可重复运行时依次使用 `.bak.1`、`.bak.2`
+等名称。旧版本迁移会在未来 schema 版本变更时加入；未知版本仍会给出可操作的
+迁移提示。

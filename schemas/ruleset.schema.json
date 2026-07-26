@@ -4,6 +4,11 @@
   "title": "SeatTrellis RuleSet",
   "type": "object",
   "properties": {
+    "schema_version": {
+      "title": "Schema Version",
+      "default": 1,
+      "type": "integer"
+    },
     "seed": {
       "title": "Seed",
       "default": 42,
@@ -345,5 +350,6 @@
       "additionalProperties": false
     }
   },
-  "x-seattrellis-artifact": "ruleset"
+  "x-seattrellis-artifact": "ruleset",
+  "x-seattrellis-schema-version": 1
 }

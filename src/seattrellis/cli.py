@@ -164,10 +164,22 @@ if typer is not None:
         input_path: Path = typer.Option(..., "--input", "-i", help="Artifact JSON path."),
         output: Path | None = typer.Option(None, "--output", "-o", help="Migrated JSON path."),
         in_place: bool = typer.Option(False, "--in-place", help="Rewrite the input file in place."),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Validate without writing files."),
+        backup: bool = typer.Option(
+            True,
+            "--backup/--no-backup",
+            help="Back up an existing destination before replacing it.",
+        ),
     ) -> None:
         _run_typer_action(
             lambda: _print_schema_migration(
-                migrate_json_file(input_path, output=output, in_place=in_place)
+                migrate_json_file(
+                    input_path,
+                    output=output,
+                    in_place=in_place,
+                    dry_run=dry_run,
+                    create_backup=backup,
+                )
             )
         )
 
@@ -838,6 +850,8 @@ def _run_argparse() -> None:
     schema_migrate_parser.add_argument("--input", "-i", required=True)
     schema_migrate_parser.add_argument("--output", "-o", default=None)
     schema_migrate_parser.add_argument("--in-place", action="store_true")
+    schema_migrate_parser.add_argument("--dry-run", action="store_true")
+    schema_migrate_parser.add_argument("--no-backup", action="store_true")
 
     solve_parser = subparsers.add_parser("solve", help="Generate a seating snapshot.")
     solve_parser.add_argument("--students", required=True)
@@ -1023,6 +1037,8 @@ def _run_argparse() -> None:
                     args.input,
                     output=args.output,
                     in_place=args.in_place,
+                    dry_run=args.dry_run,
+                    create_backup=not args.no_backup,
                 )
             )
     elif args.command == "solve":
@@ -1233,10 +1249,23 @@ def _print_repair_result(result: tuple[Path, str]) -> None:
 
 
 def _print_schema_migration(result) -> None:
-    message = (
-        f"{result.artifact} schema_version {result.schema_version!r} "
-        f"written to {result.output_path}"
-    )
+    if result.dry_run:
+        destination = (
+            f"; target would be {result.output_path}"
+            if result.output_path is not None
+            else ""
+        )
+        message = (
+            f"{result.artifact} schema_version {result.schema_version!r} is valid"
+            f"{destination}; no files written"
+        )
+    else:
+        message = (
+            f"{result.artifact} schema_version {result.schema_version!r} "
+            f"written to {result.output_path}"
+        )
+        if result.backup_path is not None:
+            message += f"\nBackup: {result.backup_path}"
     if typer is not None:
         typer.echo(message)
     else:

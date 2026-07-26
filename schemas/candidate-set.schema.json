@@ -597,6 +597,11 @@
       "title": "RuleSet",
       "type": "object",
       "properties": {
+        "schema_version": {
+          "title": "Schema Version",
+          "default": 1,
+          "type": "integer"
+        },
         "seed": {
           "title": "Seed",
           "default": 42,
