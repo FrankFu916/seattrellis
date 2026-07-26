@@ -201,6 +201,7 @@ def render_repair_panel(
                 None,
             )
             st.success(translate("repair_complete"))
+            st.rerun()
         except (
             InputFileError,
             MissingOptionalDependencyError,

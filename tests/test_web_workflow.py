@@ -1281,6 +1281,9 @@ def test_streamlit_locks_survive_undo_redo_and_repair() -> None:
     _control_by_key(app.selectbox, "quick_repair_backend").set_value("fallback")
     _control_by_key(app.button, QUICK_REPAIR_BUTTON).click()
     app.run(timeout=30)
+    # AppTest exposes Streamlit's nested rerun as a separate test cycle. A
+    # browser completes it automatically before accepting the next click.
+    app.run(timeout=30)
     repaired = app.session_state["result"].artifact
     repaired_seat = next(
         item.seat_id
