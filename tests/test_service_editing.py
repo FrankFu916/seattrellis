@@ -300,6 +300,55 @@ def test_compute_repair_preserves_locks_and_limits_changes_to_local_scope() -> N
     assert result.snapshot.metadata["repair"]["solver_backend"] == "fallback"
 
 
+def test_compute_repair_expands_local_scope_by_constraint_and_seat_adjacency() -> None:
+    result = compute_repair(
+        RepairInput(
+            snapshot=_snapshot(
+                rules=RuleSet(
+                    hard=HardRules(
+                        cannot_be_adjacent=[PairRule(students=("s1", "s3"))]
+                    )
+                )
+            ),
+            affected_students=("s1",),
+            backend="fallback",
+            time_limit_seconds=1,
+        )
+    )
+
+    repair = result.snapshot.metadata["repair"]
+    assert repair["requested_affected_students"] == ["s1"]
+    assert repair["effective_affected_students"] == ["s1", "s2", "s3"]
+    assert repair["closure_added_students"] == ["s2", "s3"]
+    assert result.mutable_students == ["s1", "s2", "s3"]
+
+
+def test_compute_repair_scope_expansion_is_limited_to_one_hop() -> None:
+    result = compute_repair(
+        RepairInput(
+            snapshot=_snapshot(
+                rules=RuleSet(
+                    hard=HardRules(
+                        cannot_be_adjacent=[
+                            PairRule(students=("s1", "s2")),
+                            PairRule(students=("s2", "s3")),
+                        ]
+                    )
+                )
+            ),
+            affected_students=("s1",),
+            backend="fallback",
+            time_limit_seconds=1,
+        )
+    )
+
+    repair = result.snapshot.metadata["repair"]
+    assert repair["effective_affected_students"] == ["s1", "s2"]
+    assert repair["closure_added_students"] == ["s2"]
+    assert result.mutable_students == ["s1", "s2"]
+    assert result.fixed_assignments == {"s3": "B1"}
+
+
 def test_compute_repair_reuses_saved_empty_seat_locks_without_mutating_layout() -> None:
     snapshot = _snapshot(
         assignments=[
@@ -393,9 +442,13 @@ def test_compute_repair_counts_existing_fixed_rules_as_effective_locks() -> None
     assert result.fixed_assignments["s1"] == "A1"
     assert "s1" not in result.mutable_students
     assert result.snapshot.metadata["repair"]["temporary_fixed_assignments"] == {
-        "s2": "A2",
         "s3": "B1",
     }
+    assert result.snapshot.metadata["repair"]["effective_affected_students"] == [
+        "s1",
+        "s2",
+    ]
+    assert result.mutable_students == ["s2"]
 
 
 def test_compute_repair_rejects_reserving_a_seat_required_by_hard_rules() -> None:
@@ -441,6 +494,35 @@ def test_compute_repair_rejects_a_solver_result_that_breaks_a_temporary_lock(
                 backend="fallback",
             )
         )
+
+
+def test_compute_repair_explains_infeasible_lock_sets() -> None:
+    snapshot = _snapshot(
+        rules=RuleSet(
+            hard=HardRules(
+                cannot_be_adjacent=[PairRule(students=("s1", "s2"))]
+            )
+        )
+    )
+
+    with pytest.raises(SeatTrellisSolveError) as exc_info:
+        compute_repair(
+            RepairInput(
+                snapshot=snapshot,
+                locked_students=("s1",),
+                locked_seats=("A2",),
+                backend="fallback",
+                time_limit_seconds=1,
+            )
+        )
+
+    message = str(exc_info.value)
+    assert "current locks and local scope" in message
+    assert "locked students: s1" in message
+    assert "locked seats: A2" in message
+    assert "unlock one or more students and retry: s1" in message
+    assert "unlock one or more seats and retry: A2" in message
+    assert "s1 and s2 cannot be adjacent" in message
 
 
 def test_compute_repair_keeps_history_metrics() -> None:

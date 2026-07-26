@@ -20,6 +20,9 @@
 - Added lock-aware constrained re-solving for global or student-scoped repair,
   including saved lock state, empty-seat reservation, history-aware fairness,
   and post-solve anchor verification.
+- Student-scoped repair now includes one-hop hard-rule and seat-adjacency
+  neighbors, records the effective scope, and suggests concrete unlock actions
+  when the active restrictions cannot be solved.
 - Added Web controls for locking students or seats and running global or
   student-scoped repair with selectable Python, OR-Tools, or native backends.
 - Added replayable Web manual swaps with immediate hard-constraint diagnostics

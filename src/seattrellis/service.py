@@ -66,8 +66,8 @@ from seattrellis.presets import (
     load_rules_with_preset,
     preset_context_warnings,
 )
+from seattrellis.repair import compile_repair_context, format_repair_solve_failure
 from seattrellis.scoring import build_plan_comparison_report, evaluate_hard_constraints
-from seattrellis.repair import compile_repair_context
 from seattrellis.service_types import (
     EditInput,
     EditOutput,
@@ -254,16 +254,27 @@ def compute_repair(input: RepairInput) -> RepairOutput:
         lookback=pair_rule.lookback,
         within_distance=pair_rule.within_distance,
     )
-    solution = solve_seating(
-        input.snapshot.students,
-        context.solver_layout,
-        context.solver_rules,
-        history=history,
-        pair_history=pair_history,
-        seed=seed,
-        time_limit_seconds=input.time_limit_seconds,
-        backend=input.backend,
-    )
+    try:
+        solution = solve_seating(
+            input.snapshot.students,
+            context.solver_layout,
+            context.solver_rules,
+            history=history,
+            pair_history=pair_history,
+            seed=seed,
+            time_limit_seconds=input.time_limit_seconds,
+            backend=input.backend,
+        )
+    except SeatTrellisSolveError as exc:
+        if (
+            context.locked_students
+            or context.locked_seats
+            or context.requested_affected_students
+        ):
+            raise SeatTrellisSolveError(
+                format_repair_solve_failure(context, exc)
+            ) from exc
+        raise
     metadata = dict(input.snapshot.metadata)
     previous_repair = metadata.get("repair")
     if isinstance(previous_repair, dict):
@@ -272,6 +283,9 @@ def compute_repair(input: RepairInput) -> RepairOutput:
             repair_history = []
         metadata["repair_history"] = [*repair_history, previous_repair]
     metadata["repair"] = {
+        "requested_affected_students": context.requested_affected_students,
+        "effective_affected_students": context.effective_affected_students,
+        "closure_added_students": context.closure_added_students,
         "locked_students": context.locked_students,
         "locked_seats": context.locked_seats,
         "mutable_students": context.mutable_students,
