@@ -69,6 +69,8 @@
 
 ### Fixed
 
+- Sparse layout coordinates no longer expand the Web seat map into thousands
+  of empty rows or columns.
 - Web repair now starts a fresh editing session immediately, so the first
   post-repair lock or move action is not lost on newer Streamlit versions.
 - Manually edited snapshots now use an explicit draft status, retain source

@@ -123,20 +123,19 @@ def build_seat_grid_html(
     if not layout.seats:
         return f"<p><em>{html_escape(translate('empty_layout', locale))}</em></p>"
 
-    # Determine grid dimensions from max row/col.
-    max_row = max(seat.row for seat in layout.seats)
-    max_col = max(seat.col for seat in layout.seats)
+    row_values, col_values = layout_grid_axes(layout.seats)
 
     assignment_map: dict[str, str] = {}
     if snapshot is not None:
         for a in snapshot.assignments:
             assignment_map[a.seat_id] = a.student_name or a.student_key
+    seat_by_position = {(seat.row, seat.col): seat for seat in layout.seats}
 
     rows_html: list[str] = []
-    for r in range(1, max_row + 1):
+    for r in row_values:
         cells: list[str] = []
-        for c in range(1, max_col + 1):
-            seat = _find_seat(layout.seats, r, c)
+        for c in col_values:
+            seat = seat_by_position.get((r, c))
             if seat is None:
                 cells.append('<div class="seat-cell empty-cell"></div>')
                 continue
@@ -175,6 +174,21 @@ def build_seat_grid_html(
         f'aria-label="{html_escape(translate("seat_grid_label", locale), quote=True)}">'
         + "".join(rows_html)
         + "</div>"
+    )
+
+
+def layout_grid_axes(seats: Sequence[SeatNode]) -> tuple[list[int], list[int]]:
+    """Return compact row and column axes for a sparse classroom layout.
+
+    Layout coordinates are identifiers rather than a license to allocate every
+    intervening cell. Explicit disabled seats can still represent intentional
+    gaps, while malformed coordinates cannot expand a small layout into a huge
+    browser grid.
+    """
+
+    return (
+        sorted({seat.row for seat in seats}),
+        sorted({seat.col for seat in seats}),
     )
 
 
@@ -534,13 +548,6 @@ div[data-testid="stDownloadButton"] button {
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _find_seat(seats: list[SeatNode], row: int, col: int) -> SeatNode | None:
-    for seat in seats:
-        if seat.row == row and seat.col == col:
-            return seat
-    return None
 
 
 def _tag_color_classes(seat: SeatNode) -> str:

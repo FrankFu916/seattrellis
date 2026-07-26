@@ -26,6 +26,7 @@ from seattrellis.io.json_files import InputFileError
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver import SeatTrellisSolveError
+from seattrellis.web.components import layout_grid_axes
 from seattrellis.web.keys import (
     PROJECT_BATCH_MOVE_BUTTON,
     PROJECT_BATCH_SEATS_SELECT,
@@ -455,14 +456,13 @@ def _render_seat_canvas(
         )
 
     clicked_seat: str | None = None
-    max_row = max(seat.row for seat in seats)
-    max_col = max(seat.col for seat in seats)
-    for row in range(1, max_row + 1):
-        columns = st.columns(max_col)
-        for col in range(1, max_col + 1):
+    row_values, col_values = layout_grid_axes(seats)
+    for row in row_values:
+        columns = st.columns(len(col_values))
+        for column_index, col in enumerate(col_values):
             seat = seat_by_position.get((row, col))
             if seat is None:
-                columns[col - 1].empty()
+                columns[column_index].empty()
                 continue
             assignment = assignments.get(seat.seat_id)
             locked = (
@@ -484,7 +484,7 @@ def _render_seat_canvas(
                 lock_marker = " 🔒" if locked else ""
                 label = f"{marker}{seat.seat_id}{lock_marker}\n{occupant}"
             disabled = not seat.enabled or (mode == "move" and locked)
-            if columns[col - 1].button(
+            if columns[column_index].button(
                 label,
                 key=f"{prefix}_canvas_seat_{seat.seat_id}",
                 disabled=disabled,

@@ -20,6 +20,7 @@ from seattrellis.web.components import (
     build_privacy_notice_html,
     build_seat_grid_html,
     diagnose_error,
+    layout_grid_axes,
 )
 from seattrellis.web.i18n import (
     LANGUAGE_OPTIONS,
@@ -98,6 +99,24 @@ def test_seat_grid_and_privacy_notice_support_english() -> None:
     assert 'aria-disabled="true"' in html
     assert "Privacy" in notice
     assert "does not upload student information" in notice
+
+
+def test_seat_grid_compacts_extreme_sparse_coordinates() -> None:
+    layout = ClassroomLayout(
+        seats=[
+            SeatNode(seat_id="A", row=1, col=1),
+            SeatNode(seat_id="B", row=10_000, col=10_000),
+        ]
+    )
+
+    rows, columns = layout_grid_axes(layout.seats)
+    html = build_seat_grid_html(layout)
+
+    assert rows == [1, 10_000]
+    assert columns == [1, 10_000]
+    assert html.count('class="seat-cell') == 4
+    assert html.count('role="gridcell"') == 2
+    assert len(html) < 10_000
 
 
 def test_plain_data_table_localizes_columns_and_escapes_values() -> None:
