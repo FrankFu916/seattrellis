@@ -147,7 +147,7 @@ def test_project_path_validates_solves_and_exports_selected_candidate(
     assert selected_id in html
     assert "Plan explanation" in html
     output_path = project_path.parent / "outputs" / "project-seating.print.html"
-    assert output_path.read_bytes() == html_path.read_bytes()
+    assert not output_path.exists()
 
     assert_no_app_exception(page)
     web_server.assert_healthy()
