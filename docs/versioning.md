@@ -83,11 +83,12 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 
 | 组件 | 承诺 |
 |------|------|
-| Python 版本 | ≥ 3.11（跟随 Python 支持周期） |
+| Python 版本 | 3.11–3.14（v1.x 最低版本保持 3.11） |
 | 操作系统 | macOS ≥ 13, Windows ≥ 10, Ubuntu ≥ 22.04 |
 | Pydantic | 1.10+ 和 2.x 双轨（v1 兼容模式优先） |
 | OR-Tools | 9.15.x |
 | Streamlit | 1.50+ |
+| Rust 原生扩展 | Rust ≥ 1.83；Python 3.11–3.14 |
 
 ## v1.x 兼容范围
 

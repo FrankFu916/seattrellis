@@ -78,7 +78,7 @@ Linux 开发机若尚未安装 Chromium 的系统依赖，使用
 health endpoint。
 
 测试使用应用自有的 keyed region 与可访问名称定位控件，不依赖控件顺序或中文
-文案。CI 在 Ubuntu、Python 3.12 和 Chromium 上单独执行这组测试；失败时上传
+文案。CI 在 Ubuntu、Python 3.14 和 Chromium 上单独执行这组测试；失败时上传
 浏览器 trace、截图和 Streamlit 服务日志。
 
 后续浏览器覆盖按以下顺序扩充：
