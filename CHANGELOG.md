@@ -46,6 +46,8 @@
 - Updated the optional native binding to PyO3 0.29 and maturin 1.14, declared
   Rust 1.83 as its minimum supported toolchain, and added Python 3.13 and 3.14
   package metadata.
+- Expanded source-package testing and publish verification to Python 3.11
+  through 3.14 while keeping Python 3.11 as the minimum supported version.
 - Documentation now distinguishes seeded fallback behavior from reproducible
   runs that complete their fixed attempt budget without a wall-clock cutoff.
 - Removed the misleading `native` extra. The experimental Rust extension is
