@@ -9,14 +9,8 @@ from seattrellis.io.validation import validate_loaded_inputs
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import MinDistanceRule, PairRule, RuleSet
 from seattrellis.models.student import Student
-from seattrellis.solver.adjacency import (
-    SeatEdge,
-    build_adjacency_edges,
-    graph_distance,
-    normalize_edge,
-    seat_distance,
-)
 from seattrellis.solver.errors import SeatTrellisSolveError
+from seattrellis.solver.precompute import CompiledTopology, precompute_topology
 
 
 @dataclass(frozen=True)
@@ -36,12 +30,29 @@ class CompiledProblem:
     students: list[Student]
     layout: ClassroomLayout
     rules: RuleSet
-    seats: list[SeatNode]
-    edges: set[SeatEdge]
+    topology: CompiledTopology
     rules_compiled: CompiledRules
     excluded_assignments: list[dict[int, int]]
-    student_index_by_key: dict[str, int]
-    seat_index_by_id: dict[str, int]
+
+    @property
+    def seats(self) -> list[SeatNode]:
+        """Enabled seats in their stable solver index order."""
+
+        return self.topology.seats
+
+    @property
+    def edges(self) -> set[tuple[str, str]]:
+        """String-based adjacency edges retained for existing cost helpers."""
+
+        return self.topology.edges
+
+    @property
+    def student_index_by_key(self) -> dict[str, int]:
+        return self.topology.student_index_by_key
+
+    @property
+    def seat_index_by_id(self) -> dict[str, int]:
+        return self.topology.seat_index_by_id
 
 
 def compile_problem(
@@ -54,12 +65,12 @@ def compile_problem(
 ) -> CompiledProblem:
     """Validate and precompute a solver-ready problem."""
 
-    seats = sorted(layout.enabled_seats, key=lambda seat: (seat.row, seat.col, seat.seat_id))
     if not students:
         raise SeatTrellisSolveError("At least one student is required.")
-    if len(students) > len(seats):
+    enabled_seat_count = len(layout.enabled_seats)
+    if len(students) > enabled_seat_count:
         raise SeatTrellisSolveError(
-            f"Not enough enabled seats: {len(students)} students but only {len(seats)} enabled seats."
+            f"Not enough enabled seats: {len(students)} students but only {enabled_seat_count} enabled seats."
         )
 
     _validate_unique_students(students)
@@ -68,21 +79,16 @@ def compile_problem(
         if validation_report.errors:
             raise SeatTrellisSolveError(validation_report.format_failure(title="Input validation failed."))
 
-    edges = build_adjacency_edges(layout)
-    student_index_by_key = {student.key: index for index, student in enumerate(students)}
-    seat_index_by_id = {seat.seat_id: index for index, seat in enumerate(seats)}
-    rules_compiled = _compile_rules(students, seats, layout, rules, edges)
-    excluded = _compile_excluded_assignments(students, seats, excluded_assignments or [])
+    topology = precompute_topology(students, layout)
+    rules_compiled = _compile_rules(students, topology, rules)
+    excluded = _compile_excluded_assignments(topology, excluded_assignments or [])
     return CompiledProblem(
         students=students,
         layout=layout,
         rules=rules,
-        seats=seats,
-        edges=edges,
+        topology=topology,
         rules_compiled=rules_compiled,
         excluded_assignments=excluded,
-        student_index_by_key=student_index_by_key,
-        seat_index_by_id=seat_index_by_id,
     )
 
 
@@ -99,36 +105,38 @@ def assignment_is_excluded(
     )
 
 
-def seat_indexes_adjacent(seats: list[SeatNode], first_index: int, second_index: int, edges: set[SeatEdge]) -> bool:
+def seat_indexes_adjacent(
+    problem: CompiledProblem,
+    first_index: int,
+    second_index: int,
+) -> bool:
     """Check adjacency for two seat indexes in a compiled problem."""
 
-    if first_index == second_index:
-        return False
-    return normalize_edge(seats[first_index].seat_id, seats[second_index].seat_id) in edges
+    return problem.topology.seats_are_adjacent(first_index, second_index)
 
 
 def distance_for_rule(
-    layout: ClassroomLayout,
-    first_seat: SeatNode,
-    second_seat: SeatNode,
+    problem: CompiledProblem,
+    first_seat_index: int,
+    second_seat_index: int,
     rule: MinDistanceRule,
 ) -> float:
     """Distance metric used by min-distance hard rules."""
 
-    if rule.metric == "graph":
-        return graph_distance(layout, first_seat.seat_id, second_seat.seat_id)
-    return seat_distance(first_seat, second_seat)
+    return problem.topology.distance(
+        first_seat_index,
+        second_seat_index,
+        rule.metric,
+    )
 
 
 def _compile_rules(
     students: list[Student],
-    seats: list[SeatNode],
-    layout: ClassroomLayout,
+    topology: CompiledTopology,
     rules: RuleSet,
-    edges: set[SeatEdge],
 ) -> CompiledRules:
     student_refs = _student_reference_map(students)
-    seat_index_by_id = {seat.seat_id: index for index, seat in enumerate(seats)}
+    seat_index_by_id = topology.seat_index_by_id
     fixed: dict[int, int] = {}
     fixed_seats_seen: dict[int, int] = {}
 
@@ -153,17 +161,16 @@ def _compile_rules(
             for rule in rules.hard.min_distance
         ],
     )
-    _validate_compiled_rule_conflicts(compiled, seats, layout, edges)
+    _validate_compiled_rule_conflicts(compiled, topology)
     return compiled
 
 
 def _compile_excluded_assignments(
-    students: Sequence[Student],
-    seats: Sequence[SeatNode],
+    topology: CompiledTopology,
     excluded_assignments: Sequence[Mapping[str, str]],
 ) -> list[dict[int, int]]:
-    student_index_by_key = {student.key: index for index, student in enumerate(students)}
-    seat_index_by_id = {seat.seat_id: index for index, seat in enumerate(seats)}
+    student_index_by_key = topology.student_index_by_key
+    seat_index_by_id = topology.seat_index_by_id
     compiled: list[dict[int, int]] = []
     for excluded in excluded_assignments:
         if set(excluded) != set(student_index_by_key):
@@ -185,9 +192,7 @@ def _compile_excluded_assignments(
 
 def _validate_compiled_rule_conflicts(
     compiled: CompiledRules,
-    seats: list[SeatNode],
-    layout: ClassroomLayout,
-    edges: set[SeatEdge],
+    topology: CompiledTopology,
 ) -> None:
     must_pairs = {_pair_key(first, second) for first, second in compiled.must_be_adjacent}
     cannot_pairs = {_pair_key(first, second) for first, second in compiled.cannot_be_adjacent}
@@ -200,25 +205,28 @@ def _validate_compiled_rule_conflicts(
     fixed_by_student = compiled.fixed_seats
     for first_index, second_index in compiled.must_be_adjacent:
         if first_index in fixed_by_student and second_index in fixed_by_student:
-            first_seat = seats[fixed_by_student[first_index]]
-            second_seat = seats[fixed_by_student[second_index]]
-            if normalize_edge(first_seat.seat_id, second_seat.seat_id) not in edges:
+            first_seat_index = fixed_by_student[first_index]
+            second_seat_index = fixed_by_student[second_index]
+            if not topology.seats_are_adjacent(first_seat_index, second_seat_index):
                 raise SeatTrellisSolveError(
                     "Conflicting hard rules: fixed seats do not satisfy a must_be_adjacent rule."
                 )
     for first_index, second_index in compiled.cannot_be_adjacent:
         if first_index in fixed_by_student and second_index in fixed_by_student:
-            first_seat = seats[fixed_by_student[first_index]]
-            second_seat = seats[fixed_by_student[second_index]]
-            if normalize_edge(first_seat.seat_id, second_seat.seat_id) in edges:
+            first_seat_index = fixed_by_student[first_index]
+            second_seat_index = fixed_by_student[second_index]
+            if topology.seats_are_adjacent(first_seat_index, second_seat_index):
                 raise SeatTrellisSolveError(
                     "Conflicting hard rules: fixed seats violate a cannot_be_adjacent rule."
                 )
     for first_index, second_index, rule in compiled.min_distance:
         if first_index in fixed_by_student and second_index in fixed_by_student:
-            first_seat = seats[fixed_by_student[first_index]]
-            second_seat = seats[fixed_by_student[second_index]]
-            if distance_for_rule(layout, first_seat, second_seat, rule) < rule.distance:
+            first_seat_index = fixed_by_student[first_index]
+            second_seat_index = fixed_by_student[second_index]
+            if (
+                topology.distance(first_seat_index, second_seat_index, rule.metric)
+                < rule.distance
+            ):
                 raise SeatTrellisSolveError(
                     "Conflicting hard rules: fixed seats violate a min_distance rule."
                 )

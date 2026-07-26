@@ -12,10 +12,10 @@ from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
-from seattrellis.solver.adjacency import SeatEdge, normalize_edge
+from seattrellis.solver.adjacency import SeatEdge
 from seattrellis.solver.backend_common import individual_cost, solution_from_assignment
 from seattrellis.solver.errors import SeatTrellisSolveError
-from seattrellis.solver.problem import CompiledProblem, CompiledRules, distance_for_rule
+from seattrellis.solver.problem import CompiledProblem, distance_for_rule
 from seattrellis.solver.result import SeatingSolution
 
 cp_model = None
@@ -54,12 +54,12 @@ def solve_with_ortools(
     for student_index, seat_index in compiled.fixed_seats.items():
         model.Add(x[(student_index, seat_index)] == 1)
 
-    _add_pair_constraints(model, x, seats, compiled, layout, edges)
+    _add_pair_constraints(model, x, problem)
     for excluded in problem.excluded_assignments:
         model.Add(sum(x[(student_index, seat_index)] for student_index, seat_index in excluded.items()) <= len(students) - 1)
     objective_terms = _build_individual_objective_terms(x, students, seats, layout, rules, history, seed)
     objective_terms.extend(_build_pair_objective_terms(model, x, students, seats, layout, rules, edges, pair_history))
-    objective_terms.extend(_build_score_balance_terms(model, x, students, seats, rules, edges))
+    objective_terms.extend(_build_score_balance_terms(model, x, problem))
     if objective_terms:
         model.Minimize(sum(coef * var for var, coef in objective_terms))
 
@@ -129,39 +129,47 @@ def _load_cp_model():
 def _add_pair_constraints(
     model: Any,
     x: dict[tuple[int, int], Any],
-    seats: list[SeatNode],
-    compiled: CompiledRules,
-    layout: ClassroomLayout,
-    edges: set[SeatEdge],
+    problem: CompiledProblem,
 ) -> None:
+    seats = problem.seats
+    compiled = problem.rules_compiled
     for first_index, second_index in compiled.must_be_adjacent:
-        for first_seat_index, first_seat in enumerate(seats):
-            for second_seat_index, second_seat in enumerate(seats):
+        for first_seat_index in range(len(seats)):
+            for second_seat_index in range(len(seats)):
                 if first_seat_index == second_seat_index:
                     continue
-                edge = normalize_edge(first_seat.seat_id, second_seat.seat_id)
-                if edge not in edges:
+                if not problem.topology.seats_are_adjacent(
+                    first_seat_index,
+                    second_seat_index,
+                ):
                     model.AddBoolOr(
                         [x[(first_index, first_seat_index)].Not(), x[(second_index, second_seat_index)].Not()]
                     )
 
     for first_index, second_index in compiled.cannot_be_adjacent:
-        for first_seat_index, first_seat in enumerate(seats):
-            for second_seat_index, second_seat in enumerate(seats):
+        for first_seat_index in range(len(seats)):
+            for second_seat_index in range(len(seats)):
                 if first_seat_index == second_seat_index:
                     continue
-                edge = normalize_edge(first_seat.seat_id, second_seat.seat_id)
-                if edge in edges:
+                if problem.topology.seats_are_adjacent(
+                    first_seat_index,
+                    second_seat_index,
+                ):
                     model.AddBoolOr(
                         [x[(first_index, first_seat_index)].Not(), x[(second_index, second_seat_index)].Not()]
                     )
 
     for first_index, second_index, rule in compiled.min_distance:
-        for first_seat_index, first_seat in enumerate(seats):
-            for second_seat_index, second_seat in enumerate(seats):
+        for first_seat_index in range(len(seats)):
+            for second_seat_index in range(len(seats)):
                 if first_seat_index == second_seat_index:
                     continue
-                distance = distance_for_rule(layout, first_seat, second_seat, rule)
+                distance = distance_for_rule(
+                    problem,
+                    first_seat_index,
+                    second_seat_index,
+                    rule,
+                )
                 if distance < rule.distance:
                     model.AddBoolOr(
                         [x[(first_index, first_seat_index)].Not(), x[(second_index, second_seat_index)].Not()]
@@ -242,16 +250,14 @@ def _build_pair_objective_terms(
 def _build_score_balance_terms(
     model: Any,
     x: dict[tuple[int, int], Any],
-    students: list[Student],
-    seats: list[SeatNode],
-    rules: RuleSet,
-    edges: set[SeatEdge],
+    problem: CompiledProblem,
 ) -> list[tuple[Any, int]]:
+    students = problem.students
+    rules = problem.rules
     soft = rules.soft.score_balance
     if not soft.enabled or soft.weight == 0:
         return []
 
-    seat_index_by_id = {seat.seat_id: index for index, seat in enumerate(seats)}
     terms: list[tuple[Any, int]] = []
     for first_student_index, first_student in enumerate(students):
         if first_student.score is None:
@@ -263,10 +269,11 @@ def _build_score_balance_terms(
             score_gap = int(round(abs(float(first_student.score) - float(second_student.score))))
             if score_gap == 0:
                 continue
-            for first_seat_id, second_seat_id in edges:
-                for a_id, b_id in ((first_seat_id, second_seat_id), (second_seat_id, first_seat_id)):
-                    a_index = seat_index_by_id[a_id]
-                    b_index = seat_index_by_id[b_id]
+            for first_seat_index, second_seat_index in problem.topology.adjacent_seat_index_pairs:
+                for a_index, b_index in (
+                    (first_seat_index, second_seat_index),
+                    (second_seat_index, first_seat_index),
+                ):
                     pair_var = model.NewBoolVar(
                         f"score_pair_{first_student_index}_{second_student_index}_{a_index}_{b_index}"
                     )

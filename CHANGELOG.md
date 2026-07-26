@@ -13,6 +13,8 @@
   and history explanations.
 - Added JSON Schema export and normalization commands for versioned project
   artifacts and editor protocol messages.
+- Added RuleSet schema versioning, migration dry runs, and automatic backups
+  before an existing migration destination is replaced.
 - Added UI-neutral manual editing sessions, replayable operation files, and
   Project commands for editing saved candidates.
 - Added lock-aware constrained re-solving for global or student-scoped repair,
@@ -45,6 +47,8 @@
 
 - Solver selection now uses a common backend protocol and capability registry,
   while preserving the existing CLI and service backend names.
+- Solver backends now share stable indexes, indexed adjacency, and precomputed
+  Euclidean and graph-distance matrices through `CompiledProblem`.
 - Updated the optional native binding to PyO3 0.29 and maturin 1.14, declared
   Rust 1.83 as its minimum supported toolchain, and added Python 3.13 and 3.14
   package metadata.
