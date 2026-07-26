@@ -524,8 +524,9 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     recommended_edited = load_snapshot(
         tmp_path / "outputs" / "recommended-edited.snapshot.json"
     )
-    assert recommended_edited.metadata["candidate"]["candidate_id"]
+    assert recommended_edited.metadata["source_candidate"]["candidate_id"]
     assert recommended_edited.metadata["manual_edit"]["operation_count"] == 1
+    assert recommended_edited.solver_status == "MANUAL_DRAFT"
     assert (tmp_path / "outputs" / "recommended.html").exists()
     private_print = (tmp_path / "outputs" / "private-print.html").read_text(
         encoding="utf-8"
@@ -545,8 +546,9 @@ def test_readme_quick_start_commands_run(tmp_path) -> None:
     assert (tmp_path / "outputs" / "project-repaired.snapshot.json").exists()
     assert (tmp_path / "outputs" / "project-repaired.html").exists()
     project_edited = load_snapshot(tmp_path / "outputs" / "project-edited.snapshot.json")
-    assert project_edited.metadata["candidate"]["candidate_id"]
+    assert project_edited.metadata["source_candidate"]["candidate_id"]
     assert project_edited.metadata["manual_edit"]["operation_count"] == 1
+    assert project_edited.solver_status == "MANUAL_DRAFT"
     project_repaired = load_snapshot(
         tmp_path / "outputs" / "project-repaired.snapshot.json"
     )

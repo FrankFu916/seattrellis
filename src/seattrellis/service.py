@@ -7,6 +7,9 @@ functions handle file loading, output paths, and command-oriented formatting.
 from __future__ import annotations
 
 import sys
+from copy import deepcopy
+from dataclasses import replace
+from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from math import isfinite
 from pathlib import Path
@@ -200,7 +203,7 @@ def compute_edit(input: EditInput) -> EditOutput:
         summary = session.apply(operation)
 
     lock_state = session.lock_state
-    return EditOutput(
+    result = EditOutput(
         snapshot=snapshot_with_lock_state(session.current_snapshot(), lock_state),
         hard_constraints=summary,
         unseated_students=session.unseated_students(),
@@ -208,6 +211,10 @@ def compute_edit(input: EditInput) -> EditOutput:
         locked_seats=sorted(session.locked_seats),
         operation_log=session.operation_log,
         lock_state=lock_state,
+    )
+    return replace(
+        result,
+        snapshot=_snapshot_with_edit_metadata(result.snapshot, result),
     )
 
 
@@ -258,6 +265,12 @@ def compute_repair(input: RepairInput) -> RepairOutput:
         backend=input.backend,
     )
     metadata = dict(input.snapshot.metadata)
+    previous_repair = metadata.get("repair")
+    if isinstance(previous_repair, dict):
+        repair_history = metadata.get("repair_history", [])
+        if not isinstance(repair_history, list):
+            repair_history = []
+        metadata["repair_history"] = [*repair_history, previous_repair]
     metadata["repair"] = {
         "locked_students": context.locked_students,
         "locked_seats": context.locked_seats,
@@ -604,8 +617,7 @@ def edit_snapshot(
     if strict and not result.hard_constraints.satisfied:
         raise ValueError(_format_edit_strict_failure(result))
 
-    snapshot = _snapshot_with_edit_metadata(result.snapshot, result)
-    path = write_json_model(snapshot, output_path)
+    path = write_json_model(result.snapshot, output_path)
     return path, _format_edit_summary(result)
 
 
@@ -1140,26 +1152,73 @@ def _snapshot_with_edit_metadata(
     result: EditOutput,
 ) -> SeatingSnapshot:
     metadata = dict(snapshot.metadata)
+    candidate = metadata.pop("candidate", None)
+    if isinstance(candidate, dict):
+        metadata["source_candidate"] = candidate
+    repair = metadata.pop("repair", None)
+    if isinstance(repair, dict):
+        metadata["source_repair"] = repair
+
+    prior_edit = metadata.pop("manual_edit", None)
+    prior_operations: list[object] = []
+    prior_operation_count = 0
+    if isinstance(prior_edit, dict):
+        stored_operations = prior_edit.get("operations")
+        if isinstance(stored_operations, list):
+            prior_operations = deepcopy(stored_operations)
+        stored_count = prior_edit.get("operation_count")
+        if isinstance(stored_count, int) and stored_count >= 0:
+            prior_operation_count = stored_count
+        else:
+            prior_operation_count = len(prior_operations)
+
+    new_operations = [
+        {
+            "kind": record.operation.kind,
+            "payload": deepcopy(record.operation.payload),
+        }
+        for record in result.operation_log
+    ]
+    source_solution = metadata.get("source_solution")
+    if not isinstance(source_solution, dict) or snapshot.solver_status != "MANUAL_DRAFT":
+        metadata["source_solution"] = {
+            "created_at": snapshot.created_at.isoformat(),
+            "solver_status": snapshot.solver_status,
+            "objective_value": snapshot.objective_value,
+            "metrics": deepcopy(snapshot.metrics),
+        }
+
+    operation_count = prior_operation_count + len(new_operations)
+    edited_at = datetime.now(timezone.utc)
     metadata["manual_edit"] = {
-        "operation_count": len(result.operation_log),
-        "operations": [
-            {
-                "kind": record.operation.kind,
-                "payload": dict(record.operation.payload),
-            }
-            for record in result.operation_log
-        ],
+        "edited_at": edited_at.isoformat(),
+        "operation_count": operation_count,
+        "operations": [*prior_operations, *new_operations],
         "locked_students": list(result.locked_students),
         "locked_seats": list(result.locked_seats),
         "unseated_students": list(result.unseated_students),
         "hard_constraints_satisfied": result.hard_constraints.satisfied,
         "violation_count": result.hard_constraints.violation_count,
     }
+    current_metrics = {
+        "manual_edit": {
+            "operation_count": operation_count,
+            "hard_constraints_satisfied": result.hard_constraints.satisfied,
+            "violation_count": result.hard_constraints.violation_count,
+        }
+    }
+    updates = {
+        "created_at": edited_at,
+        "metadata": metadata,
+        "solver_status": "MANUAL_DRAFT",
+        "objective_value": None,
+        "metrics": current_metrics,
+    }
     if hasattr(snapshot, "model_copy"):
         return snapshot.model_copy(  # type: ignore[attr-defined,return-value]
-            update={"metadata": metadata}
+            update=updates
         )
-    return snapshot.copy(update={"metadata": metadata})
+    return snapshot.copy(update=updates)
 
 
 def _snapshot_with_repair_provenance(snapshot: SeatingSnapshot) -> SeatingSnapshot:
@@ -1169,11 +1228,16 @@ def _snapshot_with_repair_provenance(snapshot: SeatingSnapshot) -> SeatingSnapsh
     candidate = metadata.pop("candidate", None)
     if isinstance(candidate, dict):
         metadata["source_candidate"] = candidate
-        repair = metadata.get("repair")
-        if isinstance(repair, dict):
-            repair = dict(repair)
-            repair["source_candidate_id"] = candidate.get("candidate_id")
-            metadata["repair"] = repair
+    manual_edit = metadata.pop("manual_edit", None)
+    if isinstance(manual_edit, dict):
+        metadata["source_manual_edit"] = manual_edit
+
+    source_candidate = metadata.get("source_candidate")
+    repair = metadata.get("repair")
+    if isinstance(source_candidate, dict) and isinstance(repair, dict):
+        repair = dict(repair)
+        repair["source_candidate_id"] = source_candidate.get("candidate_id")
+        metadata["repair"] = repair
     if hasattr(snapshot, "model_copy"):
         return snapshot.model_copy(  # type: ignore[attr-defined,return-value]
             update={"metadata": metadata}

@@ -67,6 +67,9 @@
 
 ### Fixed
 
+- Manually edited snapshots now use an explicit draft status, retain source
+  provenance, and stop presenting stale solver scores, objectives, or metrics
+  as current results.
 - Schema migrations now replace files atomically and preserve the original
   artifact if the final write cannot be completed.
 - Candidate comparison and anonymized reports no longer embed potentially

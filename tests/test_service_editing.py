@@ -10,6 +10,7 @@ from seattrellis.editing import (
     EditingSession,
     snapshot_with_lock_state,
 )
+from seattrellis.exporters.html import export_html
 from seattrellis.io.json_files import load_snapshot, write_json_model
 from seattrellis.io.project import write_project
 from seattrellis.models.candidate import (
@@ -127,6 +128,13 @@ def test_compute_edit_reports_unseated_draft_and_hard_constraint_summary() -> No
     assert "Assignments do not contain every current student exactly once." in (
         result.hard_constraints.violations
     )
+    assert result.snapshot.solver_status == "MANUAL_DRAFT"
+    assert result.snapshot.objective_value is None
+    assert result.snapshot.metrics["manual_edit"] == {
+        "operation_count": 1,
+        "hard_constraints_satisfied": False,
+        "violation_count": 1,
+    }
 
 
 def test_batch_move_is_atomic_and_undoable() -> None:
@@ -313,6 +321,8 @@ def test_compute_repair_reuses_saved_empty_seat_locks_without_mutating_layout() 
     assert "B2" not in {_seat_for(result.snapshot, key) for key in ["s1", "s2", "s3"]}
     assert result.snapshot.layout.seat_by_id("B2").enabled is True
     assert result.snapshot.metadata["repair"]["reserved_empty_seats"] == ["B2"]
+    assert "manual_edit" not in result.snapshot.metadata
+    assert result.snapshot.metadata["source_manual_edit"]["locked_seats"] == ["B2"]
 
 
 def test_compute_repair_rejects_a_student_that_is_both_affected_and_locked() -> None:
@@ -451,7 +461,11 @@ def test_compute_repair_keeps_history_metrics() -> None:
 
 
 def test_edit_snapshot_writes_draft_and_strict_rejects_violations(tmp_path) -> None:
-    snapshot_path = write_json_model(_snapshot(), tmp_path / "input.snapshot.json")
+    source = _snapshot()
+    source.solver_status = "FEASIBLE"
+    source.objective_value = 1711
+    source.metrics = {"solver_backend_effective": "fallback"}
+    snapshot_path = write_json_model(source, tmp_path / "input.snapshot.json")
     draft_path = tmp_path / "draft.snapshot.json"
     strict_path = tmp_path / "strict.snapshot.json"
 
@@ -473,6 +487,14 @@ def test_edit_snapshot_writes_draft_and_strict_rejects_violations(tmp_path) -> N
     assert draft.metadata["manual_edit"]["operation_count"] == 1
     assert draft.metadata["manual_edit"]["operations"][0]["kind"] == "move_student"
     assert draft.metadata["manual_edit"]["hard_constraints_satisfied"] is False
+    assert draft.solver_status == "MANUAL_DRAFT"
+    assert draft.objective_value is None
+    assert draft.metadata["source_solution"] == {
+        "created_at": source.created_at.isoformat(),
+        "solver_status": "FEASIBLE",
+        "objective_value": 1711.0,
+        "metrics": {"solver_backend_effective": "fallback"},
+    }
 
     with pytest.raises(EditingError):
         edit_snapshot(
@@ -563,10 +585,15 @@ def test_edit_snapshot_selects_recommended_candidate_by_default(tmp_path) -> Non
     edited = load_snapshot(path)
     assert path == output_path
     assert "hard constraints: satisfied" in summary
-    assert edited.metadata["candidate"]["candidate_id"] == "candidate_02"
+    assert edited.metadata["source_candidate"]["candidate_id"] == "candidate_02"
+    assert "candidate" not in edited.metadata
     assert edited.metadata["manual_edit"]["operation_count"] == 1
     assert _seat_for(edited, "s1") == "A2"
     assert _seat_for(edited, "s2") == "B1"
+    html = export_html(edited, tmp_path / "recommended-edited.html").read_text(
+        encoding="utf-8"
+    )
+    assert "Score: 90" not in html
 
 
 def test_edit_snapshot_can_select_candidate_and_rejects_candidate_for_snapshot(tmp_path) -> None:
@@ -586,7 +613,7 @@ def test_edit_snapshot_can_select_candidate_and_rejects_candidate_for_snapshot(t
     )
 
     selected = load_snapshot(selected_path)
-    assert selected.metadata["candidate"]["candidate_id"] == "candidate_01"
+    assert selected.metadata["source_candidate"]["candidate_id"] == "candidate_01"
     assert _seat_for(selected, "s1") == "A2"
     assert _seat_for(selected, "s2") == "A1"
 
@@ -679,8 +706,43 @@ def test_project_edit_uses_latest_project_artifact_by_default(tmp_path) -> None:
     edited = load_snapshot(path)
     assert path == outputs_dir / "latest.edited.snapshot.json"
     assert "hard constraints: satisfied" in summary
-    assert edited.metadata["candidate"]["candidate_id"] == "candidate_02"
+    assert edited.metadata["source_candidate"]["candidate_id"] == "candidate_02"
     assert edited.metadata["manual_edit"]["operation_count"] == 1
+
+
+def test_reediting_a_draft_retains_the_complete_operation_history(tmp_path) -> None:
+    source_path = write_json_model(_snapshot(), tmp_path / "source.snapshot.json")
+    first_path, _summary = edit_snapshot(
+        snapshot_path=source_path,
+        output_path=tmp_path / "first.snapshot.json",
+        operations=[
+            EditingOperation(
+                kind="swap_students",
+                payload={"first_student": "s1", "second_student": "s2"},
+            )
+        ],
+    )
+
+    second_path, _summary = edit_snapshot(
+        snapshot_path=first_path,
+        output_path=tmp_path / "second.snapshot.json",
+        operations=[
+            EditingOperation(
+                kind="unseat_student",
+                payload={"student_key": "s3"},
+            )
+        ],
+    )
+
+    second = load_snapshot(second_path)
+    assert second.metadata["manual_edit"]["operation_count"] == 2
+    assert [
+        operation["kind"]
+        for operation in second.metadata["manual_edit"]["operations"]
+    ] == ["swap_students", "unseat_student"]
+    assert second.metadata["source_solution"]["solver_status"] == (
+        "manual-service-test"
+    )
 
 
 def _snapshot(
