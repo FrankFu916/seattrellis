@@ -376,8 +376,9 @@ def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
     demo_loaded = bool(_ss("demo_loaded"))
 
     if students_file is not None and layout_file is not None:
-        students_path = input_root / Path(students_file.name).name
-        layout_path = input_root / Path(layout_file.name).name
+        students_suffix = Path(students_file.name).suffix.lower() or ".csv"
+        students_path = input_root / f"students{students_suffix}"
+        layout_path = input_root / "layout.json"
         students_path.write_bytes(students_file.getvalue())
         layout_path.write_bytes(layout_file.getvalue())
     elif demo_loaded:
@@ -391,7 +392,7 @@ def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
     rules_path: Path | None = None
     rules_file = _ss("_qf_rules")
     if rules_file is not None:
-        rules_path = input_root / Path(rules_file.name).name
+        rules_path = input_root / "rules.json"
         rules_path.write_bytes(rules_file.getvalue())
     else:
         restored_rules = _current_rules_data()
@@ -404,8 +405,7 @@ def _materialize_quick_inputs() -> tuple[Path, Path, Path | None, list[Path]]:
 
     history_paths: list[Path] = []
     for index, history_file in enumerate(_ss("_qf_history") or [], start=1):
-        safe_name = Path(history_file.name).name
-        history_path = input_root / f"history-{index:02d}-{safe_name}"
+        history_path = input_root / f"history-{index:02d}.snapshot.json"
         history_path.write_bytes(history_file.getvalue())
         history_paths.append(history_path)
     if not history_paths and demo_loaded and _ss("demo_history_dir"):

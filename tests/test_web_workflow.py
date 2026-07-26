@@ -717,29 +717,36 @@ def test_streamlit_uploads_survive_wizard_navigation_and_invalidate_results(
 
     app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
     app.run(timeout=10)
-    for key, path, mime_type in (
-        (QUICK_STUDENTS_UPLOAD, Path("tests/fixtures/students.csv"), "text/csv"),
+    for key, path, upload_name, mime_type in (
+        (
+            QUICK_STUDENTS_UPLOAD,
+            Path("tests/fixtures/students.csv"),
+            "students.csv",
+            "text/csv",
+        ),
         (
             QUICK_LAYOUT_UPLOAD,
             Path("tests/fixtures/classroom.json"),
+            "config.json",
             "application/json",
         ),
         (
             QUICK_RULES_UPLOAD,
             Path("tests/fixtures/rules.json"),
+            "config.json",
             "application/json",
         ),
     ):
         _control_by_key(app.file_uploader, key).upload(
-            path.name,
+            upload_name,
             path.read_bytes(),
             mime_type,
         )
         app.run(timeout=10)
 
     assert app.session_state["_qf_students"].name == "students.csv"
-    assert app.session_state["_qf_layout"].name == "classroom.json"
-    assert app.session_state["_qf_rules"].name == "rules.json"
+    assert app.session_state["_qf_layout"].name == "config.json"
+    assert app.session_state["_qf_rules"].name == "config.json"
 
     step = _control_by_key(app.radio, QUICK_STEP_RADIO)
     step.set_value("solve")

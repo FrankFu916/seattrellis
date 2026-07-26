@@ -69,6 +69,8 @@
 
 ### Fixed
 
+- Quick Solve now stores uploaded files by role, so identically named layout
+  and rules files cannot overwrite each other.
 - Project Web sessions now keep solve, edit, repair, and export artifacts in
   separate working directories instead of sharing mutable `latest.*` files.
 - Web PDF export now rejects unsupported all-candidate requests instead of
