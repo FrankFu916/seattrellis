@@ -202,6 +202,40 @@ def test_teacher_html_privacy_options_hide_every_sensitive_field(
     assert "学生 01" in html
 
 
+def test_anonymized_html_omits_identity_bearing_free_form_details(
+    tmp_path,
+) -> None:
+    snapshot = _sensitive_snapshot()
+    snapshot.metadata["rules_summary"] = "Keep SECRET_STUDENT near the front"
+    snapshot.metadata["warnings"] = ["SECRET_STUDENT has no stable ID"]
+    candidate = _candidate(snapshot)
+    hard = candidate.score.breakdown.hard_constraint_summary
+    hard.satisfied = False
+    hard.violation_count = 1
+    hard.violations = ["fixed_seats is not satisfied for SECRET_STUDENT"]
+    privacy = PrintPrivacyOptions(anonymize=True)
+
+    teacher_html = export_print_html(
+        snapshot,
+        tmp_path / "anonymous-teacher.html",
+        template="teacher",
+        privacy=privacy,
+    ).read_text(encoding="utf-8")
+    report_html = export_print_html(
+        snapshot,
+        tmp_path / "anonymous-report.html",
+        template="report",
+        privacy=privacy,
+        candidate=candidate,
+    ).read_text(encoding="utf-8")
+
+    assert "Student 01" not in teacher_html
+    assert "学生 01" in teacher_html
+    assert "SECRET_STUDENT" not in teacher_html
+    assert "SECRET_STUDENT" not in report_html
+    assert "1 违规" in report_html
+
+
 def test_export_request_public_defaults_are_safe() -> None:
     request = ExportRequest(output_format="print-html")
 
@@ -389,6 +423,7 @@ def test_service_export_all_candidate_scope_writes_comparison_report(tmp_path) -
         CandidateSet(
             candidates=[candidate],
             recommended_candidate_id=candidate.candidate_id,
+            warnings=["SECRET_STUDENT appears in a source warning"],
         ),
         tmp_path / "candidates.json",
     )
@@ -415,6 +450,8 @@ def test_service_export_all_candidate_scope_writes_comparison_report(tmp_path) -
     assert "candidate_&lt;01&gt;" in report
     assert "Recommended" in report
     assert "Score comparison" in report
+    assert "1 warning is attached to this candidate set" in report
+    assert "SECRET_STUDENT" not in report
     for sensitive_value in (
         "alert(&quot;student&quot;)",
         "SECRET_NOTE",

@@ -190,7 +190,11 @@ def _render_print_html(
     if template == "teacher":
         extra_html = _render_teacher_section(snapshot, privacy, locale)
     elif template == "report" and candidate is not None:
-        extra_html = _render_report_section(candidate, locale)
+        extra_html = _render_report_section(
+            candidate,
+            locale,
+            include_violation_details=not privacy.anonymize,
+        )
 
     return f"""<!doctype html>
 <html lang="{"en" if locale == "en" else "zh-CN"}">
@@ -253,8 +257,13 @@ def _render_teacher_section(
     locale: str = "zh",
 ) -> str:
     """Render teacher-internal section with rules, warnings, and fairness info."""
-    rules_md = snapshot.metadata.get("rules_summary") or snapshot.metadata.get("rules")
-    warnings = snapshot.metadata.get("warnings", [])
+    # Rules and warnings are free-form metadata and may contain student names.
+    # Keep them out of an anonymized artifact even when individual fields are hidden.
+    rules_md = None
+    warnings: list[object] = []
+    if not privacy.anonymize:
+        rules_md = snapshot.metadata.get("rules_summary") or snapshot.metadata.get("rules")
+        warnings = snapshot.metadata.get("warnings", [])
 
     # Build student lookup from snapshot.students.
     student_by_key = {s.key: s for s in snapshot.students}
@@ -310,7 +319,12 @@ def _render_teacher_section(
     return "\n".join(parts)
 
 
-def _render_report_section(candidate: "CandidatePlan", locale: str = "zh") -> str:
+def _render_report_section(
+    candidate: "CandidatePlan",
+    locale: str = "zh",
+    *,
+    include_violation_details: bool = True,
+) -> str:
     """Render explanation report with score breakdown."""
     b = candidate.score.breakdown
     hard = b.hard_constraint_summary
@@ -332,7 +346,7 @@ def _render_report_section(candidate: "CandidatePlan", locale: str = "zh") -> st
         f"</p>"
     )
 
-    if hard.violations:
+    if hard.violations and include_violation_details:
         parts.append('<div class="warning-box">')
         parts.append(
             f"<strong>{escape(_text('violation_items', locale))}:</strong><ul>"

@@ -146,13 +146,19 @@ def validate_loaded_inputs(students: list[Student], layout: ClassroomLayout, rul
     if not enabled_seats:
         report.add_error("Classroom layout has no enabled seats.")
 
-    missing_ids = [student.display_name for student in students if not student.student_id]
-    if missing_ids:
-        shown = ", ".join(missing_ids[:5])
-        suffix = "" if len(missing_ids) <= 5 else f", and {len(missing_ids) - 5} more"
-        report.add_warning(
-            f"Students without student_id will use name as the stable internal identifier: {shown}{suffix}."
-        )
+    missing_id_count = sum(not student.student_id for student in students)
+    if missing_id_count:
+        if missing_id_count == 1:
+            message = (
+                "1 student without student_id will use their name as a stable "
+                "internal identifier."
+            )
+        else:
+            message = (
+                f"{missing_id_count} students without student_id will use their names "
+                "as stable internal identifiers."
+            )
+        report.add_warning(message)
 
     _add_rule_capability_warnings(report, rules)
 

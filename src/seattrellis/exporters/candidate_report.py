@@ -79,13 +79,13 @@ def render_candidate_report_html(
     method = str(report.metadata.get("recommendation_method", ""))
 
     warning_html = ""
-    warnings = [*candidate_set.warnings, *report.warnings]
+    warnings = list(
+        dict.fromkeys(str(item) for item in [*candidate_set.warnings, *report.warnings])
+    )
     if warnings:
         warning_html = (
             f'<section class="card warning"><h2>{escape(_t("warnings", locale))}</h2>'
-            "<ul>"
-            + "".join(f"<li>{escape(str(warning))}</li>" for warning in warnings)
-            + "</ul></section>"
+            f"<p>{escape(_warning_notice(len(warnings), locale))}</p></section>"
         )
 
     return f"""<!doctype html>
@@ -226,6 +226,19 @@ def _metric(label: str, value: str) -> str:
         f'<div class="value">{escape(value)}</div>'
         "</div>"
     )
+
+
+def _warning_notice(count: int, locale: str) -> str:
+    """Describe attached warnings without copying potentially identifying text."""
+
+    if locale == "en":
+        noun = "warning" if count == 1 else "warnings"
+        verb = "is" if count == 1 else "are"
+        return (
+            f"{count} {noun} {verb} attached to this candidate set. "
+            "Details are omitted from comparison reports to protect privacy."
+        )
+    return f"此候选集包含 {count} 条警告；为保护隐私，比较报告不显示警告详情。"
 
 
 def _dimension_label(key: str, locale: str) -> str:

@@ -67,6 +67,8 @@
 
 ### Fixed
 
+- Candidate comparison and anonymized reports no longer embed potentially
+  identifying free-form warning or rule text.
 - Web result tables no longer use the pandas/Arrow conversion path that could
   crash the Streamlit server after a solve.
 - Manual edits now inherit persisted student and seat locks while still

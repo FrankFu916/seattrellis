@@ -259,6 +259,21 @@ def test_validate_warns_for_model_only_groups_and_cooling() -> None:
         report.raise_for_errors(strict=True)
 
 
+def test_missing_student_id_warning_reports_only_an_aggregate_count() -> None:
+    report = validate_loaded_inputs(
+        [Student(name="PRIVATE_ALICE"), Student(name="PRIVATE_BOB")],
+        _line_layout(2),
+        _quiet_rules(),
+    )
+
+    warning = next(
+        item for item in report.warnings if "without student_id" in item
+    )
+    assert warning.startswith("2 students")
+    assert "PRIVATE_ALICE" not in warning
+    assert "PRIVATE_BOB" not in warning
+
+
 def test_solve_output_carries_model_only_warnings() -> None:
     rules = _quiet_rules()
     rules.groups = [GroupRule(name="Team A", students=["S1", "S2"], together=True)]
