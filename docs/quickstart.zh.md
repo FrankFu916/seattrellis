@@ -11,7 +11,7 @@ python -m pip install -e .
 seattrellis --help
 ```
 
-最小安装支持 CLI help、CSV 输入、JSON layout/rules/snapshot/candidate set、内置规则 preset、本地 project workspace、deterministic fallback solver、多方案生成与评分，以及不依赖重库的 HTML 导出。
+最小安装支持 CLI help、CSV 输入、JSON layout/rules/snapshot/candidate set、内置规则 preset、本地 project workspace、seeded fallback solver、多方案生成与评分，以及不依赖重库的 HTML 导出。
 
 ### 常用本地安装
 

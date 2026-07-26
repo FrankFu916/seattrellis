@@ -21,7 +21,9 @@
 - `0`：命令成功；
 - 非 `0`：输入、依赖、校验、求解或导出失败。
 
-命令默认使用 deterministic fallback solver。`solve` 和 `project-solve` 支持
+命令默认使用 seeded fallback solver。固定尝试预算完整执行时，相同输入和 seed
+会得到稳定结果；若 `metrics.stopped_by_time_limit` 为 `true`，墙钟截止时间可能使
+不同机器完成不同数量的尝试，此时不承诺输出完全相同。`solve` 和 `project-solve` 支持
 `--backend auto|fallback|ortools|native`：
 
 - `auto`：保持兼容行为；默认使用 fallback，若设置旧环境变量

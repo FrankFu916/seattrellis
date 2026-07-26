@@ -43,6 +43,8 @@
 
 ### Changed
 
+- Documentation now distinguishes seeded fallback behavior from reproducible
+  runs that complete their fixed attempt budget without a wall-clock cutoff.
 - Removed the misleading `native` extra. The experimental Rust extension is
   built separately from a matching source checkout and currently acts only as
   a post-solve validator for the Python fallback backend.

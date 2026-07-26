@@ -1,4 +1,4 @@
-"""Deterministic Python fallback solver backend."""
+"""Seeded Python fallback solver with a cooperative wall-clock deadline."""
 
 from __future__ import annotations
 

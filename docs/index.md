@@ -13,7 +13,7 @@ SeatTrellis 是一个隐私优先、本地运行的课堂排座工具。它将�
 ## 核心原则
 
 1. Hard constraints 永远优先于 soft scoring。
-2. 相同输入和 seed 应生成可复现结果。
+2. seed 固定伪随机序列；未被墙钟时间提前终止的 fallback 求解应生成稳定结果。
 3. 不可计算的评分维度标记为 `not_available`，不虚构分数。
 4. 默认不采集遥测、不上传学生数据。
 5. `examples/` 中只允许虚构数据。

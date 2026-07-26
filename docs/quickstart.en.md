@@ -11,7 +11,7 @@ python -m pip install -e .
 seattrellis --help
 ```
 
-The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot/candidate set, built-in rules presets, local project workspaces, the deterministic fallback solver, multi-candidate generation and scoring, and HTML export without heavy optional libraries.
+The minimal install supports CLI help, CSV input, JSON layout/rules/snapshot/candidate set, built-in rules presets, local project workspaces, the seeded fallback solver, multi-candidate generation and scoring, and HTML export without heavy optional libraries.
 
 ### Common Local Install
 
@@ -87,7 +87,7 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 5 --output outputs/candidates.json --report outputs/plan-report.json
 ```
 
-`--candidates 1` preserves the old behaviour and writes a normal snapshot. `--candidates N` repeatedly solves with a deterministic seed sequence and an exact-assignment exclusion constraint, writing a `kind: "candidate_set"` JSON artifact. Candidate generation is heuristic, but every candidate must still satisfy every hard constraint. If the feasible space cannot supply enough distinct plans, SeatTrellis keeps the plans it found and records a warning.
+`--candidates 1` preserves the old behaviour and writes a normal snapshot. `--candidates N` repeatedly solves with a fixed seed sequence and an exact-assignment exclusion constraint, writing a `kind: "candidate_set"` JSON artifact. Candidate generation is heuristic, but every candidate must still satisfy every hard constraint. If a wall-clock deadline stops fallback early, machines may complete different numbers of internal attempts; inspect `metrics.stopped_by_time_limit` before treating outputs as reproducible. If the feasible space cannot supply enough distinct plans, SeatTrellis keeps the plans it found and records a warning.
 
 ### Optional OR-Tools Solver
 
