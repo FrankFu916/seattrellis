@@ -190,8 +190,12 @@ def test_installed_native_core_matches_python_hard_rule_results() -> None:
     expected_gap = 0.0
     expected_pairs = 0
     for first_seat, second_seat in problem.topology.adjacent_seat_index_pairs:
-        first_score = students[student_by_seat[first_seat]].score
-        second_score = students[student_by_seat[second_seat]].score
+        first_student = student_by_seat.get(first_seat)
+        second_student = student_by_seat.get(second_seat)
+        if first_student is None or second_student is None:
+            continue
+        first_score = students[first_student].score
+        second_score = students[second_student].score
         if first_score is None or second_score is None:
             continue
         expected_gap += abs(float(first_score) - float(second_score))
