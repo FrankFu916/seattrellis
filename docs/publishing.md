@@ -23,8 +23,10 @@ GitHub 仓库中应存在同名 environments。建议给 `pypi` environment 添�
 1. 在干净环境构建 wheel 和 sdist；
 2. 运行 `twine check`；
 3. 检查归档内没有私有目录、`.env`、`.DS_Store` 或非示例 snapshot；
-4. 通过 OIDC 发布到 TestPyPI；
-5. 从 TestPyPI 轮询下载刚发布的 wheel，在干净 runner 中安装并运行
+4. 在 Python 3.11 和 3.14 中安装构建好的 wheel 及全部可选依赖，运行
+   `pip check`、CLI help 和 smoke workflow；
+5. 通过 OIDC 发布到 TestPyPI；
+6. 从 TestPyPI 轮询下载刚发布的 wheel，在干净 runner 中安装并运行
    `seattrellis --version` 和 `seattrellis --help`。
 
 TestPyPI 与 PyPI 一样不允许覆盖已经上传的文件。每次候选验证都应使用新的
