@@ -79,14 +79,20 @@ jobs:
         run: python scripts/smoke_cli.py --optional auto --time-limit 3
 
   rust-msrv:
-    name: Rust core / 1.83 MSRV
+    name: Rust workspace / 1.83 MSRV
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Install minimum supported Rust
         uses: dtolnay/rust-toolchain@1.83
       - name: Test the Rust core
-        run: cargo test --manifest-path native/Cargo.toml -p seattrellis_core
+        run: cargo test --locked --manifest-path native/Cargo.toml -p seattrellis_core
+      - name: Check the Python extension crate
+        run: >-
+          cargo check --locked
+          --manifest-path native/Cargo.toml
+          -p seattrellis_native
+          --features extension-module
 
   native-extension:
     name: Native extension / ${{ matrix.os }} / Python ${{ matrix.python-version }}
@@ -121,6 +127,7 @@ jobs:
         run: >-
           python -m maturin build
           --release
+          --locked
           --manifest-path native/seattrellis_native/Cargo.toml
           --interpreter python
           --out dist/native
