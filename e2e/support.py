@@ -61,9 +61,10 @@ def select_region_option(
     if combobox.input_value() == option:
         return
 
-    open_button = widget.get_by_role("button", name="Open", exact=True)
-    expect(open_button).to_have_count(1)
-    open_button.click()
+    # Streamlit 1.60 uses an editable React Aria combobox. Filtering by the
+    # complete label avoids a flaky pointer-open operation while the page is
+    # settling after a Streamlit rerun.
+    combobox.fill(option)
     menu_option = page.get_by_role("option", name=option, exact=True)
     expect(menu_option).to_be_visible()
     menu_option.click()
