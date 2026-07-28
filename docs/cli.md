@@ -44,12 +44,16 @@
 ```bash
 python scripts/benchmark_solver.py \
   --sizes 40,50,60 \
-  --backends fallback,ortools \
-  --candidates 1 \
-  --time-limit 10 \
+  --backends fallback \
+  --constraint-profiles light,dense \
+  --candidate-counts 1,5,20 \
+  --time-limit 0.25 \
+  --max-attempts 24 \
   --output outputs/benchmark-solver.json \
   --markdown-output outputs/benchmark-solver.md
 ```
+
+OR-Tools 基准使用相同参数，但设置 `--backends ortools --time-limit 5`。
 
 详见[性能基准](benchmarks.md)。
 

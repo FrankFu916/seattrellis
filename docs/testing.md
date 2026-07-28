@@ -8,7 +8,7 @@ SeatTrellis 的测试分为五层：单元测试、应用级 smoke、浏览器 E
 ```bash
 python -m pytest
 python -m compileall -q src/seattrellis scripts/benchmark_solver.py scripts/smoke_cli.py
-cargo test --manifest-path native/Cargo.toml
+cargo test --locked --manifest-path native/Cargo.toml
 python scripts/check_repository_hygiene.py
 mkdocs build --strict
 ```
@@ -95,15 +95,21 @@ health endpoint。
 ```bash
 python scripts/benchmark_solver.py \
   --sizes 40,50,60 \
-  --backends fallback,ortools \
-  --candidates 1 \
-  --time-limit 10 \
+  --backends fallback \
+  --constraint-profiles light,dense \
+  --candidate-counts 1,5,20 \
+  --time-limit 0.25 \
+  --max-attempts 24 \
   --output outputs/benchmark-solver.json \
   --markdown-output outputs/benchmark-solver.md
 ```
 
-普通 CI 不建议用绝对秒数直接失败。更合理的做法是归档 JSON 报告，并在 nightly
-或发布前流程比较相对回退比例。
+OR-Tools 使用同一矩阵和 `--time-limit 5`。仓库的 benchmark workflow 会把
+人数、约束 profile 和 backend 分片并行执行，避免一个慢 case 丢失其他报告。
+
+普通 CI 不按绝对秒数失败。手动和每周 benchmark workflow 归档 JSON/Markdown
+报告；回退判断比较同类 runner 上的相对变化，并单独观察可行率、候选产出率和
+候选多样性。
 
 ## 发布前人工 smoke
 
