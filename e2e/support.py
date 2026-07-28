@@ -65,6 +65,8 @@ def select_region_option(
     # complete label avoids a flaky pointer-open operation while the page is
     # settling after a Streamlit rerun.
     combobox.fill(option)
+    combobox.press("ArrowDown")
+    expect(combobox).to_have_attribute("aria-expanded", "true")
     menu_option = page.get_by_role("option", name=option, exact=True)
     expect(menu_option).to_be_visible()
     menu_option.click()
