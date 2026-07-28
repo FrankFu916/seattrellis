@@ -67,6 +67,10 @@
   package metadata.
 - Expanded source-package testing and publish verification to Python 3.11
   through 3.14 while keeping Python 3.11 as the minimum supported version.
+- Raised optional dependency floors to versions with verified Python 3.14
+  support, and refreshed the browser acceptance environment to Streamlit 1.60.
+- Release publishing now verifies the built wheel with all optional features on
+  Python 3.11 and 3.14 before either package index can receive it.
 - Documentation now distinguishes seeded fallback behavior from reproducible
   runs that complete their fixed attempt budget without a wall-clock cutoff.
 - Removed the misleading `native` extra. The experimental Rust extension is
