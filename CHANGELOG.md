@@ -1,23 +1,5 @@
 # Changelog
 
-## 1.8.0 - 2026-07-30
-
-### User-facing changes
-
-- Added SVG vector export for seating plans — self-contained, scalable, and
-  suitable for printing or embedding in documents.
-- Added PPTX export — a single 16:9 slide with editable text boxes and seat
-  shapes that teachers can open in PowerPoint or Keynote and continue editing.
-- Both new export formats respect the same privacy controls (public vs teacher
-  templates) as existing print and PDF exports.
-
-### Engineering and maintenance
-
-- Introduced a dependency-free seating canvas document model shared by SVG
-  and PPTX exporters for consistent seat positions, text, and theme.
-- Verified real SVG and PPTX file generation with structural validation and
-  path-leak checks.
-
 ## 1.7.0 - 2026-07-30
 
 ### User-facing changes
