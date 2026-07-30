@@ -60,6 +60,17 @@ _TEXT: dict[str, tuple[str, str]] = {
     "teacher_roster_ready": ("名单已就绪。", "Student list ready."),
     "teacher_room_title": ("教室", "Classroom"),
     "teacher_room_template": ("选择教室大小", "Choose a classroom size"),
+    "teacher_room_custom": ("自定义排数与座位", "Custom rows and seats"),
+    "teacher_room_rows": ("排数", "Rows"),
+    "teacher_room_seats_per_row": ("每排座位数", "Seats per row"),
+    "teacher_room_aisles": (
+        "过道位置（可多选）",
+        "Aisle positions (optional)",
+    ),
+    "teacher_room_aisle_after": (
+        "第 {position} 个座位后",
+        "After seat {position}",
+    ),
     "teacher_room_recommended": (
         "已按当前人数推荐可容纳 {capacity} 人的教室。",
         "Recommended a classroom with {capacity} seats for this class.",
@@ -71,6 +82,12 @@ _TEXT: dict[str, tuple[str, str]] = {
     "teacher_room_too_small": (
         "这个教室的座位少于学生人数，请选择更大的教室。",
         "This classroom has fewer seats than students. Choose a larger room.",
+    ),
+    "teacher_room_capacity_short": (
+        "当前只有 {capacity} 个座位，少于 {count} 名学生。"
+        "请增加排数或每排座位数。",
+        "This room has {capacity} seats for {count} students. "
+        "Add rows or seats per row.",
     ),
     "teacher_goal_title": ("本次排座目标", "Seating goal"),
     "teacher_goal_help": (

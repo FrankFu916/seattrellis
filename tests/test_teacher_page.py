@@ -6,11 +6,14 @@ from types import SimpleNamespace
 import pytest
 
 from seattrellis.application.roster_import import import_roster_records
+from seattrellis.application.room_templates import RoomTemplate, build_standard_room
 from seattrellis.models.candidate import CandidateSet
 from seattrellis.web.teacher_page import (
     CachedRosterUpload,
     TeacherSetupSignature,
+    _central_aisle,
     _resolve_uploaded_roster,
+    _room_identity,
     build_teacher_setup_signature,
     invalidate_teacher_results,
     load_cached_roster_upload,
@@ -147,6 +150,21 @@ def test_changed_setup_invalidates_only_teacher_derived_state() -> None:
     assert "_teacher_roster_cache" in session
     assert "quick_result" in session
     assert invalidate_teacher_results(session, current) is False
+
+
+def test_room_identity_and_central_aisle_cover_built_in_and_custom_rooms() -> None:
+    template = RoomTemplate("standard-12", 3, 4, (2,), "Small room")
+    custom = build_standard_room(
+        4,
+        7,
+        aisles_after=(3,),
+        layout_id="custom-4x7-aisles-3",
+    )
+
+    assert _room_identity(template) == "standard-12"
+    assert _room_identity(custom) == "custom-4x7-aisles-3"
+    assert _central_aisle(3) == []
+    assert _central_aisle(8) == [4]
 
 
 def test_prepare_print_export_uses_template_privacy_and_reads_bytes(

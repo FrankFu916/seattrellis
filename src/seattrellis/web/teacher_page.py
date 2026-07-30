@@ -19,6 +19,7 @@ from typing import Any, Literal
 from seattrellis.application.class_workflow import GenerateOptions
 from seattrellis.application.room_templates import (
     RoomTemplate,
+    build_standard_room,
     list_room_templates,
     recommend_room_template,
 )
@@ -27,6 +28,7 @@ from seattrellis.application.teacher_goals import (
     TeacherGoalDefinition,
     list_teacher_goals,
 )
+from seattrellis.models.layout import ClassroomLayout
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.web.class_adapter import (
@@ -51,6 +53,9 @@ from seattrellis.web.keys import (
     TEACHER_PUBLIC_EXPORT_DOWNLOAD,
     TEACHER_PUBLIC_EXPORT_PREPARE,
     TEACHER_RESULTS_STATUS,
+    TEACHER_ROOM_AISLES_INPUT,
+    TEACHER_ROOM_ROWS_INPUT,
+    TEACHER_ROOM_SEATS_PER_ROW_INPUT,
     TEACHER_ROOM_TEMPLATE_SELECT,
     TEACHER_ROSTER_STATUS,
     TEACHER_ROSTER_UPLOAD,
@@ -327,7 +332,7 @@ def render_teacher_page(
     signature = build_teacher_setup_signature(
         class_name=class_name,
         roster_fingerprint=(roster_cache.fingerprint if roster_cache else None),
-        room_template_id=(room_template.template_id if room_template else None),
+        room_template_id=(_room_identity(room_template) if room_template else None),
         goal_id=(goal.goal_id if goal else None),
     )
     invalidate_teacher_results(st.session_state, signature)
@@ -462,33 +467,41 @@ def _render_room_choice(
     *,
     roster_changed: bool,
     text: Callable[..., str],
-) -> RoomTemplate | None:
+) -> RoomTemplate | ClassroomLayout | None:
     if roster is None:
         return None
 
     st.subheader(text("teacher_room_title"))
     templates = list_room_templates()
     recommendation = recommend_room_template(roster.summary.student_count)
-    if recommendation is None:
-        st.error(text("teacher_room_too_small", count=roster.summary.student_count))
-        return None
-
     template_by_id = {template.template_id: template for template in templates}
+    selection_ids = [*template_by_id, "custom"]
+    recommended_id = recommendation.template_id if recommendation else "custom"
     if (
         roster_changed
-        or st.session_state.get(TEACHER_ROOM_TEMPLATE_SELECT) not in template_by_id
+        or st.session_state.get(TEACHER_ROOM_TEMPLATE_SELECT) not in selection_ids
     ):
-        st.session_state[TEACHER_ROOM_TEMPLATE_SELECT] = recommendation.template_id
+        st.session_state[TEACHER_ROOM_TEMPLATE_SELECT] = recommended_id
 
     with st.container(key=widget_region_key(TEACHER_ROOM_TEMPLATE_SELECT)):
         selected_id = st.selectbox(
             text("teacher_room_template"),
-            list(template_by_id),
-            format_func=lambda item: _room_option_label(template_by_id[item]),
+            selection_ids,
+            format_func=lambda item: (
+                text("teacher_room_custom")
+                if item == "custom"
+                else _room_option_label(template_by_id[item])
+            ),
             key=TEACHER_ROOM_TEMPLATE_SELECT,
         )
+    if selected_id == "custom":
+        return _render_custom_room(st, roster, text=text)
+
     selected = template_by_id[selected_id]
-    if selected.template_id == recommendation.template_id:
+    if (
+        recommendation is not None
+        and selected.template_id == recommendation.template_id
+    ):
         st.caption(text("teacher_room_recommended", capacity=selected.capacity))
     st.caption(
         text(
@@ -499,6 +512,85 @@ def _render_room_choice(
         )
     )
     return selected
+
+
+def _render_custom_room(
+    st: Any,
+    roster: ImportedRoster,
+    *,
+    text: Callable[..., str],
+) -> ClassroomLayout | None:
+    """Render a small custom-room form without exposing layout files."""
+
+    student_count = roster.summary.student_count
+    default_rows = min(20, max(1, (student_count + 7) // 8))
+    columns = st.columns(2)
+    rows = int(
+        columns[0].number_input(
+            text("teacher_room_rows"),
+            min_value=1,
+            max_value=20,
+            value=default_rows,
+            step=1,
+            key=TEACHER_ROOM_ROWS_INPUT,
+        )
+    )
+    seats_per_row = int(
+        columns[1].number_input(
+            text("teacher_room_seats_per_row"),
+            min_value=1,
+            max_value=20,
+            value=8,
+            step=1,
+            key=TEACHER_ROOM_SEATS_PER_ROW_INPUT,
+        )
+    )
+    aisle_options = list(range(1, seats_per_row))
+    stored_aisles = st.session_state.get(TEACHER_ROOM_AISLES_INPUT, [])
+    if not isinstance(stored_aisles, list):
+        stored_aisles = []
+    valid_aisles = [item for item in stored_aisles if item in aisle_options]
+    if valid_aisles != stored_aisles:
+        st.session_state[TEACHER_ROOM_AISLES_INPUT] = valid_aisles
+    aisle_defaults: dict[str, Any] = {}
+    if TEACHER_ROOM_AISLES_INPUT not in st.session_state:
+        aisle_defaults["default"] = _central_aisle(seats_per_row)
+    aisles = st.multiselect(
+        text("teacher_room_aisles"),
+        aisle_options,
+        format_func=lambda position: text(
+            "teacher_room_aisle_after",
+            position=position,
+        ),
+        key=TEACHER_ROOM_AISLES_INPUT,
+        **aisle_defaults,
+    )
+    capacity = rows * seats_per_row
+    if capacity < student_count:
+        st.error(
+            text(
+                "teacher_room_capacity_short",
+                capacity=capacity,
+                count=student_count,
+            )
+        )
+        return None
+    st.caption(
+        text(
+            "teacher_room_summary",
+            capacity=capacity,
+            rows=rows,
+            seats_per_row=seats_per_row,
+        )
+    )
+    aisle_id = "-".join(str(position) for position in aisles) or "none"
+    return build_standard_room(
+        rows,
+        seats_per_row,
+        aisles_after=tuple(aisles),
+        layout_id=f"custom-{rows}x{seats_per_row}-aisles-{aisle_id}",
+        name="Custom classroom",
+    )
 
 
 def _render_goal_choice(
@@ -693,6 +785,20 @@ def _clear_prepared_exports(session_state: MutableMapping[str, object]) -> None:
 
 def _room_option_label(template: RoomTemplate) -> str:
     return f"{template.capacity} · {template.rows} × {template.seats_per_row}"
+
+
+def _room_identity(room: RoomTemplate | ClassroomLayout) -> str:
+    """Return a stable setup signature for a built-in or custom room."""
+
+    if isinstance(room, RoomTemplate):
+        return room.template_id
+    return room.layout_id
+
+
+def _central_aisle(seats_per_row: int) -> list[int]:
+    """Suggest one central aisle when a row has room on both sides."""
+
+    return [seats_per_row // 2] if seats_per_row >= 4 else []
 
 
 def _normalize_print_template(template: str) -> TeacherPrintTemplate:

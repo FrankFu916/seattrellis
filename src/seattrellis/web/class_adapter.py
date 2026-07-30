@@ -30,6 +30,7 @@ from seattrellis.application.teacher_goals import (
     get_teacher_goal,
 )
 from seattrellis.io.json_files import InputFileError, write_json_model
+from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.web.workflow import WebSolveResult
 
@@ -81,7 +82,7 @@ def build_class_draft(
     *,
     class_name: str,
     roster: ImportedRoster,
-    room_template: str | int | RoomTemplate | None = None,
+    room_template: str | int | RoomTemplate | ClassroomLayout | None = None,
     goal_id: str = "daily-rotation",
     history_snapshots: Sequence[SeatingSnapshot] = (),
 ) -> ClassDraft:
@@ -101,11 +102,16 @@ def build_class_draft(
                 "in the advanced tools."
             )
 
+    layout = (
+        selected_room
+        if isinstance(selected_room, ClassroomLayout)
+        else build_room_from_template(selected_room)
+    )
     goal = get_teacher_goal(goal_id)
     return ClassDraft(
         name=class_name,
         students=roster.students,
-        layout=build_room_from_template(selected_room),
+        layout=layout,
         goal=TeacherGoalSelection(goal_id=goal.goal_id),
         history_snapshots=tuple(history_snapshots),
     )

@@ -6,7 +6,7 @@ import pytest
 
 import seattrellis.web.class_adapter as adapter
 from seattrellis.application.class_workflow import GenerateOptions
-from seattrellis.application.room_templates import RoomTemplate
+from seattrellis.application.room_templates import RoomTemplate, build_standard_room
 from seattrellis.application.roster_import import import_roster_records
 from seattrellis.io.json_files import (
     InputFileError,
@@ -147,6 +147,25 @@ def test_class_setup_reports_a_room_that_is_too_small() -> None:
         "Not enough enabled seats" in item
         for item in readiness.validation.errors
     )
+
+
+def test_class_setup_accepts_a_custom_room_without_rebuilding_it() -> None:
+    custom_room = build_standard_room(
+        2,
+        3,
+        aisles_after=(2,),
+        layout_id="custom-2x3-aisles-2",
+    )
+
+    draft = adapter.build_class_draft(
+        class_name="Grade 5",
+        roster=_roster(5),
+        room_template=custom_room,
+    )
+
+    assert draft.layout is custom_room
+    assert draft.layout.metadata["aisles_after"] == [2]
+    assert adapter.inspect_class_setup(draft).ready
 
 
 def test_generate_class_setup_writes_reusable_web_artifacts(tmp_path) -> None:
