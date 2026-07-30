@@ -48,6 +48,7 @@ from seattrellis.web.keys import (
     TEACHER_EXPORT_PREFIX,
     TEACHER_GENERATE_BUTTON,
     TEACHER_GOAL_SELECT,
+    TEACHER_HOME_STATUS,
     TEACHER_INTERNAL_EXPORT_DOWNLOAD,
     TEACHER_INTERNAL_EXPORT_PREPARE,
     TEACHER_PUBLIC_EXPORT_DOWNLOAD,
@@ -60,6 +61,7 @@ from seattrellis.web.keys import (
     TEACHER_ROSTER_STATUS,
     TEACHER_ROSTER_UPLOAD,
     TEACHER_SOLVE_STATUS,
+    TEACHER_START_OVER_BUTTON,
     widget_region_key,
 )
 from seattrellis.web.teacher_state import build_teacher_workspace_state
@@ -78,6 +80,29 @@ _ROSTER_CACHE_KEY = "_teacher_roster_cache"
 _SETUP_SIGNATURE_KEY = "_teacher_setup_signature"
 _RESULT_KEY = "_teacher_result"
 _OUTPUT_DIR_KEY = "_teacher_output_dir"
+_MISSING = object()
+
+_DURABLE_INPUT_WIDGET_KEYS = frozenset(
+    {
+        TEACHER_CLASS_NAME_INPUT,
+        TEACHER_ROOM_TEMPLATE_SELECT,
+        TEACHER_ROOM_ROWS_INPUT,
+        TEACHER_ROOM_SEATS_PER_ROW_INPUT,
+        TEACHER_ROOM_AISLES_INPUT,
+        TEACHER_GOAL_SELECT,
+    }
+)
+
+_TEACHER_SETUP_STATE_KEYS = frozenset(
+    {
+        _ROSTER_CACHE_KEY,
+        _SETUP_SIGNATURE_KEY,
+        TEACHER_ROSTER_UPLOAD,
+        TEACHER_START_OVER_BUTTON,
+        *_DURABLE_INPUT_WIDGET_KEYS,
+        *(f"_{key}_value" for key in _DURABLE_INPUT_WIDGET_KEYS),
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +195,78 @@ def build_teacher_setup_signature(
     )
 
 
+def teacher_input_state_key(widget_key: str) -> str:
+    """Return the durable session key paired with a teacher input widget.
+
+    Streamlit removes widget state when a conditional page is not rendered.
+    Durable keys keep only normalized form values, never an uploaded file or
+    its original bytes, so a teacher can visit the advanced tools and return.
+    """
+
+    if widget_key not in _DURABLE_INPUT_WIDGET_KEYS:
+        raise ValueError(f"Teacher input is not durable: {widget_key}")
+    return f"_{widget_key}_value"
+
+
+def restore_teacher_input(
+    session_state: MutableMapping[str, object],
+    widget_key: str,
+    *,
+    default: object = _MISSING,
+) -> None:
+    """Restore a hidden widget from its durable, non-file value."""
+
+    durable_key = teacher_input_state_key(widget_key)
+    if widget_key in session_state:
+        return
+    if durable_key in session_state:
+        value = session_state[durable_key]
+    elif default is not _MISSING:
+        value = default
+    else:
+        return
+    session_state[widget_key] = list(value) if isinstance(value, list) else value
+
+
+def remember_teacher_input(
+    session_state: MutableMapping[str, object],
+    widget_key: str,
+    value: object,
+) -> None:
+    """Persist one normalized teacher input independently of its widget."""
+
+    stored = list(value) if isinstance(value, list) else value
+    session_state[teacher_input_state_key(widget_key)] = stored
+
+
+def clear_teacher_workspace_state(
+    session_state: MutableMapping[str, object],
+) -> None:
+    """Forget the current teacher setup while preserving other workspaces."""
+
+    for key in tuple(session_state):
+        if not isinstance(key, str):
+            continue
+        if key == TEACHER_START_OVER_BUTTON:
+            # The button has already been instantiated when this function is
+            # called. Streamlit removes its ephemeral state on the next run.
+            continue
+        if key.startswith("teacher_") or key.startswith("_teacher_"):
+            session_state.pop(key, None)
+
+
+def _clear_teacher_derived_state(
+    session_state: MutableMapping[str, object],
+) -> None:
+    """Discard outputs and edit drafts without changing setup inputs."""
+
+    for key in tuple(session_state):
+        if not isinstance(key, str) or key in _TEACHER_SETUP_STATE_KEYS:
+            continue
+        if key.startswith("teacher_") or key.startswith("_teacher_"):
+            session_state.pop(key, None)
+
+
 def invalidate_teacher_results(
     session_state: MutableMapping[str, object],
     signature: TeacherSetupSignature,
@@ -186,14 +283,7 @@ def invalidate_teacher_results(
     if previous is None or previous == signature:
         return False
 
-    for key in (
-        _RESULT_KEY,
-        _OUTPUT_DIR_KEY,
-        TEACHER_CANDIDATE_SELECT,
-        prepared_export_state_key("public"),
-        prepared_export_state_key("teacher"),
-    ):
-        session_state.pop(key, None)
+    _clear_teacher_derived_state(session_state)
     return True
 
 
@@ -296,10 +386,39 @@ def render_teacher_page(
     st.header(text("teacher_home_title"))
     st.caption(text("teacher_home_caption"))
 
+    cached_before_render = st.session_state.get(_ROSTER_CACHE_KEY)
+    upload_before_render = st.session_state.get(TEACHER_ROSTER_UPLOAD)
+    has_teacher_roster = isinstance(
+        cached_before_render,
+        CachedRosterUpload,
+    ) or upload_before_render is not None
+    restored_roster = (
+        isinstance(cached_before_render, CachedRosterUpload)
+        and upload_before_render is None
+    )
+    if restored_roster:
+        with st.container(key=widget_region_key(TEACHER_HOME_STATUS)):
+            st.info(text("teacher_restore_notice"))
+    if has_teacher_roster:
+        with st.container(key=widget_region_key(TEACHER_START_OVER_BUTTON)):
+            start_over = st.button(
+                text("teacher_start_over"),
+                key=TEACHER_START_OVER_BUTTON,
+            )
+        if start_over:
+            clear_teacher_workspace_state(st.session_state)
+            st.rerun()
+
+    restore_teacher_input(st.session_state, TEACHER_CLASS_NAME_INPUT)
     class_name = st.text_input(
         text("teacher_class_name"),
         placeholder=text("teacher_class_name_placeholder"),
         key=TEACHER_CLASS_NAME_INPUT,
+    )
+    remember_teacher_input(
+        st.session_state,
+        TEACHER_CLASS_NAME_INPUT,
+        class_name,
     )
     st.subheader(text("teacher_roster_title"))
     uploaded_file = st.file_uploader(
@@ -477,6 +596,11 @@ def _render_room_choice(
     template_by_id = {template.template_id: template for template in templates}
     selection_ids = [*template_by_id, "custom"]
     recommended_id = recommendation.template_id if recommendation else "custom"
+    restore_teacher_input(
+        st.session_state,
+        TEACHER_ROOM_TEMPLATE_SELECT,
+        default=recommended_id,
+    )
     if (
         roster_changed
         or st.session_state.get(TEACHER_ROOM_TEMPLATE_SELECT) not in selection_ids
@@ -494,6 +618,11 @@ def _render_room_choice(
             ),
             key=TEACHER_ROOM_TEMPLATE_SELECT,
         )
+    remember_teacher_input(
+        st.session_state,
+        TEACHER_ROOM_TEMPLATE_SELECT,
+        selected_id,
+    )
     if selected_id == "custom":
         return _render_custom_room(st, roster, text=text)
 
@@ -524,13 +653,22 @@ def _render_custom_room(
 
     student_count = roster.summary.student_count
     default_rows = min(20, max(1, (student_count + 7) // 8))
+    restore_teacher_input(
+        st.session_state,
+        TEACHER_ROOM_ROWS_INPUT,
+        default=default_rows,
+    )
+    restore_teacher_input(
+        st.session_state,
+        TEACHER_ROOM_SEATS_PER_ROW_INPUT,
+        default=8,
+    )
     columns = st.columns(2)
     rows = int(
         columns[0].number_input(
             text("teacher_room_rows"),
             min_value=1,
             max_value=20,
-            value=default_rows,
             step=1,
             key=TEACHER_ROOM_ROWS_INPUT,
         )
@@ -540,21 +678,28 @@ def _render_custom_room(
             text("teacher_room_seats_per_row"),
             min_value=1,
             max_value=20,
-            value=8,
             step=1,
             key=TEACHER_ROOM_SEATS_PER_ROW_INPUT,
         )
     )
+    remember_teacher_input(st.session_state, TEACHER_ROOM_ROWS_INPUT, rows)
+    remember_teacher_input(
+        st.session_state,
+        TEACHER_ROOM_SEATS_PER_ROW_INPUT,
+        seats_per_row,
+    )
     aisle_options = list(range(1, seats_per_row))
+    restore_teacher_input(
+        st.session_state,
+        TEACHER_ROOM_AISLES_INPUT,
+        default=_central_aisle(seats_per_row),
+    )
     stored_aisles = st.session_state.get(TEACHER_ROOM_AISLES_INPUT, [])
     if not isinstance(stored_aisles, list):
         stored_aisles = []
     valid_aisles = [item for item in stored_aisles if item in aisle_options]
     if valid_aisles != stored_aisles:
         st.session_state[TEACHER_ROOM_AISLES_INPUT] = valid_aisles
-    aisle_defaults: dict[str, Any] = {}
-    if TEACHER_ROOM_AISLES_INPUT not in st.session_state:
-        aisle_defaults["default"] = _central_aisle(seats_per_row)
     aisles = st.multiselect(
         text("teacher_room_aisles"),
         aisle_options,
@@ -563,7 +708,11 @@ def _render_custom_room(
             position=position,
         ),
         key=TEACHER_ROOM_AISLES_INPUT,
-        **aisle_defaults,
+    )
+    remember_teacher_input(
+        st.session_state,
+        TEACHER_ROOM_AISLES_INPUT,
+        list(aisles),
     )
     capacity = rows * seats_per_row
     if capacity < student_count:
@@ -616,6 +765,14 @@ def _render_goal_choice(
         "fair-shuffle": text("teacher_goal_fair_description"),
         "peer-support": text("teacher_goal_peer_description"),
     }
+    default_goal_id = next(iter(goal_by_id))
+    restore_teacher_input(
+        st.session_state,
+        TEACHER_GOAL_SELECT,
+        default=default_goal_id,
+    )
+    if st.session_state.get(TEACHER_GOAL_SELECT) not in goal_by_id:
+        st.session_state[TEACHER_GOAL_SELECT] = default_goal_id
     with st.container(key=widget_region_key(TEACHER_GOAL_SELECT)):
         selected_id = st.radio(
             text("teacher_goal_title"),
@@ -624,6 +781,7 @@ def _render_goal_choice(
             key=TEACHER_GOAL_SELECT,
             label_visibility="collapsed",
         )
+    remember_teacher_input(st.session_state, TEACHER_GOAL_SELECT, selected_id)
     st.caption(descriptions[selected_id])
     return goal_by_id[selected_id]
 

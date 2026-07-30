@@ -15,12 +15,23 @@ from seattrellis.web.teacher_page import (
     _resolve_uploaded_roster,
     _room_identity,
     build_teacher_setup_signature,
+    clear_teacher_workspace_state,
     invalidate_teacher_results,
     load_cached_roster_upload,
     prepare_teacher_print_export,
     prepared_export_state_key,
+    remember_teacher_input,
+    restore_teacher_input,
     roster_upload_fingerprint,
     teacher_export_filename,
+    teacher_input_state_key,
+)
+from seattrellis.web.keys import (
+    TEACHER_CLASS_NAME_INPUT,
+    TEACHER_GOAL_SELECT,
+    TEACHER_ROSTER_UPLOAD,
+    TEACHER_ROOM_AISLES_INPUT,
+    TEACHER_START_OVER_BUTTON,
 )
 from seattrellis.web.workflow import WebSolveResult
 
@@ -121,6 +132,54 @@ def test_roster_fingerprint_includes_the_display_name_and_validates_types() -> N
         roster_upload_fingerprint("a.csv", "text")  # type: ignore[arg-type]
 
 
+def test_teacher_inputs_restore_from_durable_non_file_values() -> None:
+    session: dict[str, object] = {}
+
+    remember_teacher_input(session, TEACHER_CLASS_NAME_INPUT, "Class 7 A")
+    remember_teacher_input(session, TEACHER_GOAL_SELECT, "peer-support")
+    aisles = [2, 5]
+    remember_teacher_input(session, TEACHER_ROOM_AISLES_INPUT, aisles)
+    aisles.append(7)
+
+    restore_teacher_input(session, TEACHER_CLASS_NAME_INPUT)
+    restore_teacher_input(session, TEACHER_GOAL_SELECT)
+    restore_teacher_input(session, TEACHER_ROOM_AISLES_INPUT)
+
+    assert session[TEACHER_CLASS_NAME_INPUT] == "Class 7 A"
+    assert session[TEACHER_GOAL_SELECT] == "peer-support"
+    assert session[TEACHER_ROOM_AISLES_INPUT] == [2, 5]
+    assert session[TEACHER_ROOM_AISLES_INPUT] is not session[
+        teacher_input_state_key(TEACHER_ROOM_AISLES_INPUT)
+    ]
+    with pytest.raises(ValueError, match="not durable"):
+        remember_teacher_input(session, TEACHER_ROSTER_UPLOAD, b"private")
+
+
+def test_start_over_clears_only_the_teacher_workspace() -> None:
+    session: dict[str, object] = {
+        "_teacher_roster_cache": CachedRosterUpload("digest", None),
+        "_teacher_result": object(),
+        "_teacher_editing_draft": object(),
+        TEACHER_CLASS_NAME_INPUT: "Class 7 A",
+        teacher_input_state_key(TEACHER_CLASS_NAME_INPUT): "Class 7 A",
+        TEACHER_ROSTER_UPLOAD: b"browser-owned bytes",
+        TEACHER_START_OVER_BUTTON: True,
+        "result": object(),
+        "_quick_editing_draft": object(),
+    }
+
+    clear_teacher_workspace_state(session)
+
+    assert TEACHER_START_OVER_BUTTON in session
+    assert not any(
+        key.startswith("teacher_") or key.startswith("_teacher_")
+        for key in session
+        if key != TEACHER_START_OVER_BUTTON
+    )
+    assert "result" in session
+    assert "_quick_editing_draft" in session
+
+
 def test_changed_setup_invalidates_only_teacher_derived_state() -> None:
     previous = TeacherSetupSignature("Class 1", "old", "standard-30", "daily-rotation")
     current = build_teacher_setup_signature(
@@ -136,6 +195,10 @@ def test_changed_setup_invalidates_only_teacher_derived_state() -> None:
         "teacher_candidate_selector": "candidate-2",
         prepared_export_state_key("public"): object(),
         prepared_export_state_key("teacher"): object(),
+        "_teacher_editing_draft": object(),
+        "_teacher_canvas_source_seat": "R1C1",
+        "teacher_edit_first_student": "STU001",
+        teacher_input_state_key(TEACHER_CLASS_NAME_INPUT): "Class 1",
         "_teacher_roster_cache": CachedRosterUpload("new", None),
         "quick_result": object(),
     }
@@ -147,6 +210,10 @@ def test_changed_setup_invalidates_only_teacher_derived_state() -> None:
     assert "teacher_candidate_selector" not in session
     assert prepared_export_state_key("public") not in session
     assert prepared_export_state_key("teacher") not in session
+    assert "_teacher_editing_draft" not in session
+    assert "_teacher_canvas_source_seat" not in session
+    assert "teacher_edit_first_student" not in session
+    assert session[teacher_input_state_key(TEACHER_CLASS_NAME_INPUT)] == "Class 1"
     assert "_teacher_roster_cache" in session
     assert "quick_result" in session
     assert invalidate_teacher_results(session, current) is False

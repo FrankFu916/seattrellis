@@ -31,6 +31,10 @@ _TEXT: dict[str, tuple[str, str]] = {
         "班级设置已就绪，可以生成座位表。",
         "Your class is ready. You can generate a seating plan.",
     ),
+    "teacher_start_over": (
+        "重新开始并清除名单",
+        "Start over and clear student list",
+    ),
     "teacher_class_name": ("班级名称", "Class name"),
     "teacher_class_name_placeholder": (
         "例如：七年级二班",
@@ -147,8 +151,9 @@ _TEXT: dict[str, tuple[str, str]] = {
         "{label} is ready to download.",
     ),
     "teacher_restore_notice": (
-        "已恢复上次未完成的班级设置，可以从当前位置继续。",
-        "Your unfinished class setup was restored. You can continue where you left off.",
+        "已恢复上次使用的名单和班级设置。为保护隐私，原始上传文件不会保留。",
+        "Your previous student list and class setup were restored. The original "
+        "uploaded file is not retained.",
     ),
     "teacher_restore_failed": (
         "上次的班级设置无法完整恢复，请重新确认名单和教室。",

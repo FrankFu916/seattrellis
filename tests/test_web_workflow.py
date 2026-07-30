@@ -54,6 +54,16 @@ from seattrellis.web.keys import (
     QUICK_SWAP_BUTTON,
     QUICK_STEP_RADIO,
     QUICK_UNDO_BUTTON,
+    TEACHER_CLASS_NAME_INPUT,
+    TEACHER_GENERATE_BUTTON,
+    TEACHER_GOAL_SELECT,
+    TEACHER_HOME_STATUS,
+    TEACHER_ROOM_AISLES_INPUT,
+    TEACHER_ROOM_ROWS_INPUT,
+    TEACHER_ROOM_SEATS_PER_ROW_INPUT,
+    TEACHER_ROOM_TEMPLATE_SELECT,
+    TEACHER_ROSTER_UPLOAD,
+    TEACHER_START_OVER_BUTTON,
     export_prepare_key,
     export_prepared_state_key,
 )
@@ -708,6 +718,79 @@ def test_streamlit_app_smoke() -> None:
     assert [title.value for title in app.title] == ["🏫 SeatTrellis · 席序"]
     assert [tab.label for tab in app.tabs] == ["快速排座", "Project 工作区"]
     assert [uploader.label for uploader in app.file_uploader][0] == "Web 配置 JSON"
+
+
+def test_teacher_workspace_survives_advanced_tools_and_can_start_over() -> None:
+    streamlit_testing = pytest.importorskip("streamlit.testing.v1")
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.text_input, TEACHER_CLASS_NAME_INPUT).set_value("Class 7 A")
+    roster_path = Path("tests/fixtures/students.csv")
+    _control_by_key(app.file_uploader, TEACHER_ROSTER_UPLOAD).upload(
+        roster_path.name,
+        roster_path.read_bytes(),
+        "text/csv",
+    )
+    app.run(timeout=10)
+
+    _control_by_key(app.selectbox, TEACHER_ROOM_TEMPLATE_SELECT).set_value("custom")
+    app.run(timeout=10)
+    _control_by_key(app.number_input, TEACHER_ROOM_ROWS_INPUT).set_value(3)
+    _control_by_key(
+        app.number_input,
+        TEACHER_ROOM_SEATS_PER_ROW_INPUT,
+    ).set_value(4)
+    app.run(timeout=10)
+    _control_by_key(app.multiselect, TEACHER_ROOM_AISLES_INPUT).set_value([2])
+    _control_by_key(app.radio, TEACHER_GOAL_SELECT).set_value("peer-support")
+    app.run(timeout=10)
+    _control_by_key(app.button, TEACHER_GENERATE_BUTTON).click()
+    app.run(timeout=30)
+
+    result_path = app.session_state["_teacher_result"].artifact_path
+    signature = app.session_state["_teacher_setup_signature"]
+    assert not app.exception
+
+    _control_by_key(app.radio, APP_WORKSPACE_SELECT).set_value("advanced")
+    app.run(timeout=10)
+    _control_by_key(app.radio, APP_WORKSPACE_SELECT).set_value("teacher")
+    app.run(timeout=10)
+
+    assert not app.exception
+    assert _control_by_key(app.text_input, TEACHER_CLASS_NAME_INPUT).value == "Class 7 A"
+    assert _control_by_key(app.selectbox, TEACHER_ROOM_TEMPLATE_SELECT).value == "custom"
+    assert _control_by_key(app.number_input, TEACHER_ROOM_ROWS_INPUT).value == 3
+    assert (
+        _control_by_key(app.number_input, TEACHER_ROOM_SEATS_PER_ROW_INPUT).value
+        == 4
+    )
+    assert _control_by_key(app.multiselect, TEACHER_ROOM_AISLES_INPUT).value == [2]
+    assert _control_by_key(app.radio, TEACHER_GOAL_SELECT).value == "peer-support"
+    assert app.session_state["_teacher_setup_signature"] == signature
+    assert app.session_state["_teacher_result"].artifact_path == result_path
+    assert app.session_state["_teacher_roster_cache"].ready is True
+    assert any(
+        "原始上传文件不会保留" in message.value
+        for message in app.info
+        if getattr(message, "key", None) is None
+    )
+
+    _control_by_key(app.button, TEACHER_START_OVER_BUTTON).click()
+    app.run(timeout=10)
+
+    assert not app.exception
+    assert _control_by_key(app.text_input, TEACHER_CLASS_NAME_INPUT).value == ""
+    assert "_teacher_roster_cache" not in app.session_state
+    assert "_teacher_result" not in app.session_state
+    assert "_teacher_output_dir" not in app.session_state
+    assert not any(
+        control.key == TEACHER_ROOM_TEMPLATE_SELECT for control in app.selectbox
+    )
+    assert not any(control.key == TEACHER_GOAL_SELECT for control in app.radio)
+    assert not any(
+        control.key == TEACHER_START_OVER_BUTTON for control in app.button
+    )
 
 
 def test_streamlit_uploads_survive_wizard_navigation_and_invalidate_results(

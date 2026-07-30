@@ -4,6 +4,7 @@ UI_LANGUAGE_SELECT = "ui_language_choice"
 APP_WORKSPACE_SELECT = "app_workspace"
 
 TEACHER_HOME_STATUS = "teacher_home_status"
+TEACHER_START_OVER_BUTTON = "teacher_start_over"
 TEACHER_CLASS_NAME_INPUT = "teacher_class_name"
 TEACHER_ROSTER_UPLOAD = "teacher_roster"
 TEACHER_ROSTER_STATUS = "teacher_roster_status"
