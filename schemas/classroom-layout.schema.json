@@ -68,6 +68,10 @@
           "title": "Zone",
           "type": "string"
         },
+        "group_id": {
+          "title": "Group Id",
+          "type": "string"
+        },
         "near_window": {
           "title": "Near Window",
           "default": false,
