@@ -375,35 +375,35 @@ def create_app(
         f"{API_PREFIX}/health",
         health,
         methods=["GET"],
-        response_model=HealthResponse,
+        response_model=None,
         tags=["system"],
     )
     app.add_api_route(
         f"{API_PREFIX}/capabilities",
         capabilities,
         methods=["GET"],
-        response_model=CapabilitiesResponse,
+        response_model=None,
         tags=["system"],
     )
     app.add_api_route(
         f"{API_PREFIX}/room-templates",
         room_templates,
         methods=["GET"],
-        response_model=RoomTemplatesResponse,
+        response_model=None,
         tags=["catalogs"],
     )
     app.add_api_route(
         f"{API_PREFIX}/teacher-goals",
         teacher_goals,
         methods=["GET"],
-        response_model=TeacherGoalsResponse,
+        response_model=None,
         tags=["catalogs"],
     )
     app.add_api_route(
         f"{API_PREFIX}/classes/inspect",
         inspect_class_request,
         methods=["POST"],
-        response_model=InspectClassResponse,
+        response_model=None,
         responses={422: {"model": ErrorResponse}},
         tags=["classes"],
     )
@@ -411,7 +411,7 @@ def create_app(
         f"{API_PREFIX}/classes/generate",
         generate_with_store,
         methods=["POST"],
-        response_model=GenerateClassResponse,
+        response_model=None,
         responses={
             409: {"model": ErrorResponse},
             422: {"model": ErrorResponse},
@@ -423,7 +423,7 @@ def create_app(
         f"{API_PREFIX}/editing/drafts/{{draft_id}}",
         get_editor_state,
         methods=["GET"],
-        response_model=EditorStateEnvelope,
+        response_model=None,
         responses={404: {"model": ErrorResponse}},
         tags=["editing"],
     )
@@ -431,7 +431,7 @@ def create_app(
         f"{API_PREFIX}/editing/drafts/{{draft_id}}/commands",
         dispatch_editor_command,
         methods=["POST"],
-        response_model=EditorStateEnvelope,
+        response_model=None,
         responses={
             404: {"model": ErrorResponse},
             409: {"model": ErrorResponse},
@@ -451,7 +451,7 @@ def create_app(
         f"{API_PREFIX}/layouts/drafts",
         create_layout_draft,
         methods=["POST"],
-        response_model=LayoutStateResponse,
+        response_model=None,
         responses={422: {"model": ErrorResponse}},
         tags=["layouts"],
     )
@@ -459,7 +459,7 @@ def create_app(
         f"{API_PREFIX}/layouts/drafts/{{draft_id}}",
         get_layout_state,
         methods=["GET"],
-        response_model=LayoutStateResponse,
+        response_model=None,
         responses={404: {"model": ErrorResponse}},
         tags=["layouts"],
     )
@@ -467,7 +467,7 @@ def create_app(
         f"{API_PREFIX}/layouts/drafts/{{draft_id}}/commands",
         dispatch_layout_command,
         methods=["POST"],
-        response_model=LayoutStateResponse,
+        response_model=None,
         responses={
             404: {"model": ErrorResponse},
             409: {"model": ErrorResponse},
@@ -479,7 +479,7 @@ def create_app(
         f"{API_PREFIX}/layouts/drafts/{{draft_id}}/compiled",
         compile_layout_draft,
         methods=["GET"],
-        response_model=CompiledLayoutResponse,
+        response_model=None,
         responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
         tags=["layouts"],
     )
@@ -495,7 +495,7 @@ def create_app(
         f"{API_PREFIX}/rosters/drafts",
         create_roster_draft,
         methods=["POST"],
-        response_model=RosterDraftResponse,
+        response_model=None,
         responses={
             413: {"model": ErrorResponse},
             422: {"model": ErrorResponse},
@@ -507,7 +507,7 @@ def create_app(
         f"{API_PREFIX}/rosters/drafts/{{draft_id}}",
         get_roster_draft,
         methods=["GET"],
-        response_model=RosterDraftResponse,
+        response_model=None,
         responses={404: {"model": ErrorResponse}},
         tags=["rosters"],
     )
@@ -515,7 +515,7 @@ def create_app(
         f"{API_PREFIX}/rosters/drafts/{{draft_id}}/preview",
         preview_roster_update,
         methods=["POST"],
-        response_model=RosterUpdatePreviewResponse,
+        response_model=None,
         responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
         tags=["rosters"],
     )

@@ -8,11 +8,17 @@ boundary to launch.
 
 from __future__ import annotations
 
+import warnings
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Timer
 from typing import Any
+
+# Suppress pydantic V1/V2 mixing warnings while the API models still use the
+# v1 compatibility layer.  The warnings are expected and do not affect
+# correctness; they will disappear once the models are migrated to v2.
+warnings.filterwarnings("ignore", message="Mixing V1 models and V2 models.*")
 
 from seattrellis.api.http import create_app
 from seattrellis.api.security import LocalApiPolicy
