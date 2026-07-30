@@ -799,6 +799,7 @@ def test_teacher_workspace_survives_advanced_tools_and_can_start_over() -> None:
     assert "_teacher_roster_cache" not in app.session_state
     assert "_teacher_result" not in app.session_state
     assert "_teacher_output_dir" not in app.session_state
+    assert not result_path.parent.exists()
     assert not any(
         control.key == TEACHER_ROOM_TEMPLATE_SELECT for control in app.selectbox
     )

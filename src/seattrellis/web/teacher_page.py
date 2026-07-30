@@ -385,6 +385,7 @@ def teacher_export_filename(
 def render_teacher_page(
     *,
     make_persistent_tempdir: Callable[[], str],
+    discard_persistent_tempdir: Callable[[str], object],
     locale: str,
 ) -> None:
     """Render the default roster-to-print workflow for ordinary teachers."""
@@ -420,7 +421,12 @@ def render_teacher_page(
                 key=TEACHER_START_OVER_BUTTON,
             )
         if start_over:
+            previous_output_dir = st.session_state.get(_OUTPUT_DIR_KEY)
             clear_teacher_workspace_state(st.session_state)
+            _discard_output_dir(
+                previous_output_dir,
+                discard=discard_persistent_tempdir,
+            )
             st.rerun()
 
     restore_teacher_input(st.session_state, TEACHER_CLASS_NAME_INPUT)
@@ -468,7 +474,12 @@ def render_teacher_page(
         room_template_id=(_room_identity(room_template) if room_template else None),
         goal_id=(goal.goal_id if goal else None),
     )
-    invalidate_teacher_results(st.session_state, signature)
+    previous_output_dir = st.session_state.get(_OUTPUT_DIR_KEY)
+    if invalidate_teacher_results(st.session_state, signature):
+        _discard_output_dir(
+            previous_output_dir,
+            discard=discard_persistent_tempdir,
+        )
 
     draft = None
     readiness = None
@@ -518,6 +529,7 @@ def render_teacher_page(
         )
     if generate and draft is not None:
         with st.container(key=widget_region_key(TEACHER_SOLVE_STATUS)):
+            output_dir: Path | None = None
             try:
                 output_dir = Path(make_persistent_tempdir())
                 with st.spinner(text("teacher_generating")):
@@ -534,8 +546,16 @@ def render_teacher_page(
                 OSError,
                 ValueError,
             ) as exc:
+                if output_dir is not None:
+                    discard_persistent_tempdir(str(output_dir))
                 st.error(text("teacher_generate_failed", error=exc))
             else:
+                previous_output_dir = st.session_state.get(_OUTPUT_DIR_KEY)
+                if previous_output_dir != str(output_dir):
+                    _discard_output_dir(
+                        previous_output_dir,
+                        discard=discard_persistent_tempdir,
+                    )
                 st.session_state[_RESULT_KEY] = result
                 st.session_state[_OUTPUT_DIR_KEY] = str(output_dir)
                 st.session_state.pop(TEACHER_CANDIDATE_SELECT, None)
@@ -992,6 +1012,17 @@ def _stored_result(session_state: MutableMapping[str, object]) -> WebSolveResult
         return result
     session_state.pop(_RESULT_KEY, None)
     return None
+
+
+def _discard_output_dir(
+    value: object,
+    *,
+    discard: Callable[[str], object],
+) -> None:
+    """Discard a registered teacher output directory when one is present."""
+
+    if isinstance(value, str) and value:
+        discard(value)
 
 
 def _store_edited_result(

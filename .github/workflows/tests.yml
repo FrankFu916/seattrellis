@@ -43,6 +43,7 @@ jobs:
           tests/test_teacher_web_copy.py
           tests/test_teacher_page.py
           tests/test_interactive_panel_workspace.py
+          tests/test_web_tempfiles.py
           tests/test_web_workflow.py
 
   minimal:

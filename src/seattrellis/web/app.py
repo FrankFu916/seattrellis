@@ -6,11 +6,8 @@ stateful editing controls live in ``web/interactive_panels.py``.
 
 from __future__ import annotations
 
-import atexit
 import hashlib
 import json
-import shutil
-import tempfile
 from pathlib import Path
 
 try:
@@ -107,6 +104,10 @@ from seattrellis.web.keys import (
     widget_region_key,
 )
 from seattrellis.web.teacher_page import render_teacher_page
+from seattrellis.web.tempfiles import (
+    discard_persistent_tempdir as _discard_persistent_tempdir,
+    make_persistent_tempdir as _make_persistent_tempdir,
+)
 from seattrellis.web.workflow import (
     WebSolveResult,
     analyze_history_files,
@@ -161,27 +162,6 @@ _SS_DEFAULTS = {
     "_quick_editing_draft": None,
     "_project_editing_draft": None,
 }
-
-# Persistent temp dirs that survive Streamlit re-runs.
-_PERSISTENT_DIRS: list[str] = []
-
-
-def _make_persistent_tempdir() -> str:
-    """Create a temp directory that persists across Streamlit re-runs.
-
-    Registered directories are cleaned up on process exit via ``atexit``.
-    """
-    d = tempfile.mkdtemp(prefix="seattrellis_")
-    _PERSISTENT_DIRS.append(d)
-    return d
-
-
-@atexit.register
-def _cleanup_persistent_dirs() -> None:
-    for d in _PERSISTENT_DIRS:
-        shutil.rmtree(d, ignore_errors=True)
-    _PERSISTENT_DIRS.clear()
-
 
 def _ss(key: str):
     """Get-or-create a session-state key."""
@@ -1757,6 +1737,7 @@ st.caption(_t("app_caption"))
 if workspace == "teacher":
     render_teacher_page(
         make_persistent_tempdir=_make_persistent_tempdir,
+        discard_persistent_tempdir=_discard_persistent_tempdir,
         locale=_locale(),
     )
 else:
