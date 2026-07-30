@@ -444,6 +444,7 @@ def create_app(
         delete_editor_draft,
         methods=["DELETE"],
         status_code=204,
+        response_model=None,
         tags=["editing"],
     )
     app.add_api_route(
@@ -487,6 +488,7 @@ def create_app(
         delete_layout_draft,
         methods=["DELETE"],
         status_code=204,
+        response_model=None,
         tags=["layouts"],
     )
     app.add_api_route(
@@ -522,6 +524,7 @@ def create_app(
         delete_roster_draft,
         methods=["DELETE"],
         status_code=204,
+        response_model=None,
         tags=["rosters"],
     )
     app.state.editor_draft_store = resolved_store
