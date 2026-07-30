@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -13,8 +14,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  draft-smoke:
+    name: Draft / Ubuntu / Python 3.14
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the package and test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install -e .
+      - name: Run focused draft checks
+        run: >-
+          python -m pytest
+          tests/test_minimal_install.py
+          tests/test_roster_import.py
+          tests/test_room_templates.py
+          tests/test_teacher_goals.py
+          tests/test_class_workflow.py
+
   minimal:
     name: Minimal / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -41,6 +68,7 @@ jobs:
 
   full:
     name: Full / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -80,6 +108,7 @@ jobs:
 
   rust-msrv:
     name: Rust workspace / 1.83 MSRV
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -96,6 +125,7 @@ jobs:
 
   native-extension:
     name: Native extension / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -151,6 +181,7 @@ jobs:
 
   web-e2e:
     name: Web E2E / Ubuntu / Chromium
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
