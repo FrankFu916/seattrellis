@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ from seattrellis.web.teacher_page import (
     _central_aisle,
     _resolve_uploaded_roster,
     _room_identity,
+    _store_edited_result,
     build_teacher_setup_signature,
     clear_teacher_workspace_state,
     invalidate_teacher_results,
@@ -34,6 +36,15 @@ from seattrellis.web.keys import (
     TEACHER_START_OVER_BUTTON,
 )
 from seattrellis.web.workflow import WebSolveResult
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_teacher_modules_after_unit_tests():
+    """Let Streamlit AppTest import the page after workflow reload tests."""
+
+    yield
+    sys.modules.pop("seattrellis.web.teacher_page", None)
+    sys.modules.pop("seattrellis.web.class_adapter", None)
 
 
 def test_roster_upload_cache_parses_each_distinct_payload_once() -> None:
@@ -283,6 +294,39 @@ def test_prepare_print_export_uses_template_privacy_and_reads_bytes(
     assert request.resolved_privacy.hide_scores is True
     assert request.resolved_privacy.hide_special_needs is True
     assert calls[0]["candidate_id"] == "recommended"
+
+
+def test_edited_teacher_result_replaces_only_teacher_plan_state(tmp_path: Path) -> None:
+    artifact = CandidateSet.parse_obj(
+        {
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "snapshot": _snapshot_payload(),
+                    "score": _score_payload(),
+                    "hard_constraints_satisfied": True,
+                }
+            ],
+            "recommended_candidate_id": "candidate-1",
+        }
+    )
+    artifact_path = tmp_path / "edited.json"
+    artifact_path.write_text("{}", encoding="utf-8")
+    result = WebSolveResult(artifact_path=artifact_path, artifact=artifact)
+    session: dict[str, object] = {
+        "teacher_candidate_selector": "candidate-2",
+        prepared_export_state_key("public"): object(),
+        prepared_export_state_key("teacher"): object(),
+        "result": "advanced result",
+    }
+
+    _store_edited_result(session, result)
+
+    assert session["_teacher_result"] is result
+    assert "teacher_candidate_selector" not in session
+    assert prepared_export_state_key("public") not in session
+    assert prepared_export_state_key("teacher") not in session
+    assert session["result"] == "advanced result"
 
 
 @pytest.mark.parametrize(

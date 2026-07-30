@@ -483,7 +483,12 @@ def render_teacher_page(
         has_plan=result is not None,
         locale=resolved_locale,
     )
-    st.caption(workspace.primary_action.label)
+    next_action = (
+        workspace.primary_action.label
+        if class_name.strip()
+        else text("teacher_class_name_action")
+    )
+    st.caption(next_action)
 
     if readiness is not None:
         for error in readiness.validation.errors:
@@ -795,6 +800,11 @@ def _render_teacher_result(
     locale: str,
     text: Callable[..., str],
 ) -> None:
+    # The editing panel depends on Streamlit, so keep this import at the Web
+    # rendering boundary instead of making the teacher state helpers depend on
+    # the optional Web package.
+    from seattrellis.web.interactive_panels import render_manual_edit_panel
+
     with st.container(key=widget_region_key(TEACHER_RESULTS_STATUS)):
         st.subheader(text("teacher_results_title"))
         count = len(result.artifact.candidates) if result.is_candidate_set else 1
@@ -827,6 +837,21 @@ def _render_teacher_result(
                     key=TEACHER_CANDIDATE_SELECT,
                 )
 
+        render_manual_edit_panel(
+            result,
+            selected_id,
+            output_dir=output_dir,
+            translate=text,
+            render_error=lambda exc: st.error(
+                text("teacher_error_detail", error=exc)
+            ),
+            workspace="teacher",
+            on_result_changed=lambda changed: _store_edited_result(
+                st.session_state,
+                changed,
+            ),
+        )
+
         _render_teacher_exports(
             st,
             result,
@@ -856,6 +881,8 @@ def _render_teacher_exports(
             "public",
             "teacher_public_print",
             "teacher_public_print_help",
+            "teacher_public_print_prepare",
+            "teacher_public_print_download",
             TEACHER_PUBLIC_EXPORT_PREPARE,
             TEACHER_PUBLIC_EXPORT_DOWNLOAD,
         ),
@@ -864,6 +891,8 @@ def _render_teacher_exports(
             "teacher",
             "teacher_internal_print",
             "teacher_internal_print_help",
+            "teacher_internal_print_prepare",
+            "teacher_internal_print_download",
             TEACHER_INTERNAL_EXPORT_PREPARE,
             TEACHER_INTERNAL_EXPORT_DOWNLOAD,
         ),
@@ -873,6 +902,8 @@ def _render_teacher_exports(
         template,
         title_key,
         help_key,
+        prepare_label_key,
+        download_label_key,
         prepare_key,
         download_key,
     ) in configurations:
@@ -888,7 +919,7 @@ def _render_teacher_exports(
             )
             with st.container(key=widget_region_key(prepare_key)):
                 prepare = st.button(
-                    text(title_key),
+                    text(prepare_label_key),
                     key=prepare_key,
                     use_container_width=True,
                 )
@@ -918,7 +949,7 @@ def _render_teacher_exports(
                 st.success(text("teacher_export_ready", label=text(title_key)))
                 with st.container(key=widget_region_key(download_key)):
                     st.download_button(
-                        text(title_key),
+                        text(download_label_key),
                         data=prepared.data,
                         file_name=prepared.file_name,
                         mime=prepared.mime,
@@ -934,6 +965,17 @@ def _stored_result(session_state: MutableMapping[str, object]) -> WebSolveResult
         return result
     session_state.pop(_RESULT_KEY, None)
     return None
+
+
+def _store_edited_result(
+    session_state: MutableMapping[str, object],
+    result: WebSolveResult,
+) -> None:
+    """Replace a teacher plan after an edit without touching other workspaces."""
+
+    session_state[_RESULT_KEY] = result
+    session_state.pop(TEACHER_CANDIDATE_SELECT, None)
+    _clear_prepared_exports(session_state)
 
 
 def _clear_prepared_exports(session_state: MutableMapping[str, object]) -> None:

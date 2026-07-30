@@ -748,6 +748,21 @@ def test_teacher_workspace_survives_advanced_tools_and_can_start_over() -> None:
     _control_by_key(app.button, TEACHER_GENERATE_BUTTON).click()
     app.run(timeout=30)
 
+    first_student = _control_by_key(
+        app.selectbox,
+        "teacher_edit_first_student",
+    )
+    second_student = _control_by_key(
+        app.selectbox,
+        "teacher_edit_second_student",
+    )
+    assert first_student.value != second_student.value
+    _control_by_key(app.button, "teacher_swap_students").click()
+    app.run(timeout=30)
+
+    edited_snapshot = app.session_state["_teacher_result"].artifact
+    assert edited_snapshot.metadata["manual_edit"]["operation_count"] == 1
+    assert "result" not in app.session_state
     result_path = app.session_state["_teacher_result"].artifact_path
     signature = app.session_state["_teacher_setup_signature"]
     assert not app.exception

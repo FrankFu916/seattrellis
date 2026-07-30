@@ -19,6 +19,8 @@ from seattrellis.web.keys import (
     TEACHER_CLASS_NAME_INPUT,
     TEACHER_GENERATE_BUTTON,
     TEACHER_GOAL_SELECT,
+    TEACHER_INTERNAL_EXPORT_DOWNLOAD,
+    TEACHER_INTERNAL_EXPORT_PREPARE,
     TEACHER_PUBLIC_EXPORT_DOWNLOAD,
     TEACHER_PUBLIC_EXPORT_PREPARE,
     TEACHER_RESULTS_STATUS,
@@ -74,6 +76,14 @@ def test_teacher_imports_generates_and_downloads_public_plan(
         timeout=30_000,
     )
 
+    page.get_by_text("Manual adjustment", exact=True).click()
+    swap = widget(page, "teacher_swap_students").get_by_role("button")
+    expect(swap).to_be_enabled()
+    swap.click()
+    expect(page.get_by_text("Applied operations: 1", exact=True)).to_be_visible(
+        timeout=30_000,
+    )
+
     region(page, TEACHER_PUBLIC_EXPORT_PREPARE).get_by_role("button").click()
     expect(region(page, TEACHER_PUBLIC_EXPORT_DOWNLOAD)).to_contain_text(
         "Public print",
@@ -104,6 +114,21 @@ def test_teacher_imports_generates_and_downloads_public_plan(
         assert private_value not in html
     for value in (92, 81, 76, 88, 154, 172, 160, 178):
         assert f"<td>{value}</td>" not in html
+
+    region(page, TEACHER_INTERNAL_EXPORT_PREPARE).get_by_role("button").click()
+    expect(region(page, TEACHER_INTERNAL_EXPORT_DOWNLOAD)).to_contain_text(
+        "Download teacher print",
+        timeout=30_000,
+    )
+    teacher_html_path = download_from_region(
+        page,
+        TEACHER_INTERNAL_EXPORT_DOWNLOAD,
+        tmp_path / "class-7-a-teacher.html",
+        expected_filename="Class-7-A-teacher.html",
+    )
+    teacher_html = teacher_html_path.read_text(encoding="utf-8")
+    assert "Student001" in teacher_html
+    assert "STU001" in teacher_html
 
     assert_no_app_exception(page)
     web_server.assert_healthy()

@@ -40,6 +40,10 @@ _TEXT: dict[str, tuple[str, str]] = {
         "例如：七年级二班",
         "For example: Class 2, Grade 7",
     ),
+    "teacher_class_name_action": (
+        "先填写班级名称",
+        "Enter a class name to continue",
+    ),
     "teacher_roster_title": ("学生名单", "Student list"),
     "teacher_roster_upload": (
         "导入 CSV 或 Excel 名单",
@@ -135,12 +139,28 @@ _TEXT: dict[str, tuple[str, str]] = {
     "teacher_candidate_choice": ("查看方案", "View a seating option"),
     "teacher_export_title": ("打印与导出", "Print and export"),
     "teacher_public_print": ("公开打印版", "Public print"),
+    "teacher_public_print_prepare": (
+        "准备公开打印版",
+        "Prepare public print",
+    ),
+    "teacher_public_print_download": (
+        "下载公开打印版",
+        "Download public print",
+    ),
     "teacher_public_print_help": (
         "适合在教室张贴，只显示座位与姓名，不包含学生的其他信息。",
         "Suitable for classroom display. It shows seats and names without other "
         "student information.",
     ),
     "teacher_internal_print": ("教师打印版", "Teacher print"),
+    "teacher_internal_print_prepare": (
+        "准备教师打印版",
+        "Prepare teacher print",
+    ),
+    "teacher_internal_print_download": (
+        "下载教师打印版",
+        "Download teacher print",
+    ),
     "teacher_internal_print_help": (
         "供教师本人留存，可包含排座时参考的信息，请妥善保管。",
         "For the teacher's records. It may include information used when arranging "
