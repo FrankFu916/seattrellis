@@ -187,6 +187,43 @@ if typer is not None:
     def doctor_command() -> None:
         _run_typer_action(lambda: typer.echo(run_doctor()))
 
+    @app.command(
+        "workspace",
+        help="Open the local browser workbench for everyday classroom planning.",
+    )
+    def workspace_command(
+        host: str = typer.Option(
+            "127.0.0.1",
+            "--host",
+            help="Loopback address used by the local workbench.",
+        ),
+        port: int = typer.Option(
+            8765,
+            "--port",
+            help="Local workbench port.",
+        ),
+        open_browser: bool = typer.Option(
+            True,
+            "--open-browser/--no-open-browser",
+            help="Open the workbench in the default browser after startup.",
+        ),
+    ) -> None:
+        def start_workspace() -> None:
+            from seattrellis.workspace_server import (
+                WorkspaceServerOptions,
+                run_workspace_server,
+            )
+
+            options = WorkspaceServerOptions(
+                host=host,
+                port=port,
+                open_browser=open_browser,
+            )
+            typer.echo(f"SeatTrellis workspace: {options.browser_url}")
+            run_workspace_server(options=options)
+
+        _run_typer_action(start_workspace)
+
     @app.command("init-demo", help="Create fictional demo input files under examples/.")
     def init_demo_command(
         output_dir: Path = typer.Option(Path("."), "--output-dir", "-o", help="Directory to create examples in."),
@@ -827,6 +864,14 @@ def _run_argparse() -> None:
     doctor_parser = subparsers.add_parser("doctor", help="Check environment.")
     doctor_parser.set_defaults(func=lambda args: print(run_doctor()))
 
+    workspace_parser = subparsers.add_parser(
+        "workspace",
+        help="Open the local browser workbench.",
+    )
+    workspace_parser.add_argument("--host", default="127.0.0.1")
+    workspace_parser.add_argument("--port", type=int, default=8765)
+    workspace_parser.add_argument("--no-open-browser", action="store_true")
+
     # init-demo
     init_parser = subparsers.add_parser("init-demo", help="Create fictional demo input files.")
     init_parser.add_argument("--output-dir", "-o", default=".")
@@ -1011,6 +1056,19 @@ def _run_argparse() -> None:
     args = parser.parse_args()
     if args.command == "doctor":
         print(run_doctor())
+    elif args.command == "workspace":
+        from seattrellis.workspace_server import (
+            WorkspaceServerOptions,
+            run_workspace_server,
+        )
+
+        options = WorkspaceServerOptions(
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_open_browser,
+        )
+        print(f"SeatTrellis workspace: {options.browser_url}")
+        run_workspace_server(options=options)
     elif args.command == "init-demo":
         paths = init_demo(output_dir=args.output_dir, overwrite=args.overwrite)
         print(f"Demo files ready in {paths['students_csv'].parent}")

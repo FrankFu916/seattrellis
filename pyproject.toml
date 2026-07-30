@@ -30,7 +30,11 @@ dependencies = [
 solver = ["ortools>=9.15,<9.16"]
 excel = ["openpyxl>=3.1"]
 image = ["Pillow>=11.3,<13"]
-web = ["streamlit>=1.50,<2"]
+web = [
+  "streamlit>=1.50,<2",
+  "fastapi>=0.139,<1",
+  "uvicorn>=0.41,<1",
+]
 pdf = ["weasyprint>=69,<70", "cffi>=2,<3"]
 docx = ["python-docx>=1.0"]
 dev = ["pytest>=7.0", "build>=1.2", "pypdf>=5"]
@@ -41,6 +45,8 @@ all = [
   "openpyxl>=3.1",
   "Pillow>=11.3,<13",
   "streamlit>=1.50,<2",
+  "fastapi>=0.139,<1",
+  "uvicorn>=0.41,<1",
   "weasyprint>=69,<70",
   "cffi>=2,<3",
   "python-docx>=1.0",
@@ -57,6 +63,9 @@ Issues = "https://github.com/FrankFu916/seattrellis/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+seattrellis = ["web_static/*", "web_static/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
