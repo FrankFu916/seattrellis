@@ -77,6 +77,7 @@ from seattrellis.web.workflow import (
 Translate = Callable[..., str]
 RenderError = Callable[[Exception], None]
 HistoryPaths = Callable[[], Sequence[str | Path]]
+ResultChanged = Callable[[WebSolveResult], None]
 PanelWorkspace = Literal["teacher", "quick", "project"]
 
 
@@ -311,8 +312,14 @@ def render_manual_edit_panel(
     render_error: RenderError,
     project: bool = False,
     workspace: str | None = None,
+    on_result_changed: ResultChanged | None = None,
 ) -> None:
-    """Render replayable swap, undo, and redo controls."""
+    """Render replayable swap, undo, and redo controls.
+
+    ``on_result_changed`` lets a task-oriented page keep its result in an
+    isolated state model.  The legacy Quick and Project pages retain their
+    established session keys when no callback is supplied.
+    """
     namespace = _resolve_panel_namespace(workspace, project=project)
     state_key = namespace.state_key("editing_draft")
     draft = st.session_state.get(state_key)
@@ -470,11 +477,14 @@ def render_manual_edit_panel(
             else:
                 return
             st.session_state[state_key] = draft
-            st.session_state["result"] = draft.current_result
-            st.session_state["artifact_json"] = (
-                draft.current_result.artifact_path.read_bytes()
-            )
-            st.session_state["report_json"] = None
+            if on_result_changed is None:
+                st.session_state["result"] = draft.current_result
+                st.session_state["artifact_json"] = (
+                    draft.current_result.artifact_path.read_bytes()
+                )
+                st.session_state["report_json"] = None
+            else:
+                on_result_changed(draft.current_result)
             st.session_state.pop(
                 namespace.prepared_export_state_key,
                 None,
