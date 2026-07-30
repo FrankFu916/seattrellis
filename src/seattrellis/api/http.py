@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from seattrellis.api.errors import ApiProblem, invalid_request_problem
 from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
@@ -14,6 +15,11 @@ from seattrellis.api.handlers import (
     room_templates,
     teacher_goals,
 )
+from seattrellis.api.layouts import (
+    LayoutCommandConflictError,
+    LayoutDraftNotFoundError,
+    LayoutDraftStore,
+)
 from seattrellis.api.models import (
     API_PREFIX,
     ApiErrorDetail,
@@ -23,6 +29,10 @@ from seattrellis.api.models import (
     GenerateClassResponse,
     HealthResponse,
     InspectClassResponse,
+    CompiledLayoutResponse,
+    CreateLayoutDraftRequest,
+    LayoutCommandRequest,
+    LayoutStateResponse,
     RoomTemplatesResponse,
     TeacherGoalsResponse,
 )
@@ -33,6 +43,12 @@ from seattrellis.editing_protocol import (
     EditorStateEnvelope,
 )
 from seattrellis.api.security import LocalApiPolicy
+from seattrellis.application.layout_editor import (
+    LayoutDraft,
+    LayoutEditingError,
+    LayoutRevisionConflictError,
+)
+from seattrellis.application.room_templates import build_room_from_template
 from seattrellis.optional import MissingOptionalDependencyError
 
 
@@ -40,6 +56,7 @@ def create_app(
     *,
     policy: LocalApiPolicy | None = None,
     draft_store: EditorDraftStore | None = None,
+    layout_store: LayoutDraftStore | None = None,
 ) -> Any:
     """Create the optional ASGI application without enabling broad CORS."""
 
@@ -57,6 +74,7 @@ def create_app(
 
     resolved_policy = policy or LocalApiPolicy()
     resolved_store = draft_store or EditorDraftStore()
+    resolved_layout_store = layout_store or LayoutDraftStore()
     app = FastAPI(
         title="SeatTrellis Local API",
         version="1",
@@ -187,6 +205,80 @@ def create_app(
         resolved_store.delete(draft_id)
         return Response(status_code=204)
 
+    def create_layout_draft(request: CreateLayoutDraftRequest) -> LayoutStateResponse:
+        try:
+            if request.layout is not None:
+                draft = LayoutDraft.from_layout(request.layout)
+                draft.name = request.name
+            elif request.template_id is not None:
+                draft = LayoutDraft.from_layout(
+                    build_room_from_template(request.template_id, name=request.name)
+                )
+            else:
+                draft = LayoutDraft.rectangular(
+                    request.rows or 1,
+                    request.columns or 1,
+                    name=request.name,
+                )
+            # Source layout IDs identify saved room definitions, not editing
+            # sessions. Every browser draft receives an independent opaque ID.
+            draft.draft_id = uuid4().hex
+            return resolved_layout_store.create(draft)
+        except (KeyError, LayoutEditingError, TypeError, ValueError) as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="invalid_layout_draft",
+                message="The classroom layout could not be created from these settings.",
+            ) from exc
+
+    def get_layout_state(draft_id: str) -> LayoutStateResponse:
+        try:
+            return resolved_layout_store.state(draft_id)
+        except LayoutDraftNotFoundError as exc:
+            raise _layout_not_found_problem() from exc
+
+    def dispatch_layout_command(
+        draft_id: str,
+        command: LayoutCommandRequest,
+    ) -> LayoutStateResponse:
+        try:
+            return resolved_layout_store.dispatch(draft_id, command)
+        except LayoutDraftNotFoundError as exc:
+            raise _layout_not_found_problem() from exc
+        except (LayoutCommandConflictError, LayoutRevisionConflictError) as exc:
+            raise ApiProblem(
+                status_code=409,
+                code="layout_revision_conflict",
+                message=(
+                    "The classroom layout changed after this action started. "
+                    "Refresh it and try again."
+                ),
+            ) from exc
+        except (LayoutEditingError, TypeError, ValueError) as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="layout_command_rejected",
+                message="That layout change does not fit the current classroom grid.",
+            ) from exc
+
+    def compile_layout_draft(draft_id: str) -> CompiledLayoutResponse:
+        try:
+            return resolved_layout_store.compile(draft_id)
+        except LayoutDraftNotFoundError as exc:
+            raise _layout_not_found_problem() from exc
+        except LayoutEditingError as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="layout_not_ready",
+                message="Add at least one usable seat before using this classroom.",
+            ) from exc
+
+    def delete_layout_draft(draft_id: str) -> Any:
+        from fastapi import Response
+
+        resolved_layout_store.delete(draft_id)
+        return Response(status_code=204)
+
     app.add_api_route(
         f"{API_PREFIX}/health",
         health,
@@ -262,8 +354,60 @@ def create_app(
         status_code=204,
         tags=["editing"],
     )
+    app.add_api_route(
+        f"{API_PREFIX}/layouts/drafts",
+        create_layout_draft,
+        methods=["POST"],
+        response_model=LayoutStateResponse,
+        responses={422: {"model": ErrorResponse}},
+        tags=["layouts"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/layouts/drafts/{{draft_id}}",
+        get_layout_state,
+        methods=["GET"],
+        response_model=LayoutStateResponse,
+        responses={404: {"model": ErrorResponse}},
+        tags=["layouts"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/layouts/drafts/{{draft_id}}/commands",
+        dispatch_layout_command,
+        methods=["POST"],
+        response_model=LayoutStateResponse,
+        responses={
+            404: {"model": ErrorResponse},
+            409: {"model": ErrorResponse},
+            422: {"model": ErrorResponse},
+        },
+        tags=["layouts"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/layouts/drafts/{{draft_id}}/compiled",
+        compile_layout_draft,
+        methods=["GET"],
+        response_model=CompiledLayoutResponse,
+        responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+        tags=["layouts"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/layouts/drafts/{{draft_id}}",
+        delete_layout_draft,
+        methods=["DELETE"],
+        status_code=204,
+        tags=["layouts"],
+    )
     app.state.editor_draft_store = resolved_store
+    app.state.layout_draft_store = resolved_layout_store
     return app
+
+
+def _layout_not_found_problem() -> ApiProblem:
+    return ApiProblem(
+        status_code=404,
+        code="layout_draft_not_found",
+        message="This classroom layout draft has expired or was already closed.",
+    )
 
 
 def _model_data(model: Any) -> dict[str, Any]:

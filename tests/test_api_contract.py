@@ -66,6 +66,7 @@ def test_system_and_catalog_contracts_are_versioned() -> None:
     assert capability_response.features == [
         "class-inspection",
         "class-generation",
+        "layout-editing",
         "room-templates",
         "teacher-goals",
     ]
@@ -222,4 +223,8 @@ def test_fastapi_routes_use_only_the_versioned_prefix_when_available() -> None:
         f"{API_PREFIX}/classes/generate",
         f"{API_PREFIX}/editing/drafts/{{draft_id}}",
         f"{API_PREFIX}/editing/drafts/{{draft_id}}/commands",
+        f"{API_PREFIX}/layouts/drafts",
+        f"{API_PREFIX}/layouts/drafts/{{draft_id}}",
+        f"{API_PREFIX}/layouts/drafts/{{draft_id}}/commands",
+        f"{API_PREFIX}/layouts/drafts/{{draft_id}}/compiled",
     }

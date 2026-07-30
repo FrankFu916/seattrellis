@@ -11,9 +11,23 @@ from math import isfinite
 from typing import Any, Literal
 
 try:
-    from pydantic.v1 import BaseModel, Field, root_validator, validator
+    from pydantic.v1 import (
+        BaseModel,
+        Field,
+        StrictInt,
+        StrictStr,
+        root_validator,
+        validator,
+    )
 except ImportError:  # pragma: no cover - Pydantic v1 installed directly.
-    from pydantic import BaseModel, Field, root_validator, validator
+    from pydantic import (
+        BaseModel,
+        Field,
+        StrictInt,
+        StrictStr,
+        root_validator,
+        validator,
+    )
 
 from seattrellis.editing_protocol import EditorStateEnvelope
 from seattrellis.models.layout import ClassroomLayout
@@ -247,3 +261,115 @@ class GenerateClassResponse(VersionedResponse):
     recommended_candidate_id: str
     candidates: list[CandidateSummary]
     editor: EditorStateEnvelope
+
+
+class CreateLayoutDraftRequest(ApiModel):
+    name: str = "Classroom"
+    template_id: str | None = None
+    layout: ClassroomLayout | None = None
+    rows: int | None = Field(default=None, ge=1, le=50)
+    columns: int | None = Field(default=None, ge=1, le=50)
+
+    @validator("name", "template_id", pre=True)
+    def clean_layout_text(cls, value: object, field: Any) -> object:
+        if value is None and field.name == "template_id":
+            return None
+        if not isinstance(value, str):
+            raise ValueError("must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("cannot be empty.")
+        return text
+
+    @validator("rows", "columns", pre=True)
+    def reject_boolean_dimensions(cls, value: object) -> object:
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValueError("must be an integer.")
+        return value
+
+    @root_validator(skip_on_failure=True)
+    def choose_one_layout_source(cls, values: dict[str, Any]) -> dict[str, Any]:
+        sources = [
+            values.get("template_id") is not None,
+            values.get("layout") is not None,
+            values.get("rows") is not None or values.get("columns") is not None,
+        ]
+        if sum(sources) != 1:
+            raise ValueError(
+                "Choose one template, existing layout, or rows and columns."
+            )
+        if sources[2] and (
+            values.get("rows") is None or values.get("columns") is None
+        ):
+            raise ValueError("Both rows and columns are required.")
+        return values
+
+
+class LayoutCellState(ApiModel):
+    row: int = Field(ge=1)
+    column: int = Field(ge=1)
+    kind: Literal["seat", "aisle", "platform", "empty"]
+    seat_id: str | None = None
+
+
+class LayoutStateResponse(VersionedResponse):
+    kind: Literal["seattrellis_layout_state"] = "seattrellis_layout_state"
+    draft_id: str
+    revision: int = Field(ge=0)
+    name: str
+    rows: int = Field(ge=1)
+    columns: int = Field(ge=1)
+    cells: list[LayoutCellState]
+    undo_depth: int = Field(ge=0)
+    redo_depth: int = Field(ge=0)
+    usable_seat_count: int = Field(ge=0)
+
+
+class LayoutOperationRequest(ApiModel):
+    kind: Literal[
+        "set_cell",
+        "insert_row",
+        "delete_row",
+        "insert_column",
+        "delete_column",
+        "translate",
+        "mirror_horizontal",
+        "flip_vertical",
+    ]
+    payload: dict[str, StrictStr | StrictInt | None] = Field(default_factory=dict)
+
+
+class LayoutCommandRequest(ApiModel):
+    command_id: str
+    draft_id: str
+    base_revision: int = Field(ge=0)
+    action: Literal["apply", "undo", "redo"]
+    operation: LayoutOperationRequest | None = None
+
+    @validator("command_id", "draft_id", pre=True)
+    def clean_layout_identifier(cls, value: object) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("must be a non-empty string.")
+        return value.strip()
+
+    @validator("base_revision", pre=True)
+    def reject_boolean_revision(cls, value: object) -> object:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("must be an integer.")
+        return value
+
+    @root_validator(skip_on_failure=True)
+    def action_matches_operation(cls, values: dict[str, Any]) -> dict[str, Any]:
+        action = values.get("action")
+        operation = values.get("operation")
+        if action == "apply" and operation is None:
+            raise ValueError("Apply commands require an operation.")
+        if action in {"undo", "redo"} and operation is not None:
+            raise ValueError(f"{action} commands cannot contain an operation.")
+        return values
+
+
+class CompiledLayoutResponse(VersionedResponse):
+    draft_id: str
+    revision: int = Field(ge=0)
+    layout: ClassroomLayout

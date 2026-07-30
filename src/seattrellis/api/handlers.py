@@ -75,6 +75,7 @@ def capabilities() -> CapabilitiesResponse:
         features=[
             "class-inspection",
             "class-generation",
+            "layout-editing",
             "room-templates",
             "teacher-goals",
         ],
