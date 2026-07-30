@@ -38,18 +38,22 @@ _SOFT_RULES = frozenset(
         "avoid_recent_neighbors",
     }
 )
+_FALLBACK_SOFT_RULES = _SOFT_RULES | frozenset(
+    {"score_position", "score_distribution", "mentor_pairing"}
+)
 
 
 def _capabilities(
     strategy: BackendStrategy,
     *,
+    supported_soft_rules: frozenset[str] = _SOFT_RULES,
     requires_optional_dependency: bool = False,
     experimental: bool = False,
 ) -> BackendCapabilities:
     return BackendCapabilities(
         strategy=strategy,
         supported_hard_rules=_HARD_RULES,
-        supported_soft_rules=_SOFT_RULES,
+        supported_soft_rules=supported_soft_rules,
         supports_history=True,
         supports_candidate_exclusions=True,
         supports_seed=True,
@@ -63,7 +67,10 @@ _BACKENDS: Mapping[ConcreteSolverBackend, SolverBackendProtocol] = MappingProxyT
     {
         "fallback": FunctionSolverBackend(
             name="fallback",
-            capabilities=_capabilities("heuristic"),
+            capabilities=_capabilities(
+                "heuristic",
+                supported_soft_rules=_FALLBACK_SOFT_RULES,
+            ),
             solve_function=solve_with_fallback,
         ),
         "ortools": FunctionSolverBackend(
@@ -78,6 +85,7 @@ _BACKENDS: Mapping[ConcreteSolverBackend, SolverBackendProtocol] = MappingProxyT
             name="native",
             capabilities=_capabilities(
                 "hybrid-validation",
+                supported_soft_rules=_FALLBACK_SOFT_RULES,
                 requires_optional_dependency=True,
                 experimental=True,
             ),

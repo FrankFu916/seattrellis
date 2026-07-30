@@ -184,7 +184,7 @@ def _validate_resolved_inputs(
             )
         report.add_warning(message)
 
-    _add_rule_capability_warnings(report, rules)
+    _add_rule_capability_warnings(report, rules, layout)
 
     keys = [student.key for student in students]
     duplicates = sorted({key for key in keys if keys.count(key) > 1})
@@ -269,7 +269,11 @@ def count_hard_constraints(rules: RuleSet) -> int:
     )
 
 
-def _add_rule_capability_warnings(report: ValidationReport, rules: RuleSet) -> None:
+def _add_rule_capability_warnings(
+    report: ValidationReport,
+    rules: RuleSet,
+    layout: ClassroomLayout,
+) -> None:
     if rules.groups:
         report.add_warning(
             "rules.groups is currently model-only: group definitions are parsed and preserved, "
@@ -281,6 +285,17 @@ def _add_rule_capability_warnings(report: ValidationReport, rules: RuleSet) -> N
             "active recent-neighbor penalties. Cooling settings are parsed and preserved, but "
             "do not affect solving or scoring yet."
         )
+    distribution = rules.soft.score_distribution
+    if distribution.enabled and distribution.scope == "group":
+        missing = [seat.seat_id for seat in layout.enabled_seats if not seat.group_id]
+        if missing:
+            preview = ", ".join(missing[:5])
+            suffix = "..." if len(missing) > 5 else ""
+            report.add_warning(
+                "score_distribution with scope='group' requires group_id on every "
+                f"enabled seat. Missing group_id: {preview}{suffix}. The objective "
+                "will be skipped until all enabled seats are grouped."
+            )
 
 
 def format_infeasible_diagnostic(

@@ -9,7 +9,10 @@ from seattrellis.models.rules import (
     AvoidRecentNeighborsRule,
     FairRotationRule,
     HardRules,
+    MentorPairingRule,
     RuleSet,
+    ScoreDistributionRule,
+    ScorePositionRule,
     SoftRules,
     WeightedRule,
 )
@@ -55,6 +58,9 @@ def _rules(
     score: int = 0,
     fair_rotation: int = 0,
     neighbors: int = 0,
+    score_position: tuple[Literal["high_front", "high_back"], int] | None = None,
+    score_distribution: tuple[Literal["row", "group"], int] | None = None,
+    mentor_pairing: int = 0,
 ) -> RuleSet:
     return RuleSet(
         seed=42,
@@ -64,6 +70,20 @@ def _rules(
             height_back=_weighted(height > 0, height),
             randomize=_weighted(randomize > 0, randomize),
             score_balance=_weighted(score > 0, score),
+            score_position=ScorePositionRule(
+                enabled=score_position is not None and score_position[1] > 0,
+                weight=score_position[1] if score_position is not None else 1,
+                direction=score_position[0] if score_position is not None else "high_front",
+            ),
+            score_distribution=ScoreDistributionRule(
+                enabled=score_distribution is not None and score_distribution[1] > 0,
+                weight=score_distribution[1] if score_distribution is not None else 1,
+                scope=score_distribution[0] if score_distribution is not None else "row",
+            ),
+            mentor_pairing=MentorPairingRule(
+                enabled=mentor_pairing > 0,
+                weight=mentor_pairing if mentor_pairing > 0 else 1,
+            ),
             fair_rotation=FairRotationRule(
                 enabled=fair_rotation > 0,
                 weight=fair_rotation,
@@ -128,10 +148,61 @@ _PRESETS = (
     ),
     PresetDefinition(
         name="balanced",
-        title="Score balanced",
+        title="Peer mixing (compatibility name)",
         description="Prefer mixing different score levels across adjacent seats.",
         best_for="Cooperative learning or peer-support arrangements with score data.",
         rules=_rules(randomize=2, score=18),
+        requirements=("score",),
+    ),
+    PresetDefinition(
+        name="peer-mixing",
+        title="Peer mixing",
+        description="Prefer mixing different score levels across adjacent seats.",
+        best_for="Cooperative learning where varied-score neighbors are useful.",
+        rules=_rules(randomize=2, score=18),
+        requirements=("score",),
+    ),
+    PresetDefinition(
+        name="score-high-front",
+        title="Higher scores toward the front",
+        description="Use score-rank percentiles to softly favor higher-scoring students toward front rows.",
+        best_for="Classes that want score position to guide, but not override, accessibility and hard rules.",
+        rules=_rules(randomize=2, score_position=("high_front", 18)),
+        requirements=("score",),
+    ),
+    PresetDefinition(
+        name="score-high-back",
+        title="Higher scores toward the back",
+        description="Use score-rank percentiles to softly favor higher-scoring students toward back rows.",
+        best_for="Classes using front rows for students who need more support.",
+        rules=_rules(randomize=2, score_position=("high_back", 18)),
+        requirements=("score",),
+    ),
+    PresetDefinition(
+        name="row-score-balanced",
+        title="Balanced score distribution by row",
+        description="Reduce differences between the mean score ranks of occupied rows.",
+        best_for="Spreading score levels across classroom rows.",
+        rules=_rules(randomize=2, score_distribution=("row", 18)),
+        requirements=("score",),
+    ),
+    PresetDefinition(
+        name="group-score-balanced",
+        title="Balanced score distribution by group",
+        description="Reduce differences between named seat-group mean score ranks.",
+        best_for="Layouts whose enabled seats all define group_id.",
+        rules=_rules(randomize=2, score_distribution=("group", 18)),
+        requirements=("score",),
+    ),
+    PresetDefinition(
+        name="mentor-pairing",
+        title="Mentor pairing",
+        description=(
+            "Deterministically pair high- and low-ranked students at neighboring "
+            "desks while avoiding recent repeats when history is available."
+        ),
+        best_for="Peer-support lessons where teachers want explainable mentor and learner pairs.",
+        rules=_rules(randomize=2, mentor_pairing=18),
         requirements=("score",),
     ),
     PresetDefinition(
@@ -156,7 +227,7 @@ _PRESET_BY_NAME = {preset.name: preset for preset in _PRESETS}
 
 _DEGRADATION_NOTES = {
     "history": "History-based preferences stay enabled but contribute no cost or score until snapshots are supplied.",
-    "score": "score_balance stays enabled but is ignored when fewer than two students have distinct scores.",
+    "score": "Score-based goals stay enabled but are ignored when fewer than two students have distinct scores.",
     "height": "height_back stays enabled but is ignored when usable height or row variation is unavailable.",
     "vision": "vision_front stays enabled but is ignored when no student has a vision/front-seat marker.",
 }
@@ -271,7 +342,13 @@ def _requirement_enabled(requirement: PresetRequirement, rules: RuleSet) -> bool
         )
         return any(rule.enabled and rule.weight > 0 for rule in history_rules)
     if requirement == "score":
-        rule = rules.soft.score_balance
+        score_rules = (
+            rules.soft.score_balance,
+            rules.soft.score_position,
+            rules.soft.score_distribution,
+            rules.soft.mentor_pairing,
+        )
+        return any(rule.enabled and rule.weight > 0 for rule in score_rules)
     elif requirement == "height":
         rule = rules.soft.height_back
     else:

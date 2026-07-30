@@ -20,6 +20,11 @@ from seattrellis.solver.problem import (
     seat_indexes_adjacent,
 )
 from seattrellis.solver.result import SeatingSolution
+from seattrellis.solver.soft_objectives import (
+    SoftObjectiveContext,
+    compile_soft_objectives,
+    evaluate_soft_objectives,
+)
 
 
 class _FallbackDeadlineExceeded(RuntimeError):
@@ -41,6 +46,7 @@ def solve_with_fallback(
     layout = problem.layout
     rules = problem.rules
     rng = random.Random(seed)
+    objective_context = compile_soft_objectives(students, layout, rules, pair_history)
     attempts = max(40, len(students) * 12)
     deadline = time.monotonic() + time_limit_seconds
     best_assignment: dict[int, int] | None = None
@@ -77,6 +83,7 @@ def solve_with_fallback(
                         problem,
                         history,
                         pair_history,
+                        objective_context,
                     )
                     _raise_if_deadline_reached(deadline)
                     if attempt > 0:
@@ -117,6 +124,7 @@ def solve_with_fallback(
                 history,
                 pair_history,
                 deadline,
+                objective_context,
             )
             if best_cost is None or cost < best_cost:
                 best_assignment = dict(assignment)
@@ -148,6 +156,15 @@ def solve_with_fallback(
             "attempt_limit": attempts,
             "stopped_by_time_limit": stopped_by_time_limit,
             "time_limit_seconds": time_limit_seconds,
+            "soft_objective_warnings": list(objective_context.warnings),
+            "mentor_pairs": [
+                {
+                    "mentor": pair.mentor_key,
+                    "learner": pair.learner_key,
+                    "recent_occurrences": pair.recent_occurrences,
+                }
+                for pair in objective_context.mentor_pairs
+            ],
         },
         layout,
         rules,
@@ -253,6 +270,7 @@ def _fallback_candidate_cost(
     problem: CompiledProblem,
     history: SeatHistory | None,
     pair_history: PairHistory | None,
+    objective_context: SoftObjectiveContext,
 ) -> float:
     students = problem.students
     seats = problem.seats
@@ -260,19 +278,28 @@ def _fallback_candidate_cost(
     rules = problem.rules
     cost = _fallback_individual_cost(students[student_index], seats[seat_index], layout, rules, history)
     rule = rules.soft.avoid_recent_neighbors
-    if not rule.enabled or rule.weight == 0:
-        return cost
-    for assigned_student_index, assigned_seat_index in assignment.items():
-        cost += avoid_recent_neighbors_cost(
-            students[student_index].key,
-            students[assigned_student_index].key,
-            seats[seat_index],
-            seats[assigned_seat_index],
-            layout,
-            rule,
-            pair_history,
-            adjacency_edges=problem.edges,
-        )
+    if rule.enabled and rule.weight:
+        for assigned_student_index, assigned_seat_index in assignment.items():
+            cost += avoid_recent_neighbors_cost(
+                students[student_index].key,
+                students[assigned_student_index].key,
+                seats[seat_index],
+                seats[assigned_seat_index],
+                layout,
+                rule,
+                pair_history,
+                adjacency_edges=problem.edges,
+            )
+    prospective = {
+        students[index].key: seats[assigned_seat_index].seat_id
+        for index, assigned_seat_index in assignment.items()
+    }
+    prospective[students[student_index].key] = seats[seat_index].seat_id
+    cost += evaluate_soft_objectives(
+        prospective,
+        objective_context,
+        rules,
+    ).total_cost
     return cost
 
 
@@ -282,6 +309,7 @@ def _fallback_total_cost(
     history: SeatHistory | None,
     pair_history: PairHistory | None,
     deadline: float,
+    objective_context: SoftObjectiveContext,
 ) -> float:
     students = problem.students
     seats = problem.seats
@@ -329,6 +357,15 @@ def _fallback_total_cost(
                     pair_history,
                     adjacency_edges=problem.edges,
                 )
+    assignment_by_key = {
+        students[student_index].key: seats[seat_index].seat_id
+        for student_index, seat_index in assignment.items()
+    }
+    cost += evaluate_soft_objectives(
+        assignment_by_key,
+        objective_context,
+        rules,
+    ).total_cost
     return cost
 
 

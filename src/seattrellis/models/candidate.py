@@ -61,6 +61,7 @@ class ScoreBreakdown(BaseModel):
     vision_preference_score: ScoreDimension
     diversity_score: ScoreDimension
     stability_score: ScoreDimension
+    rule_scores: dict[str, ScoreDimension] = Field(default_factory=dict)
     hard_constraint_summary: HardConstraintSummary
 
 
@@ -85,6 +86,7 @@ class PlanScore(BaseModel):
             self.breakdown.vision_preference_score,
             self.breakdown.diversity_score,
             self.breakdown.stability_score,
+            *self.breakdown.rule_scores.values(),
         ]
         return sum(1 for d in dims if d.status == "available")
 

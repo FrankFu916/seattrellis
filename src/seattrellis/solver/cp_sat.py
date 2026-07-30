@@ -10,6 +10,7 @@ from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.student import Student
 from seattrellis.solver.backend import normalize_solver_backend, resolve_solver_backend
+from seattrellis.solver.errors import SeatTrellisSolveError
 from seattrellis.solver.problem import CompiledProblem, compile_problem
 from seattrellis.solver.registry import get_solver_backend
 from seattrellis.solver.result import SeatingSolution
@@ -76,6 +77,25 @@ def solve_compiled(
     requested_backend = normalize_solver_backend(backend)
     effective_backend = resolve_solver_backend(requested_backend)
     solver_backend = get_solver_backend(effective_backend)
+    active_score_goals = {
+        name
+        for name in ("score_position", "score_distribution", "mentor_pairing")
+        if getattr(problem.rules.soft, name).enabled
+        and getattr(problem.rules.soft, name).weight
+    }
+    capabilities = getattr(solver_backend, "capabilities", None)
+    supported_soft_rules = getattr(
+        capabilities,
+        "supported_soft_rules",
+        frozenset(active_score_goals),
+    )
+    unsupported = active_score_goals - supported_soft_rules
+    if unsupported:
+        names = ", ".join(sorted(unsupported))
+        raise SeatTrellisSolveError(
+            f"The {effective_backend} backend does not yet support these score goals: "
+            f"{names}. Use --backend fallback (or native) for this ruleset."
+        )
     return solver_backend.solve(
         problem,
         history,

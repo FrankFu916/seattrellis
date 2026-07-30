@@ -30,12 +30,20 @@ from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student, student_needs_front
 from seattrellis.solver.adjacency import build_adjacency_edges
 from seattrellis.solver.assignment_validator import validate_assignment
+from seattrellis.solver.soft_objectives import (
+    SoftObjectiveEvaluation,
+    compile_soft_objectives,
+    evaluate_soft_objectives,
+)
 
 
 DIMENSION_LABELS = {
     "fair_rotation_score": "fair rotation",
     "avoid_recent_neighbors_score": "avoid repeated neighbors",
     "score_balance_score": "score balance",
+    "score_position_score": "score position",
+    "score_distribution_score": "score distribution",
+    "mentor_pairing_score": "mentor pairing",
     "height_preference_score": "height preference",
     "vision_preference_score": "vision preference",
     "diversity_score": "plan diversity",
@@ -56,6 +64,12 @@ def score_snapshot(
     rules = snapshot.rules
     assignments = snapshot.assignments
     pair_history = pair_history or (history.pair_history if history is not None else None)
+    score_goal_context = compile_soft_objectives(students, layout, rules, pair_history)
+    score_goal_evaluation = evaluate_soft_objectives(
+        {assignment.student_key: assignment.seat_id for assignment in assignments},
+        score_goal_context,
+        rules,
+    )
 
     breakdown = ScoreBreakdown(
         fair_rotation_score=_score_fair_rotation(assignments, students, layout, rules, history),
@@ -76,6 +90,7 @@ def score_snapshot(
             else _not_available("Diversity requires at least two generated candidates.")
         ),
         stability_score=_score_stability(assignments, latest_snapshot),
+        rule_scores=_score_goal_dimensions(rules, score_goal_evaluation),
         hard_constraint_summary=evaluate_hard_constraints(assignments, students, layout, rules),
     )
     return PlanScore(total=_weighted_total(breakdown), breakdown=breakdown)
@@ -487,6 +502,53 @@ def _score_stability(
     )
 
 
+def _score_goal_dimensions(
+    rules: RuleSet,
+    evaluation: SoftObjectiveEvaluation,
+) -> dict[str, ScoreDimension]:
+    """Convert shared normalized losses into explainable score dimensions."""
+
+    configured = {
+        "score_position": rules.soft.score_position,
+        "score_distribution": rules.soft.score_distribution,
+        "mentor_pairing": rules.soft.mentor_pairing,
+    }
+    dimensions: dict[str, ScoreDimension] = {}
+    for name, rule in configured.items():
+        key = f"{name}_score"
+        if not rule.enabled or rule.weight == 0:
+            dimensions[key] = _not_available(f"{name} is disabled.")
+            continue
+        loss = evaluation.losses.get(name)
+        if loss is None:
+            reason = _score_goal_unavailable_reason(name, evaluation)
+            dimensions[key] = _not_available(reason)
+            continue
+        details = dict(evaluation.details.get(name, {}))
+        if evaluation.warnings:
+            details["warnings"] = list(evaluation.warnings)
+        dimensions[key] = _available_dimension(
+            (1 - loss) * 100,
+            raw_value=loss,
+            weight=rule.weight,
+            details=details,
+        )
+    return dimensions
+
+
+def _score_goal_unavailable_reason(
+    name: str,
+    evaluation: SoftObjectiveEvaluation,
+) -> str:
+    if name == "score_position":
+        return "At least two students with different scores are required."
+    if name == "score_distribution":
+        if evaluation.warnings:
+            return evaluation.warnings[0]
+        return "At least two populated rows or groups with score data are required."
+    return "No deterministic mentor/learner pairs could be formed from the score data."
+
+
 def _weighted_total(breakdown: ScoreBreakdown) -> float:
     if not breakdown.hard_constraint_summary.satisfied:
         return 0.0
@@ -538,7 +600,7 @@ def _not_available(reason: str) -> ScoreDimension:
 
 
 def _dimension_map(breakdown: ScoreBreakdown) -> dict[str, ScoreDimension]:
-    return {
+    dimensions = {
         "fair_rotation_score": breakdown.fair_rotation_score,
         "avoid_recent_neighbors_score": breakdown.avoid_recent_neighbors_score,
         "score_balance_score": breakdown.score_balance_score,
@@ -547,6 +609,8 @@ def _dimension_map(breakdown: ScoreBreakdown) -> dict[str, ScoreDimension]:
         "diversity_score": breakdown.diversity_score,
         "stability_score": breakdown.stability_score,
     }
+    dimensions.update(breakdown.rule_scores)
+    return dimensions
 
 
 def _rating(score: float) -> str:

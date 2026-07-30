@@ -19,16 +19,25 @@ from seattrellis.presets import (
 
 
 def test_preset_catalog_contains_supported_scenarios() -> None:
-    assert [preset.name for preset in list_presets()] == [
+    names = [preset.name for preset in list_presets()]
+    assert names[:6] == [
         "random",
         "exam",
         "daily",
         "fair-rotation",
         "neighbor-aware",
         "balanced",
+    ]
+    assert {
+        "peer-mixing",
+        "score-high-front",
+        "score-high-back",
+        "row-score-balanced",
+        "group-score-balanced",
+        "mentor-pairing",
         "height-aware",
         "vision-friendly",
-    ]
+    }.issubset(names)
     assert get_preset("fair_rotation").name == "fair-rotation"
     assert get_preset("daily").metadata()["requirements"] == [
         "history",

@@ -19,6 +19,7 @@ class SeatNode(BaseModel):
     y: float | None = None
     enabled: bool = True
     zone: str | None = None
+    group_id: str | None = None
     near_window: bool = False
     near_door: bool = False
     near_platform: bool = False
@@ -32,6 +33,13 @@ class SeatNode(BaseModel):
         if not value:
             raise ValueError("seat_id cannot be empty.")
         return value
+
+    @validator("group_id", pre=True)
+    def clean_group_id(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
 
     @validator("row", "col")
     def positive_grid_position(cls, value: int) -> int:

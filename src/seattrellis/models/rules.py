@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import isfinite
-from typing import Literal
+from typing import Any, Literal
 
 try:
     from pydantic.v1 import BaseModel, Field, validator
@@ -184,6 +184,51 @@ class CoolingRule(WeightedRule):
         extra = "forbid"
 
 
+class ScorePositionRule(WeightedRule):
+    """Place score ranks toward the front or back without forcing an order.
+
+    Scores are converted to rank percentiles by the objective compiler, so
+    schools can use any grading scale and ties remain neutral.
+    """
+
+    direction: Literal["high_front", "high_back"] = "high_front"
+
+
+class ScoreDistributionRule(WeightedRule):
+    """Balance score-rank means across physical rows or named seat groups."""
+
+    scope: Literal["row", "group"] = "row"
+
+
+class MentorPairingRule(WeightedRule):
+    """Pair high- and low-ranked students through a soft proximity goal."""
+
+    mentor_percentile: float = 0.75
+    learner_percentile: float = 0.25
+    relation: Literal["desk_mate", "adjacent_any"] = "desk_mate"
+    avoid_recent_repeats: bool = True
+    history_lookback: int = 4
+
+    @validator("mentor_percentile", "learner_percentile")
+    def percentile_in_range(cls, value: float) -> float:
+        if not isfinite(value) or not 0 <= value <= 1:
+            raise ValueError("percentiles must be finite values between 0 and 1.")
+        return value
+
+    @validator("history_lookback")
+    def non_negative_history_lookback(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("history_lookback must be non-negative.")
+        return value
+
+    @validator("learner_percentile")
+    def learner_below_mentor(cls, value: float, values: dict[str, Any]) -> float:
+        mentor = values.get("mentor_percentile", 0.75)
+        if value >= mentor:
+            raise ValueError("learner_percentile must be lower than mentor_percentile.")
+        return value
+
+
 class HardRules(BaseModel):
     fixed_seats: list[FixedSeatRule] = Field(default_factory=list)
     must_be_adjacent: list[PairRule] = Field(default_factory=list)
@@ -199,6 +244,9 @@ class SoftRules(BaseModel):
     height_back: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=True, weight=1))
     randomize: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=True, weight=1))
     score_balance: WeightedRule = Field(default_factory=lambda: WeightedRule(enabled=False, weight=1))
+    score_position: ScorePositionRule = Field(default_factory=ScorePositionRule)
+    score_distribution: ScoreDistributionRule = Field(default_factory=ScoreDistributionRule)
+    mentor_pairing: MentorPairingRule = Field(default_factory=MentorPairingRule)
     fair_rotation: FairRotationRule = Field(default_factory=lambda: FairRotationRule(enabled=False, weight=10))
     avoid_recent_neighbors: AvoidRecentNeighborsRule = Field(
         default_factory=lambda: AvoidRecentNeighborsRule(enabled=False, weight=10)
