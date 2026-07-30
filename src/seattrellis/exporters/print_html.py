@@ -14,6 +14,10 @@ from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from seattrellis.exporters.presentation import (
+    student_detail_fields as _student_detail_fields,
+    student_display_names,
+)
 from seattrellis.service_types import (
     PageOptions,
     PrivacyOptions,
@@ -24,7 +28,6 @@ from seattrellis.service_types import (
 if TYPE_CHECKING:
     from seattrellis.models.candidate import CandidatePlan
     from seattrellis.models.snapshot import SeatingSnapshot
-    from seattrellis.models.student import Student
 
 
 PrintPrivacyOptions = PrivacyOptions
@@ -152,14 +155,7 @@ def _render_print_html(
     min_row, max_row, min_col, max_col = _bounds(snapshot)
     seat_by_pos = {(s.row, s.col): s for s in snapshot.layout.seats}
     assign_by_seat = {a.seat_id: a for a in snapshot.assignments}
-    display_names = {
-        assignment.student_key: (
-            _text("anonymous_student", locale, index=index)
-            if privacy.anonymize
-            else assignment.student_name or assignment.student_key
-        )
-        for index, assignment in enumerate(snapshot.assignments, start=1)
-    }
+    display_names = student_display_names(snapshot, privacy, locale)
 
     rows_html: list[str] = []
     for r in range(min_row, max_row + 1):
@@ -268,6 +264,7 @@ def _render_teacher_section(
 
     # Build student lookup from snapshot.students.
     student_by_key = {s.key: s for s in snapshot.students}
+    display_names = student_display_names(snapshot, privacy, locale)
 
     parts: list[str] = [
         f'<div class="section"><h2>{escape(_text("teacher_info", locale))}</h2>'
@@ -302,13 +299,9 @@ def _render_teacher_section(
     parts.extend(f"<th>{escape(header)}</th>" for header in detail_headers)
     parts.append("</tr>")
 
-    for index, a in enumerate(snapshot.assignments, start=1):
+    for a in snapshot.assignments:
         stu = student_by_key.get(a.student_key)
-        display_name = (
-            _text("anonymous_student", locale, index=index)
-            if privacy.anonymize
-            else a.student_name or a.student_key
-        )
+        display_name = display_names[a.student_key]
         parts.append(
             f"<tr><td>{escape(a.seat_id)}</td><td>{escape(display_name)}</td>"
         )
@@ -413,52 +406,3 @@ def _validate_template(template: str) -> str:
         return normalize_export_template(template)
     except ValueError as exc:
         raise ValueError(str(exc).replace("export template", "print template")) from exc
-
-
-def _student_detail_fields(
-    student: "Student | None",
-    privacy: PrivacyOptions,
-    locale: str = "zh",
-) -> list[tuple[str, str]]:
-    fields: list[tuple[str, str]] = []
-    if not privacy.anonymize:
-        fields.append(
-            (
-                _text("student_id", locale),
-                student.student_id if student and student.student_id else "-",
-            )
-        )
-    if not privacy.hide_scores:
-        fields.append(
-            (
-                _text("score", locale),
-                str(student.score) if student and student.score is not None else "-",
-            )
-        )
-    if privacy.show_height:
-        fields.append(
-            (
-                _text("height", locale),
-                str(student.height_cm)
-                if student and student.height_cm is not None
-                else "-",
-            )
-        )
-    if privacy.show_vision:
-        fields.append(
-            (
-                _text("vision", locale),
-                str(student.vision) if student and student.vision is not None else "-",
-            )
-        )
-    if not privacy.hide_special_needs:
-        needs = list(student.needs) + list(student.tags) if student else []
-        separator = ", " if locale == "en" else "、"
-        fields.append(
-            (_text("special_needs", locale), separator.join(needs) if needs else "-")
-        )
-    if not privacy.hide_notes:
-        fields.append(
-            (_text("notes", locale), student.notes if student and student.notes else "-")
-        )
-    return fields

@@ -8,10 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from seattrellis.exporters.presentation import (
+    student_detail_fields,
+    student_display_names,
+)
 from seattrellis.exporters.print_html import (
     _default_privacy,
     _recommendation_text,
-    _student_detail_fields,
     _text,
     _validate_template,
 )
@@ -114,14 +117,7 @@ def export_docx(
     table = doc.add_table(rows=max_row - min_row + 1, cols=max_col - min_col + 1)
     table.style = "Table Grid"
 
-    display_names = {
-        assignment.student_key: (
-            _text("anonymous_student", locale, index=index)
-            if privacy.anonymize
-            else assignment.student_name or assignment.student_key
-        )
-        for index, assignment in enumerate(snapshot.assignments, start=1)
-    }
+    display_names = student_display_names(snapshot, privacy, locale)
 
     for r in range(min_row, max_row + 1):
         for c in range(min_col, max_col + 1):
@@ -143,7 +139,7 @@ def export_docx(
         student_by_key = {s.key: s for s in snapshot.students}
         detail_headers = [
             header
-            for header, _value in _student_detail_fields(None, privacy, locale)
+            for header, _value in student_detail_fields(None, privacy, locale)
         ]
         doc.add_heading(_text("student_details", locale), level=2)
         detail_table = doc.add_table(
@@ -170,7 +166,7 @@ def export_docx(
                 detail_table.cell(i + 1, 1), Pt(10 * page.scale)
             )
             for column, (_header, value) in enumerate(
-                _student_detail_fields(stu, privacy, locale),
+                student_detail_fields(stu, privacy, locale),
                 start=2,
             ):
                 detail_table.cell(i + 1, column).text = value

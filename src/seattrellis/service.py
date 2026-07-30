@@ -69,6 +69,7 @@ from seattrellis.presets import (
 from seattrellis.repair import compile_repair_context, format_repair_solve_failure
 from seattrellis.scoring import build_plan_comparison_report, evaluate_hard_constraints
 from seattrellis.service_types import (
+    CANVAS_EXPORT_FORMATS,
     EditInput,
     EditOutput,
     ExportRequest,
@@ -561,6 +562,11 @@ def export(
             raise ValueError("candidate_scope='all' requires a candidate set artifact.")
         if request.candidate_id is not None:
             raise ValueError("candidate_id cannot be combined with candidate_scope='all'.")
+        if request.output_format in CANVAS_EXPORT_FORMATS:
+            raise ValueError(
+                f"{request.output_format.upper()} export does not support "
+                "candidate_scope='all'; select one candidate."
+            )
         if request.output_format not in {"html", "print-html"}:
             raise ValueError(
                 "candidate_scope='all' currently supports only html and print-html exports."

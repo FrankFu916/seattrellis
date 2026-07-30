@@ -35,6 +35,7 @@ EXPORT_TEMPLATES = ("public", "teacher", "report")
 PAGE_ORIENTATIONS = ("portrait", "landscape")
 EXPORT_LOCALES = ("zh", "en")
 CANDIDATE_SCOPES = ("selected", "all")
+CANVAS_EXPORT_FORMATS = ("svg", "pptx")
 
 
 @dataclass(frozen=True)
@@ -337,7 +338,7 @@ def export_extension(output_format: str) -> str:
     normalized = output_format.lower()
     if normalized in {"excel", "xlsx"}:
         return "xlsx"
-    if normalized in {"html", "png", "pdf", "docx"}:
+    if normalized in {"html", "png", "pdf", "docx", *CANVAS_EXPORT_FORMATS}:
         return normalized
     if normalized == "print-html":
         return "html"
