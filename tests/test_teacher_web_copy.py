@@ -28,10 +28,17 @@ TEACHER_TRANSLATION_KEYS = {
     "teacher_goal_help",
     "teacher_goal_daily_title",
     "teacher_goal_daily_description",
+    "teacher_goal_quick_title",
+    "teacher_goal_quick_description",
     "teacher_goal_fair_title",
     "teacher_goal_fair_description",
     "teacher_goal_peer_title",
     "teacher_goal_peer_description",
+    "teacher_missing_history",
+    "teacher_missing_score",
+    "teacher_missing_height",
+    "teacher_missing_vision",
+    "teacher_readiness_warning",
     "teacher_generate",
     "teacher_generating",
     "teacher_generate_success",
@@ -63,6 +70,7 @@ FORMAT_VALUES = {
     "rows": 6,
     "label": "PDF",
     "error": "example",
+    "warning": "example",
 }
 
 

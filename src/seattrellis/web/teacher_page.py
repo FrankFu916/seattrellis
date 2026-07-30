@@ -61,6 +61,7 @@ from seattrellis.web.keys import (
     TEACHER_MANUAL_EDIT_PANEL,
     TEACHER_PUBLIC_EXPORT_DOWNLOAD,
     TEACHER_PUBLIC_EXPORT_PREPARE,
+    TEACHER_READINESS_STATUS,
     TEACHER_RESULTS_STATUS,
     TEACHER_ROOM_AISLES_INPUT,
     TEACHER_ROOM_ROWS_INPUT,
@@ -517,8 +518,11 @@ def render_teacher_page(
     st.caption(next_action)
 
     if readiness is not None:
-        for error in readiness.validation.errors:
-            st.error(text("teacher_error_detail", error=error))
+        with st.container(key=widget_region_key(TEACHER_READINESS_STATUS)):
+            for error in readiness.validation.errors:
+                st.error(text("teacher_error_detail", error=error))
+            for warning in readiness.warnings:
+                st.warning(teacher_readiness_warning(warning, text=text))
 
     with st.container(key=widget_region_key(TEACHER_GENERATE_BUTTON)):
         generate = st.button(
@@ -800,16 +804,19 @@ def _render_goal_choice(
 
     st.subheader(text("teacher_goal_title"))
     st.caption(text("teacher_goal_help"))
-    goals = tuple(goal for goal in list_teacher_goals() if goal.goal_id != "custom")
+    visible_goal_ids = {"daily-rotation", "quick-shuffle", "peer-support"}
+    goals = tuple(
+        goal for goal in list_teacher_goals() if goal.goal_id in visible_goal_ids
+    )
     goal_by_id = {goal.goal_id: goal for goal in goals}
     labels = {
         "daily-rotation": text("teacher_goal_daily_title"),
-        "fair-shuffle": text("teacher_goal_fair_title"),
+        "quick-shuffle": text("teacher_goal_quick_title"),
         "peer-support": text("teacher_goal_peer_title"),
     }
     descriptions = {
         "daily-rotation": text("teacher_goal_daily_description"),
-        "fair-shuffle": text("teacher_goal_fair_description"),
+        "quick-shuffle": text("teacher_goal_quick_description"),
         "peer-support": text("teacher_goal_peer_description"),
     }
     default_goal_id = next(iter(goal_by_id))
@@ -831,6 +838,26 @@ def _render_goal_choice(
     remember_teacher_input(st.session_state, TEACHER_GOAL_SELECT, selected_id)
     st.caption(descriptions[selected_id])
     return goal_by_id[selected_id]
+
+
+def teacher_readiness_warning(
+    warning: str,
+    *,
+    text: Callable[..., str],
+) -> str:
+    """Translate known data-availability warnings into classroom language."""
+
+    normalized = str(warning).lower()
+    requirement_keys = {
+        "history": "teacher_missing_history",
+        "score": "teacher_missing_score",
+        "height": "teacher_missing_height",
+        "vision": "teacher_missing_vision",
+    }
+    for requirement, key in requirement_keys.items():
+        if f"preferred {requirement} data" in normalized:
+            return text(key)
+    return text("teacher_readiness_warning", warning=warning)
 
 
 def _render_teacher_result(

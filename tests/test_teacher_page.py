@@ -27,6 +27,7 @@ from seattrellis.web.teacher_page import (
     roster_upload_fingerprint,
     teacher_export_filename,
     teacher_input_state_key,
+    teacher_readiness_warning,
 )
 from seattrellis.web.keys import (
     TEACHER_CLASS_NAME_INPUT,
@@ -176,6 +177,23 @@ def test_teacher_inputs_restore_from_durable_non_file_values() -> None:
     ]
     with pytest.raises(ValueError, match="not durable"):
         remember_teacher_input(session, TEACHER_ROSTER_UPLOAD, b"private")
+
+
+def test_readiness_warnings_use_plain_teacher_language() -> None:
+    messages = {
+        key: key.replace("teacher_", "")
+        for key in (
+            "teacher_missing_history",
+            "teacher_missing_score",
+            "teacher_missing_height",
+            "teacher_missing_vision",
+        )
+    }
+    text = lambda key, **_values: messages[key]
+
+    for requirement in ("history", "score", "height", "vision"):
+        warning = f'Preset "daily" is missing preferred {requirement} data.'
+        assert teacher_readiness_warning(warning, text=text) == f"missing_{requirement}"
 
 
 def test_start_over_clears_only_the_teacher_workspace() -> None:

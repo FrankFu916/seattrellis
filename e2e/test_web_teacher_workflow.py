@@ -24,6 +24,7 @@ from seattrellis.web.keys import (
     TEACHER_MANUAL_EDIT_PANEL,
     TEACHER_PUBLIC_EXPORT_DOWNLOAD,
     TEACHER_PUBLIC_EXPORT_PREPARE,
+    TEACHER_READINESS_STATUS,
     TEACHER_RESULTS_STATUS,
     TEACHER_ROOM_TEMPLATE_SELECT,
     TEACHER_ROSTER_STATUS,
@@ -64,6 +65,10 @@ def test_teacher_imports_generates_and_downloads_public_plan(
         region(page, TEACHER_ROOM_TEMPLATE_SELECT).get_by_role("combobox")
     ).to_have_value("30 · 5 × 6")
     expect(region(page, TEACHER_GOAL_SELECT)).to_contain_text("Daily rotation")
+    expect(region(page, TEACHER_GOAL_SELECT)).to_contain_text("Quick shuffle")
+    expect(region(page, TEACHER_READINESS_STATUS)).to_contain_text(
+        "No previous seating history is available",
+    )
 
     generate = region(page, TEACHER_GENERATE_BUTTON).get_by_role("button")
     expect(generate).to_be_enabled()

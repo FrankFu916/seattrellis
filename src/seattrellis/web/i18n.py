@@ -108,6 +108,11 @@ _TEXT: dict[str, tuple[str, str]] = {
         "Balance vision and height needs, vary recent neighbors, and rotate seats "
         "for everyday classroom use.",
     ),
+    "teacher_goal_quick_title": ("快速打乱", "Quick shuffle"),
+    "teacher_goal_quick_description": (
+        "不依赖成绩或历史记录，快速生成一组中性的随机座位方案。",
+        "Create a neutral shuffle without relying on scores or saved history.",
+    ),
     "teacher_goal_fair_title": ("公平轮换", "Fair shuffle"),
     "teacher_goal_fair_description": (
         "优先参考历史座位，让每名学生逐步获得不同的位置和邻座。",
@@ -118,6 +123,29 @@ _TEXT: dict[str, tuple[str, str]] = {
     "teacher_goal_peer_description": (
         "让成绩层次不同的学生在邻座范围内适度混合。",
         "Mix students from different score ranges across neighboring seats.",
+    ),
+    "teacher_missing_history": (
+        "当前工作台没有以往座位记录，本次会继续使用名单中的其他信息排座。",
+        "No previous seating history is available in this workspace. "
+        "The plan will continue with the other information in the student list.",
+    ),
+    "teacher_missing_score": (
+        "名单中的成绩不足或差异不明显，本次不会使用邻座成绩搭配。",
+        "Scores are missing or do not vary enough, so peer mixing will be skipped.",
+    ),
+    "teacher_missing_height": (
+        "名单中的身高信息不足或差异不明显，本次不会使用前后排身高偏好。",
+        "Height data is missing or does not vary enough, so row-height preferences "
+        "will be skipped.",
+    ),
+    "teacher_missing_vision": (
+        "名单中没有视力或靠前需求标记，本次不会使用视力位置偏好。",
+        "No vision or front-seat needs were found, so vision preferences will be "
+        "skipped.",
+    ),
+    "teacher_readiness_warning": (
+        "部分可选信息不可用：{warning}",
+        "Some optional information is unavailable: {warning}",
     ),
     "teacher_generate": ("生成座位表", "Generate seating plan"),
     "teacher_generating": ("正在安排座位……", "Arranging seats…"),

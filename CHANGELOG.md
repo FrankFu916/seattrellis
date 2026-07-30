@@ -9,8 +9,10 @@
   terminology.
 - Teachers can use recommended 30-, 48-, or 60-seat classrooms, or describe a
   custom room with rows, seats per row, and aisle positions.
-- Daily rotation, Fair shuffle, and Peer support are presented as familiar
+- Daily rotation, Quick shuffle, and Peer support are presented as familiar
   classroom goals and generate three options automatically.
+- The setup now explains when optional history, score, height, or vision data
+  is unavailable before a plan is generated.
 - The recommended plan can be adjusted with move, swap, lock, undo, and redo,
   then downloaded as a public print or a teacher print.
 - Teacher setup and generated plans survive a visit to Advanced tools. Starting
@@ -18,6 +20,7 @@
   work untouched.
 - Public print downloads continue to hide student IDs, scores, height, vision,
   notes, and individual needs by default.
+- Teacher print downloads include student IDs for internal class records.
 
 ### Engineering and maintenance
 

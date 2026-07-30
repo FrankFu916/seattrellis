@@ -18,7 +18,7 @@ The default workspace keeps the ordinary path focused on classroom tasks:
    enough to begin.
 2. Accept the recommended 30-, 48-, or 60-seat room, or set custom rows, seats
    per row, and aisle positions.
-3. Choose Daily rotation, Fair shuffle, or Peer support and generate three
+3. Choose Daily rotation, Quick shuffle, or Peer support and generate three
    seating options.
 4. Review the recommended map, then swap, move, lock, undo, or redo as needed.
 5. Prepare and download either a public print or a teacher print.
@@ -26,6 +26,10 @@ The default workspace keeps the ordinary path focused on classroom tasks:
 Visiting Advanced tools and returning restores the parsed roster, room, goal,
 and generated plan without retaining the original upload bytes. **Start over
 and clear student list** clears only the teacher workspace.
+
+Before generation, the workspace explains which optional history, score,
+height, or vision information is unavailable. Quick shuffle remains available
+when the roster contains names only.
 
 ## Advanced tools
 

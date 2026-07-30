@@ -15,6 +15,7 @@ from seattrellis.presets import get_preset, preset_context_warnings
 
 TeacherGoalId = Literal[
     "daily-rotation",
+    "quick-shuffle",
     "fair-shuffle",
     "peer-support",
     "custom",
@@ -58,6 +59,14 @@ _TEACHER_GOALS = (
         description=(
             "Balance accessibility, seat rotation, recent-neighbor variety, "
             "height, and peer mixing for routine classroom use."
+        ),
+    ),
+    TeacherGoalDefinition(
+        goal_id="quick-shuffle",
+        preset_name="random",
+        title="Quick shuffle",
+        description=(
+            "Create a neutral shuffle without relying on scores or saved history."
         ),
     ),
     TeacherGoalDefinition(

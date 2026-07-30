@@ -19,12 +19,14 @@ def test_teacher_goals_have_stable_ids_and_preset_mappings() -> None:
 
     assert [goal.goal_id for goal in goals] == [
         "daily-rotation",
+        "quick-shuffle",
         "fair-shuffle",
         "peer-support",
         "custom",
     ]
     assert [goal.preset_name for goal in goals] == [
         "daily",
+        "random",
         "fair-rotation",
         "balanced",
         None,
@@ -32,6 +34,16 @@ def test_teacher_goals_have_stable_ids_and_preset_mappings() -> None:
     assert all(goal.default_candidate_count == 3 for goal in goals)
     assert "neighboring seats" in get_teacher_goal("peer_support").description
     assert "group" not in get_teacher_goal("peer-support").description.lower()
+
+
+def test_quick_shuffle_needs_no_optional_student_data() -> None:
+    resolved = resolve_teacher_goal(
+        TeacherGoalSelection(goal_id="quick-shuffle"),
+        students=[Student(student_id="S1"), Student(student_id="S2")],
+    )
+
+    assert resolved.preset_name == "random"
+    assert resolved.warnings == ()
 
 
 def test_builtin_goal_returns_an_independent_ruleset_each_time() -> None:
