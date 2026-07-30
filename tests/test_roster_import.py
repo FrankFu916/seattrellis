@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from seattrellis.application.roster_import import (
@@ -111,5 +113,6 @@ def test_import_roster_records_preserves_duplicate_error() -> None:
 def test_import_roster_preserves_file_error(tmp_path) -> None:
     missing = tmp_path / "missing.csv"
 
-    with pytest.raises(InputFileError, match=f"Student file not found: {missing}"):
+    expected = re.escape(f"Student file not found: {missing}")
+    with pytest.raises(InputFileError, match=expected):
         import_roster(missing)

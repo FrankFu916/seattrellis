@@ -58,6 +58,7 @@ from seattrellis.web.keys import (
     TEACHER_HOME_STATUS,
     TEACHER_INTERNAL_EXPORT_DOWNLOAD,
     TEACHER_INTERNAL_EXPORT_PREPARE,
+    TEACHER_MANUAL_EDIT_PANEL,
     TEACHER_PUBLIC_EXPORT_DOWNLOAD,
     TEACHER_PUBLIC_EXPORT_PREPARE,
     TEACHER_RESULTS_STATUS,
@@ -878,20 +879,21 @@ def _render_teacher_result(
                     key=TEACHER_CANDIDATE_SELECT,
                 )
 
-        render_manual_edit_panel(
-            result,
-            selected_id,
-            output_dir=output_dir,
-            translate=text,
-            render_error=lambda exc: st.error(
-                text("teacher_error_detail", error=exc)
-            ),
-            workspace="teacher",
-            on_result_changed=lambda changed: _store_edited_result(
-                st.session_state,
-                changed,
-            ),
-        )
+        with st.container(key=widget_region_key(TEACHER_MANUAL_EDIT_PANEL)):
+            render_manual_edit_panel(
+                result,
+                selected_id,
+                output_dir=output_dir,
+                translate=text,
+                render_error=lambda exc: st.error(
+                    text("teacher_error_detail", error=exc)
+                ),
+                workspace="teacher",
+                on_result_changed=lambda changed: _store_edited_result(
+                    st.session_state,
+                    changed,
+                ),
+            )
 
         _render_teacher_exports(
             st,

@@ -21,6 +21,7 @@ from seattrellis.web.keys import (
     TEACHER_GOAL_SELECT,
     TEACHER_INTERNAL_EXPORT_DOWNLOAD,
     TEACHER_INTERNAL_EXPORT_PREPARE,
+    TEACHER_MANUAL_EDIT_PANEL,
     TEACHER_PUBLIC_EXPORT_DOWNLOAD,
     TEACHER_PUBLIC_EXPORT_PREPARE,
     TEACHER_RESULTS_STATUS,
@@ -76,7 +77,9 @@ def test_teacher_imports_generates_and_downloads_public_plan(
         timeout=30_000,
     )
 
-    page.get_by_text("Manual adjustment", exact=True).click()
+    manual_edit = region(page, TEACHER_MANUAL_EDIT_PANEL).locator("summary")
+    expect(manual_edit).to_have_count(1)
+    manual_edit.click()
     swap = widget(page, "teacher_swap_students").get_by_role("button")
     expect(swap).to_be_enabled()
     swap.click()
@@ -85,10 +88,13 @@ def test_teacher_imports_generates_and_downloads_public_plan(
     )
 
     region(page, TEACHER_PUBLIC_EXPORT_PREPARE).get_by_role("button").click()
-    expect(region(page, TEACHER_PUBLIC_EXPORT_DOWNLOAD)).to_contain_text(
-        "Public print",
-        timeout=30_000,
-    )
+    expect(
+        region(page, TEACHER_PUBLIC_EXPORT_DOWNLOAD).get_by_role(
+            "button",
+            name="Download public print",
+            exact=True,
+        )
+    ).to_be_visible(timeout=30_000)
     html_path = download_from_region(
         page,
         TEACHER_PUBLIC_EXPORT_DOWNLOAD,
