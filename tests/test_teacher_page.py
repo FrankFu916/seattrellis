@@ -114,6 +114,18 @@ def test_roster_upload_cache_retains_a_safe_failure_without_retrying() -> None:
     assert calls == 1
 
 
+def test_roster_upload_does_not_hide_unexpected_programming_errors() -> None:
+    def importer(_filename: str, _content: bytes):
+        raise RuntimeError("unexpected importer failure")
+
+    with pytest.raises(RuntimeError, match="unexpected importer failure"):
+        load_cached_roster_upload(
+            "class.csv",
+            b"name\nAlice\n",
+            importer=importer,
+        )
+
+
 def test_missing_uploader_value_keeps_the_parsed_roster_cache() -> None:
     state: dict[str, object] = {}
     st = SimpleNamespace(session_state=state)

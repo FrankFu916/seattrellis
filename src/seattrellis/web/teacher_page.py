@@ -16,6 +16,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+try:
+    from pydantic.v1 import ValidationError
+except ImportError:  # pragma: no cover - pydantic v1.
+    from pydantic import ValidationError
+
 from seattrellis.application.class_workflow import GenerateOptions
 from seattrellis.application.room_templates import (
     RoomTemplate,
@@ -28,9 +33,11 @@ from seattrellis.application.teacher_goals import (
     TeacherGoalDefinition,
     list_teacher_goals,
 )
+from seattrellis.io.json_files import InputFileError
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
+from seattrellis.solver import SeatTrellisSolveError
 from seattrellis.web.class_adapter import (
     build_class_draft,
     generate_class_setup,
@@ -172,7 +179,14 @@ def load_cached_roster_upload(
 
     try:
         roster = importer(filename, content)
-    except Exception as exc:
+    except (
+        InputFileError,
+        MissingOptionalDependencyError,
+        ValidationError,
+        UnicodeError,
+        TypeError,
+        ValueError,
+    ) as exc:
         message = str(exc).strip() or exc.__class__.__name__
         return CachedRosterUpload(fingerprint, None, message), True
     return CachedRosterUpload(fingerprint, roster), True
@@ -472,7 +486,7 @@ def render_teacher_page(
                 goal_id=goal.goal_id,
             )
             readiness = inspect_class_setup(draft)
-        except Exception as exc:
+        except (ValidationError, TypeError, ValueError) as exc:
             st.error(text("teacher_error_detail", error=exc))
 
     result = _stored_result(st.session_state)
@@ -512,7 +526,14 @@ def render_teacher_page(
                         output_dir=output_dir,
                         options=GenerateOptions(candidate_count=3),
                     )
-            except Exception as exc:
+            except (
+                InputFileError,
+                MissingOptionalDependencyError,
+                SeatTrellisSolveError,
+                ValidationError,
+                OSError,
+                ValueError,
+            ) as exc:
                 st.error(text("teacher_generate_failed", error=exc))
             else:
                 st.session_state[_RESULT_KEY] = result
@@ -936,7 +957,13 @@ def _render_teacher_exports(
                     )
                 except MissingOptionalDependencyError as exc:
                     st.info(str(exc))
-                except Exception as exc:
+                except (
+                    InputFileError,
+                    ValidationError,
+                    OSError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
                     st.error(text("teacher_error_detail", error=exc))
                 else:
                     st.session_state[state_key] = prepared
