@@ -29,7 +29,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest
-          python -m pip install -e .
+          python -m pip install -e ".[web]"
       - name: Run focused draft checks
         run: >-
           python -m pytest
@@ -38,6 +38,12 @@ jobs:
           tests/test_room_templates.py
           tests/test_teacher_goals.py
           tests/test_class_workflow.py
+          tests/test_web_class_adapter.py
+          tests/test_teacher_state.py
+          tests/test_teacher_web_copy.py
+          tests/test_teacher_page.py
+          tests/test_interactive_panel_workspace.py
+          tests/test_web_workflow.py
 
   minimal:
     name: Minimal / ${{ matrix.os }} / Python ${{ matrix.python-version }}
