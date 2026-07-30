@@ -4,6 +4,12 @@
 
 ### User-facing changes
 
+### Engineering and maintenance
+
+## 1.5.0 - 2026-07-30
+
+### User-facing changes
+
 - The Web app now opens in a teacher workspace that goes from CSV or Excel
   roster to a printable seating plan without requiring JSON files or solver
   terminology.
