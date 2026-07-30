@@ -2,11 +2,13 @@
 
 from pathlib import Path
 
+from seattrellis.exporters.canvas import SeatingCanvasDocument, build_seating_canvas
 from seattrellis.exporters.html import export_html
 from seattrellis.models.candidate import CandidatePlan
 from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.service_types import (
+    CANVAS_EXPORT_FORMATS,
     ExportRequest,
     PageOptions,
     PrivacyOptions,
@@ -19,9 +21,13 @@ __all__ = [
     "export_html",
     "export_pdf",
     "export_png",
+    "export_pptx",
+    "export_svg",
     "export_candidate_report_html",
     "export_print_html",
     "export_snapshot",
+    "SeatingCanvasDocument",
+    "build_seating_canvas",
 ]
 
 
@@ -106,6 +112,48 @@ def export_print_html(
     )
 
 
+def export_svg(
+    snapshot: SeatingSnapshot,
+    output: str | Path,
+    *,
+    template: str = "public",
+    privacy: PrivacyOptions | None = None,
+    candidate: CandidatePlan | None = None,
+    locale: str = "zh",
+) -> Path:
+    from seattrellis.exporters.svg import export_svg as loaded_export_svg
+
+    return loaded_export_svg(
+        snapshot,
+        output,
+        template=template,
+        privacy=privacy,
+        candidate=candidate,
+        locale=locale,
+    )
+
+
+def export_pptx(
+    snapshot: SeatingSnapshot,
+    output: str | Path,
+    *,
+    template: str = "public",
+    privacy: PrivacyOptions | None = None,
+    candidate: CandidatePlan | None = None,
+    locale: str = "zh",
+) -> Path:
+    from seattrellis.exporters.pptx import export_pptx as loaded_export_pptx
+
+    return loaded_export_pptx(
+        snapshot,
+        output,
+        template=template,
+        privacy=privacy,
+        candidate=candidate,
+        locale=locale,
+    )
+
+
 def export_candidate_report_html(
     candidate_set: CandidateSet,
     report: PlanComparisonReport,
@@ -155,12 +203,22 @@ def export_snapshot(
 
     output_format = request.output_format
     if request.candidate_scope == "all":
+        if request.output_format in CANVAS_EXPORT_FORMATS:
+            raise ValueError(
+                f"{request.output_format.upper()} export does not support "
+                "candidate_scope='all'; select one candidate."
+            )
         raise ValueError(
             "candidate_scope='all' requires a candidate set; use the service export entrypoint."
         )
     output = request.resolved_output_path
     privacy = request.resolved_privacy
-    configurable_formats = {"pdf", "docx", "print-html"}
+    configurable_formats = {"pdf", "docx", "print-html", *CANVAS_EXPORT_FORMATS}
+    if output_format in CANVAS_EXPORT_FORMATS and request.page != PageOptions():
+        raise ValueError(
+            f"Export format {output_format!r} uses a fixed 16:9 canvas and does "
+            "not support page options."
+        )
     if output_format not in configurable_formats and (
         request.privacy is not None
         or request.template != "public"
@@ -205,6 +263,24 @@ def export_snapshot(
             privacy=privacy,
             candidate=candidate,
             page=request.page,
+            locale=request.locale,
+        )
+    if output_format == "svg":
+        return export_svg(
+            snapshot,
+            output,
+            template=request.template,
+            privacy=privacy,
+            candidate=candidate,
+            locale=request.locale,
+        )
+    if output_format == "pptx":
+        return export_pptx(
+            snapshot,
+            output,
+            template=request.template,
+            privacy=privacy,
+            candidate=candidate,
             locale=request.locale,
         )
     raise ValueError(f"Unsupported export format: {output_format}")
