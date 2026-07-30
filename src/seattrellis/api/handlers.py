@@ -76,6 +76,8 @@ def capabilities() -> CapabilitiesResponse:
             "class-inspection",
             "class-generation",
             "layout-editing",
+            "roster-mapping",
+            "roster-update-preview",
             "room-templates",
             "teacher-goals",
         ],

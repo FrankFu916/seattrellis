@@ -67,6 +67,8 @@ def test_system_and_catalog_contracts_are_versioned() -> None:
         "class-inspection",
         "class-generation",
         "layout-editing",
+        "roster-mapping",
+        "roster-update-preview",
         "room-templates",
         "teacher-goals",
     ]

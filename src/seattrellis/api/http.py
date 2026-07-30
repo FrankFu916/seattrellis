@@ -20,6 +20,7 @@ from seattrellis.api.layouts import (
     LayoutDraftNotFoundError,
     LayoutDraftStore,
 )
+from seattrellis.api.rosters import RosterDraftNotFoundError, RosterDraftStore
 from seattrellis.api.models import (
     API_PREFIX,
     ApiErrorDetail,
@@ -34,6 +35,9 @@ from seattrellis.api.models import (
     LayoutCommandRequest,
     LayoutStateResponse,
     RoomTemplatesResponse,
+    RosterDraftResponse,
+    RosterUpdatePreviewRequest,
+    RosterUpdatePreviewResponse,
     TeacherGoalsResponse,
 )
 from seattrellis.editing import EditingError
@@ -49,6 +53,11 @@ from seattrellis.application.layout_editor import (
     LayoutRevisionConflictError,
 )
 from seattrellis.application.room_templates import build_room_from_template
+from seattrellis.io.json_files import InputFileError
+from seattrellis.io.roster_table import (
+    DEFAULT_MAX_ROSTER_FILE_BYTES,
+    read_roster_table_bytes,
+)
 from seattrellis.optional import MissingOptionalDependencyError
 
 
@@ -57,6 +66,7 @@ def create_app(
     policy: LocalApiPolicy | None = None,
     draft_store: EditorDraftStore | None = None,
     layout_store: LayoutDraftStore | None = None,
+    roster_store: RosterDraftStore | None = None,
 ) -> Any:
     """Create the optional ASGI application without enabling broad CORS."""
 
@@ -75,6 +85,7 @@ def create_app(
     resolved_policy = policy or LocalApiPolicy()
     resolved_store = draft_store or EditorDraftStore()
     resolved_layout_store = layout_store or LayoutDraftStore()
+    resolved_roster_store = roster_store or RosterDraftStore()
     app = FastAPI(
         title="SeatTrellis Local API",
         version="1",
@@ -279,6 +290,87 @@ def create_app(
         resolved_layout_store.delete(draft_id)
         return Response(status_code=204)
 
+    async def create_roster_draft(request: Any) -> RosterDraftResponse:
+        try:
+            form = await request.form()
+            upload = form.get("file")
+            filename = getattr(upload, "filename", None)
+            read = getattr(upload, "read", None)
+            close = getattr(upload, "close", None)
+            if not isinstance(filename, str) or not filename.strip() or read is None:
+                raise ApiProblem(
+                    status_code=422,
+                    code="roster_file_required",
+                    message="Choose one CSV or Excel roster file to continue.",
+                )
+            try:
+                data = await read(DEFAULT_MAX_ROSTER_FILE_BYTES + 1)
+            finally:
+                if close is not None:
+                    await close()
+            if not isinstance(data, bytes):
+                raise TypeError("Roster uploads must contain bytes.")
+            if len(data) > DEFAULT_MAX_ROSTER_FILE_BYTES:
+                raise ApiProblem(
+                    status_code=413,
+                    code="roster_file_too_large",
+                    message="The roster file is larger than the 20 MB limit.",
+                )
+            table = read_roster_table_bytes(data, filename=filename)
+            return resolved_roster_store.create(table)
+        except ApiProblem:
+            raise
+        except MissingOptionalDependencyError as exc:
+            raise ApiProblem(
+                status_code=503,
+                code="feature_unavailable",
+                message="Excel roster preview is not available in this installation.",
+            ) from exc
+        except (InputFileError, TypeError, ValueError) as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="invalid_roster_file",
+                message=(
+                    "The roster could not be read. Use a UTF-8 CSV or a valid "
+                    "Excel workbook with a header row."
+                ),
+            ) from exc
+
+    # The transport remains optional, so Request is imported inside
+    # ``create_app``. Give FastAPI the concrete runtime annotation instead of
+    # a module-level dependency on Starlette.
+    create_roster_draft.__annotations__["request"] = Request
+
+    def get_roster_draft(draft_id: str) -> RosterDraftResponse:
+        try:
+            return resolved_roster_store.state(draft_id)
+        except RosterDraftNotFoundError as exc:
+            raise _roster_not_found_problem() from exc
+
+    def preview_roster_update(
+        draft_id: str,
+        request: RosterUpdatePreviewRequest,
+    ) -> RosterUpdatePreviewResponse:
+        try:
+            return resolved_roster_store.preview_update(draft_id, request)
+        except RosterDraftNotFoundError as exc:
+            raise _roster_not_found_problem() from exc
+        except (InputFileError, TypeError, ValueError) as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="roster_mapping_rejected",
+                message=(
+                    "The selected columns could not be converted into a valid "
+                    "student list. Review the identity and numeric columns."
+                ),
+            ) from exc
+
+    def delete_roster_draft(draft_id: str) -> Any:
+        from fastapi import Response
+
+        resolved_roster_store.delete(draft_id)
+        return Response(status_code=204)
+
     app.add_api_route(
         f"{API_PREFIX}/health",
         health,
@@ -397,8 +489,44 @@ def create_app(
         status_code=204,
         tags=["layouts"],
     )
+    app.add_api_route(
+        f"{API_PREFIX}/rosters/drafts",
+        create_roster_draft,
+        methods=["POST"],
+        response_model=RosterDraftResponse,
+        responses={
+            413: {"model": ErrorResponse},
+            422: {"model": ErrorResponse},
+            503: {"model": ErrorResponse},
+        },
+        tags=["rosters"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/rosters/drafts/{{draft_id}}",
+        get_roster_draft,
+        methods=["GET"],
+        response_model=RosterDraftResponse,
+        responses={404: {"model": ErrorResponse}},
+        tags=["rosters"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/rosters/drafts/{{draft_id}}/preview",
+        preview_roster_update,
+        methods=["POST"],
+        response_model=RosterUpdatePreviewResponse,
+        responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+        tags=["rosters"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/rosters/drafts/{{draft_id}}",
+        delete_roster_draft,
+        methods=["DELETE"],
+        status_code=204,
+        tags=["rosters"],
+    )
     app.state.editor_draft_store = resolved_store
     app.state.layout_draft_store = resolved_layout_store
+    app.state.roster_draft_store = resolved_roster_store
     return app
 
 
@@ -407,6 +535,14 @@ def _layout_not_found_problem() -> ApiProblem:
         status_code=404,
         code="layout_draft_not_found",
         message="This classroom layout draft has expired or was already closed.",
+    )
+
+
+def _roster_not_found_problem() -> ApiProblem:
+    return ApiProblem(
+        status_code=404,
+        code="roster_draft_not_found",
+        message="This roster preview has expired or was already closed.",
     )
 
 

@@ -373,3 +373,114 @@ class CompiledLayoutResponse(VersionedResponse):
     draft_id: str
     revision: int = Field(ge=0)
     layout: ClassroomLayout
+
+
+RosterFieldName = Literal[
+    "student_id",
+    "name",
+    "gender",
+    "height_cm",
+    "score",
+    "vision",
+    "tags",
+    "needs",
+    "notes",
+]
+
+
+class RosterColumnItem(ApiModel):
+    index: int = Field(ge=0)
+    header: str
+
+
+class RosterPreviewRow(ApiModel):
+    row_number: int = Field(ge=2)
+    cells: list[str | int | float | bool | None]
+
+
+class RosterMappingItem(ApiModel):
+    field: RosterFieldName
+    column_index: int = Field(ge=0)
+
+    @validator("column_index", pre=True)
+    def reject_boolean_column_index(cls, value: object) -> object:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("column_index must be an integer.")
+        return value
+
+
+class RosterMappingIssueItem(ApiModel):
+    code: str
+    message: str
+    field: RosterFieldName | None = None
+    column_indices: list[int] = Field(default_factory=list)
+
+
+class RosterDraftResponse(VersionedResponse):
+    draft_id: str
+    source_format: Literal["csv", "xlsx"]
+    row_count: int = Field(ge=0)
+    column_count: int = Field(ge=1)
+    columns: list[RosterColumnItem]
+    preview_rows: list[RosterPreviewRow]
+    suggested_mapping: list[RosterMappingItem]
+    mapping_issues: list[RosterMappingIssueItem]
+
+
+class RosterUpdatePreviewRequest(ApiModel):
+    mapping: list[RosterMappingItem]
+    current_students: list[Student] = Field(default_factory=list)
+    current_revision: int = Field(default=0, ge=0)
+    mode: Literal["incremental", "replace"] = "incremental"
+    updated_fields: list[Literal[
+        "student_id",
+        "name",
+        "gender",
+        "height_cm",
+        "score",
+        "vision",
+        "tags",
+        "needs",
+        "notes",
+        "attributes",
+    ]] | None = None
+
+    @validator("current_revision", pre=True)
+    def reject_boolean_roster_revision(cls, value: object) -> object:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("current_revision must be an integer.")
+        return value
+
+
+class RosterFieldChangeItem(ApiModel):
+    field: str
+    before: Any = None
+    after: Any = None
+
+
+class RosterChangeItem(ApiModel):
+    action: Literal["add", "update", "unchanged", "remove", "conflict"]
+    match_method: Literal["student_id", "name", "new"]
+    before: Student | None = None
+    after: Student | None = None
+    field_changes: list[RosterFieldChangeItem] = Field(default_factory=list)
+    incoming_index: int | None = Field(default=None, ge=0)
+    existing_index: int | None = Field(default=None, ge=0)
+
+
+class RosterConflictItem(ApiModel):
+    code: str
+    message: str
+    incoming_index: int | None = Field(default=None, ge=0)
+    existing_indices: list[int] = Field(default_factory=list)
+
+
+class RosterUpdatePreviewResponse(VersionedResponse):
+    draft_id: str
+    base_revision: int = Field(ge=0)
+    mode: Literal["incremental", "replace"]
+    can_apply: bool
+    action_counts: dict[str, int]
+    changes: list[RosterChangeItem]
+    conflicts: list[RosterConflictItem]
+    resulting_students: list[Student] | None = None

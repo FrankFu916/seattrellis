@@ -26,6 +26,7 @@ from seattrellis.api.models import (
     GenerateClassResponse,
     InspectClassResponse,
 )
+from seattrellis.api.rosters import RosterDraftNotFoundError, RosterDraftStore
 from seattrellis.api.security import LocalApiPolicy
 
 
@@ -34,6 +35,7 @@ def create_app(
     policy: LocalApiPolicy | None = None,
     draft_store: EditorDraftStore | None = None,
     layout_store: LayoutDraftStore | None = None,
+    roster_store: RosterDraftStore | None = None,
 ) -> Any:
     """Lazily construct the optional FastAPI transport."""
 
@@ -43,6 +45,7 @@ def create_app(
         policy=policy,
         draft_store=draft_store,
         layout_store=layout_store,
+        roster_store=roster_store,
     )
 
 
@@ -58,6 +61,8 @@ __all__ = [
     "GenerateClassResponse",
     "InspectClassResponse",
     "LocalApiPolicy",
+    "RosterDraftNotFoundError",
+    "RosterDraftStore",
     "capabilities",
     "create_app",
     "generate_class",
