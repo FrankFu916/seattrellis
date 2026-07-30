@@ -18,6 +18,131 @@ _TEXT: dict[str, tuple[str, str]] = {
         "Student lists, rules, and seating history stay on this computer. "
         "Do not commit real class data to a public repository.",
     ),
+    "workspace_choice": ("选择工作区", "Choose a workspace"),
+    "workspace_teacher": ("教师工作台", "Teacher workspace"),
+    "workspace_advanced": ("高级工具", "Advanced tools"),
+    "teacher_home_title": ("为班级安排座位", "Plan seating for your class"),
+    "teacher_home_caption": (
+        "导入名单，确认教室，再选择本次排座目标。其余设置会自动处理。",
+        "Import your student list, confirm the room, and choose today's seating goal. "
+        "The remaining settings are handled automatically.",
+    ),
+    "teacher_home_status_ready": (
+        "班级设置已就绪，可以生成座位表。",
+        "Your class is ready. You can generate a seating plan.",
+    ),
+    "teacher_class_name": ("班级名称", "Class name"),
+    "teacher_class_name_placeholder": (
+        "例如：七年级二班",
+        "For example: Class 2, Grade 7",
+    ),
+    "teacher_roster_title": ("学生名单", "Student list"),
+    "teacher_roster_upload": (
+        "导入 CSV 或 Excel 名单",
+        "Import a CSV or Excel student list",
+    ),
+    "teacher_roster_help": (
+        "只要有姓名列即可开始；成绩、身高和特殊需求等信息会在有数据时自动参考。",
+        "A name column is enough to begin. Scores, height, and individual needs "
+        "are considered automatically when present.",
+    ),
+    "teacher_roster_summary": (
+        "已读取 {students} 名学生。可参考的信息：成绩 {scores} 人、身高 {heights} 人、"
+        "视力或前排需求 {front_needs} 人、其他特殊需求 {special_needs} 人。",
+        "Imported {students} students. Available information: scores for {scores}, "
+        "height for {heights}, vision or front-seat needs for {front_needs}, and "
+        "other individual needs for {special_needs}.",
+    ),
+    "teacher_roster_name_only": (
+        "其中 {count} 名学生只有姓名，也可以正常排座。",
+        "{count} students have names only; they can still be seated normally.",
+    ),
+    "teacher_roster_ready": ("名单已就绪。", "Student list ready."),
+    "teacher_room_title": ("教室", "Classroom"),
+    "teacher_room_template": ("选择教室大小", "Choose a classroom size"),
+    "teacher_room_recommended": (
+        "已按当前人数推荐可容纳 {capacity} 人的教室。",
+        "Recommended a classroom with {capacity} seats for this class.",
+    ),
+    "teacher_room_summary": (
+        "{rows} 排，共 {capacity} 个座位。",
+        "{rows} rows with {capacity} seats in total.",
+    ),
+    "teacher_room_too_small": (
+        "这个教室的座位少于学生人数，请选择更大的教室。",
+        "This classroom has fewer seats than students. Choose a larger room.",
+    ),
+    "teacher_goal_title": ("本次排座目标", "Seating goal"),
+    "teacher_goal_help": (
+        "选择最符合今天课堂需要的一项。",
+        "Choose the option that best fits today's class.",
+    ),
+    "teacher_goal_daily_title": ("日常轮换", "Daily rotation"),
+    "teacher_goal_daily_description": (
+        "兼顾视力和身高需求，减少近期重复邻座，并适度轮换位置。",
+        "Balance vision and height needs, vary recent neighbors, and rotate seats "
+        "for everyday classroom use.",
+    ),
+    "teacher_goal_fair_title": ("公平轮换", "Fair shuffle"),
+    "teacher_goal_fair_description": (
+        "优先参考历史座位，让每名学生逐步获得不同的位置和邻座。",
+        "Use seating history to give each student a wider range of positions and "
+        "neighbors over time.",
+    ),
+    "teacher_goal_peer_title": ("邻座互助", "Peer support"),
+    "teacher_goal_peer_description": (
+        "让成绩层次不同的学生在邻座范围内适度混合。",
+        "Mix students from different score ranges across neighboring seats.",
+    ),
+    "teacher_generate": ("生成座位表", "Generate seating plan"),
+    "teacher_generating": ("正在安排座位……", "Arranging seats…"),
+    "teacher_generate_success": (
+        "已生成 {count} 个可用方案。",
+        "Generated {count} seating options.",
+    ),
+    "teacher_generate_failed": (
+        "暂时无法生成座位表，请检查名单、教室和排座目标后重试。",
+        "A seating plan could not be generated. Check the student list, classroom, "
+        "and seating goal, then try again.",
+    ),
+    "teacher_results_title": ("座位表", "Seating plan"),
+    "teacher_results_summary": (
+        "已找到 {count} 个可用方案，先为你显示推荐方案。",
+        "Found {count} seating options. The recommended plan is shown first.",
+    ),
+    "teacher_other_candidates": ("其他可选方案", "Other seating options"),
+    "teacher_candidate_choice": ("查看方案", "View a seating option"),
+    "teacher_export_title": ("打印与导出", "Print and export"),
+    "teacher_public_print": ("公开打印版", "Public print"),
+    "teacher_public_print_help": (
+        "适合在教室张贴，只显示座位与姓名，不包含学生的其他信息。",
+        "Suitable for classroom display. It shows seats and names without other "
+        "student information.",
+    ),
+    "teacher_internal_print": ("教师打印版", "Teacher print"),
+    "teacher_internal_print_help": (
+        "供教师本人留存，可包含排座时参考的信息，请妥善保管。",
+        "For the teacher's records. It may include information used when arranging "
+        "seats, so store it securely.",
+    ),
+    "teacher_export_ready": (
+        "{label}已准备好，可以下载。",
+        "{label} is ready to download.",
+    ),
+    "teacher_restore_notice": (
+        "已恢复上次未完成的班级设置，可以从当前位置继续。",
+        "Your unfinished class setup was restored. You can continue where you left off.",
+    ),
+    "teacher_restore_failed": (
+        "上次的班级设置无法完整恢复，请重新确认名单和教室。",
+        "The previous class setup could not be fully restored. Confirm the student "
+        "list and classroom again.",
+    ),
+    "teacher_error_title": ("暂时无法继续", "Unable to continue"),
+    "teacher_error_detail": (
+        "请检查当前内容后重试。详细信息：{error}",
+        "Check the current information and try again. Details: {error}",
+    ),
     "skip_to_content": ("跳到主要内容", "Skip to main content"),
     "quick_tab": ("快速排座", "Quick solve"),
     "project_tab": ("Project 工作区", "Project workspace"),
