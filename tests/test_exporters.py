@@ -13,18 +13,24 @@ from seattrellis.exporters import (
     export_print_html,
     export_snapshot,
 )
+from seattrellis.exporters.candidate_report import render_candidate_report_html
 from seattrellis.exporters.print_html import PrintPrivacyOptions
 from seattrellis.exporters.pdf import _configure_macos_library_path
 from seattrellis.io.json_files import load_layout, load_rules
 from seattrellis.io.json_files import write_json_model
 from seattrellis.io.students import read_students
-from seattrellis.models.candidate import CandidatePlan, CandidateSet
+from seattrellis.models.candidate import (
+    CandidatePlan,
+    CandidateSet,
+    HardConstraintSummary,
+    ScoreDimension,
+)
 from seattrellis.models.layout import ClassroomLayout, SeatNode
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
-from seattrellis.scoring import score_snapshot
+from seattrellis.scoring import build_plan_comparison_report, score_snapshot
 from seattrellis.service import export as service_export
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.solver import solve_seating
@@ -461,6 +467,95 @@ def test_service_export_all_candidate_scope_writes_comparison_report(tmp_path) -
         "&lt;Unsafe Classroom&gt;",
     ):
         assert sensitive_value not in report
+
+
+def test_candidate_report_localizes_structured_explanations_and_summaries() -> None:
+    snapshot = _sensitive_snapshot()
+    recommended = _candidate(snapshot)
+    recommended.candidate_id = "candidate_01"
+    recommended.score.total = 90.0
+    recommended.score.breakdown.fair_rotation_score = ScoreDimension(
+        status="available",
+        score=88.0,
+        raw_value=88.0,
+        weight=5,
+        rating="high",
+    )
+    recommended.score.breakdown.hard_constraint_summary = HardConstraintSummary(
+        satisfied=True,
+        checked_rule_count=7,
+        violation_count=0,
+    )
+
+    alternate = _candidate(snapshot)
+    alternate.candidate_id = "candidate_02"
+    alternate.score.total = 81.5
+    alternate.hard_constraints_satisfied = False
+    alternate.score.breakdown.fair_rotation_score = ScoreDimension(
+        status="available",
+        score=70.0,
+        raw_value=70.0,
+        weight=5,
+        rating="medium",
+    )
+    alternate.score.breakdown.score_balance_score = ScoreDimension(
+        status="available",
+        score=40.0,
+        raw_value=40.0,
+        weight=5,
+        rating="low",
+    )
+    alternate.score.breakdown.hard_constraint_summary = HardConstraintSummary(
+        satisfied=False,
+        checked_rule_count=7,
+        violation_count=2,
+        violations=[
+            "fixed_seats is not satisfied for SECRET_STUDENT",
+            "SECRET_STUDENT is assigned twice",
+        ],
+    )
+    candidate_set = CandidateSet(
+        created_at=FIXED_CREATED_AT,
+        candidates=[recommended, alternate],
+        recommended_candidate_id=recommended.candidate_id,
+        warnings=["SECRET_STUDENT appears in a source warning"],
+    )
+    report = build_plan_comparison_report(candidate_set)
+
+    chinese = render_candidate_report_html(candidate_set, report, locale="zh")
+    english = render_candidate_report_html(candidate_set, report, locale="en")
+
+    assert "与推荐差值" in chinese
+    assert "-8.5" in chinese
+    assert "已检查 7 项，违反 2 项" in chinese
+    assert "公平轮换：中等（70.0）" in chinese
+    assert "成绩搭配：较低（40.0）" in chinese
+    assert "无可比历史" in chinese
+    assert "在满足全部硬约束的方案中选择加权总分最高者" in chinese
+    assert "fair rotation: medium" not in chinese.lower()
+
+    assert "Difference from recommended" in english
+    assert "7 checked, 2 violations" in english
+    assert "Fair rotation: medium (70.0)" in english
+    assert "Score mixing: low (40.0)" in english
+    assert "No comparable history" in english
+    assert "Select the highest weighted total" in english
+
+    assert "SECRET_STUDENT" not in chinese
+    assert "SECRET_STUDENT" not in english
+
+    legacy_report = report.copy(deep=True)
+    for entry in legacy_report.candidates:
+        entry.score_delta_from_recommended = None
+        entry.hard_constraint_checked_count = None
+        entry.hard_constraint_violation_count = None
+    legacy_chinese = render_candidate_report_html(
+        candidate_set,
+        legacy_report,
+        locale="zh",
+    )
+    assert "-8.5" in legacy_chinese
+    assert "已检查" not in legacy_chinese
 
 
 def test_service_export_all_candidate_scope_requires_candidate_set(tmp_path) -> None:

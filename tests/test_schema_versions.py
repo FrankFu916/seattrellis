@@ -13,6 +13,7 @@ from seattrellis.io.json_files import (
     InputFileError,
     load_candidate_set,
     load_plan_comparison_report,
+    load_rules,
     load_snapshot,
 )
 from seattrellis.io.project import load_project, write_project
@@ -22,6 +23,7 @@ from seattrellis.schema import (
     EDITOR_PROTOCOL_VERSION,
     JSON_SCHEMA_DRAFT,
     PROJECT_SCHEMA_VERSION,
+    RULESET_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
     json_schema_artifact_names,
     json_schema_documents,
@@ -35,6 +37,22 @@ def test_existing_snapshot_examples_remain_readable() -> None:
     snapshot = load_snapshot("examples/history/week1.snapshot.json")
 
     assert snapshot.schema_version == SNAPSHOT_SCHEMA_VERSION
+
+
+def test_ruleset_version_reads_legacy_and_current_fixtures() -> None:
+    legacy = load_rules("tests/fixtures/schema/ruleset-legacy.json")
+    current = load_rules("tests/fixtures/schema/ruleset-v1.json")
+
+    assert legacy.schema_version == RULESET_SCHEMA_VERSION
+    assert current.schema_version == RULESET_SCHEMA_VERSION
+
+
+def test_future_ruleset_version_has_actionable_migration_error() -> None:
+    with pytest.raises(
+        InputFileError,
+        match=r"Unsupported ruleset schema_version.*schema migrate.*--dry-run",
+    ):
+        load_rules("tests/fixtures/schema/ruleset-v2-unsupported.json")
 
 
 def test_current_artifact_versions_round_trip(tmp_path) -> None:
@@ -153,6 +171,9 @@ def test_json_schema_files_match_registry() -> None:
     assert documents["project.schema.json"]["x-seattrellis-schema-version"] == (
         PROJECT_SCHEMA_VERSION
     )
+    assert documents["ruleset.schema.json"]["x-seattrellis-schema-version"] == (
+        RULESET_SCHEMA_VERSION
+    )
     for artifact in ("editor-command", "editor-state"):
         document = documents[f"{artifact}.schema.json"]
         assert document["$schema"] == JSON_SCHEMA_DRAFT
@@ -239,6 +260,36 @@ def test_schema_migrate_current_snapshot_and_project(tmp_path) -> None:
     assert load_project(project_output).schema_version == PROJECT_SCHEMA_VERSION
 
 
+def test_schema_migrate_adds_version_to_legacy_ruleset(tmp_path) -> None:
+    output = tmp_path / "rules.migrated.json"
+
+    result = migrate_json_file(
+        "tests/fixtures/schema/ruleset-legacy.json",
+        output=output,
+    )
+
+    assert result.artifact == "ruleset"
+    assert result.schema_version == RULESET_SCHEMA_VERSION
+    assert json.loads(output.read_text(encoding="utf-8"))["schema_version"] == (
+        RULESET_SCHEMA_VERSION
+    )
+
+
+def test_schema_migrate_dry_run_validates_without_writing(tmp_path) -> None:
+    output = tmp_path / "missing" / "rules.json"
+
+    result = migrate_json_file(
+        "tests/fixtures/schema/ruleset-legacy.json",
+        output=output,
+        dry_run=True,
+    )
+
+    assert result.dry_run is True
+    assert result.output_path == output
+    assert result.backup_path is None
+    assert not output.parent.exists()
+
+
 def test_schema_migrate_in_place_replaces_the_source_atomically(tmp_path) -> None:
     source = tmp_path / "snapshot.json"
     source.write_bytes(
@@ -248,6 +299,10 @@ def test_schema_migrate_in_place_replaces_the_source_atomically(tmp_path) -> Non
     result = migrate_json_file(source, in_place=True)
 
     assert result.output_path == source
+    assert result.backup_path == source.with_name(f"{source.name}.bak")
+    assert result.backup_path.read_bytes() == Path(
+        "examples/history/week1.snapshot.json"
+    ).read_bytes()
     assert load_snapshot(source).schema_version == SNAPSHOT_SCHEMA_VERSION
 
 
@@ -342,3 +397,25 @@ def test_schema_migrate_command_requires_output_or_in_place(tmp_path) -> None:
 
     assert result.returncode != 0
     assert "requires --output unless --in-place is set" in result.stderr
+
+
+def test_schema_migrate_command_dry_run_needs_no_destination() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "seattrellis.cli",
+            "schema",
+            "migrate",
+            "--input",
+            "tests/fixtures/schema/ruleset-legacy.json",
+            "--dry-run",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ruleset schema_version 1 is valid" in result.stdout
+    assert "no files written" in result.stdout

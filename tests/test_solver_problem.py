@@ -1,10 +1,25 @@
 from __future__ import annotations
 
+from math import isinf
+
 import pytest
 
-from seattrellis.models import ClassroomLayout, FixedSeatRule, HardRules, RuleSet, SeatNode, Student
+from seattrellis.models import (
+    ClassroomLayout,
+    FixedSeatRule,
+    HardRules,
+    MinDistanceRule,
+    RuleSet,
+    SeatNode,
+    Student,
+)
 from seattrellis.solver import SeatTrellisSolveError
-from seattrellis.solver.problem import compile_problem
+from seattrellis.solver import precompute as precompute_module
+from seattrellis.solver.problem import (
+    compile_problem,
+    distance_for_rule,
+    seat_indexes_adjacent,
+)
 
 
 def _layout() -> ClassroomLayout:
@@ -43,6 +58,21 @@ def test_compiled_problem_resolves_candidate_exclusions() -> None:
     assert problem.excluded_assignments == [{0: 0, 1: 1}]
 
 
+def test_replacing_candidate_exclusions_reuses_compiled_topology() -> None:
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+    problem = compile_problem(students, _layout(), RuleSet())
+
+    excluded_problem = problem.with_excluded_assignments(
+        [{"S1": "A1", "S2": "A2"}]
+    )
+
+    assert excluded_problem is not problem
+    assert excluded_problem.topology is problem.topology
+    assert excluded_problem.rules_compiled is problem.rules_compiled
+    assert problem.excluded_assignments == []
+    assert excluded_problem.excluded_assignments == [{0: 0, 1: 1}]
+
+
 def test_compiled_problem_rejects_exclusions_for_disabled_or_unknown_seats() -> None:
     students = [Student(student_id="S1"), Student(student_id="S2")]
 
@@ -53,3 +83,56 @@ def test_compiled_problem_rejects_exclusions_for_disabled_or_unknown_seats() -> 
             RuleSet(),
             excluded_assignments=[{"S1": "A1", "S2": "Z9"}],
         )
+
+
+def test_compiled_topology_contains_index_adjacency_and_distance_matrices() -> None:
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+
+    problem = compile_problem(students, _layout(), RuleSet())
+    topology = problem.topology
+
+    assert topology.adjacent_seat_index_pairs == frozenset({(0, 1)})
+    assert topology.adjacency_by_seat_index == (
+        frozenset({1}),
+        frozenset({0}),
+        frozenset(),
+    )
+    assert seat_indexes_adjacent(problem, 0, 1) is True
+    assert seat_indexes_adjacent(problem, 0, 2) is False
+    assert topology.euclidean_distance_matrix[0][1] == pytest.approx(1.0)
+    assert topology.euclidean_distance_matrix[0][2] == pytest.approx(1.0)
+    assert topology.graph_distance_matrix[0][1] == pytest.approx(1.0)
+    assert isinf(topology.graph_distance_matrix[0][2])
+    assert topology.graph_distance_matrix[2][2] == 0.0
+
+
+def test_rule_distance_uses_precomputed_topology_without_rebuilding_graph(
+    monkeypatch,
+) -> None:
+    adjacency_builds = 0
+    original_build = precompute_module.build_adjacency_edges
+
+    def counting_build(layout: ClassroomLayout):
+        nonlocal adjacency_builds
+        adjacency_builds += 1
+        return original_build(layout)
+
+    monkeypatch.setattr(precompute_module, "build_adjacency_edges", counting_build)
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+    problem = compile_problem(students, _layout(), RuleSet())
+    graph_rule = MinDistanceRule(
+        students=("S1", "S2"),
+        distance=1.0,
+        metric="graph",
+    )
+    euclidean_rule = MinDistanceRule(
+        students=("S1", "S2"),
+        distance=1.0,
+        metric="euclidean",
+    )
+
+    for _ in range(5):
+        assert distance_for_rule(problem, 0, 1, graph_rule) == 1.0
+        assert distance_for_rule(problem, 0, 2, euclidean_rule) == 1.0
+
+    assert adjacency_builds == 1

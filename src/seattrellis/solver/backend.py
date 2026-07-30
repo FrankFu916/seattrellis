@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import os
-from typing import Mapping, Literal
+from typing import Literal, Mapping
 
 SolverBackend = Literal["auto", "fallback", "ortools", "native"]
+ConcreteSolverBackend = Literal["fallback", "ortools", "native"]
 
-SOLVER_BACKENDS: tuple[SolverBackend, ...] = ("auto", "fallback", "ortools", "native")
+CONCRETE_SOLVER_BACKENDS: tuple[ConcreteSolverBackend, ...] = (
+    "fallback",
+    "ortools",
+    "native",
+)
+SOLVER_BACKENDS: tuple[SolverBackend, ...] = ("auto", *CONCRETE_SOLVER_BACKENDS)
 _TRUE_VALUES = {"1", "true", "TRUE", "yes", "YES"}
 
 

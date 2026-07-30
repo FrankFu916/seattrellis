@@ -10,11 +10,8 @@ from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.student import Student
 from seattrellis.solver.backend import normalize_solver_backend, resolve_solver_backend
-from seattrellis.solver.errors import SeatTrellisSolveError
-from seattrellis.solver.fallback_backend import solve_with_fallback
-from seattrellis.solver.native_backend import solve_with_native
-from seattrellis.solver.ortools_backend import solve_with_ortools
-from seattrellis.solver.problem import compile_problem
+from seattrellis.solver.problem import CompiledProblem, compile_problem
+from seattrellis.solver.registry import get_solver_backend
 from seattrellis.solver.result import SeatingSolution
 
 
@@ -43,27 +40,43 @@ def solve_seating(
         excluded_assignments=excluded_assignments or [],
     )
 
+    return solve_compiled(
+        problem,
+        history=history,
+        pair_history=pair_history,
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
+    )
+
+
+def solve_compiled(
+    problem: CompiledProblem,
+    *,
+    history: SeatHistory | None = None,
+    pair_history: PairHistory | None = None,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    excluded_assignments: Sequence[Mapping[str, str]] | None = None,
+    backend: str = "auto",
+) -> SeatingSolution:
+    """Solve an existing compiled problem without rebuilding its topology.
+
+    When exclusions are supplied, they replace the problem's current exclusion
+    list in a shallow solve view while retaining the compiled topology and
+    rules.
+    """
+
+    if not isfinite(time_limit_seconds) or time_limit_seconds < 0.1:
+        raise ValueError("time_limit_seconds must be a finite number >= 0.1")
+    seed = problem.rules.seed if seed is None else seed
+    if excluded_assignments is not None:
+        problem = problem.with_excluded_assignments(excluded_assignments)
+
     requested_backend = normalize_solver_backend(backend)
     effective_backend = resolve_solver_backend(requested_backend)
-    if effective_backend == "ortools":
-        return solve_with_ortools(
-            problem,
-            history,
-            pair_history,
-            seed,
-            time_limit_seconds,
-            requested_backend,
-        )
-    if effective_backend == "native":
-        return solve_with_native(
-            problem,
-            history,
-            pair_history,
-            seed,
-            time_limit_seconds,
-            requested_backend,
-        )
-    return solve_with_fallback(
+    solver_backend = get_solver_backend(effective_backend)
+    return solver_backend.solve(
         problem,
         history,
         pair_history,

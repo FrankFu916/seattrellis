@@ -15,6 +15,7 @@ from seattrellis.schema import CANDIDATE_SCHEMA_VERSION, require_schema_version
 
 ScoreStatus = Literal["available", "not_available"]
 ScoreRating = Literal["high", "medium", "low", "not_available"]
+ComparisonExplanationKind = Literal["strength", "trade_off", "best_available"]
 
 
 class ScoreDimension(BaseModel):
@@ -143,14 +144,48 @@ class CandidateSet(BaseModel):
         raise ValueError(f"Unknown candidate ID {candidate_id!r}. Available candidates: {available}.")
 
 
+class PlanComparisonExplanation(BaseModel):
+    """Locale-neutral explanation data for comparison report renderers."""
+
+    kind: ComparisonExplanationKind
+    dimension: str
+    score: float = Field(ge=0, le=100)
+    rating: ScoreRating
+
+
 class PlanComparisonEntry(BaseModel):
     candidate_id: str
     total_score: float
+    score_delta_from_recommended: float | None = None
     hard_constraints_satisfied: bool
+    hard_constraint_checked_count: int | None = Field(default=None, ge=0)
+    hard_constraint_violation_count: int | None = Field(default=None, ge=0)
     dimension_scores: dict[str, float | None] = Field(default_factory=dict)
+    explanations: list[PlanComparisonExplanation] = Field(default_factory=list)
     advantages: list[str] = Field(default_factory=list)
     costs: list[str] = Field(default_factory=list)
     history_comparison: dict[str, str] = Field(default_factory=dict)
+
+    @validator("score_delta_from_recommended")
+    def score_delta_must_be_finite(cls, value: float | None) -> float | None:
+        if value is not None and not isfinite(value):
+            raise ValueError("score_delta_from_recommended must be finite.")
+        return value
+
+    class Config:
+        @staticmethod
+        def schema_extra(schema: dict[str, Any]) -> None:
+            """Describe nullable compatibility fields accurately in JSON Schema."""
+
+            properties = schema.get("properties", {})
+            for field_name, value_type in (
+                ("score_delta_from_recommended", "number"),
+                ("hard_constraint_checked_count", "integer"),
+                ("hard_constraint_violation_count", "integer"),
+            ):
+                field_schema = properties.get(field_name)
+                if isinstance(field_schema, dict):
+                    field_schema["type"] = [value_type, "null"]
 
 
 class PlanComparisonReport(BaseModel):
@@ -170,6 +205,22 @@ class PlanComparisonReport(BaseModel):
             expected=CANDIDATE_SCHEMA_VERSION,
             artifact="plan comparison report",
         )
+
+    @root_validator(skip_on_failure=True)
+    def validate_candidate_references(cls, values: dict[str, Any]) -> dict[str, Any]:
+        candidates = values.get("candidates") or []
+        candidate_ids = [candidate.candidate_id for candidate in candidates]
+        if not candidates:
+            raise ValueError("plan comparison report must contain at least one candidate.")
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ValueError("plan comparison report candidate_id values must be unique.")
+        if values.get("candidate_count") != len(candidates):
+            raise ValueError("candidate_count must match the number of report candidates.")
+        if values.get("recommended_candidate_id") not in set(candidate_ids):
+            raise ValueError(
+                "recommended_candidate_id must reference a report candidate."
+            )
+        return values
 
 
 class MultiSolveOptions(BaseModel):

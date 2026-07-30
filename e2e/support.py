@@ -55,15 +55,23 @@ def select_region_option(
 ) -> None:
     """Select one option from a keyed Streamlit selectbox."""
 
-    combobox = region(page, widget_key).get_by_role("combobox")
+    widget = region(page, widget_key)
+    combobox = widget.get_by_role("combobox")
     expect(combobox).to_have_count(1)
-    combobox.click()
+    if combobox.input_value() == option:
+        return
+
+    # Streamlit 1.60 uses an editable React Aria combobox. Filtering by the
+    # complete label avoids a flaky pointer-open operation while the page is
+    # settling after a Streamlit rerun.
+    combobox.fill(option)
+    combobox.press("ArrowDown")
+    expect(combobox).to_have_attribute("aria-expanded", "true")
     menu_option = page.get_by_role("option", name=option, exact=True)
     expect(menu_option).to_be_visible()
     menu_option.click()
-    expect(region(page, widget_key).get_by_role("combobox")).to_have_attribute(
-        "aria-label",
-        re.compile(rf"Selected {re.escape(option)}\."),
+    expect(region(page, widget_key).get_by_role("combobox")).to_have_value(
+        option,
     )
 
 

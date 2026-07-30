@@ -1,105 +1,109 @@
-# v1.3.0 Release Checklist
+# Release checklist
 
-## Local Verification
+Use this checklist for every public release. Replace `<version>` with the exact
+PEP 440 package version and `<tag>` with `v<version>`. A release candidate must
+use its own version, for example `1.4.0rc1`; package indexes do not allow files
+to be replaced.
 
-- [ ] Create a clean virtual environment.
-- [ ] Run `python -m pip install --upgrade pip`.
-- [ ] Run `python -m pip install -e .`.
-- [ ] Run `seattrellis --help`.
-- [ ] Run `seattrellis init-demo --force`.
-- [ ] Run `seattrellis presets list`.
-- [ ] Run `seattrellis presets show daily`.
-- [ ] Run `seattrellis presets export daily --output outputs/daily.rules.json`.
-- [ ] Run `seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history --output outputs/daily.snapshot.json`.
-- [ ] Run `seattrellis project-info --project examples/project.seattrellis.json`.
-- [ ] Run `seattrellis project-validate --project examples/project.seattrellis.json`.
-- [ ] Run `seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json`.
-- [ ] Run `seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html`.
-- [ ] Run `seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json`.
-- [ ] Run `seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
-- [ ] Run `seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json`.
-- [ ] Run `seattrellis export --snapshot outputs/neighbor-aware.snapshot.json --format html`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 3 --output outputs/candidates.json --report outputs/plan-report.json`.
-- [ ] Run `seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html`.
-- [ ] Run `pytest tests/test_minimal_install.py`.
-- [ ] Run `python -m pip install -e ".[all,dev]"`.
-- [ ] Run `pytest`.
+## Scope and repository state
+
+- [ ] Every item promised by the milestone is implemented, documented and
+      covered by an acceptance test, or has been moved explicitly to a later
+      milestone.
+- [ ] The pull request is reviewable as a sequence of focused commits and has
+      no unresolved review threads.
+- [ ] `CHANGELOG.md` describes user-visible additions, changes and fixes.
+- [ ] Schema changes include migration behavior, committed schemas and fixtures.
+- [ ] `git status --short` is clean in the release checkout.
+- [ ] `python scripts/check_repository_hygiene.py` passes.
+
+## Release quality gate
+
+Run this gate once after the version scope is frozen, rather than repeating the
+entire matrix after every small change.
+
+- [ ] Install the minimal package in a clean Python 3.11 environment and run
+      `python -m pytest tests/test_minimal_install.py`.
+- [ ] Install `.[all,dev]` and run the complete test suite.
 - [ ] Run `cargo test --manifest-path native/Cargo.toml`.
-- [ ] Run `python scripts/smoke_cli.py --optional auto --time-limit 3 --json-report outputs/cli-smoke.json`.
-- [ ] Run `seattrellis schema export --output-dir schemas` and confirm `git diff -- schemas` is empty.
-- [ ] Run `seattrellis schema migrate --input examples/history/week1.snapshot.json --output outputs/week1.migrated.snapshot.json`.
-- [ ] Run `python scripts/benchmark_solver.py --sizes 40,50,60 --backends fallback --candidates 1 --time-limit 10 --output outputs/benchmark-solver.json --markdown-output outputs/benchmark-solver.md`.
-- [ ] Run `pytest tests/test_web_workflow.py`.
-- [ ] Run `python -m pip install -e ".[web,e2e]"`.
-- [ ] Run `python -m playwright install chromium`.
-- [ ] On Linux, run `python -m playwright install --with-deps chromium`.
-- [ ] Run `python -m pytest e2e --browser=chromium`.
-- [ ] Launch `streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1` and confirm the quick-solve and project tabs load.
-- [ ] Build from a clean checkout so untracked files matched by `MANIFEST.in` cannot enter the source distribution.
-- [ ] Run `python -m build`.
-- [ ] Run `python scripts/check_release_version.py`.
+- [ ] Build the optional native wheel and run its Python/Rust differential
+      contract tests. The native wheel remains an experimental CI artifact
+      until it has a separate public distribution decision.
+- [ ] Run `python scripts/smoke_cli.py --optional auto --time-limit 3`.
+- [ ] Run the documented release benchmark matrix for 40, 50 and 60 students,
+      light and dense rules, and 1, 5 and 20 candidates. Archive both JSON and
+      Markdown reports.
+- [ ] Run the Playwright Chromium acceptance suite from a clean Web install.
+- [ ] Launch the Web application on `127.0.0.1` and complete one manual
+      import → solve → adjust → export workflow.
+- [ ] Confirm GitHub Actions passes on Python 3.11 and 3.14 on Linux, Windows
+      and macOS, with Python 3.12 and 3.13 compatibility lanes on Linux.
+- [ ] Confirm the dependency audit, secret scan, package hygiene and Web E2E
+      jobs pass.
 
-## README Command Verification
+## Functional acceptance
 
-- [ ] Run `seattrellis --help`.
-- [ ] Run `seattrellis init-demo`.
-- [ ] Run `seattrellis presets list`.
-- [ ] Run `seattrellis presets show daily`.
-- [ ] Run `seattrellis presets export daily --output outputs/daily.rules.json`.
-- [ ] Run `seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history --output outputs/daily.snapshot.json`.
-- [ ] Run `seattrellis project-info --project examples/project.seattrellis.json`.
-- [ ] Run `seattrellis project-validate --project examples/project.seattrellis.json`.
-- [ ] Run `seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json`.
-- [ ] Run `seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --format html --output outputs/project-recommended.html`.
-- [ ] Run `seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json`.
-- [ ] Run `seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
-- [ ] Run `seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json`.
-- [ ] Run `seattrellis export --snapshot outputs/neighbor-aware.snapshot.json --format html`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 5 --output outputs/candidates.json --report outputs/plan-report.json`.
-- [ ] Run `seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html`.
-- [ ] Run `seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history`.
-- [ ] Run `seattrellis export --snapshot outputs/latest.snapshot.json --format html`.
-- [ ] With `excel` and `image` extras installed, run `seattrellis solve --students examples/students.xlsx --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history`.
-- [ ] With `excel` extra installed, run `seattrellis export --snapshot outputs/latest.snapshot.json --format excel`.
-- [ ] With `image` extra installed, run `seattrellis export --snapshot outputs/latest.snapshot.json --format png`.
+- [ ] `seattrellis init-demo --force`, `validate` and a one-candidate `solve`
+      complete successfully.
+- [ ] Generate several candidates and inspect the recommendation, score
+      differences, hard-constraint summary and history explanation.
+- [ ] Exercise manual swap, move, unseat, lock, undo/redo and constrained repair;
+      confirm the operation log and snapshot provenance are saved.
+- [ ] Run the Project info, validate, solve, edit, repair and export commands on
+      the example project.
+- [ ] Export teacher and public outputs in Chinese and English, including A4
+      portrait and landscape layouts.
+- [ ] Confirm a public export contains no scores, notes, special needs, height,
+      vision data or un-anonymized student identifiers.
+- [ ] Export and validate the committed JSON Schemas. Run migration dry-run and
+      write modes, including backup creation for an existing destination.
+- [ ] Verify the fallback, OR-Tools and optional native backend status messages.
+      A timeout or unknown status must not be described as proven infeasibility.
 
-## Privacy And Packaging
+## Packaging and privacy
 
-- [ ] Run `python scripts/check_repository_hygiene.py`.
+- [ ] Build from a clean checkout so ignored or untracked files cannot enter
+      the source distribution.
 - [ ] Run `python -m build` and `python -m twine check dist/*`.
-- [ ] Run the hygiene check once for every file in `dist/` with `--archive`.
-- [ ] Confirm the dependency audit, secret scan, and package hygiene workflows pass.
-- [ ] Confirm `examples/` contains fictional data only.
-- [ ] Confirm `examples/history/` contains fictional snapshots only.
-- [ ] Confirm no real student names, IDs, school names, class names, grades, notes, historical snapshots, API keys, `.env`, or private exports are tracked.
-- [ ] Confirm `outputs/`, `exports/`, `snapshots/`, `private/`, `data/`, `real_students/`, and `real_classes/` remain ignored.
-- [ ] Confirm no real candidate reports or candidate-set snapshots are tracked.
-- [ ] Confirm built-in preset definitions contain rules and metadata only, with no student or classroom records.
-- [ ] Confirm project files contain relative paths and defaults only, with no embedded real student data.
-- [ ] Confirm `pyproject.toml` version is `1.3.0`.
-- [ ] Confirm `git status --short` has no suspicious generated files.
-- [ ] Confirm `git ls-files` does not include ignored real-data directories.
-- [ ] Confirm CI passes on GitHub Actions.
+- [ ] Run `python scripts/check_repository_hygiene.py --archive <file>` for
+      every artifact in `dist/`.
+- [ ] Confirm examples contain fictional data only and no real names, IDs,
+      school details, notes, snapshots, exports, keys or environment files are
+      tracked.
+- [ ] Confirm generated output and private-data directories remain ignored.
+- [ ] Confirm `pyproject.toml` and `seattrellis.__version__` both equal
+      `<version>` by running `python scripts/check_release_version.py --tag <tag>`.
 
-## Release
+## TestPyPI candidate
 
-- [ ] Review `CHANGELOG.md`.
-- [ ] For the first PyPI release, confirm the TestPyPI and PyPI Trusted Publishers
-      described in `docs/publishing.md` are configured.
-- [ ] Publish a uniquely versioned candidate such as `1.3.0rc1` to TestPyPI;
-      confirm its installation-verification job passed in a clean environment.
-- [ ] Confirm the reviewed release commit has restored both package version fields
-      to `1.3.0`, then run `python scripts/check_release_version.py --tag v1.3.0`.
-- [ ] Create a draft GitHub Release targeting the reviewed `main` commit, with tag
-      `v1.3.0` and title `SeatTrellis v1.3.0`.
-- [ ] Include a short privacy note in the release description.
-- [ ] Publish the GitHub Release.
-- [ ] Confirm every `Publish distributions` job passed, including PyPI publication,
-      clean installation verification, and Release asset upload.
-- [ ] Confirm the GitHub Release contains the wheel, sdist, and `SHA256SUMS`.
-- [ ] Confirm `pip install seattrellis==1.3.0`, `seattrellis --version`, and
-      `seattrellis --help` work in a clean environment.
+- [ ] Confirm the `testpypi` GitHub environment and TestPyPI Trusted Publisher
+      still target `.github/workflows/publish.yml`.
+- [ ] Set both package version fields to a unique release candidate version and
+      merge the reviewed candidate commit.
+- [ ] Manually run `Publish distributions` with target `testpypi`.
+- [ ] Confirm clean installation verification succeeds on Python 3.11 and 3.14.
+- [ ] Install the candidate from TestPyPI independently and run
+      `seattrellis --version`, `seattrellis --help` and the CLI smoke workflow.
+
+## Public release
+
+- [ ] Restore both package version fields to the final `<version>` and rerun the
+      release quality gate for the reviewed commit.
+- [ ] Confirm the `pypi` GitHub environment and PyPI Trusted Publisher still
+      target `.github/workflows/publish.yml`; keep environment approval enabled.
+- [ ] Create a draft GitHub Release targeting the reviewed `main` commit with
+      tag `<tag>` and title `SeatTrellis <tag>`.
+- [ ] Write concise release notes with upgrade, compatibility, privacy and known
+      limitation sections. Do not claim the experimental native backend is a
+      standalone solver.
+- [ ] Publish the GitHub Release and confirm every `Publish distributions` job
+      succeeds, including PyPI upload and clean Python 3.11/3.14 installation.
+- [ ] Confirm the Release contains the wheel, source distribution and
+      `SHA256SUMS`.
+- [ ] Install `seattrellis==<version>` from PyPI in a clean environment and run
+      `seattrellis --version`, `seattrellis --help` and one solve/export smoke
+      workflow.
+
+If publication fails after a version has reached an index, follow
+`docs/publishing.md`: do not replace the files or rewrite the tag. Yank the
+affected release when appropriate and publish a new patch version.

@@ -17,7 +17,7 @@ Local development:
 python -m pip install -e .
 
 # Build and install only the optional native extension.
-python -m pip install "maturin>=1.8,<2"
+python -m pip install "maturin>=1.14.1,<2"
 python -m maturin develop --release --manifest-path native/seattrellis_native/Cargo.toml
 
 # Verify that the application and extension coexist.
@@ -37,6 +37,7 @@ cargo test --manifest-path native/Cargo.toml
 ```
 
 In v1.4 the `native` backend still delegates search to the Python fallback
-solver, then uses this Rust extension for structural assignment checks. The
-point of the spike is to prove packaging and the Python/Rust call boundary
-before moving heavier validation, scoring, and heuristic work into Rust.
+solver. It sends one versioned, identity-free JSON request to Rust for indexed
+graph-distance precomputation, structural and hard-rule verification, and a
+peer-mixing score check. Python remains responsible for the final result and
+continues to run its normal scoring contract.

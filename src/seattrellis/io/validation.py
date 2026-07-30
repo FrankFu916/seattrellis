@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from seattrellis.io.json_files import InputFileError, load_layout
 from seattrellis.io.students import read_students
@@ -11,6 +11,13 @@ from seattrellis.models.rules import MinDistanceRule, RuleSet
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import load_rules_with_preset, preset_context_warnings
+
+if TYPE_CHECKING:
+    from seattrellis.solver.rule_compiler import (
+        ResolvedHardRules,
+        ResolvedPairRule,
+        ResolvedStudentReference,
+    )
 
 SeatEdge = tuple[str, str]
 
@@ -130,14 +137,31 @@ def validate_files(
 
 
 def validate_loaded_inputs(students: list[Student], layout: ClassroomLayout, rules: RuleSet) -> ValidationReport:
+    """Validate loaded models while preserving all current diagnostics."""
+
+    return _validate_resolved_inputs(
+        students,
+        layout,
+        rules,
+        _resolve_hard_rules(students, layout, rules),
+    )
+
+
+def _validate_resolved_inputs(
+    students: list[Student],
+    layout: ClassroomLayout,
+    rules: RuleSet,
+    resolved_rules: "ResolvedHardRules",
+) -> ValidationReport:
+    """Validate inputs using hard-rule references resolved by the solver layer."""
+
     report = ValidationReport(
         students_count=len(students),
         enabled_seats_count=len(layout.enabled_seats),
         hard_constraints_count=count_hard_constraints(rules),
     )
     enabled_seats = {seat.seat_id: seat for seat in layout.enabled_seats}
-    all_seats = {seat.seat_id: seat for seat in layout.seats}
-    edges = _build_adjacency_edges(layout)
+    edges = resolved_rules.topology.edges
 
     if len(students) > len(enabled_seats):
         report.add_error(
@@ -162,8 +186,6 @@ def validate_loaded_inputs(students: list[Student], layout: ClassroomLayout, rul
 
     _add_rule_capability_warnings(report, rules)
 
-    refs, ambiguous_refs = _student_reference_map(students)
-
     keys = [student.key for student in students]
     duplicates = sorted({key for key in keys if keys.count(key) > 1})
     if duplicates:
@@ -175,14 +197,23 @@ def validate_loaded_inputs(students: list[Student], layout: ClassroomLayout, rul
     fixed_student_seats: dict[int, tuple[str, str]] = {}
     fixed_seat_students: dict[str, tuple[int, str]] = {}
 
-    for index, rule in enumerate(rules.hard.fixed_seats, start=1):
-        student_index = _resolve_student(rule.student, refs, ambiguous_refs, report, f"hard.fixed_seats[{index}]")
-        seat = all_seats.get(rule.seat_id)
-        if seat is None:
-            report.add_error(f'hard.fixed_seats[{index}] references unknown seat_id: "{rule.seat_id}".')
+    for entry in resolved_rules.fixed_seats:
+        rule = entry.rule
+        student_index = _report_student_reference(
+            entry.student,
+            report,
+            entry.location,
+        )
+        if not entry.seat.exists:
+            report.add_error(
+                f'{entry.location} references unknown seat_id: "{rule.seat_id}".'
+            )
             continue
-        if rule.seat_id not in enabled_seats:
-            report.add_error(f'hard.fixed_seats[{index}] fixes "{rule.student}" to disabled seat: "{rule.seat_id}".')
+        if not entry.seat.enabled:
+            report.add_error(
+                f'{entry.location} fixes "{rule.student}" to disabled seat: '
+                f'"{rule.seat_id}".'
+            )
             continue
         if student_index is None:
             continue
@@ -207,11 +238,15 @@ def validate_loaded_inputs(students: list[Student], layout: ClassroomLayout, rul
         else:
             fixed_seat_students[rule.seat_id] = (student_index, rule.student)
 
-    must_pairs = _collect_pair_rules(rules.hard.must_be_adjacent, refs, ambiguous_refs, report, "hard.must_be_adjacent")
+    must_pairs = _collect_pair_rules(resolved_rules.must_be_adjacent, report)
     cannot_pairs = _collect_pair_rules(
-        rules.hard.cannot_be_adjacent, refs, ambiguous_refs, report, "hard.cannot_be_adjacent"
+        resolved_rules.cannot_be_adjacent,
+        report,
     )
-    min_distance_pairs = _collect_min_distance_rules(rules.hard.min_distance, refs, ambiguous_refs, report)
+    min_distance_pairs = _collect_min_distance_rules(
+        resolved_rules.min_distance,
+        report,
+    )
 
     _check_pair_rule_conflicts(report, must_pairs, cannot_pairs)
     _check_fixed_pair_conflicts(report, fixed_student_seats, must_pairs, cannot_pairs, min_distance_pairs, enabled_seats, layout, edges)
@@ -285,34 +320,23 @@ def _friendly_exception(exc: Exception) -> str:
     return str(exc) or exc.__class__.__name__
 
 
-def _student_reference_map(students: list[Student]) -> tuple[dict[str, int], set[str]]:
-    refs: dict[str, int] = {}
-    ambiguous: set[str] = set()
-    for index, student in enumerate(students):
-        for value in (student.student_id, student.name):
-            if not value:
-                continue
-            if value in refs and refs[value] != index:
-                ambiguous.add(value)
-            else:
-                refs[value] = index
-    return refs, ambiguous
-
-
-def _resolve_student(
-    ref: str,
-    refs: dict[str, int],
-    ambiguous_refs: set[str],
+def _report_student_reference(
+    reference: "ResolvedStudentReference",
     report: ValidationReport,
     location: str,
 ) -> int | None:
-    if ref in ambiguous_refs:
-        report.add_error(f'{location} references ambiguous student: "{ref}". Use a unique student_id.')
+    if reference.problem == "ambiguous":
+        report.add_error(
+            f'{location} references ambiguous student: "{reference.value}". '
+            "Use a unique student_id."
+        )
         return None
-    if ref not in refs:
-        report.add_error(f'{location} references unknown student: "{ref}".')
+    if reference.problem == "unknown":
+        report.add_error(
+            f'{location} references unknown student: "{reference.value}".'
+        )
         return None
-    return refs[ref]
+    return reference.index
 
 
 PairEntry = tuple[int, int, str, str, str]
@@ -324,44 +348,49 @@ def _pair_key(first: int, second: int) -> tuple[int, int]:
 
 
 def _collect_pair_rules(
-    rules: list,
-    refs: dict[str, int],
-    ambiguous_refs: set[str],
+    rules: tuple["ResolvedPairRule", ...],
     report: ValidationReport,
-    label: str,
 ) -> dict[tuple[int, int], list[PairEntry]]:
     pairs: dict[tuple[int, int], list[PairEntry]] = {}
-    for index, rule in enumerate(rules, start=1):
+    for entry in rules:
+        rule = entry.rule
         first_ref, second_ref = rule.students
-        first = _resolve_student(first_ref, refs, ambiguous_refs, report, f"{label}[{index}]")
-        second = _resolve_student(second_ref, refs, ambiguous_refs, report, f"{label}[{index}]")
+        first = _report_student_reference(entry.first, report, entry.location)
+        second = _report_student_reference(entry.second, report, entry.location)
         if first is None or second is None:
             continue
         if first == second:
-            report.add_error(f"{label}[{index}] must reference two different students.")
+            report.add_error(
+                f"{entry.location} must reference two different students."
+            )
             continue
-        pairs.setdefault(_pair_key(first, second), []).append((first, second, first_ref, second_ref, f"{label}[{index}]"))
+        pairs.setdefault(_pair_key(first, second), []).append(
+            (first, second, first_ref, second_ref, entry.location)
+        )
     return pairs
 
 
 def _collect_min_distance_rules(
-    rules: list[MinDistanceRule],
-    refs: dict[str, int],
-    ambiguous_refs: set[str],
+    rules: tuple["ResolvedPairRule", ...],
     report: ValidationReport,
 ) -> dict[tuple[int, int], list[MinDistanceEntry]]:
     pairs: dict[tuple[int, int], list[MinDistanceEntry]] = {}
-    for index, rule in enumerate(rules, start=1):
+    for entry in rules:
+        rule = entry.rule
+        if not isinstance(rule, MinDistanceRule):  # defensive against malformed internal data
+            continue
         first_ref, second_ref = rule.students
-        first = _resolve_student(first_ref, refs, ambiguous_refs, report, f"hard.min_distance[{index}]")
-        second = _resolve_student(second_ref, refs, ambiguous_refs, report, f"hard.min_distance[{index}]")
+        first = _report_student_reference(entry.first, report, entry.location)
+        second = _report_student_reference(entry.second, report, entry.location)
         if first is None or second is None:
             continue
         if first == second:
-            report.add_error(f"hard.min_distance[{index}] must reference two different students.")
+            report.add_error(
+                f"{entry.location} must reference two different students."
+            )
             continue
         pairs.setdefault(_pair_key(first, second), []).append(
-            (first, second, first_ref, second_ref, f"hard.min_distance[{index}]", rule)
+            (first, second, first_ref, second_ref, entry.location, rule)
         )
     return pairs
 
@@ -485,10 +514,15 @@ def _distance_for_rule(layout: ClassroomLayout, first: SeatNode, second: SeatNod
     return _seat_distance(first, second)
 
 
-def _build_adjacency_edges(layout: ClassroomLayout) -> set[SeatEdge]:
-    from seattrellis.solver.adjacency import build_adjacency_edges
+def _resolve_hard_rules(
+    students: list[Student],
+    layout: ClassroomLayout,
+    rules: RuleSet,
+) -> "ResolvedHardRules":
+    # Delayed to avoid the package cycle solver.problem -> io.validation.
+    from seattrellis.solver.rule_compiler import resolve_hard_rules
 
-    return build_adjacency_edges(layout)
+    return resolve_hard_rules(students, layout, rules)
 
 
 def _normalize_edge(first: str, second: str) -> SeatEdge:

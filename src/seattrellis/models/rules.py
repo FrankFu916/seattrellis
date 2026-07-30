@@ -8,7 +8,13 @@ try:
 except ImportError:  # pragma: no cover - pydantic v1.
     from pydantic import BaseModel, Field, validator
 
-from seattrellis.models.history import NEIGHBOR_RELATION_TYPES, ROTATION_CATEGORIES, NeighborRelationType, SeatPositionCategory
+from seattrellis.models.history import (
+    NEIGHBOR_RELATION_TYPES,
+    ROTATION_CATEGORIES,
+    NeighborRelationType,
+    SeatPositionCategory,
+)
+from seattrellis.schema import RULESET_SCHEMA_VERSION, require_schema_version
 
 
 class FixedSeatRule(BaseModel):
@@ -204,10 +210,19 @@ class SoftRules(BaseModel):
 
 
 class RuleSet(BaseModel):
+    schema_version: int = RULESET_SCHEMA_VERSION
     seed: int = 42
     hard: HardRules = Field(default_factory=HardRules)
     soft: SoftRules = Field(default_factory=SoftRules)
     groups: list[GroupRule] = Field(default_factory=list)
+
+    @validator("schema_version", pre=True)
+    def supported_schema_version(cls, value: object) -> int:
+        return require_schema_version(
+            value,
+            expected=RULESET_SCHEMA_VERSION,
+            artifact="ruleset",
+        )
 
     class Config:
         extra = "forbid"

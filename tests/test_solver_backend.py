@@ -141,10 +141,11 @@ def test_missing_native_core_points_to_source_build(monkeypatch) -> None:
 
 def test_native_core_status_accepts_matching_api(monkeypatch) -> None:
     core = SimpleNamespace(
-        NATIVE_API_VERSION=1,
+        NATIVE_API_VERSION=native_adapter.EXPECTED_NATIVE_API_VERSION,
         __version__="test",
         assignment_is_unique=lambda *_args: True,
         seat_distance=lambda *_args: 0.0,
+        evaluate_problem=lambda *_args: "{}",
     )
     monkeypatch.setattr(native_adapter, "_load_native_core", lambda: core)
 
@@ -156,12 +157,13 @@ def test_native_core_status_accepts_matching_api(monkeypatch) -> None:
     assert status.error is None
 
 
-@pytest.mark.parametrize("api_version", [None, True, 0, 2, "1"])
+@pytest.mark.parametrize("api_version", [None, True, 0, 1, 3, "2"])
 def test_native_core_status_rejects_incompatible_api(monkeypatch, api_version) -> None:
     core = SimpleNamespace(
         __version__="test",
         assignment_is_unique=lambda *_args: True,
         seat_distance=lambda *_args: 0.0,
+        evaluate_problem=lambda *_args: "{}",
     )
     if api_version is not None:
         core.NATIVE_API_VERSION = api_version
@@ -176,26 +178,28 @@ def test_native_core_status_rejects_incompatible_api(monkeypatch, api_version) -
 
 def test_require_native_core_rejects_incompatible_installed_extension(monkeypatch) -> None:
     core = SimpleNamespace(
-        NATIVE_API_VERSION=2,
+        NATIVE_API_VERSION=1,
         __version__="old",
         assignment_is_unique=lambda *_args: True,
         seat_distance=lambda *_args: 0.0,
+        evaluate_problem=lambda *_args: "{}",
     )
     monkeypatch.setattr(native_adapter, "_load_native_core", lambda: core)
 
-    with pytest.raises(ValueError, match="expected 1, found 2"):
+    with pytest.raises(ValueError, match="expected 2, found 1"):
         native_adapter.require_native_core()
 
 
 def test_require_native_core_rejects_incomplete_api(monkeypatch) -> None:
     core = SimpleNamespace(
-        NATIVE_API_VERSION=1,
+        NATIVE_API_VERSION=native_adapter.EXPECTED_NATIVE_API_VERSION,
         __version__="incomplete",
         assignment_is_unique=lambda *_args: True,
+        seat_distance=lambda *_args: 0.0,
     )
     monkeypatch.setattr(native_adapter, "_load_native_core", lambda: core)
 
-    with pytest.raises(ValueError, match=r"missing required callable\(s\): seat_distance"):
+    with pytest.raises(ValueError, match=r"missing required callable\(s\): evaluate_problem"):
         native_adapter.require_native_core()
 
 

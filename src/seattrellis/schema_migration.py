@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import tempfile
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ except ImportError:  # pragma: no cover - pydantic v1.
 from seattrellis.io.json_files import InputFileError, read_json
 from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
 from seattrellis.models.project import SeatTrellisProject
+from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 
 
@@ -27,7 +29,9 @@ class SchemaMigrationResult:
 
     artifact: str
     schema_version: str | int
-    output_path: Path
+    output_path: Path | None
+    dry_run: bool = False
+    backup_path: Path | None = None
 
 
 def migrate_json_file(
@@ -35,6 +39,8 @@ def migrate_json_file(
     *,
     output: str | Path | None = None,
     in_place: bool = False,
+    dry_run: bool = False,
+    create_backup: bool = True,
 ) -> SchemaMigrationResult:
     """Validate and write a durable JSON artifact using the current schema.
 
@@ -45,19 +51,38 @@ def migrate_json_file(
     """
 
     source_path = Path(source)
-    output_path = _resolve_output_path(source_path, output=output, in_place=in_place)
     source_data = read_json(source_path)
     artifact, model = parse_migratable_artifact(source_data, source_path)
     normalized_data = _model_to_data(model)
+    schema_version = getattr(model, "schema_version")
+    if dry_run:
+        output_path = _resolve_dry_run_output_path(
+            source_path,
+            output=output,
+            in_place=in_place,
+        )
+        return SchemaMigrationResult(
+            artifact=artifact,
+            schema_version=schema_version,
+            output_path=output_path,
+            dry_run=True,
+        )
+
+    output_path = _resolve_output_path(source_path, output=output, in_place=in_place)
+    backup_path = (
+        _create_backup(output_path)
+        if create_backup and output_path.exists()
+        else None
+    )
     _write_json_data_atomically(
         _merge_normalized_data(source_data, normalized_data),
         output_path,
     )
-    schema_version = getattr(model, "schema_version")
     return SchemaMigrationResult(
         artifact=artifact,
         schema_version=schema_version,
         output_path=output_path,
+        backup_path=backup_path,
     )
 
 
@@ -94,10 +119,24 @@ def _detect_artifact(
         return "snapshot", SeatingSnapshot
     if {"students", "layout", "rules"} <= set(data):
         return "project", SeatTrellisProject
+    if set(data) <= {"schema_version", "seed", "hard", "soft", "groups"}:
+        return "ruleset", RuleSet
     raise InputFileError(
         "Cannot identify a migratable SeatTrellis artifact: "
-        f"{source}. Expected snapshot, candidate set, plan comparison report, or project JSON."
+        f"{source}. Expected ruleset, snapshot, candidate set, plan comparison "
+        "report, or project JSON."
     )
+
+
+def _resolve_dry_run_output_path(
+    source: Path,
+    *,
+    output: str | Path | None,
+    in_place: bool,
+) -> Path | None:
+    if output is None and not in_place:
+        return None
+    return _resolve_output_path(source, output=output, in_place=in_place)
 
 
 def _resolve_output_path(
@@ -126,6 +165,21 @@ def _same_path(left: Path, right: Path) -> bool:
         return left.resolve() == right.resolve()
     except (OSError, RuntimeError):
         return left.absolute() == right.absolute()
+
+
+def _create_backup(path: Path) -> Path:
+    """Copy an existing destination to the next unused sibling backup path."""
+
+    backup = path.with_name(f"{path.name}.bak")
+    suffix = 1
+    while backup.exists():
+        backup = path.with_name(f"{path.name}.bak.{suffix}")
+        suffix += 1
+    try:
+        shutil.copy2(path, backup)
+    except OSError as exc:
+        raise InputFileError(f"Could not back up {path} to {backup}: {exc}") from exc
+    return backup
 
 
 def _write_json_data_atomically(data: dict[str, Any], output: Path) -> None:

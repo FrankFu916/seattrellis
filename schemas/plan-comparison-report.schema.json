@@ -55,6 +55,48 @@
     "candidates"
   ],
   "definitions": {
+    "PlanComparisonExplanation": {
+      "title": "PlanComparisonExplanation",
+      "description": "Locale-neutral explanation data for comparison report renderers.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "enum": [
+            "strength",
+            "trade_off",
+            "best_available"
+          ],
+          "type": "string"
+        },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "minimum": 0,
+          "maximum": 100,
+          "type": "number"
+        },
+        "rating": {
+          "title": "Rating",
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "not_available"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "dimension",
+        "score",
+        "rating"
+      ]
+    },
     "PlanComparisonEntry": {
       "title": "PlanComparisonEntry",
       "type": "object",
@@ -67,15 +109,45 @@
           "title": "Total Score",
           "type": "number"
         },
+        "score_delta_from_recommended": {
+          "title": "Score Delta From Recommended",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "hard_constraints_satisfied": {
           "title": "Hard Constraints Satisfied",
           "type": "boolean"
+        },
+        "hard_constraint_checked_count": {
+          "title": "Hard Constraint Checked Count",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hard_constraint_violation_count": {
+          "title": "Hard Constraint Violation Count",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "dimension_scores": {
           "title": "Dimension Scores",
           "type": "object",
           "additionalProperties": {
             "type": "number"
+          }
+        },
+        "explanations": {
+          "title": "Explanations",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PlanComparisonExplanation"
           }
         },
         "advantages": {

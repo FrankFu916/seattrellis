@@ -99,10 +99,12 @@ result = compute_edit(
 普通草稿 snapshot，并在 `metadata.manual_edit` 记录本次操作摘要。
 
 需要锁定后重排时，调用 `compute_repair(RepairInput)` 或 `repair_snapshot`。如果提供
-`affected_students`，未在名单中的当前已入座学生会临时固定在原座；锁定的空座会临时从
-求解可用座位中移除。`RepairInput` 可接收 `EditOutput.lock_state` 和历史 snapshots，
+`affected_students`，范围会自动加入与这些学生存在 hard rule 或当前座位相邻关系的
+一阶学生，其余当前已入座学生会临时固定在原座；锁定的空座会临时从求解可用座位中
+移除。`RepairInput` 可接收 `EditOutput.lock_state` 和历史 snapshots，
 保证纯内存 UI、CLI 和 Project 工作流具有相同锁定和公平性语义。原始 `RuleSet` 不会被
-修改，临时固定关系、有效固定关系和输出差异写入 `metadata.repair`，供 UI 展示和审计。
+修改，请求范围、有效范围、临时固定关系、有效固定关系和输出差异写入
+`metadata.repair`，供 UI 展示和审计。
 
 Web 页面调用 `seattrellis.web.workflow`。这个模块不依赖 Streamlit，可以
 单独测试。`seattrellis.web.interactive_panels` 是 Streamlit 专用适配层，只消费

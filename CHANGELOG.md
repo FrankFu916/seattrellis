@@ -11,13 +11,21 @@
   and macOS, with short-lived CI artifacts for inspection.
 - Added candidate comparison reports with recommendation, score, constraint,
   and history explanations.
+- Candidate reports now include score differences from the recommendation,
+  hard-constraint check counts, and fully localized Chinese and English
+  explanations without exposing individual violation details.
 - Added JSON Schema export and normalization commands for versioned project
   artifacts and editor protocol messages.
+- Added RuleSet schema versioning, migration dry runs, and automatic backups
+  before an existing migration destination is replaced.
 - Added UI-neutral manual editing sessions, replayable operation files, and
   Project commands for editing saved candidates.
 - Added lock-aware constrained re-solving for global or student-scoped repair,
   including saved lock state, empty-seat reservation, history-aware fairness,
   and post-solve anchor verification.
+- Student-scoped repair now includes one-hop hard-rule and seat-adjacency
+  neighbors, records the effective scope, and suggests concrete unlock actions
+  when the active restrictions cannot be solved.
 - Added Web controls for locking students or seats and running global or
   student-scoped repair with selectable Python, OR-Tools, or native backends.
 - Added replayable Web manual swaps with immediate hard-constraint diagnostics
@@ -35,6 +43,9 @@
   state, and committed JSON Schema documents.
 - Added an experimental Rust validator package and explicit `native` validation
   mode while retaining the Python search backends.
+- Expanded the Rust spike to consume one versioned, identity-free DTO for graph
+  distances, hard-rule verification, and peer-mixing scoring, with differential
+  checks against the Python contract.
 - Added a real-browser Playwright acceptance test for the Web Demo-to-export
   workflow, including process cleanup, download and privacy checks, health
   verification, and CI failure artifacts.
@@ -43,6 +54,23 @@
 
 ### Changed
 
+- Solver selection now uses a common backend protocol and capability registry,
+  while preserving the existing CLI and service backend names.
+- Solver backends now share stable indexes, indexed adjacency, and precomputed
+  Euclidean and graph-distance matrices through `CompiledProblem`.
+- Multi-candidate generation now compiles and precomputes each problem once,
+  reusing a lightweight exclusion view for subsequent candidates.
+- Input validation, solver backends, and post-solve checks now share one
+  hard-rule resolution layer while preserving existing diagnostics.
+- Updated the optional native binding to PyO3 0.29 and maturin 1.14, declared
+  Rust 1.83 as its minimum supported toolchain, and added Python 3.13 and 3.14
+  package metadata.
+- Expanded source-package testing and publish verification to Python 3.11
+  through 3.14 while keeping Python 3.11 as the minimum supported version.
+- Raised optional dependency floors to versions with verified Python 3.14
+  support, and refreshed the browser acceptance environment to Streamlit 1.60.
+- Release publishing now verifies the built wheel with all optional features on
+  Python 3.11 and 3.14 before either package index can receive it.
 - Documentation now distinguishes seeded fallback behavior from reproducible
   runs that complete their fixed attempt budget without a wall-clock cutoff.
 - Removed the misleading `native` extra. The experimental Rust extension is
