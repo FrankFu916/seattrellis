@@ -154,6 +154,7 @@ def test_print_html_templates_render_expected_sections_and_escape_html(
     assert "SECRET_NEED" not in public_html
 
     assert "教师信息" in teacher_html
+    assert ">S1<" in teacher_html
     assert "SECRET_NOTE&lt;&amp;" in teacher_html
     assert "SECRET_VISION" in teacher_html
     assert "SECRET_NEED、SECRET_TAG" in teacher_html
@@ -166,6 +167,7 @@ def test_print_html_templates_render_expected_sections_and_escape_html(
 
     assert "Teacher information" in english_teacher_html
     assert "Student details" in english_teacher_html
+    assert ">Student ID<" in english_teacher_html
     assert ">Score<" in english_teacher_html
     assert ">Vision<" in english_teacher_html
     assert "教师信息" not in english_teacher_html
@@ -206,6 +208,7 @@ def test_teacher_html_privacy_options_hide_every_sensitive_field(
     ]:
         assert secret not in html
     assert "学生 01" in html
+    assert ">S1<" not in html
 
 
 def test_anonymized_html_omits_identity_bearing_free_form_details(
