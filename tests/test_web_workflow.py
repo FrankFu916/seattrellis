@@ -20,6 +20,7 @@ from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.service_types import ExportRequest, PageOptions, PrivacyOptions
 from seattrellis.web.keys import (
+    APP_WORKSPACE_SELECT,
     PROJECT_CANDIDATE_COUNT_INPUT,
     PROJECT_EXPORT_PREFIX,
     PROJECT_MODE_RADIO,
@@ -701,8 +702,7 @@ def test_streamlit_app_compiles() -> None:
 def test_streamlit_app_smoke() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
 
     assert not app.exception
     assert [title.value for title in app.title] == ["🏫 SeatTrellis · 席序"]
@@ -715,8 +715,7 @@ def test_streamlit_uploads_survive_wizard_navigation_and_invalidate_results(
 ) -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     for key, path, upload_name, mime_type in (
         (
             QUICK_STUDENTS_UPLOAD,
@@ -822,8 +821,7 @@ def test_streamlit_uploads_survive_wizard_navigation_and_invalidate_results(
 def test_streamlit_clear_uploads_preserves_restored_rules_metadata() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     config = {
         "kind": "seattrellis_web_config",
         "schema_version": 1,
@@ -864,8 +862,7 @@ def test_streamlit_clear_uploads_preserves_restored_rules_metadata() -> None:
 def test_streamlit_loading_demo_invalidates_an_existing_quick_result() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -889,8 +886,7 @@ def test_streamlit_loading_demo_invalidates_an_existing_quick_result() -> None:
 def test_streamlit_project_upload_only_inspects_the_manifest() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.radio, PROJECT_MODE_RADIO).set_value("upload")
     app.run(timeout=10)
 
@@ -955,8 +951,7 @@ def test_streamlit_project_upload_reports_invalid_manifests(
 ) -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.radio, PROJECT_MODE_RADIO).set_value("upload")
     app.run(timeout=10)
     _control_by_key(app.file_uploader, PROJECT_UPLOAD_INPUT).upload(
@@ -976,8 +971,7 @@ def test_streamlit_project_upload_reports_invalid_manifests(
 def test_streamlit_project_path_reports_unexpandable_home() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.text_input, PROJECT_PATH_INPUT).set_value(
         "~seattrellis-user-that-does-not-exist/project.json"
     )
@@ -1007,8 +1001,7 @@ def test_streamlit_project_path_validates_and_solves_in_isolation(tmp_path) -> N
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
     paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.text_input, PROJECT_PATH_INPUT).set_value(
         str(paths["project"])
     )
@@ -1090,8 +1083,7 @@ def test_streamlit_project_path_validates_and_solves_in_isolation(tmp_path) -> N
 def test_streamlit_demo_rules_and_history_preview() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1122,8 +1114,7 @@ def test_streamlit_demo_rules_and_history_preview() -> None:
 def test_streamlit_results_expose_export_privacy_controls() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1179,8 +1170,7 @@ def test_streamlit_results_expose_export_privacy_controls() -> None:
 def test_streamlit_results_can_run_repair() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1213,8 +1203,7 @@ def test_streamlit_results_can_run_repair() -> None:
 def test_streamlit_results_can_swap_undo_and_redo() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1252,8 +1241,7 @@ def test_streamlit_results_can_swap_undo_and_redo() -> None:
 def test_streamlit_results_can_move_unseat_and_reseat_student() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1310,8 +1298,7 @@ def test_streamlit_results_can_move_unseat_and_reseat_student() -> None:
 def test_streamlit_locks_survive_undo_redo_and_repair() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1387,8 +1374,7 @@ def test_streamlit_locks_survive_undo_redo_and_repair() -> None:
 def test_streamlit_batch_move_is_one_undoable_operation() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1447,8 +1433,7 @@ def test_streamlit_batch_move_is_one_undoable_operation() -> None:
 def test_streamlit_seat_canvas_moves_swaps_and_toggles_lock() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
-    app.run(timeout=10)
+    app = _advanced_app(streamlit_testing)
     _control_by_key(app.button, QUICK_LOAD_DEMO_BUTTON).click()
     app.run(timeout=10)
     _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
@@ -1538,7 +1523,8 @@ def test_streamlit_seat_canvas_moves_swaps_and_toggles_lock() -> None:
 def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app = _advanced_app(streamlit_testing)
+    _control_by_key(app.radio, QUICK_STEP_RADIO).set_value("solve")
     app.run(timeout=10)
     language = next(
         selectbox
@@ -1558,13 +1544,7 @@ def test_streamlit_app_switches_to_english_without_losing_step_state() -> None:
         "2. Configure & solve",
         "3. Review & export",
     ]
-    assert [uploader.label for uploader in app.file_uploader][0] == (
-        "Web settings JSON"
-    )
-
-    step_radio.set_value("solve")
-    app.run(timeout=10)
-    assert not app.exception
+    assert step_radio.value == "solve"
     assert any(message.value.startswith("Upload both") for message in app.warning)
 
 
@@ -1584,3 +1564,13 @@ def _block_import(monkeypatch, package_name: str) -> None:
 
 def _control_by_key(controls, key: str):
     return next(control for control in controls if control.key == key)
+
+
+def _advanced_app(streamlit_testing):
+    """Open the legacy Quick and Project workspaces for their AppTest coverage."""
+
+    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app.run(timeout=10)
+    _control_by_key(app.radio, APP_WORKSPACE_SELECT).set_value("advanced")
+    app.run(timeout=10)
+    return app
