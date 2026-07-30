@@ -32,7 +32,7 @@ excel = ["openpyxl>=3.1"]
 image = ["Pillow>=11.3,<13"]
 web = [
   "streamlit>=1.50,<2",
-  "fastapi>=0.139,<1",
+  "fastapi>=0.115,<0.139",
   "uvicorn>=0.41,<1",
   "python-multipart>=0.0.20,<1",
 ]
@@ -46,7 +46,7 @@ all = [
   "openpyxl>=3.1",
   "Pillow>=11.3,<13",
   "streamlit>=1.50,<2",
-  "fastapi>=0.139,<1",
+  "fastapi>=0.115,<0.139",
   "uvicorn>=0.41,<1",
   "python-multipart>=0.0.20,<1",
   "weasyprint>=69,<70",

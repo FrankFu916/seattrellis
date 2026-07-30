@@ -229,4 +229,7 @@ def test_fastapi_routes_use_only_the_versioned_prefix_when_available() -> None:
         f"{API_PREFIX}/layouts/drafts/{{draft_id}}",
         f"{API_PREFIX}/layouts/drafts/{{draft_id}}/commands",
         f"{API_PREFIX}/layouts/drafts/{{draft_id}}/compiled",
+        f"{API_PREFIX}/rosters/drafts",
+        f"{API_PREFIX}/rosters/drafts/{{draft_id}}",
+        f"{API_PREFIX}/rosters/drafts/{{draft_id}}/preview",
     }
