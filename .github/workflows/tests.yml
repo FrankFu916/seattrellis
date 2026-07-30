@@ -84,7 +84,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install minimum supported Rust
-        uses: dtolnay/rust-toolchain@1.83
+        uses: dtolnay/rust-toolchain@1.100
       - name: Test the Rust core
         run: cargo test --locked --manifest-path native/Cargo.toml -p seattrellis_core
       - name: Check the Python extension crate
