@@ -104,14 +104,17 @@ def test_generate_class_runs_through_existing_application_workflow() -> None:
     assert response.api_version == "1"
     assert response.class_name == "Class A"
     assert response.goal.goal_id == "quick-shuffle"
-    assert len(response.candidate_set.candidates) == 1
-    assert response.candidate_set.recommended_candidate_id == "candidate_01"
-    candidate = response.candidate_set.candidates[0]
-    assert candidate.metadata["solver_backend"] == "fallback-heuristic"
-    assert {assignment.student_key for assignment in candidate.snapshot.assignments} == {
+    assert len(response.candidates) == 1
+    assert response.recommended_candidate_id == "candidate_01"
+    assert response.candidates[0].candidate_id == "candidate_01"
+    assert response.candidates[0].recommended
+    assert {student.student_key for student in response.editor.students} == {
         "PRIVATE-001",
         "PRIVATE-002",
     }
+    serialized = response.json()
+    assert "score_balance" not in serialized
+    assert "solver_backend" not in serialized
 
 
 def test_generation_error_is_structured_without_echoing_student_data() -> None:
@@ -217,4 +220,6 @@ def test_fastapi_routes_use_only_the_versioned_prefix_when_available() -> None:
         f"{API_PREFIX}/teacher-goals",
         f"{API_PREFIX}/classes/inspect",
         f"{API_PREFIX}/classes/generate",
+        f"{API_PREFIX}/editing/drafts/{{draft_id}}",
+        f"{API_PREFIX}/editing/drafts/{{draft_id}}/commands",
     }

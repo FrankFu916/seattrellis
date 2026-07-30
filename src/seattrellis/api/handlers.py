@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from seattrellis.api.drafts import EditorDraftStore
 from seattrellis.api.errors import ApiProblem
 from seattrellis.api.models import (
     ApiErrorDetail,
     ApiIssue,
+    CandidateSummary,
     CapabilitiesResponse,
     GenerateClassRequest,
     GenerateClassResponse,
@@ -149,7 +151,11 @@ def inspect_class_request(request: GenerateClassRequest) -> InspectClassResponse
     )
 
 
-def generate_class(request: GenerateClassRequest) -> GenerateClassResponse:
+def generate_class(
+    request: GenerateClassRequest,
+    *,
+    draft_store: EditorDraftStore | None = None,
+) -> GenerateClassResponse:
     """Generate candidates through the existing class workflow use case."""
 
     inspection = inspect_class_request(request)
@@ -203,13 +209,26 @@ def generate_class(request: GenerateClassRequest) -> GenerateClassResponse:
         ) from exc
 
     warnings = _dedupe((*inspection.warnings, *(output.warnings or ())))
+    resolved_store = draft_store or EditorDraftStore()
+    candidate_set = output.candidate_set
     return GenerateClassResponse(
         class_name=draft.name,
         goal=inspection.goal,
         warnings=list(warnings),
-        candidate_set=output.candidate_set,
-        summary=output.summary,
-        plan_comparison_report=output.plan_comparison_report,
+        recommended_candidate_id=candidate_set.recommended_candidate_id,
+        candidates=[
+            CandidateSummary(
+                candidate_id=candidate.candidate_id,
+                recommended=(
+                    candidate.candidate_id == candidate_set.recommended_candidate_id
+                ),
+                total_score=candidate.total_score,
+                hard_constraints_satisfied=candidate.hard_constraints_satisfied,
+                warning_count=len(candidate.warnings),
+            )
+            for candidate in candidate_set.candidates
+        ],
+        editor=resolved_store.create(candidate_set),
     )
 
 

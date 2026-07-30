@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from seattrellis.api.errors import ApiProblem, invalid_request_problem
+from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
 from seattrellis.api.handlers import (
     capabilities,
     generate_class,
@@ -25,11 +26,21 @@ from seattrellis.api.models import (
     RoomTemplatesResponse,
     TeacherGoalsResponse,
 )
+from seattrellis.editing import EditingError
+from seattrellis.editing_protocol import (
+    EditorCommandEnvelope,
+    EditorProtocolConflictError,
+    EditorStateEnvelope,
+)
 from seattrellis.api.security import LocalApiPolicy
 from seattrellis.optional import MissingOptionalDependencyError
 
 
-def create_app(*, policy: LocalApiPolicy | None = None) -> Any:
+def create_app(
+    *,
+    policy: LocalApiPolicy | None = None,
+    draft_store: EditorDraftStore | None = None,
+) -> Any:
     """Create the optional ASGI application without enabling broad CORS."""
 
     try:
@@ -45,6 +56,7 @@ def create_app(*, policy: LocalApiPolicy | None = None) -> Any:
         ) from exc
 
     resolved_policy = policy or LocalApiPolicy()
+    resolved_store = draft_store or EditorDraftStore()
     app = FastAPI(
         title="SeatTrellis Local API",
         version="1",
@@ -61,7 +73,7 @@ def create_app(*, policy: LocalApiPolicy | None = None) -> Any:
             CORSMiddleware,
             allow_origins=list(resolved_policy.allowed_origins),
             allow_credentials=False,
-            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type"],
         )
 
@@ -125,6 +137,56 @@ def create_app(*, policy: LocalApiPolicy | None = None) -> Any:
         )
         return JSONResponse(status_code=500, content=_model_data(response))
 
+    def generate_with_store(request: GenerateClassRequest) -> GenerateClassResponse:
+        return generate_class(request, draft_store=resolved_store)
+
+    def get_editor_state(draft_id: str) -> EditorStateEnvelope:
+        try:
+            return resolved_store.state(draft_id)
+        except EditorDraftNotFoundError as exc:
+            raise ApiProblem(
+                status_code=404,
+                code="editor_draft_not_found",
+                message="This editing draft has expired or was already closed.",
+            ) from exc
+
+    def dispatch_editor_command(
+        draft_id: str,
+        command: EditorCommandEnvelope,
+    ) -> EditorStateEnvelope:
+        try:
+            return resolved_store.dispatch(draft_id, command)
+        except EditorDraftNotFoundError as exc:
+            raise ApiProblem(
+                status_code=404,
+                code="editor_draft_not_found",
+                message="This editing draft has expired or was already closed.",
+            ) from exc
+        except EditorProtocolConflictError as exc:
+            raise ApiProblem(
+                status_code=409,
+                code="editor_revision_conflict",
+                message=(
+                    "The seating plan changed after this action started. "
+                    "Refresh the plan and try the action again."
+                ),
+            ) from exc
+        except (EditingError, TypeError, ValueError) as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="editor_command_rejected",
+                message=(
+                    "That change cannot be applied because a seat or student "
+                    "is locked, unavailable, or outside the current plan."
+                ),
+            ) from exc
+
+    def delete_editor_draft(draft_id: str) -> Any:
+        from fastapi import Response
+
+        resolved_store.delete(draft_id)
+        return Response(status_code=204)
+
     app.add_api_route(
         f"{API_PREFIX}/health",
         health,
@@ -163,7 +225,7 @@ def create_app(*, policy: LocalApiPolicy | None = None) -> Any:
     )
     app.add_api_route(
         f"{API_PREFIX}/classes/generate",
-        generate_class,
+        generate_with_store,
         methods=["POST"],
         response_model=GenerateClassResponse,
         responses={
@@ -173,6 +235,34 @@ def create_app(*, policy: LocalApiPolicy | None = None) -> Any:
         },
         tags=["classes"],
     )
+    app.add_api_route(
+        f"{API_PREFIX}/editing/drafts/{{draft_id}}",
+        get_editor_state,
+        methods=["GET"],
+        response_model=EditorStateEnvelope,
+        responses={404: {"model": ErrorResponse}},
+        tags=["editing"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/editing/drafts/{{draft_id}}/commands",
+        dispatch_editor_command,
+        methods=["POST"],
+        response_model=EditorStateEnvelope,
+        responses={
+            404: {"model": ErrorResponse},
+            409: {"model": ErrorResponse},
+            422: {"model": ErrorResponse},
+        },
+        tags=["editing"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/editing/drafts/{{draft_id}}",
+        delete_editor_draft,
+        methods=["DELETE"],
+        status_code=204,
+        tags=["editing"],
+    )
+    app.state.editor_draft_store = resolved_store
     return app
 
 

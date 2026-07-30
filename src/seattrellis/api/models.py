@@ -15,7 +15,7 @@ try:
 except ImportError:  # pragma: no cover - Pydantic v1 installed directly.
     from pydantic import BaseModel, Field, root_validator, validator
 
-from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
+from seattrellis.editing_protocol import EditorStateEnvelope
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
@@ -232,10 +232,18 @@ class InspectClassResponse(VersionedResponse):
     warnings: list[str] = Field(default_factory=list)
 
 
+class CandidateSummary(ApiModel):
+    candidate_id: str
+    recommended: bool
+    total_score: float = Field(ge=0, le=100)
+    hard_constraints_satisfied: bool
+    warning_count: int = Field(ge=0)
+
+
 class GenerateClassResponse(VersionedResponse):
     class_name: str
     goal: ResolvedGoalSummary
     warnings: list[str] = Field(default_factory=list)
-    candidate_set: CandidateSet
-    summary: str | None = None
-    plan_comparison_report: PlanComparisonReport | None = None
+    recommended_candidate_id: str
+    candidates: list[CandidateSummary]
+    editor: EditorStateEnvelope
