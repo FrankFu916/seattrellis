@@ -64,13 +64,16 @@ streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 
 网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
 
-网页端支持分步加载数据、选择 preset 或 rules overlay、预览合并后的规则、
-检查 history 覆盖率与 layout 一致性，并保存或恢复 Web 配置。配置不包含学生
-名单，但 rules overlay 可能引用学生 ID，下载时页面会给出提示。
-求解后可以切换和比较候选方案、查看座位图与评分，并下载 JSON、report、
-HTML、PDF、PNG、Excel 或 Word。侧边栏可切换简体中文和英文；页面支持清晰
-的键盘焦点、跳转到主要内容、小屏纵向布局和减少动画偏好。Project workspace
-支持本机 project 路径；上传单个 project JSON 仅适合查看配置。
+网页端默认进入教师工作台：填写班级名称、导入 CSV 或 Excel 名单、确认标准或
+自定义教室、选择日常轮换等排座目标，即可生成三个候选方案。推荐方案可以直接
+换座、撤销或重做，并分别准备公开打印版和教师打印版。页面不会要求普通用户理解
+backend、seed、time limit、candidate count 或 JSON schema。
+
+原有 Quick Solve 和 Project workspace 保留在侧边栏的“高级工具”中，适合需要
+rules overlay、history、完整候选比较或本机 project 路径的用户。教师工作台与
+高级工具的状态彼此隔离；切换后返回不会丢失已生成方案，也不会保留原始上传字节。
+侧边栏可切换简体中文和英文，页面支持键盘焦点、跳转到主要内容、小屏纵向布局和
+减少动画偏好。
 
 ## CLI
 

@@ -75,16 +75,19 @@ streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 
 The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
 
-The guided web UI previews the resolved preset and rules overlay, checks history
-coverage and layout compatibility, and can save or restore settings. Config
-files do not include the roster, though a rules overlay may reference student
-IDs and is flagged when it does. The UI generates 1–20 candidates with switching,
-comparison, seat-map previews, and downloads for JSON, reports, HTML, PDF,
-PNG, Excel, or Word. A sidebar switch changes the interface between Simplified
-Chinese and English. Keyboard focus indicators, a skip link, responsive
-small-screen layout, and reduced-motion support are built in. The Project
-workspace uses a local project path for validation and solving; uploading a
-project JSON is intended for inspection.
+The web app opens in a teacher workspace by default. Enter a class name, import
+a CSV or Excel roster, confirm a built-in or custom classroom, and choose a
+plain-language seating goal to generate three options. The recommended plan can
+be adjusted with undo and redo, then downloaded as either a public print or a
+teacher print. This path does not require backend, seed, time limit, candidate
+count, or JSON schema knowledge.
+
+The existing Quick Solve and Project workspaces remain under Advanced tools for
+rules overlays, history, full candidate comparison, and local project paths.
+Teacher and advanced state remain isolated, and returning from Advanced tools
+restores the generated plan without retaining the original upload bytes. The
+sidebar switches between Simplified Chinese and English. Keyboard focus,
+skip-to-content, responsive layout, and reduced-motion support are built in.
 
 ## CLI
 

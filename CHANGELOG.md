@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### User-facing changes
+
+- The Web app now opens in a teacher workspace that goes from CSV or Excel
+  roster to a printable seating plan without requiring JSON files or solver
+  terminology.
+- Teachers can use recommended 30-, 48-, or 60-seat classrooms, or describe a
+  custom room with rows, seats per row, and aisle positions.
+- Daily rotation, Fair shuffle, and Peer support are presented as familiar
+  classroom goals and generate three options automatically.
+- The recommended plan can be adjusted with move, swap, lock, undo, and redo,
+  then downloaded as a public print or a teacher print.
+- Teacher setup and generated plans survive a visit to Advanced tools. Starting
+  over clears only the teacher workspace and leaves Quick Solve and Project
+  work untouched.
+- Public print downloads continue to hide student IDs, scores, height, vision,
+  notes, and individual needs by default.
+
+### Engineering and maintenance
+
+- Added task-oriented roster, classroom, goal, and plan-generation application
+  services while retaining the existing CLI, Project format, and Python/Rust
+  backend selection.
+- Added real-browser acceptance coverage for import, generation, manual seat
+  adjustment, both print downloads, and public-output privacy.
+- Moved Web working-directory ownership outside the Streamlit rerun script so
+  sensitive teacher results are deleted when replaced or cleared.
+- Stopped retaining original uploaded roster bytes after parsing and stopped
+  caching unexpected programming errors as input mistakes.
+
 ## 1.4.0 - 2026-07-30
 
 ### Added
