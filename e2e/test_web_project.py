@@ -10,6 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from e2e.support import (
+    activate_advanced_tools,
     activate_project_workspace,
     assert_no_app_exception,
     download_from_region,
@@ -57,6 +58,7 @@ def test_project_path_validates_solves_and_exports_selected_candidate(
     project_path = project_files["project"].resolve()
 
     open_english_app(page, web_server.url)
+    activate_advanced_tools(page)
     activate_project_workspace(page)
     path_input = region(page, PROJECT_PATH_INPUT).get_by_role("textbox")
     path_input.fill(str(project_path))

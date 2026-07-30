@@ -10,6 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from e2e.support import (
+    activate_advanced_tools,
     assert_no_app_exception,
     choose_quick_step,
     download_from_region,
@@ -42,6 +43,7 @@ def test_demo_solve_and_public_export_download(
     """Exercise the HTTP, WebSocket, solver, privacy, and download path."""
 
     open_english_app(page, web_server.url)
+    activate_advanced_tools(page)
 
     region(page, QUICK_LOAD_DEMO_BUTTON).get_by_role("button").click()
     expect(
