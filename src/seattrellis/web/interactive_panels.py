@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Literal, Sequence, cast
 
 try:
     from pydantic.v1 import ValidationError
@@ -76,6 +77,98 @@ from seattrellis.web.workflow import (
 Translate = Callable[..., str]
 RenderError = Callable[[Exception], None]
 HistoryPaths = Callable[[], Sequence[str | Path]]
+PanelWorkspace = Literal["teacher", "quick", "project"]
+
+
+_CONTROL_KEYS = {
+    "repair_button": (QUICK_REPAIR_BUTTON, PROJECT_REPAIR_BUTTON),
+    "swap_button": (QUICK_SWAP_BUTTON, PROJECT_SWAP_BUTTON),
+    "undo_button": (QUICK_UNDO_BUTTON, PROJECT_UNDO_BUTTON),
+    "redo_button": (QUICK_REDO_BUTTON, PROJECT_REDO_BUTTON),
+    "edit_action_select": (QUICK_EDIT_ACTION_SELECT, PROJECT_EDIT_ACTION_SELECT),
+    "edit_apply_button": (QUICK_EDIT_APPLY_BUTTON, PROJECT_EDIT_APPLY_BUTTON),
+    "lock_student_select": (
+        QUICK_LOCK_STUDENT_SELECT,
+        PROJECT_LOCK_STUDENT_SELECT,
+    ),
+    "lock_student_button": (
+        QUICK_LOCK_STUDENT_BUTTON,
+        PROJECT_LOCK_STUDENT_BUTTON,
+    ),
+    "lock_seat_select": (QUICK_LOCK_SEAT_SELECT, PROJECT_LOCK_SEAT_SELECT),
+    "lock_seat_button": (QUICK_LOCK_SEAT_BUTTON, PROJECT_LOCK_SEAT_BUTTON),
+    "batch_students_select": (
+        QUICK_BATCH_STUDENTS_SELECT,
+        PROJECT_BATCH_STUDENTS_SELECT,
+    ),
+    "batch_seats_select": (QUICK_BATCH_SEATS_SELECT, PROJECT_BATCH_SEATS_SELECT),
+    "batch_move_button": (QUICK_BATCH_MOVE_BUTTON, PROJECT_BATCH_MOVE_BUTTON),
+    "canvas_mode_select": (QUICK_CANVAS_MODE_SELECT, PROJECT_CANVAS_MODE_SELECT),
+    "export_prefix": (QUICK_EXPORT_PREFIX, PROJECT_EXPORT_PREFIX),
+}
+
+
+@dataclass(frozen=True)
+class _PanelNamespace:
+    """Build session and widget keys for one independent results workspace."""
+
+    workspace: PanelWorkspace
+
+    def widget_key(self, suffix: str) -> str:
+        """Return a Streamlit widget key scoped to this workspace."""
+
+        return f"{self.workspace}_{suffix}"
+
+    def state_key(self, suffix: str) -> str:
+        """Return a private session-state key scoped to this workspace."""
+
+        return f"_{self.workspace}_{suffix}"
+
+    def control_key(self, name: str) -> str:
+        """Return a stable control key while preserving legacy key values."""
+
+        try:
+            quick_key, project_key = _CONTROL_KEYS[name]
+        except KeyError as exc:  # pragma: no cover - internal programming error.
+            raise ValueError(f"Unknown panel control: {name}") from exc
+        if self.workspace == "quick":
+            return quick_key
+        if self.workspace == "project":
+            return project_key
+        if not quick_key.startswith("quick_"):  # pragma: no cover - constant guard.
+            raise ValueError(f"Quick control key has no quick prefix: {quick_key}")
+        return f"teacher_{quick_key.removeprefix('quick_')}"
+
+    @property
+    def prepared_export_state_key(self) -> str:
+        """Return the pending export session key for this workspace."""
+
+        return export_prepared_state_key(self.control_key("export_prefix"))
+
+
+def _resolve_panel_namespace(
+    workspace: str | None = None,
+    *,
+    project: bool = False,
+    project_path: Path | None = None,
+) -> _PanelNamespace:
+    """Resolve explicit and legacy workspace selectors without Streamlit state."""
+
+    legacy_workspace = "project" if project or project_path is not None else "quick"
+    if workspace is None:
+        selected = legacy_workspace
+    elif workspace not in {"teacher", "quick", "project"}:
+        raise ValueError(
+            "Unknown panel workspace. Expected 'teacher', 'quick', or 'project'."
+        )
+    else:
+        selected = workspace
+
+    if project and selected != "project":
+        raise ValueError("project=True can only be used with the project workspace.")
+    if project_path is not None and selected != "project":
+        raise ValueError("project_path can only be used with the project workspace.")
+    return _PanelNamespace(cast(PanelWorkspace, selected))
 
 
 def render_repair_panel(
@@ -87,10 +180,13 @@ def render_repair_panel(
     render_error: RenderError,
     project_path: Path | None = None,
     quick_history_paths: HistoryPaths | None = None,
+    workspace: str | None = None,
 ) -> None:
     """Render lock-aware repair controls without duplicating domain rules."""
+    namespace = _resolve_panel_namespace(workspace, project_path=project_path)
+    if namespace.workspace == "project" and project_path is None:
+        raise ValueError("The project workspace requires project_path.")
     snapshot = selected_snapshot(result, candidate_id)
-    prefix = "project" if project_path is not None else "quick"
     student_names = {student.key: student.name for student in snapshot.students}
     student_keys = sorted(student_names)
     seat_ids = sorted(seat.seat_id for seat in snapshot.layout.seats if seat.enabled)
@@ -114,29 +210,29 @@ def render_repair_panel(
             translate("affected_students"),
             student_keys,
             format_func=label_student,
-            key=f"{prefix}_repair_affected_students",
+            key=namespace.widget_key("repair_affected_students"),
         )
         locked_students = st.multiselect(
             translate("locked_students"),
             student_keys,
             format_func=label_student,
-            key=f"{prefix}_repair_locked_students",
+            key=namespace.widget_key("repair_locked_students"),
         )
         locked_seats = st.multiselect(
             translate("locked_seats"),
             seat_ids,
-            key=f"{prefix}_repair_locked_seats",
+            key=namespace.widget_key("repair_locked_seats"),
         )
         reuse_saved_locks = st.checkbox(
             translate("reuse_saved_locks"),
             value=True,
-            key=f"{prefix}_repair_reuse_saved_locks",
+            key=namespace.widget_key("repair_reuse_saved_locks"),
         )
         settings = st.columns(2)
         backend = settings[0].selectbox(
             translate("repair_backend"),
             ["auto", "fallback", "ortools", "native"],
-            key=f"{prefix}_repair_backend",
+            key=namespace.widget_key("repair_backend"),
         )
         time_limit_seconds = settings[1].number_input(
             translate("repair_time_limit"),
@@ -144,13 +240,12 @@ def render_repair_panel(
             max_value=30.0,
             value=3.0,
             step=0.5,
-            key=f"{prefix}_repair_time_limit",
-        )
-        button_key = (
-            PROJECT_REPAIR_BUTTON if project_path is not None else QUICK_REPAIR_BUTTON
+            key=namespace.widget_key("repair_time_limit"),
         )
         if not st.button(
-            translate("run_repair"), type="primary", key=button_key
+            translate("run_repair"),
+            type="primary",
+            key=namespace.control_key("repair_button"),
         ):
             return
 
@@ -164,7 +259,8 @@ def render_repair_panel(
                 "time_limit_seconds": float(time_limit_seconds),
                 "backend": backend,
             }
-            if project_path is not None:
+            if namespace.workspace == "project":
+                assert project_path is not None
                 repaired = project_repair_for_web(
                     result,
                     project_path=project_path,
@@ -184,17 +280,14 @@ def render_repair_panel(
             st.session_state["artifact_json"] = repaired.artifact_path.read_bytes()
             st.session_state["report_json"] = None
             st.session_state["current_candidate_id"] = "recommended"
-            st.session_state[f"_{prefix}_editing_draft"] = begin_web_editing(
-                repaired
-            )
-            st.session_state[f"_{prefix}_canvas_source_seat"] = None
-            export_prefix = (
-                PROJECT_EXPORT_PREFIX
-                if project_path is not None
-                else QUICK_EXPORT_PREFIX
-            )
+            st.session_state[
+                namespace.state_key("editing_draft")
+            ] = begin_web_editing(repaired)
+            st.session_state[
+                namespace.state_key("canvas_source_seat")
+            ] = None
             st.session_state.pop(
-                export_prepared_state_key(export_prefix),
+                namespace.prepared_export_state_key,
                 None,
             )
             st.success(translate("repair_complete"))
@@ -217,10 +310,11 @@ def render_manual_edit_panel(
     translate: Translate,
     render_error: RenderError,
     project: bool = False,
+    workspace: str | None = None,
 ) -> None:
     """Render replayable swap, undo, and redo controls."""
-    prefix = "project" if project else "quick"
-    state_key = f"_{prefix}_editing_draft"
+    namespace = _resolve_panel_namespace(workspace, project=project)
+    state_key = namespace.state_key("editing_draft")
     draft = st.session_state.get(state_key)
     if not isinstance(draft, WebEditingDraft) or (
         draft.current_result.artifact_path != result.artifact_path
@@ -228,7 +322,7 @@ def render_manual_edit_panel(
     ):
         draft = begin_web_editing(result, candidate_id)
         st.session_state[state_key] = draft
-        st.session_state[f"_{prefix}_canvas_source_seat"] = None
+        st.session_state[namespace.state_key("canvas_source_seat")] = None
 
     snapshot = selected_snapshot(result, candidate_id)
     student_names = {student.key: student.name for student in snapshot.students}
@@ -274,16 +368,14 @@ def render_manual_edit_panel(
             return f"{student_names.get(key, key)} ({key})"
 
         canvas_operation = _render_seat_canvas(
-            prefix=prefix,
-            project=project,
+            namespace=namespace,
             snapshot=snapshot,
             locked_students=locked_students,
             locked_seats=locked_seats,
             translate=translate,
         )
         lock_clicked, lock_operation = _render_lock_controls(
-            prefix=prefix,
-            project=project,
+            namespace=namespace,
             snapshot=snapshot,
             seated_students=seated_students,
             locked_students=locked_students,
@@ -296,35 +388,34 @@ def render_manual_edit_panel(
             translate("first_student"),
             movable_students,
             format_func=label_student,
-            key=f"{prefix}_edit_first_student",
+            key=namespace.widget_key("edit_first_student"),
         )
         second_student = columns[1].selectbox(
             translate("second_student"),
             movable_students,
             index=1 if len(movable_students) > 1 else 0,
             format_func=label_student,
-            key=f"{prefix}_edit_second_student",
+            key=namespace.widget_key("edit_second_student"),
         )
         buttons = st.columns(3)
         swap_clicked = buttons[0].button(
             translate("swap_students"),
             type="primary",
             disabled=len(movable_students) < 2 or first_student == second_student,
-            key=PROJECT_SWAP_BUTTON if project else QUICK_SWAP_BUTTON,
+            key=namespace.control_key("swap_button"),
         )
         undo_clicked = buttons[1].button(
             translate("undo"),
             disabled=not draft.can_undo,
-            key=PROJECT_UNDO_BUTTON if project else QUICK_UNDO_BUTTON,
+            key=namespace.control_key("undo_button"),
         )
         redo_clicked = buttons[2].button(
             translate("redo"),
             disabled=not draft.can_redo,
-            key=PROJECT_REDO_BUTTON if project else QUICK_REDO_BUTTON,
+            key=namespace.control_key("redo_button"),
         )
         operation_clicked, operation = _render_other_edit_action(
-            prefix=prefix,
-            project=project,
+            namespace=namespace,
             seated_students=movable_students,
             unseated_students=unseated_students,
             empty_seats=empty_seats,
@@ -332,8 +423,7 @@ def render_manual_edit_panel(
             translate=translate,
         )
         batch_clicked, batch_operation = _render_batch_move(
-            prefix=prefix,
-            project=project,
+            namespace=namespace,
             snapshot=snapshot,
             movable_students=movable_students,
             empty_seats=empty_seats,
@@ -385,11 +475,8 @@ def render_manual_edit_panel(
                 draft.current_result.artifact_path.read_bytes()
             )
             st.session_state["report_json"] = None
-            export_prefix = (
-                PROJECT_EXPORT_PREFIX if project else QUICK_EXPORT_PREFIX
-            )
             st.session_state.pop(
-                export_prepared_state_key(export_prefix),
+                namespace.prepared_export_state_key,
                 None,
             )
             st.success(translate("edit_complete"))
@@ -400,8 +487,7 @@ def render_manual_edit_panel(
 
 def _render_seat_canvas(
     *,
-    prefix: str,
-    project: bool,
+    namespace: _PanelNamespace,
     snapshot: SeatingSnapshot,
     locked_students: set[str],
     locked_seats: set[str],
@@ -413,15 +499,14 @@ def _render_seat_canvas(
         "move": translate("canvas_mode_move"),
         "lock": translate("canvas_mode_lock"),
     }
-    mode_key = PROJECT_CANVAS_MODE_SELECT if project else QUICK_CANVAS_MODE_SELECT
     selected_label = st.selectbox(
         translate("seat_canvas_mode"),
         list(mode_labels.values()),
-        key=mode_key,
+        key=namespace.control_key("canvas_mode_select"),
     )
     mode = next(key for key, label in mode_labels.items() if label == selected_label)
-    source_key = f"_{prefix}_canvas_source_seat"
-    prior_mode_key = f"_{prefix}_canvas_mode_value"
+    source_key = namespace.state_key("canvas_source_seat")
+    prior_mode_key = namespace.state_key("canvas_mode_value")
     if st.session_state.get(prior_mode_key) != mode:
         st.session_state[prior_mode_key] = mode
         st.session_state[source_key] = None
@@ -484,7 +569,7 @@ def _render_seat_canvas(
             disabled = not seat.enabled or (mode == "move" and locked)
             if columns[column_index].button(
                 label,
-                key=f"{prefix}_canvas_seat_{seat.seat_id}",
+                key=namespace.widget_key(f"canvas_seat_{seat.seat_id}"),
                 disabled=disabled,
                 use_container_width=True,
             ):
@@ -534,8 +619,7 @@ def _render_seat_canvas(
 
 def _render_lock_controls(
     *,
-    prefix: str,
-    project: bool,
+    namespace: _PanelNamespace,
     snapshot: SeatingSnapshot,
     seated_students: list[str],
     locked_students: set[str],
@@ -549,11 +633,7 @@ def _render_lock_controls(
         translate("student_lock_target"),
         seated_students,
         format_func=label_student,
-        key=(
-            PROJECT_LOCK_STUDENT_SELECT
-            if project
-            else QUICK_LOCK_STUDENT_SELECT
-        ),
+        key=namespace.control_key("lock_student_select"),
     )
     seat_ids = sorted(seat.seat_id for seat in snapshot.layout.seats if seat.enabled)
     occupants = {
@@ -571,7 +651,7 @@ def _render_lock_controls(
         translate("seat_lock_target"),
         seat_ids,
         format_func=label_seat,
-        key=PROJECT_LOCK_SEAT_SELECT if project else QUICK_LOCK_SEAT_SELECT,
+        key=namespace.control_key("lock_seat_select"),
     )
     buttons = st.columns(2)
     student_is_locked = (
@@ -580,15 +660,11 @@ def _render_lock_controls(
     seat_is_locked = seat_id is not None and seat_id in locked_seats
     student_clicked = buttons[0].button(
         translate("unlock_student" if student_is_locked else "lock_student"),
-        key=(
-            PROJECT_LOCK_STUDENT_BUTTON
-            if project
-            else QUICK_LOCK_STUDENT_BUTTON
-        ),
+        key=namespace.control_key("lock_student_button"),
     )
     seat_clicked = buttons[1].button(
         translate("unlock_seat" if seat_is_locked else "lock_seat"),
-        key=PROJECT_LOCK_SEAT_BUTTON if project else QUICK_LOCK_SEAT_BUTTON,
+        key=namespace.control_key("lock_seat_button"),
     )
     if student_clicked and student_key is not None:
         return True, EditingOperation(
@@ -605,8 +681,7 @@ def _render_lock_controls(
 
 def _render_batch_move(
     *,
-    prefix: str,
-    project: bool,
+    namespace: _PanelNamespace,
     snapshot: SeatingSnapshot,
     movable_students: list[str],
     empty_seats: list[str],
@@ -615,16 +690,11 @@ def _render_batch_move(
 ) -> tuple[bool, EditingOperation | None]:
     st.markdown(f"**{translate('batch_move_title')}**")
     st.caption(translate("batch_move_help"))
-    student_key = (
-        PROJECT_BATCH_STUDENTS_SELECT
-        if project
-        else QUICK_BATCH_STUDENTS_SELECT
-    )
     selected_students = st.multiselect(
         translate("batch_students"),
         movable_students,
         format_func=label_student,
-        key=student_key,
+        key=namespace.control_key("batch_students_select"),
     )
     assignments = {
         assignment.student_key: assignment.seat_id
@@ -635,13 +705,10 @@ def _render_batch_move(
         current_seat = assignments[student_key]
         if current_seat not in target_options:
             target_options.append(current_seat)
-    seat_key = (
-        PROJECT_BATCH_SEATS_SELECT if project else QUICK_BATCH_SEATS_SELECT
-    )
     selected_seats = st.multiselect(
         translate("batch_target_seats"),
         target_options,
-        key=seat_key,
+        key=namespace.control_key("batch_seats_select"),
     )
     counts_match = (
         bool(selected_students)
@@ -660,13 +727,10 @@ def _render_batch_move(
             st.caption(translate("batch_pairing", pairs=pairs))
         else:
             st.info(translate("batch_count_mismatch"))
-    button_key = (
-        PROJECT_BATCH_MOVE_BUTTON if project else QUICK_BATCH_MOVE_BUTTON
-    )
     clicked = st.button(
         translate("apply_batch_move"),
         disabled=not counts_match,
-        key=button_key,
+        key=namespace.control_key("batch_move_button"),
     )
     if not clicked or not counts_match:
         return clicked, None
@@ -687,8 +751,7 @@ def _render_batch_move(
 
 def _render_other_edit_action(
     *,
-    prefix: str,
-    project: bool,
+    namespace: _PanelNamespace,
     seated_students: list[str],
     unseated_students: list[str],
     empty_seats: list[str],
@@ -700,13 +763,10 @@ def _render_other_edit_action(
         "unseat": translate("action_unseat"),
         "seat": translate("action_seat"),
     }
-    action_key = (
-        PROJECT_EDIT_ACTION_SELECT if project else QUICK_EDIT_ACTION_SELECT
-    )
     selected_label = st.selectbox(
         translate("other_edit_action"),
         list(action_labels.values()),
-        key=action_key,
+        key=namespace.control_key("edit_action_select"),
     )
     action = next(
         key for key, label in action_labels.items() if label == selected_label
@@ -717,14 +777,14 @@ def _render_other_edit_action(
         translate("student_to_edit"),
         student_options,
         format_func=label_student,
-        key=f"{prefix}_edit_action_student_{action}",
+        key=namespace.widget_key(f"edit_action_student_{action}"),
     )
     target_seat: str | None = None
     if action in {"move", "seat"}:
         target_seat = st.selectbox(
             translate("target_empty_seat"),
             empty_seats,
-            key=f"{prefix}_edit_action_seat_{action}",
+            key=namespace.widget_key(f"edit_action_seat_{action}"),
         )
         if not empty_seats:
             st.info(translate("no_empty_seats"))
@@ -734,11 +794,10 @@ def _render_other_edit_action(
     disabled = not student_options or (
         action in {"move", "seat"} and not empty_seats
     )
-    apply_key = PROJECT_EDIT_APPLY_BUTTON if project else QUICK_EDIT_APPLY_BUTTON
     clicked = st.button(
         translate("apply_edit"),
         disabled=disabled,
-        key=apply_key,
+        key=namespace.control_key("edit_apply_button"),
     )
     if not clicked or student_key is None:
         return clicked, None
