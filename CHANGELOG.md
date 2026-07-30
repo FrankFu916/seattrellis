@@ -10,14 +10,43 @@
   shapes that teachers can open in PowerPoint or Keynote and continue editing.
 - Both new export formats respect the same privacy controls (public vs teacher
   templates) as existing print and PDF exports.
+
+### Engineering and maintenance
+
+- Introduced a dependency-free seating canvas document model shared by SVG
+  and PPTX exporters for consistent seat positions, text, and theme.
+- Verified real SVG and PPTX file generation with structural validation and
+  path-leak checks.
+
+## 1.7.0 - 2026-07-30
+
+### User-facing changes
+
+- Added three score-based seating goals: score position preference (high
+  scores toward front or back), score distribution balance (across rows or
+  groups), and mentor pairing (pair high- and low-ranked students nearby).
+- New goals work with any grading scale through rank percentiles and appear
+  alongside existing presets.
+
+### Engineering and maintenance
+
+- Introduced a shared, backend-neutral soft_objectives module so the fallback
+  solver and result scoring use the same normalized losses and explanations.
+- Added ScorePositionRule, ScoreDistributionRule, and MentorPairingRule as
+  composable weighted soft rules with JSON Schema and preset integration.
+- Added validation warnings for group-scoped distribution when seats lack
+  group_id, and updated schemas for candidate-set, classroom-layout, ruleset,
+  and seating-snapshot.
+
+## 1.6.0 - 2026-07-30
+
+### User-facing changes
+
 - The React classroom workbench now connects to the local SeatTrellis API for
   real roster upload, field mapping, and import preview.
 - Teachers can upload a CSV or Excel roster, confirm auto-detected field
   mappings, preview incremental or overwrite import impact, and proceed to
   seating — all from the browser workbench.
-- Added three score-based seating goals: score position preference (high
-  scores toward front or back), score distribution balance (across rows or
-  groups), and mentor pairing (pair high- and low-ranked students nearby).
 - The local browser launcher starts the API and opens the React workbench in
   one step.
 
@@ -27,14 +56,6 @@
   tokens for theming and supporting keyboard navigation.
 - Added a RosterDraftStore with TTL pruning and size limits for in-memory
   roster upload sessions, plus four API endpoints for draft lifecycle.
-- Introduced a shared, backend-neutral soft_objectives module so the fallback
-  solver and result scoring use the same normalized losses and explanations.
-- Added ScorePositionRule, ScoreDistributionRule, and MentorPairingRule as
-  composable weighted soft rules with JSON Schema and preset integration.
-- Introduced a dependency-free seating canvas document model shared by SVG
-  and PPTX exporters for consistent seat positions, text, and theme.
-- Verified real SVG and PPTX file generation with structural validation and
-  path-leak checks.
 - Pinned FastAPI to 0.115.x for pydantic v1 compatibility; migrating API
   models to pydantic v2 is tracked for a future release.
 - Added python-multipart to web and all extras for roster file uploads.
