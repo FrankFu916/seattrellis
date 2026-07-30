@@ -2,13 +2,16 @@
 
 ## Unreleased
 
+## 1.4.0 - 2026-07-30
+
 ### Added
 
 - Added explicit `auto`, `fallback`, `ortools`, and source-only `native`
   backend selection with shared compiled-problem and result contracts.
 - Added repeatable synthetic 40/50/60-student benchmark tooling and reports.
-- Added Python 3.11 and 3.12 native-extension wheel checks on Linux, Windows,
-  and macOS, with short-lived CI artifacts for inspection.
+- Added native-extension wheel checks for Python 3.11–3.14 on Linux and for
+  Python 3.11 and 3.14 on Windows and macOS, with short-lived CI artifacts for
+  inspection.
 - Added candidate comparison reports with recommendation, score, constraint,
   and history explanations.
 - Candidate reports now include score differences from the recommendation,

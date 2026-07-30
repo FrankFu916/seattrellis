@@ -1,3 +1,3 @@
 """SeatTrellis public package."""
 
-__version__ = "1.4.0rc1"
+__version__ = "1.4.0"

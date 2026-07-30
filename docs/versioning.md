@@ -8,7 +8,7 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 - **次版本号 (MINOR)**：向后兼容的新功能。
 - **修订号 (PATCH)**：向后兼容的 Bug 修复。
 
-当前稳定版本为 `1.3.0`，包版本以 `pyproject.toml` 为准。从 v1.0 起，公开
+当前稳定版本为 `1.4.0`，包版本以 `pyproject.toml` 为准。从 v1.0 起，公开
 CLI、文件格式和 service API 的不兼容变更必须通过新的 MAJOR 版本发布。
 
 ## Schema Version
@@ -20,8 +20,8 @@ CLI、文件格式和 service API 的不兼容变更必须通过新的 MAJOR 版
 | `SeatingSnapshot` | `"1.0"` | v0.1.0 |
 | `CandidateSet` / `PlanComparisonReport` | `"0.2.2"` | v0.2.2 |
 | `SeatTrellisProject` | `1` | v0.2.3 |
-| `EditorCommandEnvelope` / `EditorStateEnvelope` | `protocol_version: "1.0"` | v1.4 开发周期 |
-| `RuleSet` (JSON) | `1` | v1.4 开发周期 |
+| `EditorCommandEnvelope` / `EditorStateEnvelope` | `protocol_version: "1.0"` | v1.4.0 |
+| `RuleSet` (JSON) | `1` | v1.4.0 |
 
 当前读取器只接受表中的版本。新增可选字段时可以保留版本号；字段改名、类型
 变化或语义变化需要新的 schema 版本，并应同时提供迁移说明。
