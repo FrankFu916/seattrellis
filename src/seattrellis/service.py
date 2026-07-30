@@ -110,8 +110,9 @@ def compute_solve(input: SolveInput) -> SolveOutput:
     validation.raise_for_errors(title="Input validation failed.")
 
     snapshots = list(input.history_snapshots or [])
+    preset = get_preset(input.preset_name) if input.preset_name is not None else None
     preset_warnings = preset_context_warnings(
-        None,  # preset object not available in pure path — passed via orchestrator
+        preset,
         input.students,
         history_count=len(snapshots),
         rules=input.rules,

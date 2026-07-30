@@ -6,11 +6,8 @@ stateful editing controls live in ``web/interactive_panels.py``.
 
 from __future__ import annotations
 
-import atexit
 import hashlib
 import json
-import shutil
-import tempfile
 from pathlib import Path
 
 try:
@@ -57,6 +54,7 @@ from seattrellis.web.interactive_panels import (
     render_repair_panel as _render_repair_panel,
 )
 from seattrellis.web.keys import (
+    APP_WORKSPACE_SELECT,
     PROJECT_CANDIDATE_COUNT_INPUT,
     PROJECT_CANDIDATE_SELECT,
     PROJECT_EXPORT_PREFIX,
@@ -104,6 +102,11 @@ from seattrellis.web.keys import (
     export_prepared_download_key,
     export_prepared_state_key,
     widget_region_key,
+)
+from seattrellis.web.teacher_page import render_teacher_page
+from seattrellis.web.tempfiles import (
+    discard_persistent_tempdir as _discard_persistent_tempdir,
+    make_persistent_tempdir as _make_persistent_tempdir,
 )
 from seattrellis.web.workflow import (
     WebSolveResult,
@@ -159,27 +162,6 @@ _SS_DEFAULTS = {
     "_quick_editing_draft": None,
     "_project_editing_draft": None,
 }
-
-# Persistent temp dirs that survive Streamlit re-runs.
-_PERSISTENT_DIRS: list[str] = []
-
-
-def _make_persistent_tempdir() -> str:
-    """Create a temp directory that persists across Streamlit re-runs.
-
-    Registered directories are cleaned up on process exit via ``atexit``.
-    """
-    d = tempfile.mkdtemp(prefix="seattrellis_")
-    _PERSISTENT_DIRS.append(d)
-    return d
-
-
-@atexit.register
-def _cleanup_persistent_dirs() -> None:
-    for d in _PERSISTENT_DIRS:
-        shutil.rmtree(d, ignore_errors=True)
-    _PERSISTENT_DIRS.clear()
-
 
 def _ss(key: str):
     """Get-or-create a session-state key."""
@@ -244,19 +226,25 @@ def _history_warnings(report) -> list[str]:
 def _reset_solve_state(origin: str, *, replace_active: bool = False) -> None:
     """Discard derived state for one workspace without clearing the other."""
 
-    export_prefix = (
-        QUICK_EXPORT_PREFIX if origin == "quick" else PROJECT_EXPORT_PREFIX
-    )
+    export_prefixes = {
+        "quick": QUICK_EXPORT_PREFIX,
+        "project": PROJECT_EXPORT_PREFIX,
+    }
+    try:
+        export_prefix = export_prefixes[origin]
+    except KeyError as exc:
+        raise ValueError(f"Unknown solve-state origin: {origin}") from exc
     st.session_state.pop(export_prepared_state_key(export_prefix), None)
     st.session_state[f"_{origin}_editing_draft"] = None
 
     active_origin = _ss("result_origin")
     if replace_active and active_origin not in (None, origin):
-        active_export_prefix = (
-            QUICK_EXPORT_PREFIX
-            if active_origin == "quick"
-            else PROJECT_EXPORT_PREFIX
-        )
+        try:
+            active_export_prefix = export_prefixes[active_origin]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown active solve-state origin: {active_origin}"
+            ) from exc
         st.session_state.pop(
             export_prepared_state_key(active_export_prefix),
             None,
@@ -445,6 +433,7 @@ def _render_seat_map(snapshot, layout) -> None:
 def _render_candidate_switcher(
     result: WebSolveResult,
     widget_key: str = QUICK_CANDIDATE_SELECT,
+    state_key: str = "current_candidate_id",
 ) -> str | None:
     """Render candidate selector and return the chosen candidate ID."""
     if not result.is_candidate_set:
@@ -454,7 +443,7 @@ def _render_candidate_switcher(
     ids = [opt["id"] for opt in options]
     labels_by_id = {opt["id"]: opt["label"] for opt in options}
 
-    current = _ss("current_candidate_id")
+    current = _ss(state_key)
     try:
         idx = ids.index(current)
     except ValueError:
@@ -468,7 +457,7 @@ def _render_candidate_switcher(
             format_func=labels_by_id.__getitem__,
             key=widget_key,
         )
-    st.session_state["current_candidate_id"] = selected_id
+    st.session_state[state_key] = selected_id
     return selected_id
 
 
@@ -1727,7 +1716,14 @@ with st.sidebar:
             list(LANGUAGE_OPTIONS),
             key=UI_LANGUAGE_SELECT,
         )
-st.session_state["ui_locale"] = LANGUAGE_OPTIONS[language_label]
+    st.session_state["ui_locale"] = LANGUAGE_OPTIONS[language_label]
+    with st.container(key=widget_region_key(APP_WORKSPACE_SELECT)):
+        workspace = st.radio(
+            _t("workspace_choice"),
+            ["teacher", "advanced"],
+            format_func=lambda value: _t(f"workspace_{value}"),
+            key=APP_WORKSPACE_SELECT,
+        )
 st.markdown(accessibility_styles(), unsafe_allow_html=True)
 st.markdown(
     f'<a class="seattrellis-skip-link" href="#seattrellis-main">'
@@ -1738,8 +1734,15 @@ st.markdown(
 st.title(_t("app_title"))
 st.caption(_t("app_caption"))
 
-quick_tab, project_tab = st.tabs([_t("quick_tab"), _t("project_tab")])
-with quick_tab:
-    _render_quick_solve_tab()
-with project_tab:
-    _render_project_tab()
+if workspace == "teacher":
+    render_teacher_page(
+        make_persistent_tempdir=_make_persistent_tempdir,
+        discard_persistent_tempdir=_discard_persistent_tempdir,
+        locale=_locale(),
+    )
+else:
+    quick_tab, project_tab = st.tabs([_t("quick_tab"), _t("project_tab")])
+    with quick_tab:
+        _render_quick_solve_tab()
+    with project_tab:
+        _render_project_tab()

@@ -10,7 +10,34 @@ streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 The sidebar language switch changes the interface between Simplified Chinese
 and English. It does not clear loaded data, the current step, or solve results.
 
-## Quick solve
+## Teacher workspace
+
+The default workspace keeps the ordinary path focused on classroom tasks:
+
+1. Enter a class name and import a CSV, XLSX, or XLSM roster. A name column is
+   enough to begin.
+2. Accept the recommended 30-, 48-, or 60-seat room, or set custom rows, seats
+   per row, and aisle positions.
+3. Choose Daily rotation, Quick shuffle, or Peer support and generate three
+   seating options.
+4. Review the recommended map, then swap, move, lock, undo, or redo as needed.
+5. Prepare and download either a public print or a teacher print.
+
+Visiting Advanced tools and returning restores the parsed roster, room, goal,
+and generated plan without retaining the original upload bytes. **Start over
+and clear student list** clears only the teacher workspace.
+
+Before generation, the workspace explains which optional history, score,
+height, or vision information is unavailable. Quick shuffle remains available
+when the roster contains names only.
+
+## Advanced tools
+
+The sidebar's Advanced tools choice retains Quick Solve and Project workspace
+for users who need file-level configuration, complete candidate comparison, or
+project paths.
+
+### Quick solve
 
 The Quick solve tab follows three steps:
 
@@ -20,7 +47,7 @@ The Quick solve tab follows three steps:
 3. Compare candidates, inspect the seating map and scores, then download the
 result.
 
-## Lock and repair
+### Lock and repair
 
 After solving, expand **Lock & repair** to keep students in their current
 seats, lock seats, or select the students that may be rearranged. Leaving the
@@ -35,7 +62,7 @@ checkout and is not installed by the main PyPI package or any extra. `auto`
 never selects it. Regular installations should use `auto`, `fallback`, or
 `ortools`.
 
-## Manual swaps and history
+### Manual swaps and history
 
 After solving, expand **Manual adjustment** to swap two students, move a
 student to an empty seat, move a student to the unseated area, or place an
@@ -79,7 +106,7 @@ layout, history, paths, or results. A rules overlay can still contain student
 identifiers, so the page warns when the settings file should be treated as
 sensitive.
 
-## Project workspace
+### Project workspace
 
 The Project workspace can open a local project path or accept an uploaded
 project JSON file. A local path supports validation, solving, and export because
@@ -121,6 +148,7 @@ drag-and-drop are not implemented yet.
 
 ## Privacy
 
-Solving happens on the local computer. Temporary working files use the system
-temporary directory and are cleaned up when the app exits. Do not commit real
-student data, screenshots, or exports to a public repository.
+Solving happens on the local computer. Registered teacher working files are
+removed when their plan is replaced or cleared; remaining Web working
+directories are cleaned up when the process exits. Do not commit real student
+data, screenshots, or exports to a public repository.

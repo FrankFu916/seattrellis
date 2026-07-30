@@ -44,6 +44,7 @@ _TEXT: dict[str, tuple[str, str]] = {
     "student_details": ("学生明细", "Student details"),
     "seat": ("座位", "Seat"),
     "name": ("姓名", "Name"),
+    "student_id": ("学号", "Student ID"),
     "score": ("成绩", "Score"),
     "height": ("身高", "Height"),
     "vision": ("视力需求", "Vision"),
@@ -420,6 +421,13 @@ def _student_detail_fields(
     locale: str = "zh",
 ) -> list[tuple[str, str]]:
     fields: list[tuple[str, str]] = []
+    if not privacy.anonymize:
+        fields.append(
+            (
+                _text("student_id", locale),
+                student.student_id if student and student.student_id else "-",
+            )
+        )
     if not privacy.hide_scores:
         fields.append(
             (

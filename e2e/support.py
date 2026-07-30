@@ -8,6 +8,7 @@ from pathlib import Path
 from playwright.sync_api import Locator, Page, expect
 
 from seattrellis.web.keys import (
+    APP_WORKSPACE_SELECT,
     QUICK_RETAINED_UPLOADS_STATUS,
     QUICK_STEP_RADIO,
     UI_LANGUAGE_SELECT,
@@ -21,6 +22,12 @@ def region(page: Page, widget_key: str) -> Locator:
     return page.locator(f".st-key-{widget_region_key(widget_key)}")
 
 
+def widget(page: Page, widget_key: str) -> Locator:
+    """Locate a Streamlit widget by its application-owned key."""
+
+    return page.locator(f".st-key-{widget_key}")
+
+
 def open_english_app(page: Page, url: str) -> None:
     """Open the app and switch the current Streamlit session to English."""
 
@@ -32,9 +39,19 @@ def open_english_app(page: Page, url: str) -> None:
     option = page.get_by_role("option", name="English", exact=True)
     expect(option).to_be_visible()
     option.click()
-    expect(
-        page.get_by_role("tab", name="Quick solve", exact=True)
-    ).to_be_visible()
+    expect(page.get_by_text("Plan seating for your class", exact=True)).to_be_visible()
+
+
+def activate_advanced_tools(page: Page) -> None:
+    """Open the legacy Quick solve and Project workspaces explicitly."""
+
+    workspace = region(page, APP_WORKSPACE_SELECT).get_by_role("radiogroup")
+    option = workspace.locator("label").filter(
+        has_text=re.compile(r"^Advanced tools$")
+    )
+    expect(option).to_have_count(1)
+    option.click()
+    expect(page.get_by_role("tab", name="Quick solve", exact=True)).to_be_visible()
 
 
 def choose_quick_step(page: Page, number: int, label: str) -> None:
@@ -66,10 +83,8 @@ def select_region_option(
     # settling after a Streamlit rerun.
     combobox.fill(option)
     combobox.press("ArrowDown")
-    expect(combobox).to_have_attribute("aria-expanded", "true")
-    menu_option = page.get_by_role("option", name=option, exact=True)
-    expect(menu_option).to_be_visible()
-    menu_option.click()
+    if combobox.get_attribute("aria-expanded") == "true":
+        combobox.press("Enter")
     expect(region(page, widget_key).get_by_role("combobox")).to_have_value(
         option,
     )

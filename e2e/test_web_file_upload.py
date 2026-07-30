@@ -10,6 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from e2e.support import (
+    activate_advanced_tools,
     assert_no_app_exception,
     choose_quick_step,
     download_from_region,
@@ -45,6 +46,7 @@ def test_uploaded_files_solve_and_download_candidate_set(
     """Prove that uploaded students, layout, and rules reach the solver."""
 
     open_english_app(page, web_server.url)
+    activate_advanced_tools(page)
     upload_file(
         page,
         QUICK_STUDENTS_UPLOAD,
