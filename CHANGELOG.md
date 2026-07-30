@@ -1,43 +1,5 @@
 # Changelog
 
-## 1.8.0 - 2026-07-30
-
-### User-facing changes
-
-- Added SVG vector export for seating plans — self-contained, scalable, and
-  suitable for printing or embedding in documents.
-- Added PPTX export — a single 16:9 slide with editable text boxes and seat
-  shapes that teachers can open in PowerPoint or Keynote and continue editing.
-- Both new export formats respect the same privacy controls (public vs teacher
-  templates) as existing print and PDF exports.
-
-### Engineering and maintenance
-
-- Introduced a dependency-free seating canvas document model shared by SVG
-  and PPTX exporters for consistent seat positions, text, and theme.
-- Verified real SVG and PPTX file generation with structural validation and
-  path-leak checks.
-
-## 1.7.0 - 2026-07-30
-
-### User-facing changes
-
-- Added three score-based seating goals: score position preference (high
-  scores toward front or back), score distribution balance (across rows or
-  groups), and mentor pairing (pair high- and low-ranked students nearby).
-- New goals work with any grading scale through rank percentiles and appear
-  alongside existing presets.
-
-### Engineering and maintenance
-
-- Introduced a shared, backend-neutral soft_objectives module so the fallback
-  solver and result scoring use the same normalized losses and explanations.
-- Added ScorePositionRule, ScoreDistributionRule, and MentorPairingRule as
-  composable weighted soft rules with JSON Schema and preset integration.
-- Added validation warnings for group-scoped distribution when seats lack
-  group_id, and updated schemas for candidate-set, classroom-layout, ruleset,
-  and seating-snapshot.
-
 ## 1.6.0 - 2026-07-30
 
 ### User-facing changes
