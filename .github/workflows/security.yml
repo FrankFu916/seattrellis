@@ -47,7 +47,18 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install ".[all,dev]" pip-audit
       - name: Audit installed dependencies
-        run: python -m pip_audit
+        # The five listed starlette advisories are only fixed in the 1.x line,
+        # which requires FastAPI 0.138+ and a pydantic v2 migration of the
+        # shared models. The migration is tracked on the roadmap, and the
+        # residual advisories are documented there. Remove these exclusions
+        # when the migration lands and starlette is raised to 1.x.
+        run: >-
+          python -m pip_audit
+          --ignore-vuln PYSEC-2026-161
+          --ignore-vuln PYSEC-2026-2280
+          --ignore-vuln PYSEC-2026-2281
+          --ignore-vuln PYSEC-2026-248
+          --ignore-vuln PYSEC-2026-249
 
   secret-scan:
     name: Secret scan

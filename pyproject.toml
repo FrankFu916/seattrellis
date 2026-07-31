@@ -32,13 +32,15 @@ excel = ["openpyxl>=3.1"]
 image = ["Pillow>=11.3,<13"]
 web = [
   "streamlit>=1.50,<2",
-  "fastapi>=0.115,<0.116",
+  "fastapi>=0.121,<0.128",
+  "starlette>=0.49.1,<0.50",
   "uvicorn>=0.41,<1",
   "python-multipart>=0.0.20,<1",
 ]
 pdf = ["weasyprint>=69,<70", "cffi>=2,<3"]
-docx = ["python-docx>=1.0"]
-dev = ["pytest>=7.0", "build>=1.2", "pypdf>=5"]
+docx = ["python-docx>=1.0", "lxml>=6.1.0,<7"]
+pptx = ["python-pptx>=1.0", "lxml>=6.1.0,<7"]
+dev = ["pytest>=7.0", "build>=1.2", "pypdf>=6.14,<7", "httpx>=0.27,<1"]
 e2e = ["playwright>=1.40,<2", "pytest-playwright>=0.5,<1"]
 docs = ["mkdocs-material==9.*"]
 all = [
@@ -46,12 +48,15 @@ all = [
   "openpyxl>=3.1",
   "Pillow>=11.3,<13",
   "streamlit>=1.50,<2",
-  "fastapi>=0.115,<0.116",
+  "fastapi>=0.121,<0.128",
+  "starlette>=0.49.1,<0.50",
   "uvicorn>=0.41,<1",
   "python-multipart>=0.0.20,<1",
   "weasyprint>=69,<70",
   "cffi>=2,<3",
   "python-docx>=1.0",
+  "python-pptx>=1.0",
+  "lxml>=6.1.0,<7",
 ]
 
 [project.scripts]
