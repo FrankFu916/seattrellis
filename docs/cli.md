@@ -80,7 +80,8 @@ seattrellis export \
 ```
 
 `public` 的安全默认字段不能通过这些参数放宽；CLI 参数只能进一步隐藏信息。
-页面和模板参数当前适用于 `print-html`、`pdf` 和 `docx`。其他格式收到非默认
+模板和隐私参数适用于 `print-html`、`pdf`、`docx`、`svg` 和 `pptx`；A4 页面
+方向、缩放和页边距只适用于 `print-html`、`pdf` 和 `docx`。其他格式收到非默认
 配置时会明确报错，避免设置被静默忽略。
 
 完整候选集比较报告可用 `--candidate-scope all` 导出，目前支持 `html` 和
