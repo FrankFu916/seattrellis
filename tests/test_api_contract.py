@@ -221,6 +221,7 @@ def test_fastapi_routes_use_only_the_versioned_prefix_when_available() -> None:
         f"{API_PREFIX}/capabilities",
         f"{API_PREFIX}/room-templates",
         f"{API_PREFIX}/teacher-goals",
+        f"{API_PREFIX}/catalogs",
         f"{API_PREFIX}/classes/inspect",
         f"{API_PREFIX}/classes/generate",
         f"{API_PREFIX}/editing/drafts/{{draft_id}}",
@@ -232,4 +233,5 @@ def test_fastapi_routes_use_only_the_versioned_prefix_when_available() -> None:
         f"{API_PREFIX}/rosters/drafts",
         f"{API_PREFIX}/rosters/drafts/{{draft_id}}",
         f"{API_PREFIX}/rosters/drafts/{{draft_id}}/preview",
+        f"{API_PREFIX}/exports",
     }

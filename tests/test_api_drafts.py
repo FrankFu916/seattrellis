@@ -97,7 +97,13 @@ def test_draft_state_is_minimized_and_does_not_serialize_private_fields() -> Non
     serialized = state.json()
     assert state.candidate_id == "candidate_01"
     assert [student.display_name for student in state.students] == ["Alice", "Bob"]
-    assert "99" not in serialized
+    # The editor contract carries only opaque keys and display names.  No
+    # sensitive student field name or value may serialize.  Field names are
+    # checked instead of the numeric score so a random hex draft id can never
+    # make the privacy assertion flaky.  (Field names must not be substrings
+    # of protocol field names such as "revision".)
+    for private_key in ("score", "notes", "needs"):
+        assert private_key not in serialized
     assert "secret" not in serialized
     assert "private need" not in serialized
 
