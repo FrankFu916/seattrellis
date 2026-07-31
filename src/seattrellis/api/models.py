@@ -8,6 +8,7 @@ tests while preserving the same ``/api/v1`` contract.
 from __future__ import annotations
 
 from math import isfinite
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import (
@@ -281,6 +282,81 @@ class GenerateRotationPlanResponse(VersionedResponse):
     goal: ResolvedGoalSummary
     warnings: list[str] = Field(default_factory=list)
     rotation_plan: RotationPlan
+
+
+class RecentProjectItem(ApiModel):
+    """A local project entry suitable for a recent-projects list."""
+
+    name: str
+    path: str
+    modified_at: datetime
+
+
+class ProjectListResponse(VersionedResponse):
+    """Projects discovered below a local directory."""
+
+    root: str
+    projects: list[RecentProjectItem] = Field(default_factory=list)
+
+
+class ProjectPathRequest(ApiModel):
+    """A local project path used by read-only project operations."""
+
+    project_path: str
+    include_outputs: bool = True
+
+    @field_validator("project_path", mode="before")
+    def clean_project_path(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("project_path must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("project_path cannot be empty.")
+        return text
+
+
+class ProjectArtifactItem(ApiModel):
+    """Metadata for one historical or generated project artifact."""
+
+    name: str
+    path: str
+    kind: Literal["snapshot", "candidate_set", "rotation_plan", "unknown"]
+    modified_at: datetime
+    created_at: datetime | None = None
+    size_bytes: int = Field(ge=0)
+    student_count: int | None = Field(default=None, ge=0)
+    period_count: int | None = Field(default=None, ge=0)
+
+
+class ProjectHistoryResponse(VersionedResponse):
+    """History and output metadata without returning student records."""
+
+    project_name: str
+    project_path: str
+    history: list[ProjectArtifactItem] = Field(default_factory=list)
+    outputs: list[ProjectArtifactItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PrivacyFindingItem(ApiModel):
+    file: str
+    fields: list[str] = Field(default_factory=list)
+
+
+class ProjectPrivacyResponse(VersionedResponse):
+    """Privacy findings for the files selected for a project bundle."""
+
+    project_path: str
+    files_scanned: int = Field(ge=0)
+    safe_for_public_sharing: bool
+    findings: list[PrivacyFindingItem] = Field(default_factory=list)
+
+
+class ProjectRestoreResponse(VersionedResponse):
+    """Result of restoring a validated local project bundle."""
+
+    project_path: str
+    output_dir: str
 
 
 class CreateLayoutDraftRequest(ApiModel):

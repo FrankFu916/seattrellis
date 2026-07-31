@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from typing import Any
 from uuid import uuid4
 
@@ -16,6 +18,11 @@ from seattrellis.api.handlers import (
     generate_rotation_plan,
     health,
     inspect_class_request,
+    list_projects,
+    pack_project_for_web,
+    project_history,
+    project_privacy,
+    restore_project_bundle_file,
     room_templates,
     teacher_goals,
 )
@@ -46,6 +53,11 @@ from seattrellis.api.models import (
     RosterUpdatePreviewRequest,
     RosterUpdatePreviewResponse,
     TeacherGoalsResponse,
+    ProjectHistoryResponse,
+    ProjectListResponse,
+    ProjectPathRequest,
+    ProjectPrivacyResponse,
+    ProjectRestoreResponse,
 )
 from seattrellis.editing import EditingError
 from seattrellis.editing_protocol import (
@@ -66,6 +78,7 @@ from seattrellis.io.roster_table import (
     read_roster_table_bytes,
 )
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.project_bundle import MAX_BUNDLE_TOTAL_BYTES
 
 
 def create_app(
@@ -81,7 +94,7 @@ def create_app(
         from fastapi import FastAPI, Request
         from fastapi.exceptions import RequestValidationError
         from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import JSONResponse
+        from fastapi.responses import JSONResponse, Response
     except ImportError as exc:  # pragma: no cover - depends on installation.
         raise MissingOptionalDependencyError(
             "Local Web API",
@@ -382,8 +395,6 @@ def create_app(
         return Response(status_code=204)
 
     def export_with_store(request: ExportDraftRequest) -> Any:
-        from fastapi.responses import Response
-
         artifact: ExportArtifact = export_draft(request, draft_store=resolved_store)
         return Response(
             content=artifact.data,
@@ -392,6 +403,76 @@ def create_app(
                 "Content-Disposition": f'attachment; filename="{artifact.filename}"'
             },
         )
+
+    def pack_project_download(request: ProjectPathRequest) -> Any:
+        artifact = pack_project_for_web(request)
+        return Response(
+            content=artifact.data,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
+            },
+        )
+
+    async def restore_project(request: Any) -> ProjectRestoreResponse:
+        """Restore either an existing local path or an uploaded bundle."""
+
+        form = await request.form()
+        output_dir = form.get("output_dir")
+        if not isinstance(output_dir, str) or not output_dir.strip():
+            raise ApiProblem(
+                status_code=422,
+                code="project_restore_target_required",
+                message="Choose a destination folder for the restored project.",
+            )
+        overwrite_value = str(form.get("overwrite", "false")).lower()
+        overwrite = overwrite_value in {"1", "true", "yes", "on"}
+        upload = form.get("bundle")
+        bundle_path = form.get("bundle_path")
+        if upload is not None and getattr(upload, "read", None) is not None:
+            data = await upload.read(MAX_BUNDLE_TOTAL_BYTES + 1)
+            close = getattr(upload, "close", None)
+            if close is not None:
+                await close()
+            if not isinstance(data, bytes) or len(data) > MAX_BUNDLE_TOTAL_BYTES:
+                raise ApiProblem(
+                    status_code=413,
+                    code="project_bundle_too_large",
+                    message="The project backup is too large to restore safely.",
+                )
+            temporary_path: str | None = None
+            try:
+                descriptor, temporary_path = tempfile.mkstemp(
+                    prefix="seattrellis-upload-",
+                    suffix=".seattrellis.zip",
+                )
+                with os.fdopen(descriptor, "wb") as destination:
+                    destination.write(data)
+                return restore_project_bundle_file(
+                    temporary_path,
+                    output_dir,
+                    overwrite=overwrite,
+                )
+            finally:
+                if temporary_path is not None:
+                    try:
+                        os.unlink(temporary_path)
+                    except FileNotFoundError:
+                        pass
+        if isinstance(bundle_path, str) and bundle_path.strip():
+            return restore_project_bundle_file(
+                bundle_path,
+                output_dir,
+                overwrite=overwrite,
+            )
+        raise ApiProblem(
+            status_code=422,
+            code="project_bundle_required",
+            message="Choose a project backup file or enter a local bundle path.",
+        )
+
+    # Keep the optional FastAPI dependency out of module-level annotations.
+    restore_project.__annotations__["request"] = Request
 
     app.add_api_route(
         f"{API_PREFIX}/health",
@@ -455,6 +536,46 @@ def create_app(
         response_model=None,
         responses={422: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
         tags=["classes"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/recent",
+        list_projects,
+        methods=["GET"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/history",
+        project_history,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/privacy",
+        project_privacy,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/bundle",
+        pack_project_download,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/restore",
+        restore_project,
+        methods=["POST"],
+        response_model=None,
+        responses={413: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+        tags=["projects"],
     )
     app.add_api_route(
         f"{API_PREFIX}/editing/drafts/{{draft_id}}",
