@@ -4,7 +4,7 @@
 
 **简体中文 | [English](README.en.md)**
 
-席序 SeatTrellis 是一个本地优先的课堂排座工具，用虚构示例数据展示可复现的座位安排流程。它可以生成单个 JSON snapshot，也可以一次生成多个带可解释评分的 candidate plans，并导出 HTML、Excel、PNG、PDF、Word 和打印版 HTML。
+席序 SeatTrellis 是一个本地优先的课堂排座工具，用虚构示例数据展示可复现的座位安排流程。它可以生成单个 JSON snapshot，也可以一次生成多个带可解释评分的 candidate plans，并导出 HTML、Excel、PNG、PDF、Word、SVG、PPTX 和打印版 HTML。
 
 项目默认在本机处理数据。不要把真实学生名单、学号、成绩、班级、学校、座位偏好或历史座位快照提交到公开仓库。
 
@@ -55,25 +55,34 @@ pytest
 `dev` extra 包含测试和构建工具，`e2e` extra 用于真实浏览器验收，`docs`
 extra 用于构建文档站。
 
-### 网页端
+### React 工作台（推荐）
+
+```bash
+python -m pip install -e ".[web,excel,image]"
+seattrellis workspace
+```
+
+`workspace` 命令会在本地启动 API 服务并自动打开浏览器工作台（默认地址
+`http://127.0.0.1:8765`）。工作台使用 React 构建，提供完整的排座流程：
+
+1. 上传 CSV 或 Excel 名单，自动识别字段映射，预览增量或覆盖导入影响后确认；
+2. 选择教室模板和排座目标（包括成绩位置偏好、成绩均衡分布、师徒结对）；
+3. 生成候选方案，查看评分维度，手动调整座位并撤销/重做；
+4. 导出为 HTML、Excel、PNG、PDF、Word、SVG 或 PPTX。
+
+使用 `--no-open-browser` 可禁止自动打开浏览器，使用 `--host` 和 `--port`
+可自定义监听地址。开发模式下可在 `clients/web/` 目录运行 Vite 开发服务器。
+
+### Streamlit 网页端（兼容）
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
-网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
-
-网页端默认进入教师工作台：填写班级名称、导入 CSV 或 Excel 名单、确认标准或
-自定义教室、选择日常轮换等排座目标，即可生成三个候选方案。推荐方案可以直接
-换座、撤销或重做，并分别准备公开打印版和教师打印版。页面不会要求普通用户理解
-backend、seed、time limit、candidate count 或 JSON schema。
-
-原有 Quick Solve 和 Project workspace 保留在侧边栏的“高级工具”中，适合需要
-rules overlay、history、完整候选比较或本机 project 路径的用户。教师工作台与
-高级工具的状态彼此隔离；切换后返回不会丢失已生成方案，也不会保留原始上传字节。
-侧边栏可切换简体中文和英文，页面支持键盘焦点、跳转到主要内容、小屏纵向布局和
-减少动画偏好。
+Streamlit 网页端保留为兼容界面，功能与 React 工作台类似但不包含名单导入预览、
+SVG/PPTX 导出等新特性。新用户建议使用 `seattrellis workspace` 启动的 React
+工作台。
 
 ## CLI
 
@@ -100,7 +109,7 @@ seattrellis export --snapshot outputs/daily.snapshot.json --format html
 
 `solve` 支持 `--history` 或 `--history-dir` 加载历史 snapshot。`history-report` 输出每个学生的座位分类历史统计，`pair-report` 输出两两学生的同桌/邻座关系历史。详见 [快速开始指南](docs/quickstart.zh.md)。
 
-导出支持 HTML 和打印版 HTML（无需 extras）、Excel（需 `excel` extra）、PNG（需 `image` extra）、PDF（需 `pdf` extra）和 Word（需 `docx` extra）。打印 HTML、PDF 和 Word 可选择 `public`、`teacher`、`report` 模板，设置字段隐藏、姓名匿名化、A4 横纵向、页面缩放和中英文内容。详见 [导出格式说明](docs/export.zh.md)。
+导出支持 HTML 和打印版 HTML（无需 extras）、Excel（需 `excel` extra）、PNG（需 `image` extra）、PDF（需 `pdf` extra）、Word（需 `docx` extra）、SVG 和 PPTX（无需 extras）。打印 HTML、PDF、Word、SVG 和 PPTX 可选择 `public`、`teacher`、`report` 模板，设置字段隐藏、姓名匿名化、A4 横纵向、页面缩放和中英文内容。详见 [导出格式说明](docs/export.zh.md)。
 
 ## 多方案与评分
 
@@ -141,8 +150,10 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 - 历史 snapshot 统计、`history-report` 本地公平性摘要和 `pair-report` 关系历史摘要；
 - 多方案生成、可解释评分、comparison report 和 recommended candidate；
 - 可移植的相对路径 project 配置，以及 `project-init` / `project-info` / `project-validate` / `project-solve` / `project-export`；
-- HTML 与打印版 HTML 导出，安装对应 extras 后支持 Excel、PNG、PDF 和 Word 导出；
-- 输入预检与冲突诊断、CLI、本地 Streamlit UI、虚构示例数据、pytest 和 GitHub Actions。
+- HTML 与打印版 HTML 导出，安装对应 extras 后支持 Excel、PNG、PDF 和 Word 导出，SVG 和 PPTX 导出无需额外依赖；
+- 成绩位置偏好、成绩均衡分布、师徒结对三类成绩排座目标，支持任意评分体系；
+- React 浏览器工作台（`seattrellis workspace`），提供名单上传、字段映射、导入预览、排座生成和多种格式导出；
+- 输入预检与冲突诊断、CLI、本地 Streamlit 兼容界面、虚构示例数据、pytest 和 GitHub Actions。
 
 ## 隐私说明
 
@@ -157,7 +168,7 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 
 ## 发布
 
-当前稳定版本为 v1.5.0；发布检查见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前稳定版本为 v1.8.0；发布检查见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 

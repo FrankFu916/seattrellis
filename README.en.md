@@ -4,7 +4,7 @@
 
 **[简体中文](README.md) | English**
 
-SeatTrellis is a local-first classroom seating planner for reproducible seating workflows with fictional demo data. It can write one JSON snapshot or generate multiple explainably scored candidate plans, then export HTML, Excel, PNG, PDF, Word, or print-friendly HTML.
+SeatTrellis is a local-first classroom seating planner for reproducible seating workflows with fictional demo data. It can write one JSON snapshot or generate multiple explainably scored candidate plans, then export HTML, Excel, PNG, PDF, Word, SVG, PPTX, or print-friendly HTML.
 
 SeatTrellis processes data locally by default. Do not commit real student names, IDs, grades, class names, school names, seating preferences, or historical seating snapshots to a public repository.
 
@@ -66,28 +66,40 @@ pytest
 
 The `all` extra includes OR-Tools, Excel, PNG, PDF, Word, and Streamlit dependencies. The `dev` extra includes test and build tools; the `docs` extra builds the documentation site.
 
-### Web UI
+### React Workbench (Recommended)
+
+```bash
+python -m pip install -e ".[web,excel,image]"
+seattrellis workspace
+```
+
+The `workspace` command starts the local API server and opens the browser
+workbench automatically (default address `http://127.0.0.1:8765`). The
+workbench is built with React and provides the full seating workflow:
+
+1. Upload a CSV or Excel roster, confirm auto-detected field mappings, preview
+   incremental or overwrite import impact, then apply;
+2. Choose a classroom template and seating goals (including score position
+   preference, score distribution balance, and mentor pairing);
+3. Generate candidate plans, inspect score dimensions, manually adjust seats
+   with undo and redo;
+4. Export as HTML, Excel, PNG, PDF, Word, SVG, or PPTX.
+
+Use `--no-open-browser` to suppress auto-opening, or `--host` and `--port` to
+customize the listen address. For development, run the Vite dev server from
+`clients/web/`.
+
+### Streamlit Web UI (Compatibility)
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
-The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
-
-The web app opens in a teacher workspace by default. Enter a class name, import
-a CSV or Excel roster, confirm a built-in or custom classroom, and choose a
-plain-language seating goal to generate three options. The recommended plan can
-be adjusted with undo and redo, then downloaded as either a public print or a
-teacher print. This path does not require backend, seed, time limit, candidate
-count, or JSON schema knowledge.
-
-The existing Quick Solve and Project workspaces remain under Advanced tools for
-rules overlays, history, full candidate comparison, and local project paths.
-Teacher and advanced state remain isolated, and returning from Advanced tools
-restores the generated plan without retaining the original upload bytes. The
-sidebar switches between Simplified Chinese and English. Keyboard focus,
-skip-to-content, responsive layout, and reduced-motion support are built in.
+The Streamlit web UI is retained as a compatibility interface. It offers
+similar functionality to the React workbench but does not include roster
+import preview, SVG/PPTX export, or other newer features. New users should
+use `seattrellis workspace` instead.
 
 ## CLI
 
@@ -183,8 +195,10 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 - historical snapshot statistics, the local `history-report` fairness summary, and `pair-report` relationship-history summary;
 - multi-candidate generation, explainable scoring, comparison reports, and recommended-candidate selection;
 - portable relative-path project configuration with `project-init`, `project-info`, `project-validate`, `project-solve`, and `project-export`;
-- HTML and print-friendly HTML export, with Excel, PNG, PDF, and Word available through their optional extras; print-oriented formats support public, teacher, and report templates with privacy, A4 layout, scaling, and bilingual content;
-- validation preflight and conflict diagnostics, CLI, local Streamlit UI, fictional examples, pytest, and GitHub Actions.
+- HTML and print-friendly HTML export, with Excel, PNG, PDF, and Word available through their optional extras; SVG and PPTX export require no extra dependencies; print-oriented formats support public, teacher, and report templates with privacy, A4 layout, scaling, and bilingual content;
+- three score-based seating goals — score position preference, score distribution balance, and mentor pairing — that work with any grading scale through rank percentiles;
+- React browser workbench (`seattrellis workspace`) with roster upload, field mapping, import preview, seating generation, and multi-format export;
+- validation preflight and conflict diagnostics, CLI, local Streamlit compatibility UI, fictional examples, pytest, and GitHub Actions.
 
 ## Privacy
 
@@ -199,7 +213,7 @@ Current fair rotation and relationship avoidance use heuristic scoring from hist
 
 ## Release
 
-The current stable release is v1.5.0. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
+The current stable release is v1.8.0. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
