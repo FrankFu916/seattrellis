@@ -1,0 +1,43 @@
+name: Desktop builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    name: Bundle / ${{ matrix.os }} / Python 3.14
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install desktop build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[web,desktop-build]"
+      - name: Build onedir bundle
+        run: python scripts/build_desktop.py --output-dir dist/desktop
+      - name: Upload desktop bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: SeatTrellis-${{ runner.os }}
+          path: dist/desktop/SeatTrellis
+          if-no-files-found: error
+          retention-days: 14
