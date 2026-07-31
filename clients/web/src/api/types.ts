@@ -213,3 +213,53 @@ export type EditorCommand = {
   operations: EditorOperation[];
 };
 
+export type RecentProject = {
+  name: string;
+  path: string;
+  modified_at: string;
+};
+
+export type ProjectListResponse = {
+  api_version: "1";
+  root: string;
+  projects: RecentProject[];
+};
+
+export type ProjectArtifact = {
+  name: string;
+  path: string;
+  kind: "snapshot" | "candidate_set" | "rotation_plan" | "unknown";
+  modified_at: string;
+  created_at: string | null;
+  size_bytes: number;
+  student_count: number | null;
+  period_count: number | null;
+};
+
+export type ProjectHistoryResponse = {
+  api_version: "1";
+  project_name: string;
+  project_path: string;
+  history: ProjectArtifact[];
+  outputs: ProjectArtifact[];
+  warnings: string[];
+};
+
+export type ProjectPrivacyFinding = {
+  file: string;
+  fields: string[];
+};
+
+export type ProjectPrivacyResponse = {
+  api_version: "1";
+  project_path: string;
+  files_scanned: number;
+  safe_for_public_sharing: boolean;
+  findings: ProjectPrivacyFinding[];
+};
+
+export type ProjectRestoreResponse = {
+  api_version: "1";
+  project_path: string;
+  output_dir: string;
+};

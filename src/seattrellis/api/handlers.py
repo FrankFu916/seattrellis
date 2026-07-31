@@ -7,6 +7,7 @@ import os
 import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
@@ -23,6 +24,14 @@ from seattrellis.api.models import (
     GenerateRotationPlanResponse,
     HealthResponse,
     InspectClassResponse,
+    ProjectArtifactItem,
+    ProjectHistoryResponse,
+    ProjectListResponse,
+    ProjectPathRequest,
+    ProjectPrivacyResponse,
+    ProjectRestoreResponse,
+    PrivacyFindingItem,
+    RecentProjectItem,
     ResolvedGoalSummary,
     RoomTemplateItem,
     RoomTemplatesResponse,
@@ -47,9 +56,16 @@ from seattrellis.application.teacher_goals import (
     list_teacher_goals,
 )
 from seattrellis.exporters import export_snapshot
-from seattrellis.io.json_files import InputFileError
+from seattrellis.io.json_files import InputFileError, read_json
+from seattrellis.io.project import load_project_paths
 from seattrellis.io.validation import ValidationIssue
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.project_bundle import (
+    list_recent_projects,
+    pack_project,
+    restore_project_bundle as restore_bundle,
+    scan_project_privacy,
+)
 from seattrellis.service_types import (
     CANVAS_EXPORT_FORMATS,
     ExportRequest,
@@ -93,6 +109,7 @@ def capabilities() -> CapabilitiesResponse:
             "class-inspection",
             "class-generation",
             "rotation-plans",
+            "project-workspace",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -142,6 +159,221 @@ def teacher_goals() -> TeacherGoalsResponse:
             for goal in list_teacher_goals()
         ]
     )
+
+
+def list_projects(*, root: str = ".", limit: int = 20) -> ProjectListResponse:
+    """Return recent projects without reading student records into the response."""
+
+    if not 1 <= limit <= 100:
+        raise ApiProblem(
+            status_code=422,
+            code="invalid_project_limit",
+            message="The project list limit must be between 1 and 100.",
+        )
+    try:
+        directory = Path(root).expanduser().resolve()
+        projects = list_recent_projects(directory, limit=limit)
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_directory_unavailable",
+            message="The selected project directory could not be read.",
+        ) from exc
+    return ProjectListResponse(
+        root=str(directory),
+        projects=[
+            RecentProjectItem(
+                name=item.name,
+                path=str(item.path),
+                modified_at=item.modified_at,
+            )
+            for item in projects
+        ],
+    )
+
+
+def project_history(request: ProjectPathRequest) -> ProjectHistoryResponse:
+    """Return history/output metadata while keeping student data server-side."""
+
+    try:
+        project, paths = load_project_paths(request.project_path)
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_unavailable",
+            message="The selected project could not be opened.",
+        ) from exc
+
+    warnings: list[str] = []
+    history_paths = (
+        sorted(paths.history_dir.glob("*.json"), key=_path_sort_key, reverse=True)
+        if paths.history_dir is not None and paths.history_dir.is_dir()
+        else []
+    )
+    if paths.history_dir is None:
+        warnings.append("This project does not configure a history directory.")
+    elif not paths.history_dir.exists():
+        warnings.append("The configured history directory is not available.")
+
+    output_paths = (
+        sorted(paths.outputs_dir.glob("*.json"), key=_path_sort_key, reverse=True)
+        if request.include_outputs and paths.outputs_dir.is_dir()
+        else []
+    )
+    history = _artifact_items(history_paths, warnings)
+    outputs = _artifact_items(output_paths, warnings)
+    return ProjectHistoryResponse(
+        project_name=project.name,
+        project_path=str(paths.project_file),
+        history=history,
+        outputs=outputs,
+        warnings=list(dict.fromkeys(warnings)),
+    )
+
+
+def project_privacy(request: ProjectPathRequest) -> ProjectPrivacyResponse:
+    """Scan a project using the same conservative bundle policy as the CLI."""
+
+    try:
+        report = scan_project_privacy(
+            request.project_path,
+            include_outputs=request.include_outputs,
+        )
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_unavailable",
+            message="The selected project could not be scanned.",
+        ) from exc
+    return ProjectPrivacyResponse(
+        project_path=str(Path(request.project_path).expanduser().resolve()),
+        files_scanned=report.files_scanned,
+        safe_for_public_sharing=report.safe_for_public_sharing,
+        findings=[
+            PrivacyFindingItem(file=item.file, fields=list(item.fields))
+            for item in report.findings
+        ],
+    )
+
+
+@dataclass(frozen=True)
+class ProjectBundleArtifact:
+    """A project bundle ready for a local HTTP download."""
+
+    data: bytes
+    filename: str
+
+
+def pack_project_for_web(request: ProjectPathRequest) -> ProjectBundleArtifact:
+    """Create a bundle in a temporary directory and return only its bytes."""
+
+    project_file = Path(request.project_path).expanduser().resolve()
+    filename = _bundle_filename(project_file)
+    try:
+        with tempfile.TemporaryDirectory(prefix="seattrellis-bundle-") as directory:
+            result = pack_project(
+                project_file,
+                Path(directory) / filename,
+                include_outputs=request.include_outputs,
+            )
+            data = result.path.read_bytes()
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_bundle_failed",
+            message="The project backup could not be created.",
+        ) from exc
+    return ProjectBundleArtifact(data=data, filename=filename)
+
+
+def restore_project_bundle_file(
+    bundle_path: str | Path,
+    output_dir: str | Path,
+    *,
+    overwrite: bool = False,
+) -> ProjectRestoreResponse:
+    """Restore a bundle through the same path-safe implementation as the CLI."""
+
+    try:
+        project_path = restore_bundle(bundle_path, output_dir, overwrite=overwrite)
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_restore_failed",
+            message="The project backup could not be restored to that folder.",
+        ) from exc
+    return ProjectRestoreResponse(
+        project_path=str(project_path),
+        output_dir=str(Path(output_dir).expanduser().resolve()),
+    )
+
+
+def _artifact_items(
+    paths: Iterable[Path],
+    warnings: list[str],
+) -> list[ProjectArtifactItem]:
+    items: list[ProjectArtifactItem] = []
+    for path in paths:
+        try:
+            data = read_json(path)
+            stat = path.stat()
+        except (InputFileError, OSError):
+            warnings.append(f"Could not read project artifact {path.name}.")
+            continue
+        kind = data.get("kind")
+        if kind not in {"snapshot", "candidate_set", "rotation_plan"}:
+            kind = "unknown"
+        periods = data.get("periods")
+        students = data.get("students")
+        first_period = periods[0] if isinstance(periods, list) and periods else None
+        first_snapshot = (
+            first_period.get("snapshot")
+            if isinstance(first_period, dict)
+            else None
+        )
+        if not isinstance(students, list) and isinstance(first_snapshot, dict):
+            students = first_snapshot.get("students")
+        created_at = _parse_artifact_datetime(data.get("created_at"))
+        items.append(
+            ProjectArtifactItem(
+                name=path.name,
+                path=str(path),
+                kind=kind,
+                modified_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+                created_at=created_at,
+                size_bytes=stat.st_size,
+                student_count=len(students) if isinstance(students, list) else None,
+                period_count=len(periods) if isinstance(periods, list) else None,
+            )
+        )
+        # Candidate scores and student records are intentionally not returned
+        # in this browsing response.
+    return items
+
+
+def _path_sort_key(path: Path) -> int:
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+def _parse_artifact_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+
+
+def _bundle_filename(project_file: Path) -> str:
+    name = project_file.name
+    for suffix in (".seattrellis.json", ".project.json", ".json"):
+        if name.endswith(suffix):
+            return f"{name[:-len(suffix)]}.seattrellis.zip"
+    return f"{name}.seattrellis.zip"
 
 
 def inspect_class_request(request: GenerateClassRequest) -> InspectClassResponse:

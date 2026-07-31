@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### User-facing changes
+
+- Added a Project workspace panel to the React workbench. Teachers can browse
+  recent local classes, review saved history and generated files, and open a
+  privacy check without exposing student records in the browser response.
+- Added one-click `.seattrellis.zip` backup and restore from the workbench,
+  so a class can be moved to another local folder without using the CLI.
+
+### Engineering and maintenance
+
+- Added versioned `/api/v1/projects/*` endpoints for recent projects, artifact
+  metadata, privacy scanning, bundle download, and safe bundle restore.
+- Added API contract tests, React component tests, and a real-browser acceptance
+  path covering project history, privacy, backup, and restore.
+
 ## 1.8.2 - 2026-07-31
 
 ### User-facing changes

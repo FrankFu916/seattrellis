@@ -1067,6 +1067,176 @@ input:focus-visible,
   background: var(--warning);
 }
 
+.project-workspace-card > header {
+  display: block;
+  padding: 15px;
+}
+
+.project-workspace-card > header h2 {
+  color: var(--text-strong);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.project-workspace-content {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.project-field {
+  display: grid;
+  gap: 4px;
+  color: var(--text-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.project-field input,
+.project-field select {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.project-field small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 450;
+  line-height: 1.4;
+}
+
+.project-refresh-button {
+  justify-self: start;
+  min-height: 32px;
+  padding-block: 6px;
+  font-size: 0.7rem;
+}
+
+.project-artifact-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.project-artifact-group {
+  display: grid;
+  gap: 5px;
+}
+
+.project-artifact-group h3,
+.project-restore h3 {
+  color: var(--text-strong);
+  font-size: 0.72rem;
+}
+
+.project-artifact-row {
+  display: grid;
+  gap: 1px;
+  padding: 8px 9px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.project-artifact-row strong {
+  color: var(--accent);
+  font-size: 0.62rem;
+}
+
+.project-artifact-row span {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-artifact-row small,
+.project-empty,
+.project-warning,
+.project-status,
+.project-error {
+  color: var(--muted);
+  font-size: 0.63rem;
+  line-height: 1.45;
+}
+
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.project-actions button,
+.project-restore button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.68rem;
+}
+
+.project-privacy {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  border-radius: var(--radius-small);
+  font-size: 0.66rem;
+}
+
+.project-privacy.is-safe {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.project-privacy.needs-review {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.project-privacy small,
+.project-privacy li {
+  color: inherit;
+  font-size: 0.61rem;
+}
+
+.project-privacy ul {
+  display: grid;
+  gap: 2px;
+  padding-left: 15px;
+  list-style: disc;
+}
+
+.project-restore {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: var(--line-width) solid var(--border);
+}
+
+.project-file-picker {
+  padding: 12px 10px;
+}
+
+.project-file-picker strong {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-status {
+  color: var(--success);
+}
+
+.project-error {
+  color: var(--danger, var(--warning));
+}
+
 .dialog-backdrop {
   position: fixed;
   z-index: 50;

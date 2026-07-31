@@ -25,6 +25,7 @@ import type {
 import { AppHeader } from "./components/AppHeader";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ExportPreviewDialog } from "./components/ExportPreviewDialog";
+import { ProjectWorkspacePanel } from "./components/ProjectWorkspacePanel";
 import { RosterImportPanel } from "./components/RosterImportPanel";
 import { SeatingCanvas } from "./components/SeatingCanvas";
 import { StepNavigation } from "./components/StepNavigation";
@@ -525,6 +526,7 @@ export function App() {
           <aside className="workspace-side-rail">
             <UnseatedTray students={unseatedStudents} t={t} />
             <DiagnosticsPanel diagnostics={diagnostics} t={t} />
+            <ProjectWorkspacePanel locale={locale} t={t} />
           </aside>
         </main>
       </div>
@@ -542,4 +544,3 @@ export function App() {
     </>
   );
 }
-

@@ -70,6 +70,10 @@ seattrellis workspace
 3. 生成候选方案，查看评分维度，手动调整座位并撤销/重做；
 4. 导出为 HTML、Excel、PNG、PDF、Word、SVG 或 PPTX。
 
+工作台右侧的“班级项目”面板还可以浏览本机最近项目的历史文件，执行分享前隐私
+检查，并直接下载或恢复 `.seattrellis.zip` 备份。学生、规则和 layout 的完整可视化
+编辑仍在后续版本中。
+
 使用 `--no-open-browser` 可禁止自动打开浏览器，使用 `--host` 和 `--port`
 可自定义监听地址。开发模式下可在 `clients/web/` 目录运行 Vite 开发服务器。
 
