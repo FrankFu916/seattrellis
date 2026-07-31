@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### User-facing changes
+
+- Added multi-period rotation plans: teachers can generate several future seat
+  arrangements at once and see repeated-neighbour and fairness summaries.
+- Added local project backup and restore with `.seattrellis.zip`, a recent-projects
+  listing, and a privacy scan before sharing a class folder.
+- Added an optional desktop preview using pywebview. It opens the same React
+  workbench as the browser command and closes its loopback service with the window.
+
+### Engineering and maintenance
+
+- Added a versioned `rotation_plan` JSON artifact, schema export, CLI commands,
+  and `/api/v1/classes/rotation` contract.
+- Project bundles reject path traversal and symlink entries, validate the project
+  manifest before restore, and use a per-session local API bearer token in the
+  desktop preview.
+
 ## 1.8.1 - 2026-07-31
 
 ### User-facing changes

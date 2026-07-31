@@ -230,6 +230,22 @@ if typer is not None:
 
         _run_typer_action(start_workspace)
 
+    @app.command(
+        "desktop",
+        help="Open the optional pywebview desktop workbench.",
+    )
+    def desktop_command(
+        width: int = typer.Option(1280, "--width", help="Window width."),
+        height: int = typer.Option(900, "--height", help="Window height."),
+    ) -> None:
+        def start_desktop() -> None:
+            from seattrellis.desktop import DesktopOptions, run_desktop_app
+
+            typer.echo("Starting SeatTrellis desktop workbench on the local machine.")
+            run_desktop_app(options=DesktopOptions(width=width, height=height))
+
+        _run_typer_action(start_desktop)
+
     @app.command("init-demo", help="Create fictional demo input files under examples/.")
     def init_demo_command(
         output_dir: Path = typer.Option(Path("."), "--output-dir", "-o", help="Directory to create examples in."),
@@ -996,6 +1012,13 @@ def _run_argparse() -> None:
     workspace_parser.add_argument("--port", type=int, default=8765)
     workspace_parser.add_argument("--no-open-browser", action="store_true")
 
+    desktop_parser = subparsers.add_parser(
+        "desktop",
+        help="Open the optional pywebview desktop workbench.",
+    )
+    desktop_parser.add_argument("--width", type=int, default=1280)
+    desktop_parser.add_argument("--height", type=int, default=900)
+
     # init-demo
     init_parser = subparsers.add_parser("init-demo", help="Create fictional demo input files.")
     init_parser.add_argument("--output-dir", "-o", default=".")
@@ -1240,6 +1263,11 @@ def _run_argparse() -> None:
         )
         print(f"SeatTrellis workspace: {options.browser_url}")
         run_workspace_server(options=options)
+    elif args.command == "desktop":
+        from seattrellis.desktop import DesktopOptions, run_desktop_app
+
+        print("Starting SeatTrellis desktop workbench on the local machine.")
+        run_desktop_app(options=DesktopOptions(width=args.width, height=args.height))
     elif args.command == "init-demo":
         paths = init_demo(output_dir=args.output_dir, overwrite=args.overwrite)
         print(f"Demo files ready in {paths['students_csv'].parent}")

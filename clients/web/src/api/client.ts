@@ -28,9 +28,16 @@ async function fetchJson<T>(
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
+  const headers = new Headers(init?.headers);
+  headers.set("Accept", "application/json");
+  const sessionToken = readDesktopSessionToken();
+  if (sessionToken) {
+    headers.set("Authorization", `Bearer ${sessionToken}`);
+  }
+
   try {
     const response = await fetch(`${API_ROOT}${path}`, {
-      headers: { Accept: "application/json" },
+      headers,
       signal: controller.signal,
       ...init,
     });
@@ -169,9 +176,14 @@ export async function dispatchEditorCommand(
 export async function exportDraft(
   request: ExportDraftRequest,
 ): Promise<{ blob: Blob; filename: string }> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const sessionToken = readDesktopSessionToken();
+  if (sessionToken) {
+    headers.set("Authorization", `Bearer ${sessionToken}`);
+  }
   const response = await fetch(`${API_ROOT}/exports`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(request),
   });
   if (!response.ok) {
@@ -185,3 +197,22 @@ export async function exportDraft(
   return { blob, filename };
 }
 
+function readDesktopSessionToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const query = new URLSearchParams(window.location.search);
+    const fromUrl = query.get("session");
+    if (fromUrl) {
+      window.sessionStorage.setItem("seattrellis.desktop.session", fromUrl);
+      // The credential is needed only for the first page load. Removing it
+      // from the visible URL avoids leaking it through copied links or logs.
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return fromUrl;
+    }
+    return window.sessionStorage.getItem("seattrellis.desktop.session");
+  } catch {
+    return null;
+  }
+}
