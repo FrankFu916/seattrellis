@@ -2,8 +2,8 @@ name: Desktop builds
 
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -34,10 +34,39 @@ jobs:
           python -m pip install -e ".[web,desktop-build]"
       - name: Build onedir bundle
         run: python scripts/build_desktop.py --output-dir dist/desktop
+      - name: Archive desktop bundle
+        run: >-
+          python scripts/archive_desktop.py
+          --bundle-dir dist/desktop/SeatTrellis
+          --output-dir dist/release
+          --platform "${{ runner.os }}"
+          --version "${{ github.event.release.tag_name || 'manual' }}"
       - name: Upload desktop bundle
         uses: actions/upload-artifact@v7
         with:
           name: SeatTrellis-${{ runner.os }}
-          path: dist/desktop/SeatTrellis
+          path: dist/release/*.zip
           if-no-files-found: error
           retention-days: 14
+
+  release-assets:
+    name: Attach desktop bundles
+    if: github.event_name == 'release'
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: SeatTrellis-*
+          path: release/
+          merge-multiple: true
+      - name: Generate SHA-256 checksums
+        working-directory: release
+        run: sha256sum *.zip > SHA256SUMS
+      - name: Upload desktop assets to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" release/*.zip release/SHA256SUMS --clobber
