@@ -24,6 +24,7 @@ from pydantic import (
 from seattrellis.editing_protocol import EditorStateEnvelope
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
+from seattrellis.models.rotation import RotationPlan
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.solver.backend import SolverBackend, normalize_solver_backend
@@ -252,6 +253,34 @@ class GenerateClassResponse(VersionedResponse):
     recommended_candidate_id: str
     candidates: list[CandidateSummary]
     editor: EditorStateEnvelope
+
+
+class GenerateRotationPlanRequest(ApiModel):
+    """Generate several future periods from one class draft."""
+
+    draft: ClassDraftRequest
+    period_count: int = Field(default=4, ge=1, le=20)
+    period_labels: list[str] = Field(default_factory=list)
+    options: GenerateOptionsRequest = Field(default_factory=GenerateOptionsRequest)
+
+    @model_validator(mode="after")
+    def labels_match_period_count(
+        self,
+    ) -> "GenerateRotationPlanRequest":
+        labels = [label.strip() for label in self.period_labels]
+        if labels and len(labels) != self.period_count:
+            raise ValueError("period_labels must contain one label per period_count")
+        if any(not label for label in labels):
+            raise ValueError("period_labels cannot contain empty labels")
+        self.period_labels = labels
+        return self
+
+
+class GenerateRotationPlanResponse(VersionedResponse):
+    class_name: str
+    goal: ResolvedGoalSummary
+    warnings: list[str] = Field(default_factory=list)
+    rotation_plan: RotationPlan
 
 
 class CreateLayoutDraftRequest(ApiModel):

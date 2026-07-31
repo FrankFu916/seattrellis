@@ -73,6 +73,16 @@ seattrellis workspace
 使用 `--no-open-browser` 可禁止自动打开浏览器，使用 `--host` 和 `--port`
 可自定义监听地址。开发模式下可在 `clients/web/` 目录运行 Vite 开发服务器。
 
+桌面原型可通过可选的 pywebview 壳启动：
+
+```bash
+python -m pip install -e ".[desktop]"
+seattrellis desktop
+```
+
+桌面壳和浏览器工作台共享同一套 React 资源与本地 API；它仍是原型，正式的
+Windows/macOS 安装包会在完成冷启动、签名和安装卸载验收后发布。
+
 ### Streamlit 网页端（兼容）
 
 ```bash
@@ -93,7 +103,13 @@ seattrellis presets show daily
 seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
 seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history --output outputs/daily.snapshot.json
 seattrellis export --snapshot outputs/daily.snapshot.json --format html
+seattrellis project-rotate --project examples/project.seattrellis.json --periods 4
+seattrellis project-pack --project examples/project.seattrellis.json --output class.seattrellis.zip
 ```
+
+`project-rotate` 会按历史公平性逐期生成未来座位表，并输出重复邻座摘要。
+`project-pack`、`project-restore` 和 `project-privacy` 用于本地备份、恢复和
+分享前的敏感字段检查。
 
 完整命令行用法、Project 工作流、多方案生成与评分见 **[快速开始指南](docs/quickstart.zh.md)**。
 

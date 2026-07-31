@@ -18,6 +18,12 @@ from seattrellis.presets import (
     format_preset_list,
     get_preset,
 )
+from seattrellis.project_bundle import (
+    list_recent_projects,
+    pack_project,
+    restore_project_bundle,
+    scan_project_privacy,
+)
 from seattrellis.schema import (
     format_json_schema_artifacts,
     write_json_schema_files,
@@ -224,6 +230,22 @@ if typer is not None:
 
         _run_typer_action(start_workspace)
 
+    @app.command(
+        "desktop",
+        help="Open the optional pywebview desktop workbench.",
+    )
+    def desktop_command(
+        width: int = typer.Option(1280, "--width", help="Window width."),
+        height: int = typer.Option(900, "--height", help="Window height."),
+    ) -> None:
+        def start_desktop() -> None:
+            from seattrellis.desktop import DesktopOptions, run_desktop_app
+
+            typer.echo("Starting SeatTrellis desktop workbench on the local machine.")
+            run_desktop_app(options=DesktopOptions(width=width, height=height))
+
+        _run_typer_action(start_desktop)
+
     @app.command("init-demo", help="Create fictional demo input files under examples/.")
     def init_demo_command(
         output_dir: Path = typer.Option(Path("."), "--output-dir", "-o", help="Directory to create examples in."),
@@ -274,6 +296,45 @@ if typer is not None:
                     candidate_count=candidates,
                     seed=seed,
                     report_path=report,
+                )
+            )
+        )
+
+    @app.command(
+        "rotation-plan",
+        help="Generate several future seating periods and a fairness summary.",
+    )
+    def rotation_plan_command(
+        students: Path = typer.Option(..., "--students", help="CSV or Excel student file."),
+        layout: Path = typer.Option(..., "--layout", help="Classroom layout JSON."),
+        rules: Path | None = typer.Option(None, "--rules", help="Optional rules JSON."),
+        preset: str | None = typer.Option(None, "--preset", help="Built-in rules preset name."),
+        history: list[Path] = typer.Option([], "--history", help="Historical snapshot path; repeatable."),
+        history_dir: Path | None = typer.Option(None, "--history-dir", help="Historical snapshot directory."),
+        periods: int = typer.Option(4, "--periods", min=1, max=20, help="Number of future periods."),
+        label: list[str] = typer.Option([], "--label", help="Period label; repeat once per period."),
+        name: str = typer.Option("SeatTrellis Rotation Plan", "--name", help="Plan display name."),
+        seed: int | None = typer.Option(None, "--seed", help="Base seed; each period advances it."),
+        time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit per period."),
+        backend: str = typer.Option("auto", "--backend", help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}."),
+        output: Path = typer.Option(Path("outputs/rotation-plan.json"), "--output", "-o", help="Rotation plan JSON path."),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_rotation_result(
+                generate_rotation_plan(
+                    students_path=students,
+                    layout_path=layout,
+                    rules_path=rules,
+                    preset_name=preset,
+                    history_paths=history,
+                    history_dir=history_dir,
+                    period_count=periods,
+                    period_labels=label,
+                    name=name,
+                    seed=seed,
+                    time_limit_seconds=time_limit_seconds,
+                    backend=backend,
+                    output_path=output,
                 )
             )
         )
@@ -597,6 +658,59 @@ if typer is not None:
             )
         )
 
+    @app.command("project-list", help="List recent local SeatTrellis projects.")
+    def project_list_command(
+        root: Path = typer.Option(Path("."), "--root", help="Directory to search."),
+        limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum projects to show."),
+    ) -> None:
+        def render() -> None:
+            projects = list_recent_projects(root, limit=limit)
+            if not projects:
+                typer.echo("No SeatTrellis projects found.")
+                return
+            for item in projects:
+                typer.echo(f"{item.name}\t{item.path}\t{item.modified_at.isoformat()}")
+
+        _run_typer_action(render)
+
+    @app.command("project-privacy", help="Scan a project for sensitive fields before sharing.")
+    def project_privacy_command(
+        project: Path = typer.Option(Path("seattrellis.project.json"), "--project", help="Project JSON path."),
+        include_outputs: bool = typer.Option(True, "--include-outputs/--no-include-outputs", help="Include generated outputs in the scan."),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                scan_project_privacy(project, include_outputs=include_outputs).format()
+            )
+        )
+
+    @app.command("project-pack", help="Back up a project as a .seattrellis.zip file.")
+    def project_pack_command(
+        project: Path = typer.Option(Path("seattrellis.project.json"), "--project", help="Project JSON path."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Bundle output path."),
+        include_outputs: bool = typer.Option(True, "--include-outputs/--no-include-outputs", help="Include generated outputs."),
+        force: bool = typer.Option(False, "--force", help="Replace an existing bundle."),
+    ) -> None:
+        def pack() -> None:
+            result = pack_project(project, output, include_outputs=include_outputs, overwrite=force)
+            typer.echo(f"Project bundle written to {result.path} ({result.file_count} files).")
+            if not result.privacy.safe_for_public_sharing:
+                typer.echo("Privacy note: the backup contains sensitive fields; review before sharing.")
+
+        _run_typer_action(pack)
+
+    @app.command("project-restore", help="Restore a .seattrellis.zip project backup.")
+    def project_restore_command(
+        bundle: Path = typer.Option(..., "--bundle", "-b", help="Project bundle path."),
+        output_dir: Path = typer.Option(..., "--output-dir", "-o", help="Restore directory."),
+        force: bool = typer.Option(False, "--force", help="Merge into a non-empty directory."),
+    ) -> None:
+        _run_typer_action(
+            lambda: typer.echo(
+                f"Project restored to {restore_project_bundle(bundle, output_dir, overwrite=force)}"
+            )
+        )
+
     @app.command("project-info", help="Show project settings and referenced-path status.")
     def project_info_command(
         project: Path = typer.Option(
@@ -646,6 +760,30 @@ if typer is not None:
                     backend=backend,
                     output_path=output,
                     report_path=report,
+                )
+            )
+        )
+
+    @app.command("project-rotate", help="Generate future seating periods from a project file.")
+    def project_rotate_command(
+        project: Path = typer.Option(Path("seattrellis.project.json"), "--project", help="Project JSON path."),
+        periods: int = typer.Option(4, "--periods", min=1, max=20, help="Number of future periods."),
+        label: list[str] = typer.Option([], "--label", help="Period label; repeat once per period."),
+        seed: int | None = typer.Option(None, "--seed", help="Base seed; each period advances it."),
+        time_limit_seconds: float = typer.Option(3.0, "--time-limit", help="Solver time limit per period."),
+        backend: str = typer.Option("auto", "--backend", help=f"Solver backend: {', '.join(SOLVER_BACKENDS)}."),
+        output: Path | None = typer.Option(None, "--output", "-o", help="Rotation plan JSON path."),
+    ) -> None:
+        _run_typer_action(
+            lambda: _print_rotation_result(
+                project_rotate(
+                    project_path=project,
+                    period_count=periods,
+                    period_labels=label,
+                    seed=seed,
+                    time_limit_seconds=time_limit_seconds,
+                    backend=backend,
+                    output_path=output,
                 )
             )
         )
@@ -821,6 +959,7 @@ from seattrellis.service import (  # noqa: E402, F401
     # Public API
     edit_snapshot,
     export,
+    generate_rotation_plan,
     init_demo,
     project_edit,
     project_export,
@@ -829,6 +968,7 @@ from seattrellis.service import (  # noqa: E402, F401
     project_solve,
     project_validate,
     project_repair,
+    project_rotate,
     repair_snapshot,
     run_doctor,
     run_history_report,
@@ -872,6 +1012,13 @@ def _run_argparse() -> None:
     workspace_parser.add_argument("--port", type=int, default=8765)
     workspace_parser.add_argument("--no-open-browser", action="store_true")
 
+    desktop_parser = subparsers.add_parser(
+        "desktop",
+        help="Open the optional pywebview desktop workbench.",
+    )
+    desktop_parser.add_argument("--width", type=int, default=1280)
+    desktop_parser.add_argument("--height", type=int, default=900)
+
     # init-demo
     init_parser = subparsers.add_parser("init-demo", help="Create fictional demo input files.")
     init_parser.add_argument("--output-dir", "-o", default=".")
@@ -911,6 +1058,23 @@ def _run_argparse() -> None:
     solve_parser.add_argument("--candidates", type=int, default=1)
     solve_parser.add_argument("--seed", type=int, default=None)
     solve_parser.add_argument("--report", default=None)
+
+    rotation_parser = subparsers.add_parser(
+        "rotation-plan", help="Generate several future seating periods."
+    )
+    rotation_parser.add_argument("--students", required=True)
+    rotation_parser.add_argument("--layout", required=True)
+    rotation_parser.add_argument("--rules", default=None)
+    rotation_parser.add_argument("--preset", default=None)
+    rotation_parser.add_argument("--history", action="append", default=[])
+    rotation_parser.add_argument("--history-dir", default=None)
+    rotation_parser.add_argument("--periods", type=int, default=4)
+    rotation_parser.add_argument("--label", action="append", default=[])
+    rotation_parser.add_argument("--name", default="SeatTrellis Rotation Plan")
+    rotation_parser.add_argument("--seed", type=int, default=None)
+    rotation_parser.add_argument("--time-limit", type=float, default=3.0)
+    rotation_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
+    rotation_parser.add_argument("--output", "-o", default="outputs/rotation-plan.json")
 
     validate_parser = subparsers.add_parser("validate", help="Validate input files without solving.")
     validate_parser.add_argument("--students", required=True)
@@ -1005,6 +1169,25 @@ def _run_argparse() -> None:
     project_init_parser.add_argument("--candidates", type=int, default=5)
     project_init_parser.add_argument("--force", action="store_true")
 
+    project_list_parser = subparsers.add_parser("project-list", help="List recent local projects.")
+    project_list_parser.add_argument("--root", default=".")
+    project_list_parser.add_argument("--limit", type=int, default=20)
+
+    project_privacy_parser = subparsers.add_parser("project-privacy", help="Scan a project for sensitive fields.")
+    project_privacy_parser.add_argument("--project", default="seattrellis.project.json")
+    project_privacy_parser.add_argument("--no-include-outputs", action="store_true")
+
+    project_pack_parser = subparsers.add_parser("project-pack", help="Create a project backup bundle.")
+    project_pack_parser.add_argument("--project", default="seattrellis.project.json")
+    project_pack_parser.add_argument("--output", "-o", default=None)
+    project_pack_parser.add_argument("--no-include-outputs", action="store_true")
+    project_pack_parser.add_argument("--force", action="store_true")
+
+    project_restore_parser = subparsers.add_parser("project-restore", help="Restore a project backup bundle.")
+    project_restore_parser.add_argument("--bundle", "-b", required=True)
+    project_restore_parser.add_argument("--output-dir", "-o", required=True)
+    project_restore_parser.add_argument("--force", action="store_true")
+
     project_info_parser = subparsers.add_parser("project-info", help="Show project settings.")
     project_info_parser.add_argument("--project", default="seattrellis.project.json")
 
@@ -1020,6 +1203,17 @@ def _run_argparse() -> None:
     project_solve_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
     project_solve_parser.add_argument("--output", "-o", default=None)
     project_solve_parser.add_argument("--report", default=None)
+
+    project_rotate_parser = subparsers.add_parser(
+        "project-rotate", help="Generate future seating periods from a project."
+    )
+    project_rotate_parser.add_argument("--project", default="seattrellis.project.json")
+    project_rotate_parser.add_argument("--periods", type=int, default=4)
+    project_rotate_parser.add_argument("--label", action="append", default=[])
+    project_rotate_parser.add_argument("--seed", type=int, default=None)
+    project_rotate_parser.add_argument("--time-limit", type=float, default=3.0)
+    project_rotate_parser.add_argument("--backend", choices=SOLVER_BACKENDS, default="auto")
+    project_rotate_parser.add_argument("--output", "-o", default=None)
 
     project_edit_parser = subparsers.add_parser("project-edit", help="Edit a project artifact.")
     project_edit_parser.add_argument("--project", default="seattrellis.project.json")
@@ -1069,6 +1263,11 @@ def _run_argparse() -> None:
         )
         print(f"SeatTrellis workspace: {options.browser_url}")
         run_workspace_server(options=options)
+    elif args.command == "desktop":
+        from seattrellis.desktop import DesktopOptions, run_desktop_app
+
+        print("Starting SeatTrellis desktop workbench on the local machine.")
+        run_desktop_app(options=DesktopOptions(width=args.width, height=args.height))
     elif args.command == "init-demo":
         paths = init_demo(output_dir=args.output_dir, overwrite=args.overwrite)
         print(f"Demo files ready in {paths['students_csv'].parent}")
@@ -1117,6 +1316,24 @@ def _run_argparse() -> None:
         print(f"{_solve_output_label(summary)} written to {path}")
         if summary:
             print(summary)
+    elif args.command == "rotation-plan":
+        path, summary = generate_rotation_plan(
+            students_path=args.students,
+            layout_path=args.layout,
+            rules_path=args.rules,
+            preset_name=args.preset,
+            history_paths=args.history,
+            history_dir=args.history_dir,
+            period_count=args.periods,
+            period_labels=args.label,
+            name=args.name,
+            seed=args.seed,
+            time_limit_seconds=args.time_limit,
+            backend=args.backend,
+            output_path=args.output,
+        )
+        print(f"Rotation plan written to {path}")
+        print(summary)
     elif args.command == "validate":
         print(
             run_validate(
@@ -1215,6 +1432,32 @@ def _run_argparse() -> None:
             force=args.force,
         )
         print(f"Project file written to {path}")
+    elif args.command == "project-list":
+        projects = list_recent_projects(args.root, limit=args.limit)
+        if not projects:
+            print("No SeatTrellis projects found.")
+        else:
+            for item in projects:
+                print(f"{item.name}\t{item.path}\t{item.modified_at.isoformat()}")
+    elif args.command == "project-privacy":
+        print(
+            scan_project_privacy(
+                args.project,
+                include_outputs=not args.no_include_outputs,
+            ).format()
+        )
+    elif args.command == "project-pack":
+        result = pack_project(
+            args.project,
+            args.output,
+            include_outputs=not args.no_include_outputs,
+            overwrite=args.force,
+        )
+        print(f"Project bundle written to {result.path} ({result.file_count} files).")
+    elif args.command == "project-restore":
+        print(
+            f"Project restored to {restore_project_bundle(args.bundle, args.output_dir, overwrite=args.force)}"
+        )
     elif args.command == "project-info":
         print(project_info(project_path=args.project))
     elif args.command == "project-validate":
@@ -1232,6 +1475,18 @@ def _run_argparse() -> None:
         print(f"{_solve_output_label(summary)} written to {path}")
         if summary:
             print(summary)
+    elif args.command == "project-rotate":
+        path, summary = project_rotate(
+            project_path=args.project,
+            period_count=args.periods,
+            period_labels=args.label,
+            seed=args.seed,
+            time_limit_seconds=args.time_limit,
+            backend=args.backend,
+            output_path=args.output,
+        )
+        print(f"Rotation plan written to {path}")
+        print(summary)
     elif args.command == "project-edit":
         path, summary = project_edit(
             project_path=args.project,
@@ -1303,6 +1558,12 @@ def _print_edit_result(result: tuple[Path, str]) -> None:
 def _print_repair_result(result: tuple[Path, str]) -> None:
     path, summary = result
     typer.echo(f"Repaired snapshot written to {path}")
+    typer.echo(summary)
+
+
+def _print_rotation_result(result: tuple[Path, str]) -> None:
+    path, summary = result
+    typer.echo(f"Rotation plan written to {path}")
     typer.echo(summary)
 
 

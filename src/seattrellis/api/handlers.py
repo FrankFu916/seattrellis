@@ -19,6 +19,8 @@ from seattrellis.api.models import (
     ExportDraftRequest,
     GenerateClassRequest,
     GenerateClassResponse,
+    GenerateRotationPlanRequest,
+    GenerateRotationPlanResponse,
     HealthResponse,
     InspectClassResponse,
     ResolvedGoalSummary,
@@ -53,7 +55,9 @@ from seattrellis.service_types import (
     ExportRequest,
     PageOptions,
     export_extension,
+    RotationInput,
 )
+from seattrellis.service import compute_rotation_plan
 from seattrellis.solver.errors import SeatTrellisSolveError
 from seattrellis.solver.registry import registered_solver_backends
 
@@ -88,6 +92,7 @@ def capabilities() -> CapabilitiesResponse:
         features=[
             "class-inspection",
             "class-generation",
+            "rotation-plans",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -245,6 +250,57 @@ def generate_class(
             for candidate in candidate_set.candidates
         ],
         editor=resolved_store.create(candidate_set),
+    )
+
+
+def generate_rotation_plan(
+    request: GenerateRotationPlanRequest,
+) -> GenerateRotationPlanResponse:
+    """Generate future periods through the shared class workflow boundary."""
+
+    class_request = GenerateClassRequest(draft=request.draft, options=request.options)
+    draft = _build_class_draft(class_request)
+    try:
+        readiness = inspect_class(draft)
+        readiness.validation.raise_for_errors(title="Class setup is not ready.")
+        output = compute_rotation_plan(
+            RotationInput(
+                students=list(draft.students),
+                layout=draft.layout,
+                rules=readiness.resolved_goal.rules,
+                period_count=request.period_count,
+                period_labels=request.period_labels,
+                preset_name=readiness.resolved_goal.preset_name,
+                history_snapshots=draft.history_snapshots,
+                name=draft.name,
+                seed=request.options.seed,
+                time_limit_seconds=request.options.time_limit_seconds,
+                backend=request.options.backend,
+            )
+        )
+    except MissingOptionalDependencyError as exc:
+        raise ApiProblem(
+            status_code=503,
+            code="feature_unavailable",
+            message="The selected solver is not available in this installation.",
+        ) from exc
+    except (InputFileError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="class_not_ready",
+            message="The class setup is not ready to generate a rotation plan.",
+        ) from exc
+    except SeatTrellisSolveError as exc:
+        raise ApiProblem(
+            status_code=409,
+            code="plan_not_found",
+            message="No rotation plan was found with the current room and rules.",
+        ) from exc
+    return GenerateRotationPlanResponse(
+        class_name=draft.name,
+        goal=_goal_summary(readiness.resolved_goal),
+        warnings=list(dict.fromkeys((*readiness.warnings, *output.plan.warnings))),
+        rotation_plan=output.plan,
     )
 
 

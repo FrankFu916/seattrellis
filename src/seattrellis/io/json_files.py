@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
 from seattrellis.models.rules import RuleSet
+from seattrellis.models.rotation import RotationPlan
 from seattrellis.models.snapshot import SeatingSnapshot
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -60,6 +61,12 @@ def load_candidate_set(path: str | Path) -> CandidateSet:
 
 def load_plan_comparison_report(path: str | Path) -> PlanComparisonReport:
     return _parse_model(PlanComparisonReport, read_json(path), path, "plan comparison report")
+
+
+def load_rotation_plan(path: str | Path) -> RotationPlan:
+    """Load a versioned multi-period rotation plan."""
+
+    return _parse_model(RotationPlan, read_json(path), path, "rotation plan")
 
 
 def load_seating_artifact(path: str | Path) -> SeatingSnapshot | CandidateSet:

@@ -147,6 +147,7 @@ def test_json_schema_files_match_registry() -> None:
         "candidate-set",
         "plan-comparison-report",
         "project",
+        "rotation-plan",
         "editor-command",
         "editor-state",
     ]
@@ -158,6 +159,7 @@ def test_json_schema_files_match_registry() -> None:
         "candidate-set.schema.json",
         "plan-comparison-report.schema.json",
         "project.schema.json",
+        "rotation-plan.schema.json",
         "editor-command.schema.json",
         "editor-state.schema.json",
     }

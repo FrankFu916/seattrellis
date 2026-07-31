@@ -13,6 +13,7 @@ from seattrellis.api.handlers import (
     catalogs,
     export_draft,
     generate_class,
+    generate_rotation_plan,
     health,
     inspect_class_request,
     room_templates,
@@ -32,6 +33,8 @@ from seattrellis.api.models import (
     ExportDraftRequest,
     GenerateClassRequest,
     GenerateClassResponse,
+    GenerateRotationPlanRequest,
+    GenerateRotationPlanResponse,
     HealthResponse,
     InspectClassResponse,
     CompiledLayoutResponse,
@@ -172,6 +175,9 @@ def create_app(
 
     def generate_with_store(request: GenerateClassRequest) -> GenerateClassResponse:
         return generate_class(request, draft_store=resolved_store)
+
+    def generate_rotation(request: GenerateRotationPlanRequest) -> GenerateRotationPlanResponse:
+        return generate_rotation_plan(request)
 
     def get_editor_state(draft_id: str) -> EditorStateEnvelope:
         try:
@@ -440,6 +446,14 @@ def create_app(
             422: {"model": ErrorResponse},
             503: {"model": ErrorResponse},
         },
+        tags=["classes"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/classes/rotation",
+        generate_rotation,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
         tags=["classes"],
     )
     app.add_api_route(
