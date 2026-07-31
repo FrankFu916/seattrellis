@@ -13,6 +13,7 @@
 - `compute_repair(RepairInput) -> RepairOutput`
 - `compute_history_report(HistoryReportInput) -> HistoryReportOutput`
 - `compute_pair_report(PairReportInput) -> PairReportOutput`
+- `compute_rotation_plan(RotationInput) -> RotationOutput`
 - `compute_project_info(ProjectInfoInput) -> ProjectInfoOutput`
 
 ## 文件接口
@@ -20,6 +21,16 @@
 `solve`、`solve_with_report`、`edit_snapshot`、`repair_snapshot`、`run_validate`、
 `run_history_report`、`run_pair_report` 和 `project_*` 函数接受文件路径，
 供 CLI 和 Web 共用。
+
+`generate_rotation_plan` 和 `project_rotate` 按顺序生成未来时段：上一时段的
+snapshot 会加入下一时段的历史输入，因此已有的公平轮换和重复邻座规则会继续生效。
+结果是带 `schema_version` 的 `RotationPlan`，每个 period 仍然是普通
+`SeatingSnapshot`，可以直接编辑、导出或写入历史目录。
+
+本地项目可用 `project_bundle.pack_project` 创建 `.seattrellis.zip`，用
+`restore_project_bundle` 恢复。打包前的 `scan_project_privacy` 只返回文件名和
+字段名，不返回学生数据；恢复会拒绝绝对路径、`..` 路径和符号链接，并在写入目标前
+验证 manifest 和 project JSON。
 导出使用 `seattrellis.service.export` 或
 `seattrellis.exporters.export_snapshot`。新的适配器应构造
 `ExportRequest`，而不是自行组合模板和页面参数：
