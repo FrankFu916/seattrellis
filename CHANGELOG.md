@@ -20,6 +20,9 @@
   PyInstaller onedir recipe for the optional desktop preview. The workflow
   produces unsigned bundles for inspection; installers and signing remain a
   separate release step.
+- Added deterministic ZIP archives and SHA-256 release attachments for future
+  desktop bundles. These assets are uploaded only after all three platform
+  bundle jobs finish successfully.
 
 ## 1.8.2 - 2026-07-31
 

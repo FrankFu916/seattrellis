@@ -46,6 +46,9 @@ python scripts/build_desktop.py
 unsigned bundle，不等同于正式安装包。Windows/macOS 安装器、原生打开/另存为对话框、
 签名、公证和干净机器验收会在此基础上单独完成。
 
+Release 发布事件还会把三个平台的 onedir 目录压成确定性 ZIP，并附加
+`SHA256SUMS`。这一步只负责传递和校验构建产物，不代表已经完成签名或安装器制作。
+
 正式打包前仍需用同一最小功能验证两个对照原型：
 
 1. PySide：打开一个 project，调用 `compute_solve`，展示座位表；
