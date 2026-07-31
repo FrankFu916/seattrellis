@@ -162,7 +162,11 @@ def pack_project(
 
     project_file = Path(project_path).expanduser().resolve()
     root, files = project_files(project_file, include_outputs=include_outputs)
-    output = Path(output_path) if output_path is not None else project_file.with_suffix(".seattrellis.zip")
+    output = (
+        Path(output_path)
+        if output_path is not None
+        else _default_bundle_path(project_file)
+    )
     if output.exists() and not overwrite:
         raise InputFileError(f"Project bundle already exists: {output}. Use --force to overwrite it.")
     privacy = scan_project_privacy(project_file, include_outputs=include_outputs)
@@ -217,6 +221,7 @@ def restore_project_bundle(
         )
 
     try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
         with ZipFile(bundle) as archive:
             manifest = _read_manifest(archive)
             entries = _validated_entries(archive)
@@ -369,6 +374,8 @@ def _read_manifest(archive: ZipFile) -> dict[str, Any]:
         raise InputFileError("Project bundle manifest is incomplete.")
     if not all(isinstance(item, str) for item in data["files"]):
         raise InputFileError("Project bundle manifest files must be strings.")
+    if len(data["files"]) != len(set(data["files"])):
+        raise InputFileError("Project bundle manifest contains duplicate file entries.")
     return data
 
 
@@ -396,3 +403,11 @@ def _safe_archive_name(value: str) -> str:
     if not value or path.is_absolute() or ".." in path.parts or "\\" in value:
         raise InputFileError(f"Unsafe project bundle path: {value!r}")
     return path.as_posix()
+
+
+def _default_bundle_path(project_file: Path) -> Path:
+    name = project_file.name
+    for suffix in (".seattrellis.json", ".project.json", ".json"):
+        if name.endswith(suffix):
+            return project_file.with_name(f"{name[:-len(suffix)]}.seattrellis.zip")
+    return project_file.with_name(f"{name}.seattrellis.zip")
