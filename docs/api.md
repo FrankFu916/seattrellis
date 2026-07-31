@@ -31,6 +31,17 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 `restore_project_bundle` 恢复。打包前的 `scan_project_privacy` 只返回文件名和
 字段名，不返回学生数据；恢复会拒绝绝对路径、`..` 路径和符号链接，并在写入目标前
 验证 manifest 和 project JSON。
+
+本地 React 工作台使用同一套项目服务：
+
+- `GET /api/v1/projects/recent?root=...&limit=...` 返回最近项目的名称、路径和修改时间；
+- `POST /api/v1/projects/history` 返回历史/生成文件的元数据，不返回学生记录；
+- `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；
+- `POST /api/v1/projects/bundle` 下载 `.seattrellis.zip`；
+- `POST /api/v1/projects/restore` 接收本地 bundle 路径或 multipart 上传并恢复到指定目录。
+
+这些接口只绑定本机服务。上传恢复仍受项目包总大小、manifest、路径遍历和符号链接
+校验限制；错误响应不会包含学生数据。
 导出使用 `seattrellis.service.export` 或
 `seattrellis.exporters.export_snapshot`。新的适配器应构造
 `ExportRequest`，而不是自行组合模板和页面参数：

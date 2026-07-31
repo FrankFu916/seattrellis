@@ -31,6 +31,20 @@ Before generation, the workspace explains which optional history, score,
 height, or vision information is unavailable. Quick shuffle remains available
 when the roster contains names only.
 
+### React workbench project panel
+
+`seattrellis workspace` also shows a Project panel beside the classroom flow.
+Enter a local folder and refresh it to find `*.project.json` and
+`*.seattrellis.json` files. Selecting a class shows history and generated-file
+metadata only; student records and scores are not sent to the browser as part
+of this view.
+
+The panel can scan the selected project for sensitive fields, download a
+`.seattrellis.zip` backup, and restore an uploaded bundle to a local folder.
+The same path-safety and manifest checks used by the CLI apply to browser
+uploads. The current panel is a project file and artifact view; visual student,
+rules, and layout editors remain on the roadmap.
+
 ## Advanced tools
 
 The sidebar's Advanced tools choice retains Quick Solve and Project workspace
@@ -108,11 +122,11 @@ sensitive.
 
 ### Project workspace
 
-The Project workspace can open a local project path or accept an uploaded
+The legacy Project workspace can open a local project path or accept an uploaded
 project JSON file. A local path supports validation, solving, and export because
-its referenced files remain available. A standalone upload is validated and
-displayed without resolving its server-side paths; solving and export remain
-disabled until bundled Project upload is available.
+its referenced files remain available. The React workbench project panel adds
+recent-project discovery, history metadata, privacy scanning, and `.seattrellis.zip`
+backup/restore for ordinary browser use.
 
 Path mode intentionally accesses the local path entered by the user. Do not
 expose this Streamlit service to untrusted network users.
