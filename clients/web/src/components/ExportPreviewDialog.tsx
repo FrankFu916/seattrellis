@@ -7,17 +7,25 @@ import { SeatingCanvas } from "./SeatingCanvas";
 type ExportPreviewDialogProps = {
   assignments: SeatAssignment[];
   orientation: "portrait" | "landscape";
+  format: string;
   open: boolean;
+  isSaving: boolean;
+  error: string | null;
   t: Translate;
   onClose: () => void;
+  onSave: (format: string) => void;
 };
 
 export function ExportPreviewDialog({
   assignments,
   orientation,
+  format,
   open,
+  isSaving,
+  error,
   t,
   onClose,
+  onSave,
 }: ExportPreviewDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -103,9 +111,20 @@ export function ExportPreviewDialog({
           />
         </div>
         <footer>
-          <p>{t("export.fileNote")}</p>
-          <button className="primary-button" type="button" disabled>
-            {t("action.save")}
+          {error ? (
+            <p className="export-error" role="alert">
+              {t("export.error", { message: error })}
+            </p>
+          ) : (
+            <p>{t("export.fileNote")}</p>
+          )}
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => onSave(format)}
+            disabled={isSaving}
+          >
+            {isSaving ? t("action.saving") : t("action.save")}
           </button>
         </footer>
       </section>

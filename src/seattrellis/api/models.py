@@ -484,3 +484,32 @@ class RosterUpdatePreviewResponse(VersionedResponse):
     changes: list[RosterChangeItem]
     conflicts: list[RosterConflictItem]
     resulting_students: list[Student] | None = None
+
+
+class ExportDraftRequest(ApiModel):
+    """Export one editing draft as a downloadable file.
+
+    The draft reflects the teacher's current plan, including any manual
+    adjustments, so the downloaded file matches what is displayed.
+    """
+
+    draft_id: str
+    format: Literal[
+        "print-html",
+        "html",
+        "svg",
+        "pptx",
+        "png",
+        "pdf",
+        "docx",
+        "excel",
+    ]
+    orientation: Literal["portrait", "landscape"] = "landscape"
+    locale: Literal["zh", "en"] = "zh"
+    show_student_ids: bool = False
+
+    @validator("draft_id", pre=True)
+    def clean_draft_identifier(cls, value: object) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("draft_id must be a non-empty string.")
+        return value.strip()

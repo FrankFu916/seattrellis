@@ -48,6 +48,7 @@ const zh = {
   "action.preview": "打开导出预览",
   "action.close": "关闭",
   "action.save": "保存一份",
+  "action.saving": "正在保存…",
   "action.useDemo": "使用示例名单",
   "roster.current": "当前名单",
   "roster.ready": "名单完整，可继续",
@@ -116,6 +117,7 @@ const zh = {
   "export.previewTitle": "导出预览",
   "export.previewHint": "这份预览只显示姓名，适合张贴在教室。",
   "export.fileNote": "保存功能将在本机服务连接后启用。",
+  "export.error": "导出失败：{message}",
   "export.page": "A4 · {orientation}",
   "status.selected": "已选择",
 } as const;
@@ -169,6 +171,7 @@ const en: Record<MessageKey, string> = {
   "action.preview": "Open export preview",
   "action.close": "Close",
   "action.save": "Save a copy",
+  "action.saving": "Saving…",
   "action.useDemo": "Use sample roster",
   "roster.current": "Current roster",
   "roster.ready": "Roster looks complete",
@@ -238,6 +241,7 @@ const en: Record<MessageKey, string> = {
   "export.portrait": "Portrait",
   "export.landscape": "Landscape",
   "export.previewTitle": "Export preview",
+  "export.error": "Export failed: {message}",
   "export.previewHint":
     "This preview shows names only and is suitable for a classroom wall.",
   "export.fileNote": "Saving will be available when your local class is connected.",

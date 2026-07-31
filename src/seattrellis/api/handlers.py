@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import importlib.util
+import os
+import tempfile
 from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
 
-from seattrellis.api.drafts import EditorDraftStore
+from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
 from seattrellis.api.errors import ApiProblem
 from seattrellis.api.models import (
     ApiErrorDetail,
     ApiIssue,
     CandidateSummary,
     CapabilitiesResponse,
+    ExportDraftRequest,
     GenerateClassRequest,
     GenerateClassResponse,
     HealthResponse,
@@ -38,9 +44,16 @@ from seattrellis.application.teacher_goals import (
     TeacherGoalSelection,
     list_teacher_goals,
 )
+from seattrellis.exporters import export_snapshot
 from seattrellis.io.json_files import InputFileError
 from seattrellis.io.validation import ValidationIssue
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.service_types import (
+    CANVAS_EXPORT_FORMATS,
+    ExportRequest,
+    PageOptions,
+    export_extension,
+)
 from seattrellis.solver.errors import SeatTrellisSolveError
 from seattrellis.solver.registry import registered_solver_backends
 
@@ -316,3 +329,287 @@ def _safe_validation_issue(issue: ValidationIssue) -> ApiIssue:
 
 def _dedupe(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
+
+
+@dataclass(frozen=True)
+class ExportArtifact:
+    """One rendered export file before it is attached to the response."""
+
+    data: bytes
+    content_type: str
+    filename: str
+
+
+_EXPORT_CONTENT_TYPES: dict[str, str] = {
+    "print-html": "text/html; charset=utf-8",
+    "html": "text/html; charset=utf-8",
+    "svg": "image/svg+xml; charset=utf-8",
+    "pptx": (
+        "application/vnd.openxmlformats-officedocument."
+        "presentationml.presentation"
+    ),
+    "png": "image/png",
+    "pdf": "application/pdf",
+    "docx": (
+        "application/vnd.openxmlformats-officedocument."
+        "wordprocessingml.document"
+    ),
+    "excel": (
+        "application/vnd.openxmlformats-officedocument."
+        "spreadsheetml.sheet"
+    ),
+}
+
+# Bilingual catalog copy for the browser workbench.  The application layer
+# keeps single-language room and goal copy, so this endpoint owns the short
+# teacher-facing translations for the local React client.
+_ROOM_NAME_ZH: dict[str, str] = {
+    "standard-30": "30 座教室",
+    "standard-48": "48 座教室",
+    "standard-60": "60 座教室",
+}
+_ROOM_DESCRIPTION: dict[str, tuple[str, str]] = {
+    "standard-30": (
+        "5 排 × 6 座，中央过道，适合小班。",
+        "5 rows of 6 seats with a center aisle for a smaller class.",
+    ),
+    "standard-48": (
+        "6 排 × 8 座，中央过道，适合常规班级。",
+        "6 rows of 8 seats with a center aisle for a typical class.",
+    ),
+    "standard-60": (
+        "6 排 × 10 座，中央过道，适合大班。",
+        "6 rows of 10 seats with a center aisle for a larger class.",
+    ),
+}
+
+_GOAL_COPY: dict[str, tuple[str, str, str, str]] = {
+    # title_zh, title_en, description_zh, description_en
+    "daily-rotation": (
+        "日常轮换",
+        "Daily rotation",
+        "兼顾视力和身高需求，减少近期重复邻座，并适度轮换位置。",
+        "Balance vision and height needs, vary recent neighbors, and rotate "
+        "seats for everyday classroom use.",
+    ),
+    "quick-shuffle": (
+        "快速打乱",
+        "Quick shuffle",
+        "不依赖成绩或历史记录，快速生成一组中性的随机座位方案。",
+        "Create a neutral shuffle without relying on scores or saved history.",
+    ),
+    "fair-shuffle": (
+        "公平轮换",
+        "Fair shuffle",
+        "优先参考历史座位，让每名学生逐步获得不同的位置和邻座。",
+        "Use seating history to give each student a wider range of positions "
+        "and neighbors over time.",
+    ),
+    "peer-support": (
+        "邻座互助",
+        "Peer support",
+        "让成绩层次不同的学生在邻座范围内适度混合。",
+        "Mix students from different score ranges across neighboring seats.",
+    ),
+}
+
+_EXPORT_FORMAT_COPY: dict[str, tuple[str, str, str, str]] = {
+    "print-html": (
+        "打印版",
+        "Print sheet",
+        "适合 A4 打印或存为 PDF。",
+        "Designed for A4 printing or saving as PDF.",
+    ),
+    "html": (
+        "网页版",
+        "HTML",
+        "适合在浏览器中查看。",
+        "Open in any browser.",
+    ),
+    "svg": (
+        "SVG 矢量图",
+        "SVG image",
+        "矢量格式，方便继续编辑。",
+        "Vector image that stays easy to edit.",
+    ),
+    "pptx": (
+        "PowerPoint",
+        "PowerPoint",
+        "可编辑的幻灯片。",
+        "An editable slide deck.",
+    ),
+    "png": (
+        "PNG 图片",
+        "PNG image",
+        "适合截图和分享。",
+        "A simple image for sharing.",
+    ),
+    "pdf": (
+        "PDF",
+        "PDF",
+        "适合打印或分发。",
+        "Best for printing and sharing.",
+    ),
+    "docx": (
+        "Word",
+        "Word",
+        "可编辑的文档。",
+        "An editable document.",
+    ),
+    "excel": (
+        "Excel",
+        "Excel",
+        "可编辑的表格。",
+        "An editable spreadsheet.",
+    ),
+}
+
+_EXPORT_FORMAT_OPTIONAL_MODULE: dict[str, str | None] = {
+    "print-html": None,
+    "html": None,
+    "svg": None,
+    "pptx": "pptx",
+    "png": "PIL",
+    "pdf": "weasyprint",
+    "docx": "docx",
+    "excel": "openpyxl",
+}
+
+
+def catalogs() -> dict[str, list[dict[str, object]]]:
+    """Return teacher-facing catalogs in the browser workbench contract.
+
+    The response uses camelCase keys to match the committed React client and
+    lists only export formats whose optional dependencies are installed, so a
+    minimal workspace never advertises a download it cannot produce.
+    """
+
+    room_templates_items: list[dict[str, object]] = []
+    for template in list_room_templates():
+        name_zh = _ROOM_NAME_ZH.get(template.template_id, template.name)
+        description = _ROOM_DESCRIPTION.get(
+            template.template_id, (template.name, template.name)
+        )
+        room_templates_items.append(
+            {
+                "id": template.template_id,
+                "name": {
+                    "zh-CN": name_zh,
+                    "en": template.name,
+                },
+                "description": {
+                    "zh-CN": description[0],
+                    "en": description[1],
+                },
+                "rows": template.rows,
+                "columns": template.grid_columns,
+            }
+        )
+
+    goal_items: list[dict[str, object]] = []
+    for goal in list_teacher_goals():
+        if goal.goal_id == "custom":
+            continue
+        copy = _GOAL_COPY.get(
+            goal.goal_id, (goal.title, goal.title, goal.description, goal.description)
+        )
+        goal_items.append(
+            {
+                "id": goal.goal_id,
+                "name": {"zh-CN": copy[0], "en": copy[1]},
+                "description": {"zh-CN": copy[2], "en": copy[3]},
+            }
+        )
+
+    format_items: list[dict[str, object]] = []
+    for output_format, module in _EXPORT_FORMAT_OPTIONAL_MODULE.items():
+        if module is not None and importlib.util.find_spec(module) is None:
+            continue
+        copy = _EXPORT_FORMAT_COPY.get(
+            output_format, (output_format, output_format, "", "")
+        )
+        format_items.append(
+            {
+                "id": output_format,
+                "name": {"zh-CN": copy[0], "en": copy[1]},
+                "description": {"zh-CN": copy[2], "en": copy[3]},
+            }
+        )
+
+    return {
+        "roomTemplates": room_templates_items,
+        "teacherGoals": goal_items,
+        "exportFormats": format_items,
+    }
+
+
+def export_draft(
+    request: ExportDraftRequest,
+    *,
+    draft_store: EditorDraftStore,
+) -> ExportArtifact:
+    """Render the current editing draft into one downloadable file."""
+
+    try:
+        snapshot = draft_store.snapshot(request.draft_id)
+    except EditorDraftNotFoundError as exc:
+        raise ApiProblem(
+            status_code=404,
+            code="editor_draft_not_found",
+            message=(
+                "This seating plan has expired or was already closed. "
+                "Generate the plan again and retry the export."
+            ),
+        ) from exc
+
+    template = "teacher" if request.show_student_ids else "public"
+    extension = export_extension(request.format)
+    # Canvas formats (SVG, PPTX) render at a fixed 16:9 size and reject page
+    # options, while the print-oriented formats honor the requested page.
+    page = (
+        PageOptions()
+        if request.format in CANVAS_EXPORT_FORMATS
+        else PageOptions(orientation=request.orientation)
+    )
+    descriptor, temporary_path = tempfile.mkstemp(suffix=f".{extension}")
+    os.close(descriptor)
+    export_request = ExportRequest(
+        output_format=request.format,
+        output_path=Path(temporary_path),
+        template=template,
+        page=page,
+        locale=request.locale,
+    )
+    try:
+        try:
+            export_snapshot(snapshot, request=export_request)
+        except MissingOptionalDependencyError as exc:
+            raise ApiProblem(
+                status_code=503,
+                code="feature_unavailable",
+                message=(
+                    "The selected export format is not available in this "
+                    "installation. Choose another format or install the "
+                    "required optional component."
+                ),
+            ) from exc
+        except ValueError as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="export_rejected",
+                message=str(exc) or "This export could not be prepared.",
+            ) from exc
+        data = Path(temporary_path).read_bytes()
+    finally:
+        try:
+            os.unlink(temporary_path)
+        except FileNotFoundError:
+            pass
+
+    return ExportArtifact(
+        data=data,
+        content_type=_EXPORT_CONTENT_TYPES.get(
+            request.format, "application/octet-stream"
+        ),
+        filename=f"seating.{extension}",
+    )

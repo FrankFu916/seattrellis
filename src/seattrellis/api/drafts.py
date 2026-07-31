@@ -20,6 +20,7 @@ from seattrellis.editing_protocol import (
     operation_to_domain,
 )
 from seattrellis.models.candidate import CandidateSet
+from seattrellis.models.snapshot import SeatingSnapshot
 
 
 class EditorDraftNotFoundError(KeyError):
@@ -100,6 +101,22 @@ class EditorDraftStore:
             stored = self._get(draft_id)
             stored.touched_at = monotonic()
             return _build_state(stored)
+
+    def snapshot(self, draft_id: str) -> SeatingSnapshot:
+        """Return the current plan as a defensive snapshot for export.
+
+        The snapshot reflects every editing command applied to the draft, so
+        an exported file matches what the teacher currently sees.  Callers
+        receive a deep copy and may not mutate the stored draft through it.
+        """
+
+        with self._lock:
+            stored = self._get(draft_id)
+            stored.touched_at = monotonic()
+            current = stored.session.current_snapshot()
+            if hasattr(current, "model_copy"):
+                return current.model_copy(deep=True)
+            return current.copy(deep=True)
 
     def dispatch(
         self,

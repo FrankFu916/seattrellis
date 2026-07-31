@@ -8,7 +8,10 @@ from uuid import uuid4
 from seattrellis.api.errors import ApiProblem, invalid_request_problem
 from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
 from seattrellis.api.handlers import (
+    ExportArtifact,
     capabilities,
+    catalogs,
+    export_draft,
     generate_class,
     health,
     inspect_class_request,
@@ -26,6 +29,7 @@ from seattrellis.api.models import (
     ApiErrorDetail,
     CapabilitiesResponse,
     ErrorResponse,
+    ExportDraftRequest,
     GenerateClassRequest,
     GenerateClassResponse,
     HealthResponse,
@@ -371,6 +375,18 @@ def create_app(
         resolved_roster_store.delete(draft_id)
         return Response(status_code=204)
 
+    def export_with_store(request: ExportDraftRequest) -> Any:
+        from fastapi.responses import Response
+
+        artifact: ExportArtifact = export_draft(request, draft_store=resolved_store)
+        return Response(
+            content=artifact.data,
+            media_type=artifact.content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
+            },
+        )
+
     app.add_api_route(
         f"{API_PREFIX}/health",
         health,
@@ -395,6 +411,13 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/teacher-goals",
         teacher_goals,
+        methods=["GET"],
+        response_model=None,
+        tags=["catalogs"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/catalogs",
+        catalogs,
         methods=["GET"],
         response_model=None,
         tags=["catalogs"],
@@ -526,6 +549,18 @@ def create_app(
         status_code=204,
         response_model=None,
         tags=["rosters"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/exports",
+        export_with_store,
+        methods=["POST"],
+        response_model=None,
+        responses={
+            404: {"model": ErrorResponse},
+            422: {"model": ErrorResponse},
+            503: {"model": ErrorResponse},
+        },
+        tags=["exports"],
     )
     app.state.editor_draft_store = resolved_store
     app.state.layout_draft_store = resolved_layout_store

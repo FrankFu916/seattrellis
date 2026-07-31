@@ -129,6 +129,87 @@ export type RosterUpdatePreviewResponse = {
   action_counts: Record<string, number>;
   changes: RosterChangeItem[];
   conflicts: RosterConflictItem[];
-  resulting_students: Student[] | null;
+  resulting_students: Array<{
+    student_id?: string | null;
+    name?: string | null;
+  }> | null;
+};
+
+export type EditorSeatState = {
+  seat_id: string;
+  row: number;
+  col: number;
+  enabled: boolean;
+  student_key: string | null;
+  locked: boolean;
+};
+
+export type EditorStudentState = {
+  student_key: string;
+  display_name: string;
+  seat_id: string | null;
+  locked: boolean;
+};
+
+export type EditorState = {
+  kind: "seattrellis_editor_state";
+  protocol_version: string;
+  draft_id: string;
+  revision: number;
+  candidate_id: string | null;
+  undo_depth: number;
+  redo_depth: number;
+  students: EditorStudentState[];
+  seats: EditorSeatState[];
+};
+
+export type GenerateClassRequest = {
+  draft: {
+    name: string;
+    students: Array<{ student_id?: string | null; name?: string | null }>;
+    room: { template_id: string };
+    goal: { goal_id: string };
+  };
+  options?: {
+    candidate_count?: number;
+    seed?: number;
+    time_limit_seconds?: number;
+    backend?: string;
+  };
+};
+
+export type GenerateClassResponse = {
+  class_name: string;
+  recommended_candidate_id: string;
+  candidates: Array<{
+    candidate_id: string;
+    recommended: boolean;
+    total_score: number;
+  }>;
+  warnings: string[];
+  editor: EditorState;
+};
+
+export type ExportDraftRequest = {
+  draft_id: string;
+  format: string;
+  orientation: "portrait" | "landscape";
+  locale?: "zh" | "en";
+  show_student_ids?: boolean;
+};
+
+export type EditorOperation = {
+  kind: string;
+  payload: Record<string, string | null | number>;
+};
+
+export type EditorCommand = {
+  kind: "seattrellis_editor_command";
+  protocol_version: string;
+  command_id: string;
+  draft_id: string;
+  base_revision: number;
+  action: "apply" | "undo" | "redo";
+  operations: EditorOperation[];
 };
 

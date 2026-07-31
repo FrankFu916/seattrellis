@@ -2,6 +2,11 @@ import { demoBootstrap } from "./demo";
 import type {
   BootstrapData,
   CatalogResponse,
+  EditorCommand,
+  EditorState,
+  ExportDraftRequest,
+  GenerateClassRequest,
+  GenerateClassResponse,
   HealthResponse,
   RosterDraftResponse,
   RosterUpdatePreviewRequest,
@@ -11,6 +16,9 @@ import type {
 const API_ROOT = "/api/v1";
 const REQUEST_TIMEOUT_MS = 1800;
 const ROSTER_TIMEOUT_MS = 30_000;
+const GENERATE_TIMEOUT_MS = 30_000;
+
+export const EDITOR_PROTOCOL_VERSION = "1.0";
 
 async function fetchJson<T>(
   path: string,
@@ -124,5 +132,56 @@ export async function previewRosterUpdate(
 
 export async function deleteRosterDraft(draftId: string): Promise<void> {
   await fetchJson<void>(`/rosters/drafts/${draftId}`, { method: "DELETE" });
+}
+
+export async function generateClass(
+  request: GenerateClassRequest,
+): Promise<GenerateClassResponse> {
+  return fetchJson<GenerateClassResponse>(
+    "/classes/generate",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    GENERATE_TIMEOUT_MS,
+  );
+}
+
+export async function fetchEditorState(draftId: string): Promise<EditorState> {
+  return fetchJson<EditorState>(`/editing/drafts/${draftId}`);
+}
+
+export async function dispatchEditorCommand(
+  command: EditorCommand,
+): Promise<EditorState> {
+  return fetchJson<EditorState>(
+    `/editing/drafts/${command.draft_id}/commands`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+    },
+    10_000,
+  );
+}
+
+export async function exportDraft(
+  request: ExportDraftRequest,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${API_ROOT}/exports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    const detail = await safeErrorDetail(response);
+    throw new RosterApiError(response.status, detail.code, detail.message);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const filename = match ? match[1] : `seating.${request.format}`;
+  return { blob, filename };
 }
 

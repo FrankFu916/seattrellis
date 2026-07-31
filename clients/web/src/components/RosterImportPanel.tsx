@@ -128,7 +128,12 @@ export function RosterImportPanel({
 
   function handleConfirm() {
     if (preview?.resulting_students) {
-      onImportConfirmed(preview.resulting_students);
+      onImportConfirmed(
+        preview.resulting_students.map((student) => ({
+          id: student.student_id || student.name || "",
+          name: student.name || student.student_id || "",
+        })),
+      );
     } else if (preview && preview.can_apply) {
       // Fallback: if resulting students are not provided but it's safe,
       // derive from changes — but the API always provides resulting_students
