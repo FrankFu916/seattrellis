@@ -10,6 +10,8 @@
 | PDF | `--format pdf` | `pdf` | WeasyPrint 生成的打印文件 |
 | Word | `--format docx` | `docx` | 可继续编辑的 `.docx` |
 | 打印 HTML | `--format print-html` | 无需 extras | A4 打印友好模板 |
+| SVG | `--format svg` | 无需 extras | 16:9 矢量座位图，便于继续编辑 |
+| PPTX | `--format pptx` | `pptx` | 单页 16:9 可编辑幻灯片 |
 
 ## 使用
 
@@ -31,9 +33,27 @@ seattrellis export \
   --output outputs/candidate-comparison.html
 ```
 
+## 画布导出（SVG / PPTX）
+
+SVG 和 PPTX 使用固定的 16:9 画布，输出与打印 HTML、PDF、Word 相同的
+`public` / `teacher` / `report` 模板和隐私控制，不额外依赖系统字体或
+WeasyPrint。SVG 是自包含矢量图（不含脚本或外部引用），PPTX 是单页
+16:9 幻灯片，形状均为原生可编辑对象。
+
+```bash
+# 导出推荐方案的 SVG 矢量图
+seattrellis export --snapshot outputs/candidates.json --candidate recommended --format svg --output outputs/recommended.svg
+
+# 导出教师内部版 PPTX
+seattrellis export --snapshot outputs/candidates.json --candidate recommended --format pptx --template teacher --output outputs/recommended.pptx
+```
+
+画布格式不接受 A4 页面方向、缩放或页边距参数；`--orientation` 等页面选项
+只对打印 HTML、PDF 和 Word 生效。
+
 ## 模板与隐私
 
-打印 HTML、PDF 和 Word 的内部导出 API 支持三种模板：
+打印 HTML、PDF、Word、SVG 和 PPTX 的内部导出 API 支持三种模板：
 
 - `public`：班级公示版，只展示座位与姓名；
 - `teacher`：教师内部版，可包含学生字段、规则和 warnings；

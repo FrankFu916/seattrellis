@@ -8,7 +8,7 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 - **次版本号 (MINOR)**：向后兼容的新功能。
 - **修订号 (PATCH)**：向后兼容的 Bug 修复。
 
-当前稳定版本为 `1.5.0`，包版本以 `pyproject.toml` 为准。从 v1.0 起，公开
+当前稳定版本为 `1.8.1`，包版本以 `pyproject.toml` 为准。从 v1.0 起，公开
 CLI、文件格式和 service API 的不兼容变更必须通过新的 MAJOR 版本发布。
 
 ## Schema Version
@@ -96,6 +96,8 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 | Typer | 0.26.7–0.27.x |
 | OR-Tools | 9.15.x |
 | Streamlit | 1.50+ 兼容；浏览器主验收使用 1.60 |
+| FastAPI | 0.121–0.127.x |
+| Starlette | 0.49.x（1.x 安全修复受 pydantic v2 迁移阻塞，见 [roadmap](roadmap.md)） |
 | Pillow | 11.3–12.x |
 | WeasyPrint | 69.x |
 | Rust 原生扩展 | Rust ≥ 1.83；Python 3.11–3.14 |

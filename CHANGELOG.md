@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.8.1 - 2026-07-31
+
+### User-facing changes
+
+- The `seattrellis workspace` command now works from a pip install: the
+  pre-built React workbench is bundled in the package, so no separate
+  frontend build step is needed.
+- The workbench no longer falls back to demo data when the local service is
+  running — room templates, teacher goals, and export formats come from the
+  real `/catalogs` API.
+- Generating a plan now uses the real solver through `/classes/generate`,
+  and manual swaps, locks, and undo are applied through the editing command
+  API so the canvas and the exported file always show the same plan.
+- The workbench export step is live: teachers can save the current plan as
+  HTML, print-html, SVG, PPTX, or any other installed export format with the
+  chosen orientation and privacy options.
+
+### Engineering and maintenance
+
+- Bundled the compiled React workbench under `web_static/` and included it in
+  the wheel, fixing the workspace command in installed packages.
+- Added `/catalogs` and `/exports` API endpoints and tested the full
+  generate → edit → export flow over HTTP.
+- Raised FastAPI to 0.121–0.127 and Starlette to 0.49.x to clear two
+  reachable dependency advisories; bumped pypdf and lxml to patched releases.
+  Five Starlette advisories are only fixed in the 1.x line and remain
+  excluded from the audit until the tracked pydantic v2 migration lands.
+- Added httpx to the dev extra so FastAPI TestClient-based API tests run in
+  CI, and declared the PPTX extra so PPTX export tests no longer skip.
+- Added SVG and PPTX coverage to the CLI smoke suite and listed both formats
+  in the export help text.
+
 ## 1.8.0 - 2026-07-30
 
 ### User-facing changes
