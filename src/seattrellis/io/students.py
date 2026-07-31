@@ -6,10 +6,7 @@ from math import isfinite, isnan
 from pathlib import Path
 from typing import Any
 
-try:
-    from pydantic.v1 import ValidationError
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import ValidationError
+from pydantic import ValidationError
 
 from seattrellis.io.json_files import InputFileError
 from seattrellis.models.student import Student

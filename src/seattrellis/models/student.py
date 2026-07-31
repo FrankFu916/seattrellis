@@ -3,10 +3,13 @@ from __future__ import annotations
 from math import isfinite
 from typing import Any
 
-try:
-    from pydantic.v1 import BaseModel, Field, root_validator, validator
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 def _clean_text(value: Any) -> str | None:
@@ -49,29 +52,33 @@ class Student(BaseModel):
     needs: list[str] = Field(default_factory=list)
     attributes: dict[str, Any] = Field(default_factory=dict)
 
-    @validator("student_id", "name", "gender", "notes", pre=True)
+    @field_validator("student_id", "name", "gender", "notes", mode="before")
     def clean_optional_text(cls, value: Any) -> str | None:
         return _clean_text(value)
 
-    @validator("tags", "needs", pre=True)
+    @field_validator("tags", "needs", mode="before")
     def clean_lists(cls, value: Any) -> list[str]:
         return _normalize_list(value)
 
-    @validator("height_cm", "score")
-    def numeric_values_must_be_finite(cls, value: float | None, field: Any) -> float | None:
+    @field_validator("height_cm", "score")
+    def numeric_values_must_be_finite(
+        cls,
+        value: float | None,
+        info: ValidationInfo,
+    ) -> float | None:
         if value is None:
             return None
         if not isfinite(float(value)):
-            raise ValueError(f"{field.name} must be a finite number.")
-        if field.name == "height_cm" and value <= 0:
+            raise ValueError(f"{info.field_name} must be a finite number.")
+        if info.field_name == "height_cm" and value <= 0:
             raise ValueError("height_cm must be positive.")
         return value
 
-    @root_validator(skip_on_failure=True)
-    def require_identifier(cls, values: dict[str, Any]) -> dict[str, Any]:
-        if not values.get("student_id") and not values.get("name"):
+    @model_validator(mode="after")
+    def require_identifier(cls, model: Any) -> Any:
+        if not model.student_id and not model.name:
             raise ValueError("Student requires at least one of student_id or name.")
-        return values
+        return model
 
     @property
     def key(self) -> str:

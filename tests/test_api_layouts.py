@@ -11,7 +11,7 @@ from seattrellis.application.layout_editor import LayoutDraft, LayoutEditingErro
 
 
 def _command(state, command_id: str, action: str, operation=None):
-    return LayoutCommandRequest.parse_obj(
+    return LayoutCommandRequest.model_validate(
         {
             "command_id": command_id,
             "draft_id": state.draft_id,
@@ -111,7 +111,7 @@ def test_empty_layout_draft_remains_editable_but_cannot_compile() -> None:
 
 def test_layout_command_payload_does_not_coerce_strings_or_booleans() -> None:
     with pytest.raises(ValueError):
-        LayoutCommandRequest.parse_obj(
+        LayoutCommandRequest.model_validate(
             {
                 "command_id": "bad",
                 "draft_id": "draft",
@@ -124,7 +124,7 @@ def test_layout_command_payload_does_not_coerce_strings_or_booleans() -> None:
             }
         )
 
-    command = LayoutCommandRequest.parse_obj(
+    command = LayoutCommandRequest.model_validate(
         {
             "command_id": "seat",
             "draft_id": "draft",

@@ -4,10 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, TypeVar
 
-try:
-    from pydantic.v1 import BaseModel, ValidationError
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
@@ -88,9 +85,7 @@ def write_json_model(model: BaseModel, path: str | Path) -> Path:
 
 def _parse_model(model_type: type[ModelT], data: dict[str, Any], path: str | Path, label: str) -> ModelT:
     try:
-        if hasattr(model_type, "model_validate"):
-            return model_type.model_validate(data)  # type: ignore[attr-defined,return-value]
-        return model_type.parse_obj(data)
+        return model_type.model_validate(data)
     except ValidationError as exc:
         errors = "; ".join(_format_validation_error(error) for error in exc.errors())
         raise InputFileError(f"Invalid {label}: {Path(path)}\n{errors}") from exc
@@ -104,6 +99,4 @@ def _format_validation_error(error: dict[str, Any]) -> str:
 
 
 def _model_to_data(model: BaseModel) -> dict[str, Any]:
-    if hasattr(model, "model_dump"):
-        return model.model_dump(mode="json")  # type: ignore[attr-defined,no-any-return]
-    return json.loads(model.json())
+    return model.model_dump(mode="json")

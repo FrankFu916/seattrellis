@@ -547,7 +547,7 @@ def test_candidate_report_localizes_structured_explanations_and_summaries() -> N
     assert "SECRET_STUDENT" not in chinese
     assert "SECRET_STUDENT" not in english
 
-    legacy_report = report.copy(deep=True)
+    legacy_report = report.model_copy(deep=True)
     for entry in legacy_report.candidates:
         entry.score_delta_from_recommended = None
         entry.hard_constraint_checked_count = None

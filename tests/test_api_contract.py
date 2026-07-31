@@ -27,7 +27,7 @@ def _request(
         {"seat_id": f"A{index}", "row": 1, "col": index}
         for index in range(1, seat_count + 1)
     ]
-    return GenerateClassRequest.parse_obj(
+    return GenerateClassRequest.model_validate(
         {
             "draft": {
                 "name": "Class A",
@@ -135,7 +135,7 @@ def test_generation_error_is_structured_without_echoing_student_data() -> None:
 
 
 def test_unknown_template_and_goal_use_private_generic_errors() -> None:
-    template_request = GenerateClassRequest.parse_obj(
+    template_request = GenerateClassRequest.model_validate(
         {
             "draft": {
                 "name": "Class A",
@@ -159,7 +159,7 @@ def test_unknown_template_and_goal_use_private_generic_errors() -> None:
 
 def test_room_selection_requires_one_source() -> None:
     with pytest.raises(ValueError, match="either template_id or layout"):
-        GenerateClassRequest.parse_obj(
+        GenerateClassRequest.model_validate(
             {
                 "draft": {
                     "name": "Class A",
@@ -187,11 +187,11 @@ def test_generate_options_reject_boolean_and_non_finite_numbers(
     field: str,
     value: object,
 ) -> None:
-    payload = _request().dict()
+    payload = _request().model_dump()
     payload["options"][field] = value
 
     with pytest.raises(ValueError):
-        GenerateClassRequest.parse_obj(payload)
+        GenerateClassRequest.model_validate(payload)
 
 
 def test_fastapi_transport_is_loaded_only_when_requested(monkeypatch) -> None:

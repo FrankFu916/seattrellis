@@ -239,7 +239,7 @@ def test_validate_reports_min_distance_and_must_adjacent_conflict(tmp_path) -> N
 def test_validate_reports_unknown_rule_field(tmp_path) -> None:
     message = _validation_error(tmp_path, hard={"fixed_seatz": []})
 
-    assert "extra fields not permitted" in message
+    assert "Extra inputs are not permitted" in message
 
 
 def test_validate_warns_for_model_only_groups_and_cooling() -> None:

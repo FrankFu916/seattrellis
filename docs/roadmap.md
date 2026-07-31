@@ -217,20 +217,16 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
 - 桌面安装包可以固定一个经过完整验证的内置 Python 版本，源码包的兼容范围不受
   该选择影响。
 
-### Pydantic 迁移与 Starlette 升级（已知技术债）
+### Pydantic 迁移与 Starlette 升级（已完成）
 
-- 当前依赖链是 FastAPI 0.121–0.127 + Starlette 0.49.x。Starlette 1.x 的五个
-  已知安全公告（`PYSEC-2026-161`、`2280`、`2281`、`248`、`249`）只在 1.x
-  分支修复，而 Starlette 1.x 需要 FastAPI 0.138+，FastAPI 0.128 起不再支持
-  pydantic v1 API；
-- 因此安全审计中对这五个公告保留了显式排除（见 `security.yml`），等共享模型
-  完成 pydantic v2 迁移后移除；
-- 迁移路径：把约 20 个共享模型从 pydantic v1 兼容 API 改为原生 v2 API
-  （pydantic 2.13.4 已安装，v1 只是兼容层），然后升级 FastAPI 到 0.138+、
-  Starlette 到 1.3.x；
+- v1.8.1 把约 20 个共享模型从 pydantic v1 兼容 API 迁移到原生 v2 API，并升级
+  FastAPI 到 0.138+、Starlette 到 1.3.x；
+- 这解除了 FastAPI 0.128 移除 pydantic v1 支持带来的 Python 3.14 阻塞
+  （此前 v1 模型 + FastAPI 在 Python 3.14 上无法解析请求体），也让 Starlette
+  1.x 的安全修复生效，安全审计不再需要任何排除；
 - 跟踪 Issue：[#36 Migrate API models from pydantic v1 to v2 to unblock
-  FastAPI upgrade](https://github.com/FrankFu916/seattrellis/issues/36)。建议在
-  桌面端与工作台交付稳定后进行，并配合完整测试矩阵和前后端回归验证。
+  FastAPI upgrade](https://github.com/FrankFu916/seattrellis/issues/36) 已随
+  v1.8.1 落地。
 
 ### Rust
 

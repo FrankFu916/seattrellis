@@ -4,10 +4,13 @@ from datetime import datetime, timezone
 from math import isfinite
 from typing import Any, Literal
 
-try:
-    from pydantic.v1 import BaseModel, Field, root_validator, validator
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.schema import CANDIDATE_SCHEMA_VERSION, require_schema_version
@@ -26,19 +29,19 @@ class ScoreDimension(BaseModel):
     rating: ScoreRating = "not_available"
     details: dict[str, Any] = Field(default_factory=dict)
 
-    @validator("score")
+    @field_validator("score")
     def score_in_range(cls, value: float | None) -> float | None:
         if value is not None and (not isfinite(value) or not 0 <= value <= 100):
             raise ValueError("score must be between 0 and 100.")
         return value
 
-    @validator("raw_value")
+    @field_validator("raw_value")
     def raw_value_must_be_finite(cls, value: float | None) -> float | None:
         if value is not None and not isfinite(value):
             raise ValueError("raw_value must be a finite number.")
         return value
 
-    @validator("weight")
+    @field_validator("weight")
     def weight_must_be_non_negative_and_finite(cls, value: float) -> float:
         if not isfinite(value) or value < 0:
             raise ValueError("weight must be a non-negative finite number.")
@@ -69,7 +72,7 @@ class PlanScore(BaseModel):
     total: float
     breakdown: ScoreBreakdown
 
-    @validator("total")
+    @field_validator("total")
     def total_in_range(cls, value: float) -> float:
         if not 0 <= value <= 100:
             raise ValueError("total score must be between 0 and 100.")
@@ -117,7 +120,7 @@ class CandidateSet(BaseModel):
     recommended_candidate_id: str
     warnings: list[str] = Field(default_factory=list)
 
-    @validator("schema_version", pre=True)
+    @field_validator("schema_version", mode="before")
     def supported_schema_version(cls, value: object) -> str:
         return require_schema_version(
             value,
@@ -125,17 +128,17 @@ class CandidateSet(BaseModel):
             artifact="candidate set",
         )
 
-    @root_validator(skip_on_failure=True)
-    def validate_candidate_ids(cls, values: dict[str, Any]) -> dict[str, Any]:
-        candidates = values.get("candidates") or []
+    @model_validator(mode="after")
+    def validate_candidate_ids(cls, model: Any) -> Any:
+        candidates = model.candidates or []
         candidate_ids = [candidate.candidate_id for candidate in candidates]
         if not candidates:
             raise ValueError("candidate set must contain at least one candidate.")
         if len(candidate_ids) != len(set(candidate_ids)):
             raise ValueError("candidate_id values must be unique.")
-        if values.get("recommended_candidate_id") not in set(candidate_ids):
+        if model.recommended_candidate_id not in set(candidate_ids):
             raise ValueError("recommended_candidate_id must reference a candidate.")
-        return values
+        return model
 
     def get_candidate(self, candidate_id: str) -> CandidatePlan:
         selected_id = self.recommended_candidate_id if candidate_id == "recommended" else candidate_id
@@ -155,6 +158,20 @@ class PlanComparisonExplanation(BaseModel):
     rating: ScoreRating
 
 
+def _mark_nullable_number_props(schema: dict[str, Any]) -> None:
+    """Describe nullable compatibility fields accurately in JSON Schema."""
+
+    properties = schema.get("properties", {})
+    for field_name, value_type in (
+        ("score_delta_from_recommended", "number"),
+        ("hard_constraint_checked_count", "integer"),
+        ("hard_constraint_violation_count", "integer"),
+    ):
+        field_schema = properties.get(field_name)
+        if isinstance(field_schema, dict):
+            field_schema["type"] = [value_type, "null"]
+
+
 class PlanComparisonEntry(BaseModel):
     candidate_id: str
     total_score: float
@@ -168,26 +185,13 @@ class PlanComparisonEntry(BaseModel):
     costs: list[str] = Field(default_factory=list)
     history_comparison: dict[str, str] = Field(default_factory=dict)
 
-    @validator("score_delta_from_recommended")
+    @field_validator("score_delta_from_recommended")
     def score_delta_must_be_finite(cls, value: float | None) -> float | None:
         if value is not None and not isfinite(value):
             raise ValueError("score_delta_from_recommended must be finite.")
         return value
 
-    class Config:
-        @staticmethod
-        def schema_extra(schema: dict[str, Any]) -> None:
-            """Describe nullable compatibility fields accurately in JSON Schema."""
-
-            properties = schema.get("properties", {})
-            for field_name, value_type in (
-                ("score_delta_from_recommended", "number"),
-                ("hard_constraint_checked_count", "integer"),
-                ("hard_constraint_violation_count", "integer"),
-            ):
-                field_schema = properties.get(field_name)
-                if isinstance(field_schema, dict):
-                    field_schema["type"] = [value_type, "null"]
+    model_config = ConfigDict(json_schema_extra=_mark_nullable_number_props)
 
 
 class PlanComparisonReport(BaseModel):
@@ -200,7 +204,7 @@ class PlanComparisonReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @validator("schema_version", pre=True)
+    @field_validator("schema_version", mode="before")
     def supported_schema_version(cls, value: object) -> str:
         return require_schema_version(
             value,
@@ -208,21 +212,21 @@ class PlanComparisonReport(BaseModel):
             artifact="plan comparison report",
         )
 
-    @root_validator(skip_on_failure=True)
-    def validate_candidate_references(cls, values: dict[str, Any]) -> dict[str, Any]:
-        candidates = values.get("candidates") or []
+    @model_validator(mode="after")
+    def validate_candidate_references(cls, model: Any) -> Any:
+        candidates = model.candidates or []
         candidate_ids = [candidate.candidate_id for candidate in candidates]
         if not candidates:
             raise ValueError("plan comparison report must contain at least one candidate.")
         if len(candidate_ids) != len(set(candidate_ids)):
             raise ValueError("plan comparison report candidate_id values must be unique.")
-        if values.get("candidate_count") != len(candidates):
+        if model.candidate_count != len(candidates):
             raise ValueError("candidate_count must match the number of report candidates.")
-        if values.get("recommended_candidate_id") not in set(candidate_ids):
+        if model.recommended_candidate_id not in set(candidate_ids):
             raise ValueError(
                 "recommended_candidate_id must reference a report candidate."
             )
-        return values
+        return model
 
 
 class MultiSolveOptions(BaseModel):
@@ -230,13 +234,13 @@ class MultiSolveOptions(BaseModel):
     seed: int = 42
     max_attempts: int | None = None
 
-    @validator("candidate_count")
+    @field_validator("candidate_count")
     def candidate_count_in_range(cls, value: int) -> int:
         if not 1 <= value <= 20:
             raise ValueError("candidates must be between 1 and 20.")
         return value
 
-    @validator("max_attempts")
+    @field_validator("max_attempts")
     def max_attempts_positive(cls, value: int | None) -> int | None:
         if value is not None and value <= 0:
             raise ValueError("max_attempts must be positive.")

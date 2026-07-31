@@ -575,7 +575,7 @@ def test_fairness_report_contains_category_spread() -> None:
 
 def test_old_snapshot_without_metadata_still_loads(tmp_path) -> None:
     snapshot = _snapshot({"S1": "F1", "S2": "B2"})
-    data = json.loads(snapshot.json())
+    data = json.loads(snapshot.model_dump_json())
     data.pop("metadata", None)
     path = tmp_path / "old.snapshot.json"
     path.write_text(json.dumps(data), encoding="utf-8")

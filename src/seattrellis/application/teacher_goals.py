@@ -155,6 +155,4 @@ def resolve_teacher_goal(
 
 
 def _copy_rules(rules: RuleSet) -> RuleSet:
-    if hasattr(rules, "model_copy"):
-        return rules.model_copy(deep=True)  # type: ignore[attr-defined,no-any-return]
-    return rules.copy(deep=True)
+    return rules.model_copy(deep=True)

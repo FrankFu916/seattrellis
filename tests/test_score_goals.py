@@ -73,7 +73,7 @@ def _score_only_rules(**updates: object) -> RuleSet:
 
 
 def test_rule_models_are_backward_compatible_and_validate_percentiles() -> None:
-    rules = RuleSet.parse_obj({"seed": 12, "hard": {}, "soft": {}})
+    rules = RuleSet.model_validate({"seed": 12, "hard": {}, "soft": {}})
 
     assert rules.soft.score_position.enabled is False
     assert rules.soft.score_distribution.enabled is False

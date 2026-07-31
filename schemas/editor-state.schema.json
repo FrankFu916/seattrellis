@@ -2,62 +2,66 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://frankfu916.github.io/seattrellis/schemas/editor-state.schema.json",
   "title": "SeatTrellis Editor State",
-  "type": "object",
+  "additionalProperties": false,
   "properties": {
     "kind": {
+      "const": "seattrellis_editor_state",
       "title": "Kind",
-      "enum": [
-        "seattrellis_editor_state"
-      ],
       "type": "string"
     },
     "protocol_version": {
+      "const": "1.0",
       "title": "Protocol Version",
-      "enum": [
-        "1.0"
-      ],
       "type": "string"
     },
     "draft_id": {
-      "title": "Draft Id",
-      "minLength": 1,
       "maxLength": 128,
+      "minLength": 1,
+      "title": "Draft Id",
       "type": "string"
     },
     "revision": {
-      "title": "Revision",
       "minimum": 0,
+      "title": "Revision",
       "type": "integer"
     },
     "candidate_id": {
-      "title": "Candidate Id",
-      "minLength": 1,
-      "maxLength": 128,
-      "type": "string"
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Id"
     },
     "undo_depth": {
-      "title": "Undo Depth",
       "minimum": 0,
+      "title": "Undo Depth",
       "type": "integer"
     },
     "redo_depth": {
-      "title": "Redo Depth",
       "minimum": 0,
+      "title": "Redo Depth",
       "type": "integer"
     },
     "students": {
-      "title": "Students",
-      "type": "array",
       "items": {
         "$ref": "#/definitions/EditorStudentState"
-      }
+      },
+      "title": "Students",
+      "type": "array"
     },
     "seats": {
-      "title": "Seats",
-      "type": "array",
       "items": {
         "$ref": "#/definitions/EditorSeatState"
-      }
+      },
+      "title": "Seats",
+      "type": "array"
     },
     "hard_constraints": {
       "$ref": "#/definitions/EditorHardConstraintState"
@@ -74,55 +78,57 @@
     "seats",
     "hard_constraints"
   ],
-  "additionalProperties": false,
+  "type": "object",
   "definitions": {
-    "EditorStudentState": {
-      "title": "EditorStudentState",
-      "type": "object",
+    "EditorHardConstraintState": {
+      "additionalProperties": false,
       "properties": {
-        "student_key": {
-          "title": "Student Key",
-          "minLength": 1,
-          "type": "string"
-        },
-        "display_name": {
-          "title": "Display Name",
-          "type": "string"
-        },
-        "seat_id": {
-          "title": "Seat Id",
-          "minLength": 1,
-          "type": "string"
-        },
-        "locked": {
-          "title": "Locked",
-          "default": false,
+        "satisfied": {
+          "title": "Satisfied",
           "type": "boolean"
+        },
+        "checked_rule_count": {
+          "minimum": 0,
+          "title": "Checked Rule Count",
+          "type": "integer"
+        },
+        "violation_count": {
+          "minimum": 0,
+          "title": "Violation Count",
+          "type": "integer"
+        },
+        "violations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Violations",
+          "type": "array"
         }
       },
       "required": [
-        "student_key",
-        "display_name"
+        "satisfied",
+        "checked_rule_count",
+        "violation_count"
       ],
-      "additionalProperties": false
+      "title": "EditorHardConstraintState",
+      "type": "object"
     },
     "EditorSeatState": {
-      "title": "EditorSeatState",
-      "type": "object",
+      "additionalProperties": false,
       "properties": {
         "seat_id": {
-          "title": "Seat Id",
           "minLength": 1,
+          "title": "Seat Id",
           "type": "string"
         },
         "row": {
-          "title": "Row",
           "minimum": 1,
+          "title": "Row",
           "type": "integer"
         },
         "col": {
-          "title": "Col",
           "minimum": 1,
+          "title": "Col",
           "type": "integer"
         },
         "enabled": {
@@ -130,13 +136,21 @@
           "type": "boolean"
         },
         "student_key": {
-          "title": "Student Key",
-          "minLength": 1,
-          "type": "string"
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Student Key"
         },
         "locked": {
-          "title": "Locked",
           "default": false,
+          "title": "Locked",
           "type": "boolean"
         }
       },
@@ -146,40 +160,46 @@
         "col",
         "enabled"
       ],
-      "additionalProperties": false
+      "title": "EditorSeatState",
+      "type": "object"
     },
-    "EditorHardConstraintState": {
-      "title": "EditorHardConstraintState",
-      "type": "object",
+    "EditorStudentState": {
+      "additionalProperties": false,
       "properties": {
-        "satisfied": {
-          "title": "Satisfied",
+        "student_key": {
+          "minLength": 1,
+          "title": "Student Key",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "seat_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seat Id"
+        },
+        "locked": {
+          "default": false,
+          "title": "Locked",
           "type": "boolean"
-        },
-        "checked_rule_count": {
-          "title": "Checked Rule Count",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "violation_count": {
-          "title": "Violation Count",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "violations": {
-          "title": "Violations",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         }
       },
       "required": [
-        "satisfied",
-        "checked_rule_count",
-        "violation_count"
+        "student_key",
+        "display_name"
       ],
-      "additionalProperties": false
+      "title": "EditorStudentState",
+      "type": "object"
     }
   },
   "x-seattrellis-artifact": "editor-state",

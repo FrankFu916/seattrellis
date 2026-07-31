@@ -3,61 +3,114 @@
   "$id": "https://frankfu916.github.io/seattrellis/schemas/student.schema.json",
   "title": "SeatTrellis Student",
   "description": "A student record.\n\nOnly one stable identifier is required: either ``student_id`` or ``name``.\nProject-specific columns can be stored in ``attributes``.",
-  "type": "object",
   "properties": {
     "student_id": {
-      "title": "Student Id",
-      "type": "string"
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Student Id"
     },
     "name": {
-      "title": "Name",
-      "type": "string"
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Name"
     },
     "gender": {
-      "title": "Gender",
-      "type": "string"
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gender"
     },
     "height_cm": {
-      "title": "Height Cm",
-      "type": "number"
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Height Cm"
     },
     "score": {
-      "title": "Score",
-      "type": "number"
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Score"
     },
     "vision": {
-      "title": "Vision",
       "anyOf": [
         {
           "type": "string"
         },
         {
           "type": "number"
+        },
+        {
+          "type": "null"
         }
-      ]
+      ],
+      "default": null,
+      "title": "Vision"
     },
     "notes": {
-      "title": "Notes",
-      "type": "string"
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
     },
     "tags": {
-      "title": "Tags",
-      "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "title": "Tags",
+      "type": "array"
     },
     "needs": {
-      "title": "Needs",
-      "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "title": "Needs",
+      "type": "array"
     },
     "attributes": {
+      "additionalProperties": true,
       "title": "Attributes",
       "type": "object"
     }
   },
+  "type": "object",
   "x-seattrellis-artifact": "student"
 }

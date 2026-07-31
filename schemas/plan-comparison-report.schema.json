@@ -2,25 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://frankfu916.github.io/seattrellis/schemas/plan-comparison-report.schema.json",
   "title": "SeatTrellis Plan Comparison Report",
-  "type": "object",
   "properties": {
     "schema_version": {
-      "title": "Schema Version",
       "default": "0.2.2",
+      "title": "Schema Version",
       "type": "string"
     },
     "kind": {
-      "title": "Kind",
+      "const": "plan_comparison_report",
       "default": "plan_comparison_report",
-      "enum": [
-        "plan_comparison_report"
-      ],
+      "title": "Kind",
       "type": "string"
     },
     "created_at": {
+      "format": "date-time",
       "title": "Created At",
-      "type": "string",
-      "format": "date-time"
+      "type": "string"
     },
     "candidate_count": {
       "title": "Candidate Count",
@@ -31,20 +28,21 @@
       "type": "string"
     },
     "candidates": {
-      "title": "Candidates",
-      "type": "array",
       "items": {
         "$ref": "#/definitions/PlanComparisonEntry"
-      }
+      },
+      "title": "Candidates",
+      "type": "array"
     },
     "warnings": {
-      "title": "Warnings",
-      "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "title": "Warnings",
+      "type": "array"
     },
     "metadata": {
+      "additionalProperties": true,
       "title": "Metadata",
       "type": "object"
     }
@@ -54,52 +52,9 @@
     "recommended_candidate_id",
     "candidates"
   ],
+  "type": "object",
   "definitions": {
-    "PlanComparisonExplanation": {
-      "title": "PlanComparisonExplanation",
-      "description": "Locale-neutral explanation data for comparison report renderers.",
-      "type": "object",
-      "properties": {
-        "kind": {
-          "title": "Kind",
-          "enum": [
-            "strength",
-            "trade_off",
-            "best_available"
-          ],
-          "type": "string"
-        },
-        "dimension": {
-          "title": "Dimension",
-          "type": "string"
-        },
-        "score": {
-          "title": "Score",
-          "minimum": 0,
-          "maximum": 100,
-          "type": "number"
-        },
-        "rating": {
-          "title": "Rating",
-          "enum": [
-            "high",
-            "medium",
-            "low",
-            "not_available"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "kind",
-        "dimension",
-        "score",
-        "rating"
-      ]
-    },
     "PlanComparisonEntry": {
-      "title": "PlanComparisonEntry",
-      "type": "object",
       "properties": {
         "candidate_id": {
           "title": "Candidate Id",
@@ -110,6 +65,15 @@
           "type": "number"
         },
         "score_delta_from_recommended": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "title": "Score Delta From Recommended",
           "type": [
             "number",
@@ -121,62 +85,131 @@
           "type": "boolean"
         },
         "hard_constraint_checked_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "title": "Hard Constraint Checked Count",
-          "minimum": 0,
           "type": [
             "integer",
             "null"
           ]
         },
         "hard_constraint_violation_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "title": "Hard Constraint Violation Count",
-          "minimum": 0,
           "type": [
             "integer",
             "null"
           ]
         },
         "dimension_scores": {
-          "title": "Dimension Scores",
-          "type": "object",
           "additionalProperties": {
-            "type": "number"
-          }
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Dimension Scores",
+          "type": "object"
         },
         "explanations": {
-          "title": "Explanations",
-          "type": "array",
           "items": {
             "$ref": "#/definitions/PlanComparisonExplanation"
-          }
+          },
+          "title": "Explanations",
+          "type": "array"
         },
         "advantages": {
-          "title": "Advantages",
-          "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "title": "Advantages",
+          "type": "array"
         },
         "costs": {
-          "title": "Costs",
-          "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "title": "Costs",
+          "type": "array"
         },
         "history_comparison": {
-          "title": "History Comparison",
-          "type": "object",
           "additionalProperties": {
             "type": "string"
-          }
+          },
+          "title": "History Comparison",
+          "type": "object"
         }
       },
       "required": [
         "candidate_id",
         "total_score",
         "hard_constraints_satisfied"
-      ]
+      ],
+      "title": "PlanComparisonEntry",
+      "type": "object"
+    },
+    "PlanComparisonExplanation": {
+      "description": "Locale-neutral explanation data for comparison report renderers.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "strength",
+            "trade_off",
+            "best_available"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "rating": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "not_available"
+          ],
+          "title": "Rating",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "dimension",
+        "score",
+        "rating"
+      ],
+      "title": "PlanComparisonExplanation",
+      "type": "object"
     }
   },
   "x-seattrellis-artifact": "plan-comparison-report",

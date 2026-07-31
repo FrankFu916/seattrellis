@@ -16,10 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-try:
-    from pydantic.v1 import ValidationError
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import ValidationError
+from pydantic import ValidationError
 
 from seattrellis.application.class_workflow import GenerateOptions
 from seattrellis.application.room_templates import (

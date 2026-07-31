@@ -3,10 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-try:
-    from pydantic.v1 import BaseModel, Field, validator
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet
@@ -33,7 +30,7 @@ class SeatingSnapshot(BaseModel):
     objective_value: float | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
 
-    @validator("schema_version", pre=True)
+    @field_validator("schema_version", mode="before")
     def supported_schema_version(cls, value: object) -> str:
         return require_schema_version(
             value,

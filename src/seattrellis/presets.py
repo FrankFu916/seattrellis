@@ -403,12 +403,8 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
 
 
 def _model_to_data(model: RuleSet) -> dict[str, Any]:
-    if hasattr(model, "model_dump"):
-        return model.model_dump(mode="json")  # type: ignore[attr-defined,no-any-return]
-    return model.dict()
+    return model.model_dump(mode="json")
 
 
 def _model_to_json(model: RuleSet) -> str:
-    if hasattr(model, "model_dump_json"):
-        return model.model_dump_json(indent=2)  # type: ignore[attr-defined,no-any-return]
-    return model.json(indent=2)
+    return model.model_dump_json(indent=2)

@@ -78,7 +78,7 @@ def _candidate_set() -> CandidateSet:
 
 
 def _command(state, command_id: str, action: str, operations=()):
-    return EditorCommandEnvelope.parse_obj(
+    return EditorCommandEnvelope.model_validate(
         {
             "kind": "seattrellis_editor_command",
             "protocol_version": EDITOR_PROTOCOL_VERSION,
@@ -94,7 +94,7 @@ def _command(state, command_id: str, action: str, operations=()):
 def test_draft_state_is_minimized_and_does_not_serialize_private_fields() -> None:
     state = EditorDraftStore().create(_candidate_set())
 
-    serialized = state.json()
+    serialized = state.model_dump_json()
     assert state.candidate_id == "candidate_01"
     assert [student.display_name for student in state.students] == ["Alice", "Bob"]
     # The editor contract carries only opaque keys and display names.  No

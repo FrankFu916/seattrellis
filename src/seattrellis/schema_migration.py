@@ -11,10 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-try:
-    from pydantic.v1 import BaseModel, ValidationError
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from seattrellis.io.json_files import InputFileError, read_json
 from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
@@ -94,10 +91,7 @@ def parse_migratable_artifact(
 
     artifact, model_type = _detect_artifact(data, source)
     try:
-        if hasattr(model_type, "model_validate"):
-            model = model_type.model_validate(data)  # type: ignore[attr-defined]
-        else:
-            model = model_type.parse_obj(data)
+        model = model_type.model_validate(data)
     except ValidationError as exc:
         details = "; ".join(_format_error(error) for error in exc.errors())
         raise InputFileError(f"Cannot migrate invalid {artifact}: {source}\n{details}") from exc
@@ -229,9 +223,7 @@ def _write_json_data_atomically(data: dict[str, Any], output: Path) -> None:
 
 
 def _model_to_data(model: BaseModel) -> dict[str, Any]:
-    if hasattr(model, "model_dump"):
-        return model.model_dump(mode="json")  # type: ignore[attr-defined,no-any-return]
-    return json.loads(model.json())
+    return model.model_dump(mode="json")
 
 
 def _merge_normalized_data(original: Any, normalized: Any) -> Any:

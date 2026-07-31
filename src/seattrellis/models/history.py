@@ -4,10 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-try:
-    from pydantic.v1 import BaseModel, Field, validator
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class SeatPositionCategory(str, Enum):
@@ -63,7 +60,7 @@ class SeatHistoryRecord(BaseModel):
     unknown_seat: bool = False
     disabled_seat: bool = False
 
-    @validator("categories", pre=True)
+    @field_validator("categories", mode="before")
     def normalize_categories(cls, value: Any) -> list[str]:
         if value is None:
             return []
@@ -107,7 +104,7 @@ class PairHistoryRecord(BaseModel):
     first_seat_disabled: bool = False
     second_seat_disabled: bool = False
 
-    @validator("relations", pre=True)
+    @field_validator("relations", mode="before")
     def normalize_relations(cls, value: Any) -> list[str]:
         if value is None:
             return []

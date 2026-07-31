@@ -114,9 +114,7 @@ class EditorDraftStore:
             stored = self._get(draft_id)
             stored.touched_at = monotonic()
             current = stored.session.current_snapshot()
-            if hasattr(current, "model_copy"):
-                return current.model_copy(deep=True)
-            return current.copy(deep=True)
+            return current.model_copy(deep=True)
 
     def dispatch(
         self,
@@ -291,9 +289,7 @@ def _clean_session(session: EditingSession) -> EditingSession:
 
 
 def _copy_candidate_set(candidate_set: CandidateSet) -> CandidateSet:
-    if hasattr(candidate_set, "model_copy"):
-        return candidate_set.model_copy(deep=True)  # type: ignore[attr-defined,no-any-return]
-    return candidate_set.copy(deep=True)
+    return candidate_set.model_copy(deep=True)
 
 
 def _clean_draft_id(value: str) -> str:
