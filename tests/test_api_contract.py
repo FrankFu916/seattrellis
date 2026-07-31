@@ -14,7 +14,11 @@ from seattrellis.api.handlers import (
     room_templates,
     teacher_goals,
 )
-from seattrellis.api.models import API_PREFIX, GenerateClassRequest
+from seattrellis.api.models import (
+    API_PREFIX,
+    GenerateClassRequest,
+    GenerateRotationPlanRequest,
+)
 from seattrellis.optional import MissingOptionalDependencyError
 
 
@@ -66,6 +70,7 @@ def test_system_and_catalog_contracts_are_versioned() -> None:
     assert capability_response.features == [
         "class-inspection",
         "class-generation",
+        "rotation-plans",
         "layout-editing",
         "roster-mapping",
         "roster-update-preview",
@@ -118,6 +123,24 @@ def test_generate_class_runs_through_existing_application_workflow() -> None:
     serialized = response.json()
     assert "score_balance" not in serialized
     assert "solver_backend" not in serialized
+
+
+def test_generate_rotation_plan_returns_versioned_periods() -> None:
+    request = GenerateRotationPlanRequest.model_validate(
+        {
+            **_request().model_dump(mode="json"),
+            "period_count": 2,
+            "period_labels": ["Monday", "Friday"],
+        }
+    )
+    from seattrellis.api.handlers import generate_rotation_plan
+
+    response = generate_rotation_plan(request)
+    assert response.api_version == "1"
+    assert [period.label for period in response.rotation_plan.periods] == [
+        "Monday",
+        "Friday",
+    ]
 
 
 def test_generation_error_is_structured_without_echoing_student_data() -> None:
@@ -224,6 +247,7 @@ def test_fastapi_routes_use_only_the_versioned_prefix_when_available() -> None:
         f"{API_PREFIX}/catalogs",
         f"{API_PREFIX}/classes/inspect",
         f"{API_PREFIX}/classes/generate",
+        f"{API_PREFIX}/classes/rotation",
         f"{API_PREFIX}/editing/drafts/{{draft_id}}",
         f"{API_PREFIX}/editing/drafts/{{draft_id}}/commands",
         f"{API_PREFIX}/layouts/drafts",

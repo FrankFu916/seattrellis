@@ -56,6 +56,7 @@ from seattrellis.io.validation import (
 from seattrellis.models.candidate import CandidatePlan, CandidateSet, MultiSolveOptions
 from seattrellis.models.history import FairnessReport, PairHistoryReport
 from seattrellis.models.project import SeatTrellisProject
+from seattrellis.models.rotation import RotationPeriod, RotationPlan
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import (
@@ -81,6 +82,8 @@ from seattrellis.service_types import (
     ProjectInfoOutput,
     RepairInput,
     RepairOutput,
+    RotationInput,
+    RotationOutput,
     SolveInput,
     SolveOutput,
     ValidateInput,
@@ -169,6 +172,110 @@ def compute_solve(input: SolveInput) -> SolveOutput:
         summary=summary,
         plan_comparison_report=report,
     )
+
+
+def compute_rotation_plan(input: RotationInput) -> RotationOutput:
+    """Generate future periods one at a time with prior periods as history.
+
+    Sequential solving deliberately reuses the existing fairness and recent
+    neighbour penalties. It keeps the model understandable and avoids a
+    large joint CP-SAT problem while still making every generated period
+    available to the next one.
+    """
+
+    labels = tuple(input.period_labels) or tuple(
+        f"Period {index}" for index in range(1, input.period_count + 1)
+    )
+    base_history = list(input.history_snapshots)
+    generated: list[SeatingSnapshot] = []
+    warnings: list[str] = []
+    periods: list[RotationPeriod] = []
+
+    for index, label in enumerate(labels, start=1):
+        period_seed = None if input.seed is None else input.seed + index - 1
+        result = compute_solve(
+            SolveInput(
+                students=input.students,
+                layout=input.layout,
+                rules=input.rules,
+                preset_name=input.preset_name,
+                history_snapshots=[*base_history, *generated],
+                candidate_count=1,
+                seed=period_seed,
+                time_limit_seconds=input.time_limit_seconds,
+                backend=input.backend,
+            )
+        )
+        candidate = result.candidate_set.get_candidate("recommended")
+        snapshot = candidate.snapshot.model_copy(
+            update={
+                "metadata": {
+                    **candidate.snapshot.metadata,
+                    "rotation_period": index,
+                    "rotation_label": label,
+                }
+            }
+        )
+        periods.append(RotationPeriod(period=index, label=label, snapshot=snapshot))
+        generated.append(snapshot)
+        warnings.extend(result.warnings or [])
+
+    fairness = build_fairness_report(
+        build_seat_history(input.students, input.layout, generated)
+    )
+    pair_report = build_pair_history_report(
+        build_pair_history(input.students, input.layout, generated),
+        top=10,
+    )
+    repeated_pairs = [
+        pair
+        for pair in pair_report.pairs
+        if pair.total_occurrences > 1
+    ]
+    max_occurrences = max(
+        (pair.total_occurrences for pair in pair_report.pairs),
+        default=0,
+    )
+    plan = RotationPlan(
+        name=input.name,
+        periods=periods,
+        base_history_count=len(base_history),
+        fairness_summary={
+            "history_count": fairness.history_count,
+            "category_totals": fairness.category_totals,
+            "summary": fairness.summary,
+        },
+        pair_repeat_summary={
+            "history_count": pair_report.history_count,
+            "pair_count": pair_report.pair_count,
+            "repeated_pair_count": len(repeated_pairs),
+            "max_occurrences": max_occurrences,
+            "relation_totals": pair_report.relation_totals,
+            "repeated_pairs": [pair.model_dump(mode="json") for pair in repeated_pairs],
+        },
+        warnings=list(dict.fromkeys(warnings)),
+        metadata={
+            "period_count": input.period_count,
+            "backend": input.backend,
+            "seed": input.seed,
+        },
+    )
+    summary = format_rotation_summary(plan)
+    return RotationOutput(plan=plan, summary=summary)
+
+
+def format_rotation_summary(plan: RotationPlan) -> str:
+    """Format a short summary suitable for CLI and project history views."""
+
+    pair_summary = plan.pair_repeat_summary
+    lines = [
+        f"Generated {plan.period_count} rotation periods.",
+        f"Repeated neighbour pairs: {pair_summary.get('repeated_pair_count', 0)}.",
+        f"Most repeated pair count: {pair_summary.get('max_occurrences', 0)}.",
+    ]
+    if plan.warnings:
+        lines.extend(f"Warning: {warning}" for warning in plan.warnings)
+    return "\n".join(lines)
 
 
 def compute_validate(input: ValidateInput) -> ValidateOutput:
@@ -529,6 +636,55 @@ def solve_with_report(
         summary = f"{summary}\n\n{report_line}" if summary else report_line
 
     return path, summary
+
+
+def generate_rotation_plan(
+    *,
+    students_path: str | Path,
+    layout_path: str | Path,
+    rules_path: str | Path | None = None,
+    preset_name: str | None = None,
+    history_paths: Sequence[str | Path] | None = None,
+    history_dir: str | Path | None = None,
+    period_count: int = 4,
+    period_labels: Sequence[str] | None = None,
+    name: str = "SeatTrellis Rotation Plan",
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+    output_path: str | Path = "outputs/rotation-plan.json",
+) -> tuple[Path, str]:
+    """Generate and save a versioned multi-period rotation plan."""
+
+    students = read_students(students_path)
+    layout = load_layout(layout_path)
+    rules, preset = load_rules_with_preset(
+        rules_path=rules_path,
+        preset_name=preset_name,
+    )
+    history_snapshots = load_history_snapshots(
+        history_paths=history_paths,
+        history_dir=history_dir,
+    )
+    result = compute_rotation_plan(
+        RotationInput(
+            students=students,
+            layout=layout,
+            rules=rules,
+            period_count=period_count,
+            period_labels=period_labels or (),
+            preset_name=preset.name if preset is not None else preset_name,
+            history_snapshots=history_snapshots,
+            name=name,
+            seed=seed,
+            time_limit_seconds=time_limit_seconds,
+            backend=backend,
+        )
+    )
+    if preset is not None:
+        result.plan.metadata["preset"] = preset.name
+    path = write_json_model(result.plan, output_path)
+    return path, result.summary
 
 
 def export(
@@ -950,6 +1106,42 @@ def project_solve(
         seed=seed,
         report_path=report_path,
         backend=backend,
+    )
+
+
+def project_rotate(
+    *,
+    project_path: str | Path = "seattrellis.project.json",
+    period_count: int = 4,
+    period_labels: Sequence[str] | None = None,
+    name: str | None = None,
+    seed: int | None = None,
+    time_limit_seconds: float = 3.0,
+    backend: str = "auto",
+    output_path: str | Path | None = None,
+) -> tuple[Path, str]:
+    """Generate future periods using the inputs and history in a project."""
+
+    project, paths = load_project_paths(
+        project_path,
+        require_inputs=True,
+        require_history=True,
+        create_outputs=True,
+    )
+    if output_path is None:
+        output_path = paths.outputs_dir / "rotation-plan.json"
+    return generate_rotation_plan(
+        students_path=paths.students,
+        layout_path=paths.layout,
+        rules_path=paths.rules,
+        history_dir=paths.history_dir,
+        period_count=period_count,
+        period_labels=period_labels,
+        name=name or f"{project.name} Rotation Plan",
+        seed=seed,
+        time_limit_seconds=time_limit_seconds,
+        backend=backend,
+        output_path=output_path,
     )
 
 

@@ -17,6 +17,7 @@ from seattrellis.models.layout import ClassroomLayout
 from seattrellis.io.project import ProjectPaths
 from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.rules import RuleSet
+from seattrellis.models.rotation import RotationPlan
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.io.validation import ValidationReport
@@ -203,6 +204,44 @@ class SolveOutput:
     warnings: list[str] | None = None
     summary: str | None = None
     plan_comparison_report: PlanComparisonReport | None = None
+
+
+@dataclass(frozen=True)
+class RotationInput:
+    """Pure in-memory request for sequential multi-period solving."""
+
+    students: list[Student]
+    layout: ClassroomLayout
+    rules: RuleSet
+    period_count: int = 4
+    period_labels: Sequence[str] = field(default_factory=tuple)
+    preset_name: str | None = None
+    history_snapshots: Sequence[SeatingSnapshot] = field(default_factory=tuple)
+    name: str = "SeatTrellis Rotation Plan"
+    seed: int | None = None
+    time_limit_seconds: float = 3.0
+    backend: SolverBackend = "auto"
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.period_count <= 20:
+            raise ValueError("period_count must be between 1 and 20")
+        if not isfinite(self.time_limit_seconds) or self.time_limit_seconds < 0.1:
+            raise ValueError("time_limit_seconds must be a finite number >= 0.1")
+        labels = tuple(str(label).strip() for label in self.period_labels)
+        if labels and len(labels) != self.period_count:
+            raise ValueError("period_labels must contain one label per period")
+        if any(not label for label in labels):
+            raise ValueError("period labels cannot be empty")
+        object.__setattr__(self, "period_labels", labels)
+        object.__setattr__(self, "backend", normalize_solver_backend(self.backend))
+
+
+@dataclass(frozen=True)
+class RotationOutput:
+    """Generated plan and a compact human-readable summary."""
+
+    plan: RotationPlan
+    summary: str
 
 
 @dataclass(frozen=True)

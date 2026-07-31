@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError
 from seattrellis.io.json_files import InputFileError, read_json
 from seattrellis.models.candidate import CandidateSet, PlanComparisonReport
 from seattrellis.models.project import SeatTrellisProject
+from seattrellis.models.rotation import RotationPlan
 from seattrellis.models.rules import RuleSet
 from seattrellis.models.snapshot import SeatingSnapshot
 
@@ -109,6 +110,8 @@ def _detect_artifact(
         return "plan comparison report", PlanComparisonReport
     if kind == "seattrellis_project":
         return "project", SeatTrellisProject
+    if kind == "rotation_plan":
+        return "rotation plan", RotationPlan
     if {"students", "layout", "rules", "assignments"} <= set(data):
         return "snapshot", SeatingSnapshot
     if {"students", "layout", "rules"} <= set(data):
@@ -118,7 +121,7 @@ def _detect_artifact(
     raise InputFileError(
         "Cannot identify a migratable SeatTrellis artifact: "
         f"{source}. Expected ruleset, snapshot, candidate set, plan comparison "
-        "report, or project JSON."
+        "report, rotation plan, or project JSON."
     )
 
 
