@@ -129,12 +129,20 @@ def create_app(
     @app.middleware("http")
     async def enforce_local_transport(request: Request, call_next: Any) -> Any:
         try:
+            is_api_request = request.url.path == API_PREFIX or request.url.path.startswith(
+                f"{API_PREFIX}/"
+            )
             resolved_policy.validate(
                 host_header=request.headers.get("host"),
                 origin_header=request.headers.get("origin"),
                 authorization_header=request.headers.get("authorization"),
                 request_scheme=request.url.scheme,
-                require_session=request.method != "OPTIONS",
+                # The desktop URL carries the one-time token in the initial
+                # page query so the React client can move it to sessionStorage.
+                # Static HTML/JS must therefore load before Authorization can
+                # be attached; only API routes expose local data and require
+                # the bearer token.
+                require_session=is_api_request and request.method != "OPTIONS",
             )
         except ApiProblem as problem:
             return JSONResponse(
