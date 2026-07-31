@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.8.2 - 2026-07-31
 
 ### User-facing changes
 
