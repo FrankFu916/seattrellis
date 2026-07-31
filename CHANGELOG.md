@@ -16,6 +16,10 @@
   metadata, privacy scanning, bundle download, and safe bundle restore.
 - Added API contract tests, React component tests, and a real-browser acceptance
   path covering project history, privacy, backup, and restore.
+- Added a standalone `seattrellis-desktop` entry point and a reproducible
+  PyInstaller onedir recipe for the optional desktop preview. The workflow
+  produces unsigned bundles for inspection; installers and signing remain a
+  separate release step.
 
 ## 1.8.2 - 2026-07-31
 
