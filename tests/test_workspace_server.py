@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from seattrellis.optional import MissingOptionalDependencyError
+from seattrellis.api.security import LocalApiPolicy
 from seattrellis.workspace_server import (
     WorkspaceServerOptions,
     create_workspace_app,
@@ -55,6 +56,40 @@ def test_workspace_app_serves_static_client_and_api(tmp_path: Path) -> None:
     assert "SeatTrellis" in page.text
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
+
+
+def test_session_policy_allows_static_bootstrap_before_react_reads_token(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    assets = tmp_path / "client"
+    assets.mkdir()
+    (assets / "index.html").write_text("<main>SeatTrellis</main>", encoding="utf-8")
+    app = create_workspace_app(
+        static_dir=assets,
+        policy=LocalApiPolicy(session_token="desktop-session"),
+    )
+
+    with TestClient(app) as client:
+        page = client.get(
+            "/?session=desktop-session",
+            headers={"Host": "127.0.0.1"},
+        )
+        missing = client.get("/api/v1/health", headers={"Host": "127.0.0.1"})
+        authorized = client.get(
+            "/api/v1/health",
+            headers={
+                "Host": "127.0.0.1",
+                "Authorization": "Bearer desktop-session",
+            },
+        )
+
+    assert page.status_code == 200
+    assert missing.status_code == 401
+    assert authorized.status_code == 200
 
 
 def test_missing_default_assets_have_install_guidance(monkeypatch, tmp_path: Path) -> None:
