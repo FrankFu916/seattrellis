@@ -31,14 +31,38 @@ pytest
 `all` extra 包含 OR-Tools、Excel、PNG 和 Streamlit 相关依赖；`dev` extra
 包含测试和构建工具，`e2e` extra 用于真实浏览器验收。
 
-### 网页端
+### React 网页工作台（推荐）
+
+```bash
+python -m pip install -e ".[web,excel,image]"
+seattrellis workspace
+```
+
+`workspace` 会启动本地 API 并打开 React 工作台。它适合普通教师完成名单导入、
+教室选择、排座、人工调整、撤销/重做和导出。生成页默认隐藏复杂参数；需要控制
+候选数量、seed、时间限制、backend 或自定义 rules/layout JSON 时，展开“高级设置”。
+
+### Streamlit 网页端（兼容与高级配置）
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
-网页端依赖 Streamlit。若要在网页端上传 Excel 或下载 PNG/Excel，请同时安装 `excel` 和 `image` extras。
+Streamlit 页面保留旧版文件级工作流，适合需要直接编辑 preset、rules overlay、历史
+目录、候选数量、seed、时间限制或详细导出隐私选项的场景。React 和 Streamlit 共享
+同一套 Python API；旧的 JSON、Project 文件和 CLI 命令仍然有效。上传 Excel 或下载
+PNG/Excel 时请同时安装 `excel` 和 `image` extras。
+
+### 桌面开发原型
+
+```bash
+python -m pip install -e ".[desktop]"
+seattrellis desktop
+```
+
+桌面壳复用 React 工作台和本地 API。制作 onedir 开发包时安装 `desktop-build` extra
+并运行 `python scripts/build_desktop.py`；当前发布压缩包尚未提供签名安装器。
 
 ## 演示数据
 

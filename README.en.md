@@ -64,7 +64,7 @@ python -m pip install -e ".[all,dev]"
 pytest
 ```
 
-The `all` extra includes OR-Tools, Excel, PNG, PDF, Word, and Streamlit dependencies. The `dev` extra includes test and build tools; the `docs` extra builds the documentation site.
+The `all` extra includes OR-Tools, Excel, PNG, PDF, Word, and Streamlit dependencies. The `dev` extra includes test and build tools; the `docs` extra builds the documentation site. Install the `desktop-build` extra when you need to build a desktop development bundle.
 
 ### React Workbench (Recommended)
 
@@ -75,15 +75,21 @@ seattrellis workspace
 
 The `workspace` command starts the local API server and opens the browser
 workbench automatically (default address `http://127.0.0.1:8765`). The
-workbench is built with React and provides the full seating workflow:
+React workbench keeps the ordinary teacher flow focused:
 
 1. Upload a CSV or Excel roster, confirm auto-detected field mappings, preview
    incremental or overwrite import impact, then apply;
-2. Choose a classroom template and seating goals (including score position
-   preference, score distribution balance, and mentor pairing);
-3. Generate candidate plans, inspect score dimensions, manually adjust seats
-   with undo and redo;
+2. Choose a classroom template and seating goal;
+3. Generate a plan, inspect score dimensions, and manually adjust seats with
+   undo and redo;
 4. Export as HTML, Excel, PNG, PDF, Word, SVG, or PPTX.
+
+The Project panel beside the workflow can browse recent local project history,
+scan a project before sharing, and download or restore a `.seattrellis.zip`
+backup. Full visual student, rules, and layout editors remain on the roadmap.
+The **Advanced settings** section on the Generate step is optional and exposes
+candidate count, seed, time limit, solver backend, and custom rules/layout JSON.
+The default path does not require any of these settings.
 
 Use `--no-open-browser` to suppress auto-opening, or `--host` and `--port` to
 customize the listen address. For development, run the Vite dev server from
@@ -96,10 +102,30 @@ python -m pip install -e ".[web,excel,image]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
-The Streamlit web UI is retained as a compatibility interface. It offers
-similar functionality to the React workbench but does not include roster
-import preview, SVG/PPTX export, or other newer features. New users should
-use `seattrellis workspace` instead.
+The Streamlit web UI is retained as a compatibility and advanced-configuration
+interface. It still exposes preset and rules overlays, history directories,
+candidate count, seed, time limit, backend selection, and detailed export
+privacy controls. Existing JSON and CLI workflows remain supported; nothing
+needs to be migrated just because the React workbench is now the recommended
+entry point. New users should use `seattrellis workspace` instead.
+
+### Desktop development shell
+
+```bash
+python -m pip install -e ".[desktop]"
+seattrellis desktop
+```
+
+The pywebview shell shares the React client and local API with the browser
+workbench. To build an onedir development bundle:
+
+```bash
+python -m pip install -e ".[web,desktop-build]"
+python scripts/build_desktop.py
+```
+
+Release archives are currently unsigned. Installers, signing, notarisation,
+and update support are planned separately.
 
 ## CLI
 
@@ -197,7 +223,7 @@ SeatTrellis tries to import OR-Tools only when `SEATTRELLIS_USE_ORTOOLS=1` is se
 - portable relative-path project configuration with `project-init`, `project-info`, `project-validate`, `project-solve`, and `project-export`;
 - HTML and print-friendly HTML export, with Excel, PNG, PDF, and Word available through their optional extras; SVG and PPTX export require no extra dependencies; print-oriented formats support public, teacher, and report templates with privacy, A4 layout, scaling, and bilingual content;
 - three score-based seating goals — score position preference, score distribution balance, and mentor pairing — that work with any grading scale through rank percentiles;
-- React browser workbench (`seattrellis workspace`) with roster upload, field mapping, import preview, seating generation, and multi-format export;
+- React browser workbench (`seattrellis workspace`) with roster upload, field mapping, import preview, seating generation, manual adjustment, project backup, and multi-format export;
 - validation preflight and conflict diagnostics, CLI, local Streamlit compatibility UI, fictional examples, pytest, and GitHub Actions.
 
 ## Privacy
@@ -213,7 +239,7 @@ Current fair rotation and relationship avoidance use heuristic scoring from hist
 
 ## Release
 
-The current stable release is v1.8.0. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
+The current stable release is v1.8.2. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

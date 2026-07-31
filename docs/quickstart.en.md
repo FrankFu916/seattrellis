@@ -32,14 +32,43 @@ The `all` extra includes OR-Tools, Excel, PNG, and Streamlit dependencies.
 The `dev` extra includes test and build tools, while the `e2e` extra installs
 the real-browser acceptance runner.
 
-### Web UI
+### React browser workbench (recommended)
+
+```bash
+python -m pip install -e ".[web,excel,image]"
+seattrellis workspace
+```
+
+`workspace` starts the local API and opens the React workbench. It is the
+short path for roster import, room selection, solving, manual adjustment,
+undo/redo, and export. Complex settings stay collapsed by default; expand
+**Advanced settings** when you need candidate count, seed, time limit, backend,
+or custom rules/layout JSON.
+
+### Streamlit web UI (compatibility and advanced configuration)
 
 ```bash
 python -m pip install -e ".[web,excel,image]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
-The web UI depends on Streamlit. Install `excel` and `image` too if you want Excel upload or PNG/Excel downloads in the web UI.
+The Streamlit page keeps the file-oriented workflow for users who need direct
+control over presets, rules overlays, history directories, candidate count,
+seed, time limits, backend selection, or detailed export privacy settings.
+React and Streamlit share the same Python API, so existing JSON, Project, and
+CLI workflows remain valid. Install `excel` and `image` too for Excel upload or
+PNG/Excel downloads.
+
+### Desktop development shell
+
+```bash
+python -m pip install -e ".[desktop]"
+seattrellis desktop
+```
+
+The pywebview shell reuses the React workbench and local API. Build an onedir
+development bundle with the `desktop-build` extra and
+`python scripts/build_desktop.py`; signed installers are not published yet.
 
 ## Demo Data
 

@@ -53,7 +53,7 @@ pytest
 
 `all` extra 包含 OR-Tools、Excel、PNG、PDF、Word 和 Streamlit 相关依赖；
 `dev` extra 包含测试和构建工具，`e2e` extra 用于真实浏览器验收，`docs`
-extra 用于构建文档站。
+extra 用于构建文档站。需要制作桌面开发包时，再安装 `desktop-build` extra。
 
 ### React 工作台（推荐）
 
@@ -63,29 +63,40 @@ seattrellis workspace
 ```
 
 `workspace` 命令会在本地启动 API 服务并自动打开浏览器工作台（默认地址
-`http://127.0.0.1:8765`）。工作台使用 React 构建，提供完整的排座流程：
+`http://127.0.0.1:8765`）。工作台使用 React 构建，面向普通教师提供一条清晰的
+排座流程：
 
 1. 上传 CSV 或 Excel 名单，自动识别字段映射，预览增量或覆盖导入影响后确认；
-2. 选择教室模板和排座目标（包括成绩位置偏好、成绩均衡分布、师徒结对）；
-3. 生成候选方案，查看评分维度，手动调整座位并撤销/重做；
+2. 选择教室模板和排座目标；
+3. 生成方案，查看评分维度，手动调整座位并撤销/重做；
 4. 导出为 HTML、Excel、PNG、PDF、Word、SVG 或 PPTX。
 
 工作台右侧的“班级项目”面板还可以浏览本机最近项目的历史文件，执行分享前隐私
 检查，并直接下载或恢复 `.seattrellis.zip` 备份。学生、规则和 layout 的完整可视化
-编辑仍在后续版本中。
+编辑仍在后续版本中。生成页的“高级设置”可以按需打开，覆盖候选数量、随机种子、
+时间限制、求解后端，以及粘贴自定义 rules/layout JSON；不打开时仍使用适合课堂日常
+操作的默认值。
 
 使用 `--no-open-browser` 可禁止自动打开浏览器，使用 `--host` 和 `--port`
 可自定义监听地址。开发模式下可在 `clients/web/` 目录运行 Vite 开发服务器。
 
-桌面原型可通过可选的 pywebview 壳启动：
+桌面开发原型可通过可选的 pywebview 壳启动：
 
 ```bash
 python -m pip install -e ".[desktop]"
 seattrellis desktop
 ```
 
-桌面壳和浏览器工作台共享同一套 React 资源与本地 API；它仍是原型，正式的
-Windows/macOS 安装包会在完成冷启动、签名和安装卸载验收后发布。
+桌面壳和浏览器工作台共享同一套 React 资源与本地 API。制作可分发的 onedir
+开发包需要：
+
+```bash
+python -m pip install -e ".[web,desktop-build]"
+python scripts/build_desktop.py
+```
+
+当前发布资产仍是未签名的压缩包；Windows/macOS 安装器、代码签名、公证和自动更新
+会在桌面端正式发布前另行完成。
 
 ### Streamlit 网页端（兼容）
 
@@ -94,9 +105,10 @@ python -m pip install -e ".[web,excel,image]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
-Streamlit 网页端保留为兼容界面，功能与 React 工作台类似但不包含名单导入预览、
-SVG/PPTX 导出等新特性。新用户建议使用 `seattrellis workspace` 启动的 React
-工作台。
+Streamlit 网页端保留为兼容界面，适合需要直接查看完整配置的用户。它仍提供 preset、
+rules overlay、历史目录、候选数量、seed、时间限制、backend 和导出隐私设置等文件级
+选项；React 工作台则把最常用的设置收进渐进式“高级设置”。新用户建议使用
+`seattrellis workspace`，旧项目和复杂 JSON 配置不需要迁移或删除。
 
 ## CLI
 
@@ -172,7 +184,7 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 - 可移植的相对路径 project 配置，以及 `project-init` / `project-info` / `project-validate` / `project-solve` / `project-export`；
 - HTML 与打印版 HTML 导出，安装对应 extras 后支持 Excel、PNG、PDF 和 Word 导出，SVG 和 PPTX 导出无需额外依赖；
 - 成绩位置偏好、成绩均衡分布、师徒结对三类成绩排座目标，支持任意评分体系；
-- React 浏览器工作台（`seattrellis workspace`），提供名单上传、字段映射、导入预览、排座生成和多种格式导出；
+- React 浏览器工作台（`seattrellis workspace`），提供名单上传、字段映射、导入预览、排座生成、人工调整、项目备份和多种格式导出；
 - 输入预检与冲突诊断、CLI、本地 Streamlit 兼容界面、虚构示例数据、pytest 和 GitHub Actions。
 
 ## 隐私说明
@@ -188,7 +200,7 @@ SEATTRELLIS_USE_ORTOOLS=1 seattrellis solve --students examples/students.csv --l
 
 ## 发布
 
-当前稳定版本为 v1.8.0；发布检查见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
+当前稳定版本为 v1.8.2；发布检查见 [release checklist](docs/release-checklist.md)，变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 
