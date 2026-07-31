@@ -1,15 +1,31 @@
 # Web 端使用指南
 
-## 启动
+## 推荐入口：React 工作台
+
+```bash
+python -m pip install -e ".[web,excel,image]"
+seattrellis workspace
+```
+
+React 工作台是普通教师的默认入口，覆盖名单导入、字段映射、教室模板、常用排座
+目标、生成、座位交换、撤销/重做、导出和班级项目备份。生成页的“高级设置”可以
+按需提交候选数量、seed、时间限制、求解后端和自定义 rules/layout JSON；不打开时
+使用简化默认值。学生、规则和 layout 的完整可视化编辑仍在路线图中。
+
+## Streamlit 兼容与高级入口
 
 ```bash
 python -m pip install -e ".[web,excel,image,pdf,docx]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
 
-## 功能概述
+本文后续的“教师工作台”“高级工具”和“Project workspace”主要描述 Streamlit
+兼容页面。它仍然保留 preset、rules overlay、历史目录、候选数量、seed、时间限制、
+backend 和细粒度导出隐私设置，旧的 JSON/Project/CLI 工作流不需要迁移。
 
-Web 端默认显示教师工作台，普通教师不需要准备 layout、rules 或 Project JSON：
+## Streamlit 教师工作台
+
+Streamlit 页面默认显示教师工作台，普通教师不需要准备 layout、rules 或 Project JSON：
 
 1. 填写班级名称并导入 CSV、XLSX 或 XLSM 名单；只有姓名列也能开始。
 2. 接受自动推荐的 30、48 或 60 座教室，或者填写排数、每排座位数和过道。

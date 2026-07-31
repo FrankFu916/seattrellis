@@ -1,11 +1,30 @@
 # Web UI Guide
 
-## Start the app
+## Recommended entry point: React workbench
+
+```bash
+python -m pip install -e ".[web,excel,image]"
+seattrellis workspace
+```
+
+The React workbench is the default path for ordinary teachers. It covers roster
+import and mapping, room templates, common seating goals, generation, seat
+swaps, undo/redo, export, and class-project backups. Its **Advanced settings**
+section can submit candidate count, seed, time limit, solver backend, and custom
+rules/layout JSON when needed; the ordinary path keeps those controls collapsed.
+Full visual student, rules, and layout editors remain on the roadmap.
+
+## Streamlit compatibility and advanced tools
 
 ```bash
 python -m pip install -e ".[web,excel,image,pdf,docx]"
 streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 ```
+
+The rest of this page primarily documents the Streamlit compatibility surface.
+It still exposes presets, rules overlays, history directories, candidate count,
+seed, time limits, backend selection, and detailed export privacy controls.
+Existing JSON, Project, and CLI workflows remain valid.
 
 The sidebar language switch changes the interface between Simplified Chinese
 and English. It does not clear loaded data, the current step, or solve results.
