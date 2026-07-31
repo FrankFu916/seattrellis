@@ -558,9 +558,7 @@ def _field_changes(before: Student, after: Student) -> tuple[RosterFieldChange, 
 
 
 def _student_data(student: Student) -> dict[str, Any]:
-    if hasattr(student, "model_dump"):
-        return student.model_dump(mode="python")  # type: ignore[attr-defined,no-any-return]
-    return student.dict()
+    return student.model_dump(mode="python")
 
 
 def _duplicate_student_keys(students: Sequence[Student]) -> tuple[str, ...]:

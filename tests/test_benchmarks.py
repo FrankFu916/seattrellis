@@ -55,10 +55,10 @@ def test_benchmark_inputs_are_deterministic_and_fictional() -> None:
     layout = benchmark_layout(5, 8)
     repeated_layout = benchmark_layout(5, 8)
 
-    assert [student.dict() for student in students] == [
-        student.dict() for student in repeated_students
+    assert [student.model_dump() for student in students] == [
+        student.model_dump() for student in repeated_students
     ]
-    assert layout.dict() == repeated_layout.dict()
+    assert layout.model_dump() == repeated_layout.model_dump()
     assert len(students) == 40
     assert len(layout.enabled_seats) == 40
     assert students[0].student_id == "STU001"
@@ -80,13 +80,13 @@ def test_constraint_profiles_are_deterministic_and_dense_is_additive() -> None:
     dense = benchmark_rules("dense", students, layout, base_rules)
     repeated_dense = benchmark_rules("dense", students, layout, base_rules)
 
-    assert light.dict() == base_rules.dict()
-    assert dense.dict() == repeated_dense.dict()
-    assert dense.soft.dict() == base_rules.soft.dict()
+    assert light.model_dump() == base_rules.model_dump()
+    assert dense.model_dump() == repeated_dense.model_dump()
+    assert dense.soft.model_dump() == base_rules.soft.model_dump()
     assert len(dense.hard.fixed_seats) == 2
     assert len(dense.hard.cannot_be_adjacent) == 10
     assert len(dense.hard.min_distance) == 4
-    assert base_rules.hard.dict() == RuleSet().hard.dict()
+    assert base_rules.hard.model_dump() == RuleSet().hard.model_dump()
 
 
 def test_case_matrix_keeps_scenario_id_and_has_unique_run_ids() -> None:

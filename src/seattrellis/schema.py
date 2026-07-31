@@ -131,10 +131,12 @@ def json_schema_document(artifact: str | JsonSchemaArtifact) -> dict[str, object
 
     definition = _artifact_by_name(artifact) if isinstance(artifact, str) else artifact
     model = _load_model(definition.model_path)
-    if hasattr(model, "model_json_schema"):
-        schema = model.model_json_schema(ref_template="#/definitions/{model}")  # type: ignore[attr-defined]
-    else:
-        schema = model.schema(ref_template="#/definitions/{model}")
+    schema = model.model_json_schema(ref_template="#/definitions/{model}")
+    # Pydantic v2 emits the definition table under ``$defs`` while the ref
+    # template above still points at ``#/definitions/...``.  Rename the table
+    # so the public documents keep the v1 layout and all references resolve.
+    if "$defs" in schema and "definitions" not in schema:
+        schema["definitions"] = schema.pop("$defs")
     schema_body = dict(schema)
     schema_body.pop("title", None)
     document = {

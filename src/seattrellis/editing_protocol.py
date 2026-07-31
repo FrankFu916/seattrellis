@@ -4,26 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-try:
-    from pydantic.v1 import (
-        BaseModel,
-        Field,
-        StrictBool,
-        conint,
-        constr,
-        root_validator,
-        validator,
-    )
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import (
-        BaseModel,
-        Field,
-        StrictBool,
-        conint,
-        constr,
-        root_validator,
-        validator,
-    )
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    conint,
+    constr,
+    field_validator,
+    model_validator,
+)
 
 from seattrellis.editing import EditingOperation
 from seattrellis.schema import EDITOR_PROTOCOL_VERSION
@@ -41,8 +31,7 @@ PositiveInteger = conint(strict=True, ge=1)
 
 
 class _StrictProtocolModel(BaseModel):
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class SwapStudentsPayload(_StrictProtocolModel):
@@ -69,12 +58,13 @@ class BatchMoveItem(_StrictProtocolModel):
 
 
 class BatchMovePayload(_StrictProtocolModel):
-    moves: list[BatchMoveItem] = Field(min_items=1, max_items=100)
+    moves: list[BatchMoveItem] = Field(min_length=1, max_length=100)
 
-    @root_validator(skip_on_failure=True)
-    def unique_students_and_seats(cls, values: dict[str, object]) -> dict[str, object]:
-        value = values.get("moves")
-        moves = value if isinstance(value, list) else []
+    @model_validator(mode="after")
+    def unique_students_and_seats(
+        cls, model: BatchMovePayload
+    ) -> BatchMovePayload:
+        moves = model.moves if isinstance(model.moves, list) else []
         students = [
             move.student_key for move in moves if isinstance(move, BatchMoveItem)
         ]
@@ -83,7 +73,7 @@ class BatchMovePayload(_StrictProtocolModel):
             raise ValueError("batch_move students must be unique")
         if len(seats) != len(set(seats)):
             raise ValueError("batch_move target seats must be unique")
-        return values
+        return model
 
 
 class SwapStudentsOperation(_StrictProtocolModel):
@@ -166,10 +156,11 @@ class EditorCommandEnvelope(_StrictProtocolModel):
     draft_id: ProtocolIdentifier
     base_revision: NonNegativeInteger
     action: Literal["apply", "undo", "redo"]
-    operations: list[EditorOperationDTO] = Field(default_factory=list, max_items=100)
+    operations: list[EditorOperationDTO] = Field(default_factory=list, max_length=100)
 
-    class Config(_StrictProtocolModel.Config):
-        schema_extra = {
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
             "allOf": [
                 {
                     "if": {
@@ -193,9 +184,10 @@ class EditorCommandEnvelope(_StrictProtocolModel):
                     },
                 },
             ]
-        }
+        },
+    )
 
-    @validator("operations", pre=True)
+    @field_validator("operations", mode="before")
     def parse_operations_by_kind(cls, value: object) -> object:
         if not isinstance(value, (list, tuple)):
             return value
@@ -213,13 +205,15 @@ class EditorCommandEnvelope(_StrictProtocolModel):
                 raise ValueError(
                     f"unknown editor operation kind {kind!r}; expected one of: {allowed}"
                 )
-            parsed.append(_OPERATION_MODELS[kind].parse_obj(item))
+            parsed.append(_OPERATION_MODELS[kind].model_validate(item))
         return parsed
 
-    @root_validator(skip_on_failure=True)
-    def action_matches_operations(cls, values: dict[str, object]) -> dict[str, object]:
-        action = values.get("action")
-        operations = values.get("operations") or []
+    @model_validator(mode="after")
+    def action_matches_operations(
+        cls, model: EditorCommandEnvelope
+    ) -> EditorCommandEnvelope:
+        action = model.action
+        operations = model.operations or []
         if action == "apply" and not operations:
             raise ValueError("apply commands require at least one operation")
         if action in {"undo", "redo"} and operations:
@@ -234,7 +228,7 @@ class EditorCommandEnvelope(_StrictProtocolModel):
             raise ValueError(
                 "editor commands may contain at most 100 expanded operations"
             )
-        return values
+        return model
 
 
 class EditorStudentState(_StrictProtocolModel):
@@ -279,8 +273,5 @@ class EditorProtocolConflictError(ValueError):
 
 def operation_to_domain(operation: EditorOperationDTO) -> EditingOperation:
     """Convert a validated transport operation into the domain command."""
-    if hasattr(operation.payload, "model_dump"):
-        payload = operation.payload.model_dump(mode="json")  # type: ignore[attr-defined]
-    else:
-        payload = operation.payload.dict()
+    payload = operation.payload.model_dump(mode="json")
     return EditingOperation(kind=operation.kind, payload=payload)

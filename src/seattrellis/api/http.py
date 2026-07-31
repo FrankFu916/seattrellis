@@ -585,6 +585,4 @@ def _roster_not_found_problem() -> ApiProblem:
 
 
 def _model_data(model: Any) -> dict[str, Any]:
-    if hasattr(model, "model_dump"):
-        return model.model_dump(mode="json")  # type: ignore[no-any-return]
-    return model.dict()
+    return model.model_dump(mode="json")

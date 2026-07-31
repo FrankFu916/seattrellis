@@ -33,7 +33,7 @@ def test_project_model_minimum_and_defaults() -> None:
 def test_project_model_rejects_missing_fields_wrong_kind_and_absolute_paths() -> None:
     with pytest.raises(ValueError, match="students"):
         SeatTrellisProject(layout="classroom.json", rules="rules.json")
-    with pytest.raises(ValueError, match="unexpected value"):
+    with pytest.raises(ValueError, match="seattrellis_project"):
         SeatTrellisProject(
             kind="other",
             students="students.csv",

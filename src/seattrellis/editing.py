@@ -643,15 +643,11 @@ def _assignment_by_seat(assignments: Iterable[SeatAssignment]) -> dict[str, Seat
 
 
 def _copy_assignment(assignment: SeatAssignment) -> SeatAssignment:
-    if hasattr(assignment, "model_copy"):
-        return assignment.model_copy(deep=True)
-    return assignment.copy(deep=True)
+    return assignment.model_copy(deep=True)
 
 
 def _copy_snapshot(snapshot: SeatingSnapshot) -> SeatingSnapshot:
-    if hasattr(snapshot, "model_copy"):
-        return snapshot.model_copy(deep=True)
-    return snapshot.copy(deep=True)
+    return snapshot.model_copy(deep=True)
 
 
 def _copy_snapshot_with_assignments(

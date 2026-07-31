@@ -4,10 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-try:
-    from pydantic.v1 import ValidationError
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import ValidationError
+from pydantic import ValidationError
 
 from seattrellis.io.json_files import InputFileError, read_json, write_json_model
 from seattrellis.models.project import SeatTrellisProject
@@ -34,9 +31,7 @@ def load_project(path: str | Path) -> SeatTrellisProject:
         message = str(exc).replace("Input file", "Project file", 1)
         raise InputFileError(message) from exc
     try:
-        if hasattr(SeatTrellisProject, "model_validate"):
-            return SeatTrellisProject.model_validate(data)  # type: ignore[attr-defined,no-any-return]
-        return SeatTrellisProject.parse_obj(data)
+        return SeatTrellisProject.model_validate(data)
     except ValidationError as exc:
         errors = "; ".join(_format_validation_error(error) for error in exc.errors())
         raise InputFileError(f"Invalid project file: {source}\n{errors}") from exc

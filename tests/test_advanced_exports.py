@@ -139,7 +139,7 @@ def test_svg_is_safe_self_contained_and_uses_only_native_elements(tmp_path) -> N
 
 def test_service_export_uses_the_requested_candidate_for_svg(tmp_path) -> None:
     recommended_snapshot = _sensitive_snapshot()
-    selected_snapshot = recommended_snapshot.copy(deep=True)
+    selected_snapshot = recommended_snapshot.model_copy(deep=True)
     selected_snapshot.layout.name = "Selected Classroom"
     selected_snapshot.assignments[0].student_name = "Selected Student"
     recommended = CandidatePlan(

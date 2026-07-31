@@ -10,24 +10,16 @@ from __future__ import annotations
 from math import isfinite
 from typing import Any, Literal
 
-try:
-    from pydantic.v1 import (
-        BaseModel,
-        Field,
-        StrictInt,
-        StrictStr,
-        root_validator,
-        validator,
-    )
-except ImportError:  # pragma: no cover - Pydantic v1 installed directly.
-    from pydantic import (
-        BaseModel,
-        Field,
-        StrictInt,
-        StrictStr,
-        root_validator,
-        validator,
-    )
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from seattrellis.editing_protocol import EditorStateEnvelope
 from seattrellis.models.layout import ClassroomLayout
@@ -43,8 +35,7 @@ API_PREFIX = "/api/v1"
 class ApiModel(BaseModel):
     """Strict base model for payloads owned by the API contract."""
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class VersionedResponse(ApiModel):
@@ -131,7 +122,7 @@ class RoomSelection(ApiModel):
     layout_id: str | None = None
     name: str | None = None
 
-    @validator("template_id", "layout_id", "name", pre=True)
+    @field_validator("template_id", "layout_id", "name", mode="before")
     def clean_optional_text(cls, value: object) -> object:
         if value is None:
             return None
@@ -140,24 +131,24 @@ class RoomSelection(ApiModel):
         text = value.strip()
         return text or None
 
-    @root_validator(skip_on_failure=True)
-    def choose_exactly_one_room_source(cls, values: dict[str, Any]) -> dict[str, Any]:
-        template_id = values.get("template_id")
-        layout = values.get("layout")
+    @model_validator(mode="after")
+    def choose_exactly_one_room_source(cls, model: RoomSelection) -> RoomSelection:
+        template_id = model.template_id
+        layout = model.layout
         if (template_id is None) == (layout is None):
             raise ValueError("Choose either template_id or layout, but not both.")
-        if layout is not None and (values.get("layout_id") or values.get("name")):
+        if layout is not None and (model.layout_id or model.name):
             raise ValueError(
                 "layout_id and name overrides can only be used with template_id."
             )
-        return values
+        return model
 
 
 class TeacherGoalRequest(ApiModel):
     goal_id: str = "daily-rotation"
     custom_rules: RuleSet | None = None
 
-    @validator("goal_id", pre=True)
+    @field_validator("goal_id", mode="before")
     def clean_goal_id(cls, value: object) -> str:
         if not isinstance(value, str):
             raise ValueError("goal_id must be a string.")
@@ -171,12 +162,12 @@ class ClassDraftRequest(ApiModel):
     """Structured roster and room data for one stateless class operation."""
 
     name: str
-    students: list[Student] = Field(min_items=1)
+    students: list[Student] = Field(min_length=1)
     room: RoomSelection
     goal: TeacherGoalRequest = Field(default_factory=TeacherGoalRequest)
     history_snapshots: list[SeatingSnapshot] = Field(default_factory=list)
 
-    @validator("name", pre=True)
+    @field_validator("name", mode="before")
     def clean_class_name(cls, value: object) -> str:
         if not isinstance(value, str):
             raise ValueError("name must be a string.")
@@ -192,19 +183,19 @@ class GenerateOptionsRequest(ApiModel):
     time_limit_seconds: float = Field(default=3.0, ge=0.1)
     backend: SolverBackend = "auto"
 
-    @validator("backend", pre=True)
+    @field_validator("backend", mode="before")
     def normalize_backend(cls, value: object) -> SolverBackend:
         if not isinstance(value, str):
             raise ValueError("backend must be a string.")
         return normalize_solver_backend(value)
 
-    @validator("candidate_count", "seed", pre=True)
+    @field_validator("candidate_count", "seed", mode="before")
     def reject_boolean_integers(cls, value: object) -> object:
         if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
             raise ValueError("must be an integer.")
         return value
 
-    @validator("time_limit_seconds", pre=True)
+    @field_validator("time_limit_seconds", mode="before")
     def require_finite_time_limit(cls, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("time_limit_seconds must be a finite number.")
@@ -270,9 +261,9 @@ class CreateLayoutDraftRequest(ApiModel):
     rows: int | None = Field(default=None, ge=1, le=50)
     columns: int | None = Field(default=None, ge=1, le=50)
 
-    @validator("name", "template_id", pre=True)
-    def clean_layout_text(cls, value: object, field: Any) -> object:
-        if value is None and field.name == "template_id":
+    @field_validator("name", "template_id", mode="before")
+    def clean_layout_text(cls, value: object, info: ValidationInfo) -> object:
+        if value is None and info.field_name == "template_id":
             return None
         if not isinstance(value, str):
             raise ValueError("must be a string.")
@@ -281,28 +272,28 @@ class CreateLayoutDraftRequest(ApiModel):
             raise ValueError("cannot be empty.")
         return text
 
-    @validator("rows", "columns", pre=True)
+    @field_validator("rows", "columns", mode="before")
     def reject_boolean_dimensions(cls, value: object) -> object:
         if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
             raise ValueError("must be an integer.")
         return value
 
-    @root_validator(skip_on_failure=True)
-    def choose_one_layout_source(cls, values: dict[str, Any]) -> dict[str, Any]:
+    @model_validator(mode="after")
+    def choose_one_layout_source(
+        cls, model: CreateLayoutDraftRequest
+    ) -> CreateLayoutDraftRequest:
         sources = [
-            values.get("template_id") is not None,
-            values.get("layout") is not None,
-            values.get("rows") is not None or values.get("columns") is not None,
+            model.template_id is not None,
+            model.layout is not None,
+            model.rows is not None or model.columns is not None,
         ]
         if sum(sources) != 1:
             raise ValueError(
                 "Choose one template, existing layout, or rows and columns."
             )
-        if sources[2] and (
-            values.get("rows") is None or values.get("columns") is None
-        ):
+        if sources[2] and (model.rows is None or model.columns is None):
             raise ValueError("Both rows and columns are required.")
-        return values
+        return model
 
 
 class LayoutCellState(ApiModel):
@@ -346,27 +337,29 @@ class LayoutCommandRequest(ApiModel):
     action: Literal["apply", "undo", "redo"]
     operation: LayoutOperationRequest | None = None
 
-    @validator("command_id", "draft_id", pre=True)
+    @field_validator("command_id", "draft_id", mode="before")
     def clean_layout_identifier(cls, value: object) -> str:
         if not isinstance(value, str) or not value.strip():
             raise ValueError("must be a non-empty string.")
         return value.strip()
 
-    @validator("base_revision", pre=True)
+    @field_validator("base_revision", mode="before")
     def reject_boolean_revision(cls, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError("must be an integer.")
         return value
 
-    @root_validator(skip_on_failure=True)
-    def action_matches_operation(cls, values: dict[str, Any]) -> dict[str, Any]:
-        action = values.get("action")
-        operation = values.get("operation")
+    @model_validator(mode="after")
+    def action_matches_operation(
+        cls, model: LayoutCommandRequest
+    ) -> LayoutCommandRequest:
+        action = model.action
+        operation = model.operation
         if action == "apply" and operation is None:
             raise ValueError("Apply commands require an operation.")
         if action in {"undo", "redo"} and operation is not None:
             raise ValueError(f"{action} commands cannot contain an operation.")
-        return values
+        return model
 
 
 class CompiledLayoutResponse(VersionedResponse):
@@ -402,7 +395,7 @@ class RosterMappingItem(ApiModel):
     field: RosterFieldName
     column_index: int = Field(ge=0)
 
-    @validator("column_index", pre=True)
+    @field_validator("column_index", mode="before")
     def reject_boolean_column_index(cls, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError("column_index must be an integer.")
@@ -445,7 +438,7 @@ class RosterUpdatePreviewRequest(ApiModel):
         "attributes",
     ]] | None = None
 
-    @validator("current_revision", pre=True)
+    @field_validator("current_revision", mode="before")
     def reject_boolean_roster_revision(cls, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError("current_revision must be an integer.")
@@ -508,7 +501,7 @@ class ExportDraftRequest(ApiModel):
     locale: Literal["zh", "en"] = "zh"
     show_student_ids: bool = False
 
-    @validator("draft_id", pre=True)
+    @field_validator("draft_id", mode="before")
     def clean_draft_identifier(cls, value: object) -> str:
         if not isinstance(value, str) or not value.strip():
             raise ValueError("draft_id must be a non-empty string.")

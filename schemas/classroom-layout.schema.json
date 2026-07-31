@@ -3,29 +3,29 @@
   "$id": "https://frankfu916.github.io/seattrellis/schemas/classroom-layout.schema.json",
   "title": "SeatTrellis Classroom Layout",
   "description": "A classroom layout represented by seat nodes and adjacency settings.",
-  "type": "object",
   "properties": {
     "layout_id": {
-      "title": "Layout Id",
       "default": "default-layout",
+      "title": "Layout Id",
       "type": "string"
     },
     "name": {
-      "title": "Name",
       "default": "Classroom",
+      "title": "Name",
       "type": "string"
     },
     "seats": {
-      "title": "Seats",
-      "type": "array",
       "items": {
         "$ref": "#/definitions/SeatNode"
-      }
+      },
+      "title": "Seats",
+      "type": "array"
     },
     "adjacency": {
       "$ref": "#/definitions/AdjacencyConfig"
     },
     "metadata": {
+      "additionalProperties": true,
       "title": "Metadata",
       "type": "object"
     }
@@ -33,11 +33,76 @@
   "required": [
     "seats"
   ],
+  "type": "object",
   "definitions": {
+    "AdjacencyConfig": {
+      "description": "Rules for generating a seat adjacency graph.",
+      "properties": {
+        "include_horizontal": {
+          "default": true,
+          "title": "Include Horizontal",
+          "type": "boolean"
+        },
+        "include_vertical": {
+          "default": false,
+          "title": "Include Vertical",
+          "type": "boolean"
+        },
+        "include_diagonal": {
+          "default": false,
+          "title": "Include Diagonal",
+          "type": "boolean"
+        },
+        "max_row_delta": {
+          "default": 1,
+          "title": "Max Row Delta",
+          "type": "integer"
+        },
+        "max_col_delta": {
+          "default": 1,
+          "title": "Max Col Delta",
+          "type": "integer"
+        },
+        "max_distance": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Distance"
+        },
+        "use_xy_distance": {
+          "default": true,
+          "title": "Use Xy Distance",
+          "type": "boolean"
+        },
+        "custom_edges": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Custom Edges",
+          "type": "array"
+        }
+      },
+      "title": "AdjacencyConfig",
+      "type": "object"
+    },
     "SeatNode": {
-      "title": "SeatNode",
       "description": "A physical or logical seat node in the classroom graph.",
-      "type": "object",
       "properties": {
         "seat_id": {
           "title": "Seat Id",
@@ -52,54 +117,87 @@
           "type": "integer"
         },
         "x": {
-          "title": "X",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X"
         },
         "y": {
-          "title": "Y",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y"
         },
         "enabled": {
-          "title": "Enabled",
           "default": true,
+          "title": "Enabled",
           "type": "boolean"
         },
         "zone": {
-          "title": "Zone",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Zone"
         },
         "group_id": {
-          "title": "Group Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Id"
         },
         "near_window": {
-          "title": "Near Window",
           "default": false,
+          "title": "Near Window",
           "type": "boolean"
         },
         "near_door": {
-          "title": "Near Door",
           "default": false,
+          "title": "Near Door",
           "type": "boolean"
         },
         "near_platform": {
-          "title": "Near Platform",
           "default": false,
+          "title": "Near Platform",
           "type": "boolean"
         },
         "near_ac": {
-          "title": "Near Ac",
           "default": false,
+          "title": "Near Ac",
           "type": "boolean"
         },
         "tags": {
-          "title": "Tags",
-          "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "title": "Tags",
+          "type": "array"
         },
         "attributes": {
+          "additionalProperties": true,
           "title": "Attributes",
           "type": "object"
         }
@@ -108,65 +206,9 @@
         "seat_id",
         "row",
         "col"
-      ]
-    },
-    "AdjacencyConfig": {
-      "title": "AdjacencyConfig",
-      "description": "Rules for generating a seat adjacency graph.",
-      "type": "object",
-      "properties": {
-        "include_horizontal": {
-          "title": "Include Horizontal",
-          "default": true,
-          "type": "boolean"
-        },
-        "include_vertical": {
-          "title": "Include Vertical",
-          "default": false,
-          "type": "boolean"
-        },
-        "include_diagonal": {
-          "title": "Include Diagonal",
-          "default": false,
-          "type": "boolean"
-        },
-        "max_row_delta": {
-          "title": "Max Row Delta",
-          "default": 1,
-          "type": "integer"
-        },
-        "max_col_delta": {
-          "title": "Max Col Delta",
-          "default": 1,
-          "type": "integer"
-        },
-        "max_distance": {
-          "title": "Max Distance",
-          "type": "number"
-        },
-        "use_xy_distance": {
-          "title": "Use Xy Distance",
-          "default": true,
-          "type": "boolean"
-        },
-        "custom_edges": {
-          "title": "Custom Edges",
-          "type": "array",
-          "items": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 2,
-            "items": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "string"
-              }
-            ]
-          }
-        }
-      }
+      ],
+      "title": "SeatNode",
+      "type": "object"
     }
   },
   "x-seattrellis-artifact": "classroom-layout"

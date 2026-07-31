@@ -150,7 +150,7 @@ def benchmark_rules(
     """
 
     normalized = normalize_benchmark_profile(profile)
-    rules = (base_rules or RuleSet()).copy(deep=True)
+    rules = (base_rules or RuleSet()).model_copy(deep=True)
     if normalized == "light":
         return rules
     if not students or not layout.enabled_seats:

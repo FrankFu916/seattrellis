@@ -156,7 +156,7 @@ def test_compute_solve_reports_preset_warnings_for_in_memory_requests() -> None:
                     SeatNode(seat_id="A2", row=1, col=2),
                 ]
             ),
-            rules=get_preset("balanced").rules.copy(deep=True),
+            rules=get_preset("balanced").rules.model_copy(deep=True),
             preset_name="balanced",
             backend="fallback",
         )

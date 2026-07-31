@@ -92,12 +92,12 @@ CLI 命令名和参数以 `--help` 输出为准。以下承诺保持稳定：
 |------|------|
 | Python 版本 | 3.11–3.14（v1.x 最低版本保持 3.11） |
 | 操作系统 | 目标范围为 macOS ≥ 13、Windows ≥ 10、Ubuntu ≥ 22.04；CI 验证 GitHub 当前 runner |
-| Pydantic | 1.10.26+ 和 2.x 双轨，统一使用 v1 兼容 API |
+| Pydantic | 2.x（共享模型使用原生 v2 API） |
 | Typer | 0.26.7–0.27.x |
 | OR-Tools | 9.15.x |
 | Streamlit | 1.50+ 兼容；浏览器主验收使用 1.60 |
-| FastAPI | 0.121–0.127.x |
-| Starlette | 0.49.x（1.x 安全修复受 pydantic v2 迁移阻塞，见 [roadmap](roadmap.md)） |
+| FastAPI | 0.138–0.141.x |
+| Starlette | 1.3.x |
 | Pillow | 11.3–12.x |
 | WeasyPrint | 69.x |
 | Rust 原生扩展 | Rust ≥ 1.83；Python 3.11–3.14 |

@@ -2,93 +2,6 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://frankfu916.github.io/seattrellis/schemas/editor-command.schema.json",
   "title": "SeatTrellis Editor Command",
-  "type": "object",
-  "properties": {
-    "kind": {
-      "title": "Kind",
-      "enum": [
-        "seattrellis_editor_command"
-      ],
-      "type": "string"
-    },
-    "protocol_version": {
-      "title": "Protocol Version",
-      "enum": [
-        "1.0"
-      ],
-      "type": "string"
-    },
-    "command_id": {
-      "title": "Command Id",
-      "minLength": 1,
-      "maxLength": 128,
-      "type": "string"
-    },
-    "draft_id": {
-      "title": "Draft Id",
-      "minLength": 1,
-      "maxLength": 128,
-      "type": "string"
-    },
-    "base_revision": {
-      "title": "Base Revision",
-      "minimum": 0,
-      "type": "integer"
-    },
-    "action": {
-      "title": "Action",
-      "enum": [
-        "apply",
-        "undo",
-        "redo"
-      ],
-      "type": "string"
-    },
-    "operations": {
-      "title": "Operations",
-      "maxItems": 100,
-      "type": "array",
-      "items": {
-        "anyOf": [
-          {
-            "$ref": "#/definitions/SwapStudentsOperation"
-          },
-          {
-            "$ref": "#/definitions/MoveStudentOperation"
-          },
-          {
-            "$ref": "#/definitions/BatchMoveOperation"
-          },
-          {
-            "$ref": "#/definitions/SeatStudentOperation"
-          },
-          {
-            "$ref": "#/definitions/UnseatStudentOperation"
-          },
-          {
-            "$ref": "#/definitions/LockStudentOperation"
-          },
-          {
-            "$ref": "#/definitions/UnlockStudentOperation"
-          },
-          {
-            "$ref": "#/definitions/LockSeatOperation"
-          },
-          {
-            "$ref": "#/definitions/UnlockSeatOperation"
-          }
-        ]
-      }
-    }
-  },
-  "required": [
-    "kind",
-    "protocol_version",
-    "command_id",
-    "draft_id",
-    "base_revision",
-    "action"
-  ],
   "additionalProperties": false,
   "allOf": [
     {
@@ -136,140 +49,131 @@
       }
     }
   ],
-  "definitions": {
-    "SwapStudentsPayload": {
-      "title": "SwapStudentsPayload",
-      "type": "object",
-      "properties": {
-        "first_student": {
-          "title": "First Student",
-          "minLength": 1,
-          "type": "string"
-        },
-        "second_student": {
-          "title": "Second Student",
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "first_student",
-        "second_student"
-      ],
-      "additionalProperties": false
+  "properties": {
+    "kind": {
+      "const": "seattrellis_editor_command",
+      "title": "Kind",
+      "type": "string"
     },
-    "SwapStudentsOperation": {
-      "title": "SwapStudentsOperation",
-      "type": "object",
-      "properties": {
-        "kind": {
-          "title": "Kind",
-          "enum": [
-            "swap_students"
-          ],
-          "type": "string"
-        },
-        "payload": {
-          "$ref": "#/definitions/SwapStudentsPayload"
-        }
-      },
-      "required": [
-        "kind",
-        "payload"
-      ],
-      "additionalProperties": false
+    "protocol_version": {
+      "const": "1.0",
+      "title": "Protocol Version",
+      "type": "string"
     },
-    "StudentSeatPayload": {
-      "title": "StudentSeatPayload",
-      "type": "object",
-      "properties": {
-        "student_key": {
-          "title": "Student Key",
-          "minLength": 1,
-          "type": "string"
-        },
-        "seat_id": {
-          "title": "Seat Id",
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "student_key",
-        "seat_id"
-      ],
-      "additionalProperties": false
+    "command_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Command Id",
+      "type": "string"
     },
-    "MoveStudentOperation": {
-      "title": "MoveStudentOperation",
-      "type": "object",
-      "properties": {
-        "kind": {
-          "title": "Kind",
-          "enum": [
-            "move_student"
-          ],
-          "type": "string"
-        },
-        "payload": {
-          "$ref": "#/definitions/StudentSeatPayload"
-        }
-      },
-      "required": [
-        "kind",
-        "payload"
-      ],
-      "additionalProperties": false
+    "draft_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Draft Id",
+      "type": "string"
     },
-    "BatchMoveItem": {
-      "title": "BatchMoveItem",
-      "type": "object",
-      "properties": {
-        "student_key": {
-          "title": "Student Key",
-          "minLength": 1,
-          "type": "string"
-        },
-        "seat_id": {
-          "title": "Seat Id",
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "student_key",
-        "seat_id"
-      ],
-      "additionalProperties": false
+    "base_revision": {
+      "minimum": 0,
+      "title": "Base Revision",
+      "type": "integer"
     },
-    "BatchMovePayload": {
-      "title": "BatchMovePayload",
-      "type": "object",
-      "properties": {
-        "moves": {
-          "title": "Moves",
-          "minItems": 1,
-          "maxItems": 100,
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/BatchMoveItem"
+    "action": {
+      "enum": [
+        "apply",
+        "undo",
+        "redo"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "batch_move": "#/definitions/BatchMoveOperation",
+            "lock_seat": "#/definitions/LockSeatOperation",
+            "lock_student": "#/definitions/LockStudentOperation",
+            "move_student": "#/definitions/MoveStudentOperation",
+            "seat_student": "#/definitions/SeatStudentOperation",
+            "swap_students": "#/definitions/SwapStudentsOperation",
+            "unlock_seat": "#/definitions/UnlockSeatOperation",
+            "unlock_student": "#/definitions/UnlockStudentOperation",
+            "unseat_student": "#/definitions/UnseatStudentOperation"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/definitions/SwapStudentsOperation"
+          },
+          {
+            "$ref": "#/definitions/MoveStudentOperation"
+          },
+          {
+            "$ref": "#/definitions/BatchMoveOperation"
+          },
+          {
+            "$ref": "#/definitions/SeatStudentOperation"
+          },
+          {
+            "$ref": "#/definitions/UnseatStudentOperation"
+          },
+          {
+            "$ref": "#/definitions/LockStudentOperation"
+          },
+          {
+            "$ref": "#/definitions/UnlockStudentOperation"
+          },
+          {
+            "$ref": "#/definitions/LockSeatOperation"
+          },
+          {
+            "$ref": "#/definitions/UnlockSeatOperation"
           }
+        ]
+      },
+      "maxItems": 100,
+      "title": "Operations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "protocol_version",
+    "command_id",
+    "draft_id",
+    "base_revision",
+    "action"
+  ],
+  "type": "object",
+  "definitions": {
+    "BatchMoveItem": {
+      "additionalProperties": false,
+      "properties": {
+        "student_key": {
+          "minLength": 1,
+          "title": "Student Key",
+          "type": "string"
+        },
+        "seat_id": {
+          "minLength": 1,
+          "title": "Seat Id",
+          "type": "string"
         }
       },
       "required": [
-        "moves"
+        "student_key",
+        "seat_id"
       ],
-      "additionalProperties": false
+      "title": "BatchMoveItem",
+      "type": "object"
     },
     "BatchMoveOperation": {
-      "title": "BatchMoveOperation",
-      "type": "object",
+      "additionalProperties": false,
       "properties": {
         "kind": {
+          "const": "batch_move",
           "title": "Kind",
-          "enum": [
-            "batch_move"
-          ],
           "type": "string"
         },
         "payload": {
@@ -280,17 +184,72 @@
         "kind",
         "payload"
       ],
-      "additionalProperties": false
+      "title": "BatchMoveOperation",
+      "type": "object"
     },
-    "SeatStudentOperation": {
-      "title": "SeatStudentOperation",
-      "type": "object",
+    "BatchMovePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "moves": {
+          "items": {
+            "$ref": "#/definitions/BatchMoveItem"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Moves",
+          "type": "array"
+        }
+      },
+      "required": [
+        "moves"
+      ],
+      "title": "BatchMovePayload",
+      "type": "object"
+    },
+    "LockSeatOperation": {
+      "additionalProperties": false,
       "properties": {
         "kind": {
+          "const": "lock_seat",
           "title": "Kind",
-          "enum": [
-            "seat_student"
-          ],
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/definitions/SeatPayload"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "title": "LockSeatOperation",
+      "type": "object"
+    },
+    "LockStudentOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "lock_student",
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/definitions/StudentPayload"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "title": "LockStudentOperation",
+      "type": "object"
+    },
+    "MoveStudentOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "move_student",
+          "title": "Kind",
           "type": "string"
         },
         "payload": {
@@ -301,131 +260,125 @@
         "kind",
         "payload"
       ],
-      "additionalProperties": false
-    },
-    "StudentPayload": {
-      "title": "StudentPayload",
-      "type": "object",
-      "properties": {
-        "student_key": {
-          "title": "Student Key",
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "student_key"
-      ],
-      "additionalProperties": false
-    },
-    "UnseatStudentOperation": {
-      "title": "UnseatStudentOperation",
-      "type": "object",
-      "properties": {
-        "kind": {
-          "title": "Kind",
-          "enum": [
-            "unseat_student"
-          ],
-          "type": "string"
-        },
-        "payload": {
-          "$ref": "#/definitions/StudentPayload"
-        }
-      },
-      "required": [
-        "kind",
-        "payload"
-      ],
-      "additionalProperties": false
-    },
-    "LockStudentOperation": {
-      "title": "LockStudentOperation",
-      "type": "object",
-      "properties": {
-        "kind": {
-          "title": "Kind",
-          "enum": [
-            "lock_student"
-          ],
-          "type": "string"
-        },
-        "payload": {
-          "$ref": "#/definitions/StudentPayload"
-        }
-      },
-      "required": [
-        "kind",
-        "payload"
-      ],
-      "additionalProperties": false
-    },
-    "UnlockStudentOperation": {
-      "title": "UnlockStudentOperation",
-      "type": "object",
-      "properties": {
-        "kind": {
-          "title": "Kind",
-          "enum": [
-            "unlock_student"
-          ],
-          "type": "string"
-        },
-        "payload": {
-          "$ref": "#/definitions/StudentPayload"
-        }
-      },
-      "required": [
-        "kind",
-        "payload"
-      ],
-      "additionalProperties": false
+      "title": "MoveStudentOperation",
+      "type": "object"
     },
     "SeatPayload": {
-      "title": "SeatPayload",
-      "type": "object",
+      "additionalProperties": false,
       "properties": {
         "seat_id": {
-          "title": "Seat Id",
           "minLength": 1,
+          "title": "Seat Id",
           "type": "string"
         }
       },
       "required": [
         "seat_id"
       ],
-      "additionalProperties": false
+      "title": "SeatPayload",
+      "type": "object"
     },
-    "LockSeatOperation": {
-      "title": "LockSeatOperation",
-      "type": "object",
+    "SeatStudentOperation": {
+      "additionalProperties": false,
       "properties": {
         "kind": {
+          "const": "seat_student",
           "title": "Kind",
-          "enum": [
-            "lock_seat"
-          ],
           "type": "string"
         },
         "payload": {
-          "$ref": "#/definitions/SeatPayload"
+          "$ref": "#/definitions/StudentSeatPayload"
         }
       },
       "required": [
         "kind",
         "payload"
       ],
-      "additionalProperties": false
+      "title": "SeatStudentOperation",
+      "type": "object"
+    },
+    "StudentPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "student_key": {
+          "minLength": 1,
+          "title": "Student Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_key"
+      ],
+      "title": "StudentPayload",
+      "type": "object"
+    },
+    "StudentSeatPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "student_key": {
+          "minLength": 1,
+          "title": "Student Key",
+          "type": "string"
+        },
+        "seat_id": {
+          "minLength": 1,
+          "title": "Seat Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_key",
+        "seat_id"
+      ],
+      "title": "StudentSeatPayload",
+      "type": "object"
+    },
+    "SwapStudentsOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "swap_students",
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/definitions/SwapStudentsPayload"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "title": "SwapStudentsOperation",
+      "type": "object"
+    },
+    "SwapStudentsPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "first_student": {
+          "minLength": 1,
+          "title": "First Student",
+          "type": "string"
+        },
+        "second_student": {
+          "minLength": 1,
+          "title": "Second Student",
+          "type": "string"
+        }
+      },
+      "required": [
+        "first_student",
+        "second_student"
+      ],
+      "title": "SwapStudentsPayload",
+      "type": "object"
     },
     "UnlockSeatOperation": {
-      "title": "UnlockSeatOperation",
-      "type": "object",
+      "additionalProperties": false,
       "properties": {
         "kind": {
+          "const": "unlock_seat",
           "title": "Kind",
-          "enum": [
-            "unlock_seat"
-          ],
           "type": "string"
         },
         "payload": {
@@ -436,7 +389,46 @@
         "kind",
         "payload"
       ],
-      "additionalProperties": false
+      "title": "UnlockSeatOperation",
+      "type": "object"
+    },
+    "UnlockStudentOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "unlock_student",
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/definitions/StudentPayload"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "title": "UnlockStudentOperation",
+      "type": "object"
+    },
+    "UnseatStudentOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "unseat_student",
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/definitions/StudentPayload"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "title": "UnseatStudentOperation",
+      "type": "object"
     }
   },
   "x-seattrellis-artifact": "editor-command",

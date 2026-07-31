@@ -10,10 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 
-try:
-    from pydantic.v1 import ValidationError
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import ValidationError
+from pydantic import ValidationError
 
 try:
     import streamlit as st
@@ -1454,14 +1451,8 @@ def _render_project_tab() -> None:
         if uploaded_project is not None:
             try:
                 raw_project = json.loads(uploaded_project.getvalue())
-                if hasattr(SeatTrellisProject, "model_validate"):
-                    project = SeatTrellisProject.model_validate(  # type: ignore[attr-defined]
-                        raw_project
-                    )
-                    project_data = project.model_dump(mode="json")  # type: ignore[attr-defined]
-                else:
-                    project = SeatTrellisProject.parse_obj(raw_project)
-                    project_data = json.loads(project.json())
+                project = SeatTrellisProject.model_validate(raw_project)
+                project_data = project.model_dump(mode="json")
                 st.success(_t("uploaded", name=uploaded_project.name))
                 st.code(
                     json.dumps(project_data, ensure_ascii=False, indent=2),

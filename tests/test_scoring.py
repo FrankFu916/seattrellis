@@ -870,9 +870,9 @@ class TestBuildPlanComparisonReport:
         first = build_plan_comparison_report(candidate_set)
         second = build_plan_comparison_report(candidate_set)
 
-        assert first.json() == second.json()
-        assert "private rule detail" not in first.json()
-        assert "another private detail" not in first.json()
+        assert first.model_dump_json() == second.model_dump_json()
+        assert "private rule detail" not in first.model_dump_json()
+        assert "another private detail" not in first.model_dump_json()
         assert first.created_at == candidate_set.created_at
         assert first.metadata["recommendation_method_code"] == (
             "highest_valid_weighted_total"
@@ -915,8 +915,8 @@ class TestBuildPlanComparisonReport:
             hard_constraints_satisfied=True,
         )
 
-        assert entry.dict()["score_delta_from_recommended"] is None
-        entry_schema = PlanComparisonReport.schema()["definitions"][
+        assert entry.model_dump()["score_delta_from_recommended"] is None
+        entry_schema = PlanComparisonReport.model_json_schema()["$defs"][
             "PlanComparisonEntry"
         ]["properties"]
         assert entry_schema["score_delta_from_recommended"]["type"] == [
@@ -928,7 +928,7 @@ class TestBuildPlanComparisonReport:
             "hard_constraint_violation_count",
         ):
             assert entry_schema[field_name]["type"] == ["integer", "null"]
-        explanation_score_schema = PlanComparisonReport.schema()["definitions"][
+        explanation_score_schema = PlanComparisonReport.model_json_schema()["$defs"][
             "PlanComparisonExplanation"
         ]["properties"]["score"]
         assert explanation_score_schema["minimum"] == 0

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from math import isfinite
-from typing import Any, Literal
+from typing import Literal
 
-try:
-    from pydantic.v1 import BaseModel, Field, validator
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, Field, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+)
 
 from seattrellis.models.history import (
     NEIGHBOR_RELATION_TYPES,
@@ -21,21 +24,20 @@ class FixedSeatRule(BaseModel):
     student: str
     seat_id: str
 
-    @validator("student", "seat_id", pre=True)
+    @field_validator("student", "seat_id", mode="before")
     def clean_required_text(cls, value: object) -> str:
         text = str(value).strip()
         if not text:
             raise ValueError("value cannot be empty.")
         return text
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class PairRule(BaseModel):
     students: tuple[str, str]
 
-    @validator("students", pre=True)
+    @field_validator("students", mode="before")
     def normalize_students(cls, value: object) -> tuple[str, str]:
         if not isinstance(value, (list, tuple)) or len(value) != 2:
             raise ValueError("students must contain exactly two student references.")
@@ -45,15 +47,14 @@ class PairRule(BaseModel):
             raise ValueError("students cannot contain empty references.")
         return (first, second)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class MinDistanceRule(PairRule):
     distance: float
     metric: Literal["euclidean", "graph"] = "euclidean"
 
-    @validator("distance")
+    @field_validator("distance")
     def positive_distance(cls, value: float) -> float:
         if not isfinite(value) or value <= 0:
             raise ValueError("distance must be a positive finite number.")
@@ -64,14 +65,13 @@ class WeightedRule(BaseModel):
     enabled: bool = False
     weight: int = 1
 
-    @validator("weight")
+    @field_validator("weight")
     def positive_weight(cls, value: int) -> int:
         if value < 0:
             raise ValueError("weight must be non-negative.")
         return value
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class FairRotationRule(WeightedRule):
@@ -88,7 +88,7 @@ class FairRotationRule(WeightedRule):
     )
     lookback: int = 4
 
-    @validator("avoid_repeating_categories")
+    @field_validator("avoid_repeating_categories")
     def known_rotation_categories(cls, value: list[SeatPositionCategory]) -> list[SeatPositionCategory]:
         allowed = set(ROTATION_CATEGORIES)
         unknown = [category.value for category in value if category not in allowed]
@@ -96,7 +96,7 @@ class FairRotationRule(WeightedRule):
             raise ValueError(f"Unsupported seat position categories: {', '.join(unknown)}")
         return value
 
-    @validator("lookback")
+    @field_validator("lookback")
     def non_negative_lookback(cls, value: int) -> int:
         if value < 0:
             raise ValueError("lookback must be non-negative.")
@@ -114,7 +114,7 @@ class AvoidRecentNeighborsRule(WeightedRule):
     max_recent_count: int = 1
     within_distance: int = 2
 
-    @validator("relation_types")
+    @field_validator("relation_types")
     def known_neighbor_relation_types(cls, value: list[NeighborRelationType]) -> list[NeighborRelationType]:
         allowed = set(NEIGHBOR_RELATION_TYPES)
         unknown = [relation.value for relation in value if relation not in allowed]
@@ -122,19 +122,19 @@ class AvoidRecentNeighborsRule(WeightedRule):
             raise ValueError(f"Unsupported neighbor relation types: {', '.join(unknown)}")
         return value
 
-    @validator("lookback")
+    @field_validator("lookback")
     def non_negative_lookback(cls, value: int) -> int:
         if value < 0:
             raise ValueError("lookback must be non-negative.")
         return value
 
-    @validator("max_recent_count")
+    @field_validator("max_recent_count")
     def non_negative_max_recent_count(cls, value: int) -> int:
         if value < 0:
             raise ValueError("max_recent_count must be non-negative.")
         return value
 
-    @validator("within_distance")
+    @field_validator("within_distance")
     def positive_within_distance(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("within_distance must be positive.")
@@ -149,14 +149,14 @@ class GroupRule(BaseModel):
     separate: bool = False
     together: bool = False
 
-    @validator("name", pre=True)
+    @field_validator("name", mode="before")
     def clean_name(cls, value: object) -> str:
         text = str(value).strip()
         if not text:
             raise ValueError("group name cannot be empty.")
         return text
 
-    @validator("students", pre=True)
+    @field_validator("students", mode="before")
     def clean_students(cls, value: object) -> list[str]:
         if value is None:
             return []
@@ -164,8 +164,7 @@ class GroupRule(BaseModel):
             return [str(v).strip() for v in value if str(v).strip()]
         return [str(value).strip()]
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class CoolingRule(WeightedRule):
@@ -174,14 +173,13 @@ class CoolingRule(WeightedRule):
     cooling_period: int = 3
     relation_types: list[str] = Field(default_factory=lambda: ["desk_mate", "adjacent_any"])
 
-    @validator("cooling_period")
+    @field_validator("cooling_period")
     def positive_cooling(cls, value: int) -> int:
         if value < 1:
             raise ValueError("cooling_period must be positive.")
         return value
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ScorePositionRule(WeightedRule):
@@ -209,21 +207,21 @@ class MentorPairingRule(WeightedRule):
     avoid_recent_repeats: bool = True
     history_lookback: int = 4
 
-    @validator("mentor_percentile", "learner_percentile")
+    @field_validator("mentor_percentile", "learner_percentile")
     def percentile_in_range(cls, value: float) -> float:
         if not isfinite(value) or not 0 <= value <= 1:
             raise ValueError("percentiles must be finite values between 0 and 1.")
         return value
 
-    @validator("history_lookback")
+    @field_validator("history_lookback")
     def non_negative_history_lookback(cls, value: int) -> int:
         if value < 0:
             raise ValueError("history_lookback must be non-negative.")
         return value
 
-    @validator("learner_percentile")
-    def learner_below_mentor(cls, value: float, values: dict[str, Any]) -> float:
-        mentor = values.get("mentor_percentile", 0.75)
+    @field_validator("learner_percentile")
+    def learner_below_mentor(cls, value: float, info: ValidationInfo) -> float:
+        mentor = info.data.get("mentor_percentile", 0.75)
         if value >= mentor:
             raise ValueError("learner_percentile must be lower than mentor_percentile.")
         return value
@@ -235,8 +233,7 @@ class HardRules(BaseModel):
     cannot_be_adjacent: list[PairRule] = Field(default_factory=list)
     min_distance: list[MinDistanceRule] = Field(default_factory=list)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class SoftRules(BaseModel):
@@ -253,8 +250,7 @@ class SoftRules(BaseModel):
     )
     cooling: CoolingRule = Field(default_factory=lambda: CoolingRule(enabled=False, weight=5))
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class RuleSet(BaseModel):
@@ -264,7 +260,7 @@ class RuleSet(BaseModel):
     soft: SoftRules = Field(default_factory=SoftRules)
     groups: list[GroupRule] = Field(default_factory=list)
 
-    @validator("schema_version", pre=True)
+    @field_validator("schema_version", mode="before")
     def supported_schema_version(cls, value: object) -> int:
         return require_schema_version(
             value,
@@ -272,5 +268,4 @@ class RuleSet(BaseModel):
             artifact="ruleset",
         )
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")

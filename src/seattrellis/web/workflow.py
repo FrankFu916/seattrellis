@@ -303,10 +303,7 @@ def build_rules_preview(
         preset_name=preset_name,
         source="<Web rules overlay>",
     )
-    if hasattr(rules, "model_dump"):
-        payload = rules.model_dump(mode="json")  # type: ignore[attr-defined]
-    else:
-        payload = json.loads(rules.json())
+    payload = rules.model_dump(mode="json")
     json_bytes = (
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     ).encode("utf-8")
@@ -435,10 +432,7 @@ def analyze_history_quality(
 
 
 def _layout_signature(layout: ClassroomLayout) -> str:
-    if hasattr(layout, "model_dump"):
-        payload = layout.model_dump(mode="json")  # type: ignore[attr-defined]
-    else:
-        payload = json.loads(layout.json())
+    payload = layout.model_dump(mode="json")
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 

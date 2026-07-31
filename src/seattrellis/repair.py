@@ -10,10 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Sequence, TypeVar
 
-try:
-    from pydantic.v1 import BaseModel
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel
+from pydantic import BaseModel
 
 from seattrellis.editing import (
     LOCK_STATE_METADATA_KEY,
@@ -402,9 +399,7 @@ def _copy_seat(seat: SeatNode, *, enabled: bool | None = None) -> SeatNode:
 
 
 def _copy_model(model: ModelT) -> ModelT:
-    if hasattr(model, "model_copy"):
-        return model.model_copy(deep=True)  # type: ignore[attr-defined,return-value]
-    return model.copy(deep=True)  # type: ignore[return-value]
+    return model.model_copy(deep=True)
 
 
 def _saved_locks(snapshot: SeatingSnapshot) -> tuple[list[str], list[str]]:

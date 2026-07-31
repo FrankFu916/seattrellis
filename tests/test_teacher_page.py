@@ -278,7 +278,7 @@ def test_room_identity_and_central_aisle_cover_built_in_and_custom_rooms() -> No
 def test_prepare_print_export_uses_template_privacy_and_reads_bytes(
     tmp_path: Path,
 ) -> None:
-    artifact = CandidateSet.parse_obj(
+    artifact = CandidateSet.model_validate(
         {
             "candidates": [
                 {
@@ -327,7 +327,7 @@ def test_prepare_print_export_uses_template_privacy_and_reads_bytes(
 
 
 def test_edited_teacher_result_replaces_only_teacher_plan_state(tmp_path: Path) -> None:
-    artifact = CandidateSet.parse_obj(
+    artifact = CandidateSet.model_validate(
         {
             "candidates": [
                 {

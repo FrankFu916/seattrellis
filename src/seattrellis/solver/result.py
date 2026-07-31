@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from pydantic.v1 import BaseModel, Field
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field
 
 from seattrellis.models.layout import ClassroomLayout
 from seattrellis.models.rules import RuleSet

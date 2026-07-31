@@ -4,10 +4,7 @@ import json
 
 import pytest
 
-try:
-    from pydantic.v1 import ValidationError
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import ValidationError
+from pydantic import ValidationError
 
 from seattrellis.editing import EditingError
 from seattrellis.editing_protocol import (
@@ -35,7 +32,7 @@ def _command(
     action: str = "apply",
     operations: list[dict[str, object]] | None = None,
 ) -> EditorCommandEnvelope:
-    return EditorCommandEnvelope.parse_obj(
+    return EditorCommandEnvelope.model_validate(
         {
             "kind": "seattrellis_editor_command",
             "protocol_version": EDITOR_PROTOCOL_VERSION,
@@ -150,7 +147,7 @@ def test_editor_command_rejects_invalid_envelopes(
         payload.update(change)
 
     with pytest.raises(ValidationError):
-        EditorCommandEnvelope.parse_obj(payload)
+        EditorCommandEnvelope.model_validate(payload)
 
 
 def test_editor_command_requires_action_and_operation_kind() -> None:
@@ -168,16 +165,16 @@ def test_editor_command_requires_action_and_operation_kind() -> None:
         ],
     }
     with pytest.raises(ValidationError):
-        EditorCommandEnvelope.parse_obj(command_payload)
+        EditorCommandEnvelope.model_validate(command_payload)
 
     command_payload["action"] = "apply"
     del command_payload["operations"][0]["kind"]
     with pytest.raises(ValidationError):
-        EditorCommandEnvelope.parse_obj(command_payload)
+        EditorCommandEnvelope.model_validate(command_payload)
 
 
 def test_editor_command_rejects_non_string_operation_identifiers() -> None:
-    with pytest.raises(ValidationError, match="str type expected"):
+    with pytest.raises(ValidationError, match="valid string|str type expected"):
         _command(
             operations=[
                 {
@@ -251,7 +248,7 @@ def test_editor_state_is_minimized_for_frontend_clients(tmp_path) -> None:
     draft = begin_web_editing(result)
 
     state = build_editor_state_for_web(draft)
-    payload = json.loads(state.json())
+    payload = json.loads(state.model_dump_json())
 
     assert state.protocol_version == EDITOR_PROTOCOL_VERSION
     assert state.draft_id == draft.draft_id

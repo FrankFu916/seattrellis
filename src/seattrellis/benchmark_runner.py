@@ -369,21 +369,15 @@ def _elapsed_seconds(started: int) -> float:
 
 
 def _model_to_data(model: Any) -> dict[str, Any]:
-    if hasattr(model, "model_dump"):
-        return model.model_dump(mode="json")
-    return json.loads(model.json())
+    return model.model_dump(mode="json")
 
 
 def _model_json(model: Any) -> str:
-    if hasattr(model, "model_dump_json"):
-        return model.model_dump_json()
-    return model.json()
+    return model.model_dump_json()
 
 
 def _parse_model(model_type: type[Any], data: dict[str, Any]) -> Any:
-    if hasattr(model_type, "model_validate"):
-        return model_type.model_validate(data)
-    return model_type.parse_obj(data)
+    return model_type.model_validate(data)
 
 
 def _cases(

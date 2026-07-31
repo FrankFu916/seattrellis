@@ -3,10 +3,13 @@ from __future__ import annotations
 from math import isfinite
 from typing import Any
 
-try:
-    from pydantic.v1 import BaseModel, Field, root_validator, validator
-except ImportError:  # pragma: no cover - pydantic v1.
-    from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class SeatNode(BaseModel):
@@ -27,39 +30,39 @@ class SeatNode(BaseModel):
     tags: list[str] = Field(default_factory=list)
     attributes: dict[str, Any] = Field(default_factory=dict)
 
-    @validator("seat_id")
+    @field_validator("seat_id")
     def clean_seat_id(cls, value: str) -> str:
         value = str(value).strip()
         if not value:
             raise ValueError("seat_id cannot be empty.")
         return value
 
-    @validator("group_id", pre=True)
+    @field_validator("group_id", mode="before")
     def clean_group_id(cls, value: Any) -> str | None:
         if value is None:
             return None
         text = str(value).strip()
         return text or None
 
-    @validator("row", "col")
+    @field_validator("row", "col")
     def positive_grid_position(cls, value: int) -> int:
         if value < 1:
             raise ValueError("row and col must be positive integers.")
         return value
 
-    @validator("x", "y")
-    def finite_coordinates(cls, value: float | None, field: Any) -> float | None:
+    @field_validator("x", "y")
+    def finite_coordinates(cls, value: float | None, info: ValidationInfo) -> float | None:
         if value is not None and not isfinite(value):
-            raise ValueError(f"{field.name} must be a finite number.")
+            raise ValueError(f"{info.field_name} must be a finite number.")
         return value
 
-    @root_validator(skip_on_failure=True)
-    def default_coordinates(cls, values: dict[str, Any]) -> dict[str, Any]:
-        if values.get("x") is None:
-            values["x"] = float(values.get("col", 0))
-        if values.get("y") is None:
-            values["y"] = float(values.get("row", 0))
-        return values
+    @model_validator(mode="after")
+    def default_coordinates(cls, model: Any) -> Any:
+        if model.x is None:
+            model.x = float(model.col)
+        if model.y is None:
+            model.y = float(model.row)
+        return model
 
 
 class AdjacencyConfig(BaseModel):
@@ -74,19 +77,19 @@ class AdjacencyConfig(BaseModel):
     use_xy_distance: bool = True
     custom_edges: list[tuple[str, str]] = Field(default_factory=list)
 
-    @validator("max_row_delta", "max_col_delta")
-    def non_negative_grid_delta(cls, value: int, field: Any) -> int:
+    @field_validator("max_row_delta", "max_col_delta")
+    def non_negative_grid_delta(cls, value: int, info: ValidationInfo) -> int:
         if value < 0:
-            raise ValueError(f"{field.name} must be non-negative.")
+            raise ValueError(f"{info.field_name} must be non-negative.")
         return value
 
-    @validator("max_distance")
+    @field_validator("max_distance")
     def positive_finite_distance(cls, value: float | None) -> float | None:
         if value is not None and (not isfinite(value) or value <= 0):
             raise ValueError("max_distance must be a positive finite number.")
         return value
 
-    @validator("custom_edges", pre=True)
+    @field_validator("custom_edges", mode="before")
     def normalize_edges(cls, value: Any) -> list[tuple[str, str]]:
         if value is None:
             return []
@@ -110,9 +113,9 @@ class ClassroomLayout(BaseModel):
     adjacency: AdjacencyConfig = Field(default_factory=AdjacencyConfig)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @root_validator(skip_on_failure=True)
-    def require_unique_seat_ids(cls, values: dict[str, Any]) -> dict[str, Any]:
-        seats = values.get("seats") or []
+    @model_validator(mode="after")
+    def require_unique_seat_ids(cls, model: Any) -> Any:
+        seats = model.seats or []
         if not seats:
             raise ValueError("Classroom layout must contain at least one seat.")
         seat_ids = [seat.seat_id for seat in seats]
@@ -130,7 +133,7 @@ class ClassroomLayout(BaseModel):
             raise ValueError(f"Duplicate seat grid position: {formatted}")
         enabled_ids = {seat.seat_id for seat in seats if seat.enabled}
         disabled_ids = {seat.seat_id for seat in seats if not seat.enabled}
-        for first, second in values.get("adjacency", AdjacencyConfig()).custom_edges:
+        for first, second in model.adjacency.custom_edges:
             missing = [seat_id for seat_id in (first, second) if seat_id not in seat_ids]
             if missing:
                 raise ValueError(f"custom_edges reference unknown seat_id values: {', '.join(missing)}")
@@ -141,7 +144,7 @@ class ClassroomLayout(BaseModel):
                 raise ValueError("custom_edges cannot connect a seat to itself.")
         if not enabled_ids:
             raise ValueError("Classroom layout must contain at least one enabled seat.")
-        return values
+        return model
 
     @property
     def enabled_seats(self) -> list[SeatNode]:

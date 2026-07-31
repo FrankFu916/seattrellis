@@ -6,10 +6,7 @@ import json
 from math import isfinite
 from typing import Any, Literal
 
-try:
-    from pydantic.v1 import BaseModel, ValidationError, validator
-except ImportError:  # pragma: no cover - pydantic v1
-    from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from seattrellis.io.json_files import InputFileError
 
@@ -23,27 +20,29 @@ class WebSessionConfig(BaseModel):
     seed: int | None = None
     time_limit_seconds: float = 3.0
 
-    @validator("preset_name", pre=True)
+    @field_validator("preset_name", mode="before")
+    @classmethod
     def clean_preset_name(cls, value: object) -> str | None:
         if value is None:
             return None
         text = str(value).strip()
         return text or None
 
-    @validator("candidate_count")
+    @field_validator("candidate_count")
+    @classmethod
     def candidate_count_in_range(cls, value: int) -> int:
         if not 1 <= value <= 20:
             raise ValueError("candidate_count must be between 1 and 20")
         return value
 
-    @validator("time_limit_seconds")
+    @field_validator("time_limit_seconds")
+    @classmethod
     def valid_time_limit(cls, value: float) -> float:
         if not isfinite(value) or value < 0.1:
             raise ValueError("time_limit_seconds must be a finite number >= 0.1")
         return value
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
     @property
     def contains_student_references(self) -> bool:
@@ -78,9 +77,7 @@ def load_web_config(data: bytes | str) -> WebSessionConfig:
     if not isinstance(payload, dict):
         raise InputFileError("Invalid Web config: top-level value must be an object.")
     try:
-        if hasattr(WebSessionConfig, "model_validate"):
-            return WebSessionConfig.model_validate(payload)  # type: ignore[attr-defined,no-any-return]
-        return WebSessionConfig.parse_obj(payload)
+        return WebSessionConfig.model_validate(payload)
     except ValidationError as exc:
         details = "; ".join(
             f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
@@ -90,8 +87,5 @@ def load_web_config(data: bytes | str) -> WebSessionConfig:
 
 
 def dump_web_config(config: WebSessionConfig) -> bytes:
-    if hasattr(config, "model_dump"):
-        payload = config.model_dump(mode="json")  # type: ignore[attr-defined]
-    else:
-        payload = json.loads(config.json())
+    payload = config.model_dump(mode="json")
     return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
