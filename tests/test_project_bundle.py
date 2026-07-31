@@ -45,3 +45,14 @@ def test_project_bundle_rejects_path_traversal(tmp_path) -> None:
 
     with pytest.raises(InputFileError, match="Unsafe project bundle path"):
         restore_project_bundle(bundle, tmp_path / "restored")
+
+
+def test_project_bundle_uses_a_clean_default_name_and_rejects_corrupt_zip(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
+    result = pack_project(paths["project"], include_outputs=False)
+    assert result.path.name == "project.seattrellis.zip"
+
+    corrupt = tmp_path / "corrupt.seattrellis.zip"
+    corrupt.write_bytes(b"not a zip")
+    with pytest.raises(InputFileError, match="Could not restore project bundle"):
+        restore_project_bundle(corrupt, tmp_path / "corrupt-restore")

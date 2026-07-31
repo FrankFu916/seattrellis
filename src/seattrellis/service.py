@@ -224,7 +224,12 @@ def compute_rotation_plan(input: RotationInput) -> RotationOutput:
         build_seat_history(input.students, input.layout, generated)
     )
     pair_report = build_pair_history_report(
-        build_pair_history(input.students, input.layout, generated),
+        build_pair_history(
+            input.students,
+            input.layout,
+            generated,
+            within_distance=input.rules.soft.avoid_recent_neighbors.within_distance,
+        ),
         top=10,
     )
     repeated_pairs = [

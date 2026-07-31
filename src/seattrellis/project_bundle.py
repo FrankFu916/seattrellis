@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 
 from seattrellis.io.json_files import InputFileError, read_json
 from seattrellis.io.project import load_project, resolve_project_paths
@@ -252,7 +252,7 @@ def restore_project_bundle(
                 load_project(restored_project)
                 destination.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(staging, destination, dirs_exist_ok=True)
-    except (OSError, ValueError) as exc:
+    except (BadZipFile, OSError, ValueError) as exc:
         if isinstance(exc, InputFileError):
             raise
         raise InputFileError(f"Could not restore project bundle {bundle}: {exc}") from exc
