@@ -470,6 +470,19 @@ def _commands(
                 ["outputs/neighbor-aware-repaired.html"],
             ),
             SmokeCommand(
+                "export neighbor svg",
+                [
+                    "export",
+                    "--snapshot",
+                    "outputs/neighbor-aware.snapshot.json",
+                    "--format",
+                    "svg",
+                    "--output",
+                    "outputs/neighbor-aware.svg",
+                ],
+                ["outputs/neighbor-aware.svg"],
+            ),
+            SmokeCommand(
                 "solve candidate set",
                 [
                     "solve",
@@ -641,6 +654,26 @@ def _optional_commands(*, optional: str, include_pdf: bool) -> list[SmokeCommand
                     "outputs/recommended.docx",
                 ],
                 ["outputs/recommended.docx"],
+            )
+        )
+    if _optional_enabled(optional, "pptx"):
+        commands.append(
+            SmokeCommand(
+                "export PPTX",
+                [
+                    "export",
+                    "--snapshot",
+                    "outputs/candidates.json",
+                    "--candidate",
+                    "recommended",
+                    "--format",
+                    "pptx",
+                    "--template",
+                    "public",
+                    "--output",
+                    "outputs/recommended.pptx",
+                ],
+                ["outputs/recommended.pptx"],
             )
         )
     if include_pdf and _optional_enabled(optional, "weasyprint"):
