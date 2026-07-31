@@ -8,6 +8,10 @@ import type {
   GenerateClassRequest,
   GenerateClassResponse,
   HealthResponse,
+  ProjectHistoryResponse,
+  ProjectListResponse,
+  ProjectPrivacyResponse,
+  ProjectRestoreResponse,
   RosterDraftResponse,
   RosterUpdatePreviewRequest,
   RosterUpdatePreviewResponse,
@@ -102,6 +106,86 @@ export async function loadBootstrap(): Promise<BootstrapData> {
     // usable before the local SeatTrellis service has started.
     return demoBootstrap;
   }
+}
+
+export async function listRecentProjects(
+  root = ".",
+  limit = 20,
+): Promise<ProjectListResponse> {
+  const params = new URLSearchParams({ root, limit: String(limit) });
+  return fetchJson<ProjectListResponse>(`/projects/recent?${params.toString()}`);
+}
+
+export async function fetchProjectHistory(
+  projectPath: string,
+  includeOutputs = true,
+): Promise<ProjectHistoryResponse> {
+  return fetchJson<ProjectHistoryResponse>("/projects/history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      include_outputs: includeOutputs,
+    }),
+  });
+}
+
+export async function scanProjectPrivacy(
+  projectPath: string,
+  includeOutputs = true,
+): Promise<ProjectPrivacyResponse> {
+  return fetchJson<ProjectPrivacyResponse>("/projects/privacy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      include_outputs: includeOutputs,
+    }),
+  });
+}
+
+export async function downloadProjectBundle(
+  projectPath: string,
+  includeOutputs = true,
+): Promise<{ blob: Blob; filename: string }> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const sessionToken = readDesktopSessionToken();
+  if (sessionToken) {
+    headers.set("Authorization", `Bearer ${sessionToken}`);
+  }
+  const response = await fetch(`${API_ROOT}/projects/bundle`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      project_path: projectPath,
+      include_outputs: includeOutputs,
+    }),
+  });
+  if (!response.ok) {
+    const detail = await safeErrorDetail(response);
+    throw new RosterApiError(response.status, detail.code, detail.message);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return {
+    blob: await response.blob(),
+    filename: match ? match[1] : "project.seattrellis.zip",
+  };
+}
+
+export async function restoreProjectBundle(
+  bundle: File,
+  outputDir: string,
+  overwrite = false,
+): Promise<ProjectRestoreResponse> {
+  const form = new FormData();
+  form.append("bundle", bundle);
+  form.append("output_dir", outputDir);
+  form.append("overwrite", String(overwrite));
+  return fetchJson<ProjectRestoreResponse>("/projects/restore", {
+    method: "POST",
+    body: form,
+  }, 30_000);
 }
 
 export async function uploadRosterDraft(
