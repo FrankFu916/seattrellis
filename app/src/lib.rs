@@ -14,6 +14,7 @@ pub mod layouts;
 pub mod migration;
 pub mod projects;
 pub mod render;
+pub mod rotation;
 pub mod room_templates;
 pub mod roster;
 pub mod server;
@@ -36,5 +37,10 @@ pub use migration::{
 pub use roster::{
     delete_draft, get_draft_json, parse_roster_csv, preview_roster_update, preview_update_json,
     upload_draft_json, RosterDraft, RosterDraftStore, RosterUpdatePreview, Student,
+};
+pub use rotation::{
+    group_register_csv_json, group_register_html_json, group_register_preview_json,
+    group_register_save_json, rotation_load_json, rotation_save_json, GROUP_REGISTER_FILE,
+    ROTATION_PLAN_FILE,
 };
 pub use server::{resolve_web_root, Server, ServerConfig, ServerError};
