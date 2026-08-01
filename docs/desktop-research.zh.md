@@ -43,8 +43,9 @@ python scripts/build_desktop.py
 ```
 
 该配方会把同一份 React 静态资源和本地 API 打进可检查的桌面目录，构建结果仍是
-unsigned bundle，不等同于正式安装包。Windows/macOS 安装器、原生打开/另存为对话框、
-签名、公证和干净机器验收会在此基础上单独完成。
+unsigned bundle，不等同于正式安装包。Windows/macOS 安装器、签名、公证和干净机器验收
+会在此基础上单独完成。pywebview 原生打开/另存为对话框已经接入名单和导出流程；浏览器
+端保留普通上传/下载回退，最近名单只保存本机路径，不保存文件内容。
 
 Release 发布事件还会把三个平台的 onedir 目录压成确定性 ZIP，并附加
 `DESKTOP-SHA256SUMS`。这一步只负责传递和校验构建产物，不代表已经完成签名或安装器制作。

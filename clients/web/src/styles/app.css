@@ -952,6 +952,33 @@ input:focus-visible,
   line-height: 1.5;
 }
 
+.file-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.file-picker-browser-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.file-picker-browser-button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-soft);
+}
+
 .file-picker input {
   position: absolute;
   width: 1px;

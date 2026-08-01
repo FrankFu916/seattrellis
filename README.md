@@ -107,6 +107,10 @@ python -m pip install -e ".[web,desktop-build]"
 python scripts/build_desktop.py
 ```
 
+桌面端会优先使用系统的打开/另存为对话框导入名单和保存导出文件；浏览器端仍使用
+普通上传和下载。最近使用的名单只保存本机路径，不保存名单内容。旧版桌面包如果仍显示
+`session_required` 或旧的英文导入界面，请退出旧进程后安装最新 release。
+
 当前发布资产仍是未签名的压缩包；Windows/macOS 安装器、代码签名、公证和自动更新
 会在桌面端正式发布前另行完成。桌面壳会通过一次性本地会话令牌访问 API；如果旧版
 窗口仍显示 `session_required`，请关闭旧进程并重新安装或从当前源码重新构建桌面包。
