@@ -25,6 +25,9 @@
   who need more control can set candidate count, seed, time limit, solver
   backend, and complete custom rules JSON without making those fields part of
   the everyday teacher flow.
+- Added field-level checks for custom RuleSet JSON. The workbench now identifies
+  unsupported fields, malformed hard rules, unknown students or seats, and
+  invalid group definitions before a solve is started.
 - Added ordinary teacher controls for irregular classrooms: custom rows and
   columns, aisle columns, unavailable seats, and an optional complete layout
   definition.
