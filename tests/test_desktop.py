@@ -38,6 +38,14 @@ def test_standalone_desktop_parser_has_stable_defaults() -> None:
     assert (custom.width, custom.height, custom.title) == (1440, 960, "Classroom")
 
 
+def test_standalone_desktop_parser_exposes_version(capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        build_parser().parse_args(["--version"])
+
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == "seattrellis-desktop 1.8.3"
+
+
 def test_desktop_session_serves_bootstrap_before_api_authentication(tmp_path) -> None:
     """The embedded window must receive HTML before React attaches its token."""
 
