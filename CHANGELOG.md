@@ -37,6 +37,10 @@
   result without writing layout JSON.
 - Added combinable seating preferences and repeatable hard requests for keeping
   students apart, keeping them together, or fixing a student to a seat.
+- Added a collapsed bulk relationship editor to the ordinary seating settings.
+  Teachers can paste one pair per line for apart, together, minimum-distance, or
+  fixed-seat requests; the preview reports unknown references and duplicates
+  before anything is added.
 - Fixed roster import in the React workbench: full replacement now uses the
   current API contract, authenticated desktop requests keep their bearer
   header, imported student metadata is retained, and the same file can be
