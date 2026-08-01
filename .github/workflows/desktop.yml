@@ -68,5 +68,6 @@ jobs:
       - name: Upload desktop assets to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$RELEASE_TAG" release/*.zip release/DESKTOP-SHA256SUMS --clobber
