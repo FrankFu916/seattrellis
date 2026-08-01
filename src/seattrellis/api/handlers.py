@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import csv
+import html
+import io
 import os
 import tempfile
 from copy import deepcopy
@@ -38,6 +41,7 @@ from seattrellis.api.models import (
     ProjectMigrationRequest,
     ProjectMigrationChange,
     ProjectMigrationResponse,
+    ProjectGroupRegisterRequest,
     ProjectRotationLoadRequest,
     ProjectRotationLoadResponse,
     ProjectRotationSaveRequest,
@@ -102,6 +106,7 @@ from seattrellis.service_types import (
 )
 from seattrellis.service import compute_rotation_plan
 from seattrellis.models.candidate import CandidatePlan, CandidateSet
+from seattrellis.models.rotation import RotationPlan
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.scoring import score_snapshot
 from seattrellis.solver.errors import SeatTrellisSolveError
@@ -143,6 +148,7 @@ def capabilities() -> CapabilitiesResponse:
             "project-migration",
             "project-rotation-save",
             "project-rotation-load",
+            "project-group-register",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -521,6 +527,212 @@ def project_rotation_load(
     )
 
 
+def project_group_register(request: ProjectGroupRegisterRequest) -> ProjectDownloadArtifact:
+    """Render a printable or tabular register from a saved rotation plan."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        artifact_path = _resolve_project_artifact(paths, request.artifact_path)
+        plan = load_rotation_plan(artifact_path)
+        rows = _group_register_rows(plan, locale=request.locale)
+        if request.format == "csv":
+            data = _render_group_register_csv(rows, locale=request.locale)
+            content_type = "text/csv; charset=utf-8"
+            suffix = "csv"
+        else:
+            data = _render_group_register_html(
+                plan.name,
+                rows,
+                locale=request.locale,
+            )
+            content_type = "text/html; charset=utf-8"
+            suffix = "html"
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_group_register_failed",
+            message="The selected rotation plan could not produce a group register.",
+        ) from exc
+    return ProjectDownloadArtifact(
+        data=data,
+        filename=f"group-register.{suffix}",
+        content_type=content_type,
+    )
+
+
+def _group_register_rows(
+    plan: RotationPlan,
+    *,
+    locale: Literal["zh", "en"],
+) -> list[dict[str, str]]:
+    """Build rows while retaining empty, missing, and unseated members."""
+
+    periods = plan.periods
+    group_names = sorted(
+        {
+            group.name
+            for period in periods
+            for group in period.snapshot.rules.groups
+        }
+    )
+    rows: list[dict[str, str]] = []
+    if not group_names:
+        return [
+            {
+                "period": "",
+                "group": "没有命名小组" if locale == "zh" else "No named groups",
+                "student_id": "",
+                "student": "",
+                "seat": "",
+                "status": "empty",
+            }
+        ]
+    for period in periods:
+        groups = {group.name: group for group in period.snapshot.rules.groups}
+        student_by_key = {student.key: student for student in period.snapshot.students}
+        seat_by_student = {
+            assignment.student_key: assignment.seat_id
+            for assignment in period.snapshot.assignments
+        }
+        for name in group_names:
+            group = groups.get(name)
+            members = list(group.students) if group is not None else []
+            if not members:
+                rows.append(
+                    {
+                        "period": period.label,
+                        "group": name,
+                        "student_id": "",
+                        "student": "",
+                        "seat": "",
+                        "status": "empty",
+                    }
+                )
+                continue
+            for student_key in members:
+                student = student_by_key.get(student_key)
+                if student is None:
+                    status = "missing"
+                    display_name = ""
+                    seat = ""
+                else:
+                    seat = seat_by_student.get(student_key, "")
+                    status = "seated" if seat else "unseated"
+                    display_name = student.display_name
+                rows.append(
+                    {
+                        "period": period.label,
+                        "group": name,
+                        "student_id": student_key,
+                        "student": display_name,
+                        "seat": seat,
+                        "status": status,
+                    }
+                )
+    return rows
+
+
+def _render_group_register_csv(
+    rows: list[dict[str, str]],
+    *,
+    locale: Literal["zh", "en"],
+) -> bytes:
+    headers = (
+        ["期次", "小组", "学生编号", "姓名", "座位", "状态"]
+        if locale == "zh"
+        else ["Period", "Group", "Student ID", "Student", "Seat", "Status"]
+    )
+    fields = ["period", "group", "student_id", "student", "seat", "status"]
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(
+            [
+                _group_register_status_label(row[field], locale=locale)
+                if field == "status"
+                else row[field]
+                for field in fields
+            ]
+        )
+    return output.getvalue().encode("utf-8-sig")
+
+
+def _group_register_status_label(
+    status: str,
+    *,
+    locale: Literal["zh", "en"],
+) -> str:
+    labels = {
+        "zh": {
+            "seated": "已入座",
+            "unseated": "未入座",
+            "missing": "名单中不存在",
+            "empty": "空组",
+        },
+        "en": {
+            "seated": "Seated",
+            "unseated": "Unseated",
+            "missing": "Missing from roster",
+            "empty": "Empty group",
+        },
+    }
+    return labels[locale].get(status, status)
+
+
+def _group_register_cell(
+    row: dict[str, str],
+    field: str,
+    *,
+    locale: Literal["zh", "en"],
+) -> str:
+    value = row[field]
+    if field == "status":
+        value = _group_register_status_label(value, locale=locale)
+    return html.escape(value)
+
+
+def _render_group_register_html(
+    plan_name: str,
+    rows: list[dict[str, str]],
+    *,
+    locale: Literal["zh", "en"],
+) -> bytes:
+    title = "小组登记表" if locale == "zh" else "Group register"
+    headers = (
+        ["期次", "小组", "学生编号", "姓名", "座位", "状态"]
+        if locale == "zh"
+        else ["Period", "Group", "Student ID", "Student", "Seat", "Status"]
+    )
+    fields = ["period", "group", "student_id", "student", "seat", "status"]
+    table_rows = "".join(
+        "<tr>"
+        + "".join(
+            f"<td>{_group_register_cell(row, field, locale=locale)}</td>"
+            for field in fields
+        )
+        + "</tr>"
+        for row in rows
+    )
+    header_row = "".join(f"<th>{html.escape(label)}</th>" for label in headers)
+    document = f"""<!doctype html>
+<html lang="{locale}">
+<head><meta charset="utf-8"><title>{html.escape(title)} · {html.escape(plan_name)}</title>
+<style>
+body {{ font: 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; margin: 32px; color: #1f2933; }}
+h1 {{ margin-bottom: 4px; }}
+p {{ color: #52606d; }}
+table {{ border-collapse: collapse; width: 100%; }}
+th, td {{ border: 1px solid #cbd5e1; padding: 7px 9px; text-align: left; }}
+th {{ background: #eef2f6; }}
+@media print {{ body {{ margin: 10mm; }} }}
+</style></head>
+<body><h1>{html.escape(title)}</h1><p>{html.escape(plan_name)}</p>
+<table><thead><tr>{header_row}</tr></thead><tbody>{table_rows}</tbody></table>
+</body></html>"""
+    return document.encode("utf-8")
+
+
 def _ensure_rotation_draft_matches_source(
     current: SeatingSnapshot,
     source: SeatingSnapshot,
@@ -832,6 +1044,15 @@ class ProjectBundleArtifact:
 
     data: bytes
     filename: str
+
+
+@dataclass(frozen=True)
+class ProjectDownloadArtifact:
+    """A generated local download with an explicit content type."""
+
+    data: bytes
+    filename: str
+    content_type: str
 
 
 def pack_project_for_web(request: ProjectPathRequest) -> ProjectBundleArtifact:

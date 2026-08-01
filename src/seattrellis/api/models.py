@@ -534,6 +534,23 @@ class ProjectRotationLoadResponse(VersionedResponse):
     period_editors: list[EditorStateEnvelope] = Field(min_length=1)
 
 
+class ProjectGroupRegisterRequest(ProjectPathRequest):
+    """Request a printable register for named groups in one rotation plan."""
+
+    artifact_path: str
+    format: Literal["html", "csv"] = "html"
+    locale: Literal["zh", "en"] = "zh"
+
+    @field_validator("artifact_path", mode="before")
+    def clean_group_register_artifact_path(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("artifact_path cannot be empty.")
+        return text
+
+
 class PrivacyFindingItem(ApiModel):
     file: str
     fields: list[str] = Field(default_factory=list)

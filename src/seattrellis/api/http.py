@@ -25,6 +25,7 @@ from seattrellis.api.handlers import (
     project_artifact_restore,
     project_migration_apply,
     project_migration_preview,
+    project_group_register,
     project_rotation_load,
     project_rotation_save,
     project_privacy,
@@ -63,6 +64,7 @@ from seattrellis.api.models import (
     ProjectListResponse,
     ProjectMigrationRequest,
     ProjectMigrationResponse,
+    ProjectGroupRegisterRequest,
     ProjectPathRequest,
     ProjectPrivacyResponse,
     ProjectRotationLoadRequest,
@@ -217,6 +219,16 @@ def create_app(
 
     def load_rotation(request: ProjectRotationLoadRequest) -> ProjectRotationLoadResponse:
         return project_rotation_load(request, draft_store=resolved_store)
+
+    def download_group_register(request: ProjectGroupRegisterRequest) -> Any:
+        artifact = project_group_register(request)
+        return Response(
+            content=artifact.data,
+            media_type=artifact.content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
+            },
+        )
 
     def get_editor_state(draft_id: str) -> EditorStateEnvelope:
         try:
@@ -622,6 +634,14 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/projects/rotation/load",
         load_rotation,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/rotation/group-register",
+        download_group_register,
         methods=["POST"],
         response_model=None,
         responses={422: {"model": ErrorResponse}},

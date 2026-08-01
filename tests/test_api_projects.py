@@ -317,3 +317,65 @@ def test_project_rotation_save_persists_current_period_drafts(tmp_path) -> None:
         "Alice",
         "Bob",
     }
+
+    grouped_output = output.parent / "grouped-rotation.json"
+    grouped_data = json.loads(output.read_text(encoding="utf-8"))
+    for period in grouped_data["periods"]:
+        period["snapshot"]["rules"]["groups"] = [
+            {
+                "name": "Pair A",
+                "students": ["S1", "S2"],
+                "together": True,
+                "separate": False,
+            },
+            {
+                "name": "Empty B",
+                "students": [],
+                "together": False,
+                "separate": False,
+            },
+            {
+                "name": "Missing C",
+                "students": ["S999"],
+                "together": False,
+                "separate": False,
+            },
+        ]
+        if period["period"] == 1:
+            period["snapshot"]["assignments"] = [
+                assignment
+                for assignment in period["snapshot"]["assignments"]
+                if assignment["student_key"] != "S2"
+            ]
+    grouped_output.write_text(json.dumps(grouped_data), encoding="utf-8")
+    register = client.post(
+        "/api/v1/projects/rotation/group-register",
+        json={
+            "project_path": str(paths["project"]),
+            "artifact_path": str(grouped_output),
+            "format": "html",
+            "locale": "en",
+        },
+    )
+    assert register.status_code == 200, register.text
+    assert register.headers["content-type"].startswith("text/html")
+    assert "Pair A" in register.text
+    assert "Alice" in register.text
+    assert "Bob" in register.text
+    assert "Empty group" in register.text
+    assert "Missing from roster" in register.text
+    assert "Unseated" in register.text
+    assert "group-register.html" in register.headers["content-disposition"]
+
+    csv_register = client.post(
+        "/api/v1/projects/rotation/group-register",
+        json={
+            "project_path": str(paths["project"]),
+            "artifact_path": str(grouped_output),
+            "format": "csv",
+            "locale": "en",
+        },
+    )
+    assert csv_register.status_code == 200
+    assert csv_register.headers["content-type"].startswith("text/csv")
+    assert "Student ID" in csv_register.content.decode("utf-8-sig")

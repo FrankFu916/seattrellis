@@ -51,6 +51,9 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
   Web 编辑命令写入每一期 snapshot 的 `metadata.manual_edit`；
 - `POST /api/v1/projects/rotation/load` 从项目 history 或 outputs 中安全载入一个
   `rotation_plan`，重新创建每一期的短期编辑草稿，供浏览器或桌面端继续调整；
+- `POST /api/v1/projects/rotation/group-register` 从已保存的 `rotation_plan` 生成小组登记表，
+  支持可打印 HTML 和带 UTF-8 BOM 的 CSV；每一期都会保留空组、名单中不存在的成员和未入座学生，
+  不会改写原始项目文件；
 - `POST /api/v1/classes/rotation` 根据一个班级草稿生成多个未来 period，并返回每一期的
   独立编辑草稿；
 - `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；

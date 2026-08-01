@@ -109,6 +109,9 @@ rollback path without returning original values. The optional **Advanced
 settings** section is for complete rules JSON, candidate count, seed, time limit,
 and solver backend details. The default path does not require any of these
 settings.
+For a saved rotation plan, the Project panel can also download a period-by-period
+group register as printable HTML or CSV. Empty groups, unseated students, and
+roster members missing from the saved data remain visible in the register.
 
 Use `--no-open-browser` to suppress auto-opening, or `--host` and `--port` to
 customize the listen address. For development, run the Vite dev server from

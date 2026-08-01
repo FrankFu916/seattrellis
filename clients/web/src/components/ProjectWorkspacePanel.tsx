@@ -7,6 +7,7 @@ import {
   fetchProjectHistory,
   listRecentProjects,
   loadProjectRotationPlan,
+  downloadProjectGroupRegister,
   previewProjectMigration,
   restoreProjectArtifact,
   restoreProjectBundle,
@@ -108,6 +109,7 @@ export function ProjectWorkspacePanel({
   const [compareRightPath, setCompareRightPath] = useState("");
   const [restoreArtifactPath, setRestoreArtifactPath] = useState("");
   const [loadRotationPath, setLoadRotationPath] = useState("");
+  const [groupRegisterFormat, setGroupRegisterFormat] = useState<"html" | "csv">("html");
   const [migrationArtifactPath, setMigrationArtifactPath] = useState("");
   const [migrationInPlace, setMigrationInPlace] = useState(false);
   const [migrationPreview, setMigrationPreview] = useState<ProjectMigrationResponse | null>(null);
@@ -123,6 +125,7 @@ export function ProjectWorkspacePanel({
     | "migration-apply"
     | "rotation-save"
     | "rotation-load"
+    | "group-register"
     | null
   >(null);
   const [status, setStatus] = useState("");
@@ -399,6 +402,28 @@ export function ProjectWorkspacePanel({
     }
   }
 
+  async function handleGroupRegister(): Promise<void> {
+    if (!selectedPath || !loadRotationPath) {
+      return;
+    }
+    setBusy("group-register");
+    setError("");
+    try {
+      const result = await downloadProjectGroupRegister(
+        selectedPath,
+        loadRotationPath,
+        groupRegisterFormat,
+        locale === "zh-CN" ? "zh" : "en",
+      );
+      triggerDownload(result.blob, result.filename);
+      setStatus(t("project.statusGroupRegister", { name: result.filename }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section
       className="side-card project-workspace-card"
@@ -527,32 +552,60 @@ export function ProjectWorkspacePanel({
                 >
                   {busy === "compare" ? t("project.comparing") : t("project.compareAction")}
                 </button>
-                {rotationArtifacts.length > 0 && onRotationLoad && (
+                {rotationArtifacts.length > 0 && (
                   <>
+                    {onRotationLoad && (
+                      <>
+                        <label className="project-field">
+                          <span>{t("project.openRotation")}</span>
+                          <select
+                            data-testid="project-open-rotation-select"
+                            value={loadRotationPath}
+                            onChange={(event) => setLoadRotationPath(event.target.value)}
+                          >
+                            {rotationArtifacts.map((artifact) => (
+                              <option key={`open-rotation-${artifact.path}`} value={artifact.path}>
+                                {artifact.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          data-testid="project-open-rotation-button"
+                          onClick={() => void handleRotationLoad()}
+                          disabled={!loadRotationPath || busy !== null}
+                        >
+                          {busy === "rotation-load"
+                            ? t("project.openingRotation")
+                            : t("project.openRotationAction")}
+                        </button>
+                      </>
+                    )}
                     <label className="project-field">
-                      <span>{t("project.openRotation")}</span>
+                      <span>{t("project.groupRegisterFormat")}</span>
                       <select
-                        data-testid="project-open-rotation-select"
-                        value={loadRotationPath}
-                        onChange={(event) => setLoadRotationPath(event.target.value)}
+                        data-testid="project-group-register-format"
+                        value={groupRegisterFormat}
+                        onChange={(event) =>
+                          setGroupRegisterFormat(event.target.value as "html" | "csv")
+                        }
                       >
-                        {rotationArtifacts.map((artifact) => (
-                          <option key={`open-rotation-${artifact.path}`} value={artifact.path}>
-                            {artifact.name}
-                          </option>
-                        ))}
+                        <option value="html">HTML · {t("project.groupRegisterPrint")}</option>
+                        <option value="csv">CSV · {t("project.groupRegisterData")}</option>
                       </select>
                     </label>
                     <button
                       className="secondary-button"
                       type="button"
-                      data-testid="project-open-rotation-button"
-                      onClick={() => void handleRotationLoad()}
+                      data-testid="project-group-register-button"
+                      onClick={() => void handleGroupRegister()}
                       disabled={!loadRotationPath || busy !== null}
                     >
-                      {busy === "rotation-load"
-                        ? t("project.openingRotation")
-                        : t("project.openRotationAction")}
+                      {busy === "group-register"
+                        ? t("project.groupRegistering")
+                        : t("project.groupRegisterAction")}
                     </button>
                   </>
                 )}

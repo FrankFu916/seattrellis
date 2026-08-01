@@ -245,6 +245,39 @@ export async function loadProjectRotationPlan(
   );
 }
 
+export async function downloadProjectGroupRegister(
+  projectPath: string,
+  artifactPath: string,
+  format: "html" | "csv" = "html",
+  locale: "zh" | "en" = "zh",
+): Promise<{ blob: Blob; filename: string }> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const sessionToken = readDesktopSessionToken();
+  if (sessionToken) {
+    headers.set("Authorization", `Bearer ${sessionToken}`);
+  }
+  const response = await fetch(`${API_ROOT}/projects/rotation/group-register`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      project_path: projectPath,
+      artifact_path: artifactPath,
+      format,
+      locale,
+    }),
+  });
+  if (!response.ok) {
+    const detail = await safeErrorDetail(response);
+    throw new RosterApiError(response.status, detail.code, detail.message);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return {
+    blob: await response.blob(),
+    filename: match ? match[1] : `group-register.${format}`,
+  };
+}
+
 export async function scanProjectPrivacy(
   projectPath: string,
   includeOutputs = true,

@@ -8,6 +8,7 @@ import {
   fetchProjectHistory,
   listRecentProjects,
   loadProjectRotationPlan,
+  downloadProjectGroupRegister,
   downloadProjectBundle,
   previewProjectMigration,
   restoreProjectBundle,
@@ -28,6 +29,7 @@ vi.mock("../api/client", () => ({
   restoreProjectBundle: vi.fn(),
   restoreProjectArtifact: vi.fn(),
   loadProjectRotationPlan: vi.fn(),
+  downloadProjectGroupRegister: vi.fn(),
   saveProjectRotationPlan: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
   scanProjectPrivacy: vi.fn(),
@@ -444,6 +446,32 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getByTestId("project-status")).toHaveTextContent(
       "Rotation loaded: Weekly rotation",
+    );
+  });
+
+  it("downloads a group register for a saved rotation", async () => {
+    const user = userEvent.setup();
+    vi.mocked(downloadProjectGroupRegister).mockResolvedValue({
+      blob: new Blob(["Period,Group"]),
+      filename: "group-register.html",
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:register");
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-group-register-button")).toBeEnabled();
+    });
+    await user.click(screen.getByTestId("project-group-register-button"));
+    await waitFor(() => {
+      expect(downloadProjectGroupRegister).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        "/classes/outputs/rotation-plan.json",
+        "html",
+        "en",
+      );
+    });
+    expect(screen.getByTestId("project-status")).toHaveTextContent(
+      "Register downloaded: group-register.html",
     );
   });
 });

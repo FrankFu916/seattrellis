@@ -106,6 +106,9 @@ rotation**, which recreates the period drafts so the plan can be adjusted again.
 Migration previews also show privacy-safe field paths and type changes, before
 and after validation, and the available backup or rollback path without
 returning original student values.
+For a saved rotation plan, the Project panel can also download a group register as
+printable HTML or CSV. Each period lists the group, student, seat, and status, while
+retaining empty groups, unseated students, and members missing from the roster.
 
 ## Advanced tools
 
