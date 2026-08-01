@@ -6,9 +6,12 @@ import importlib.util
 import csv
 import html
 import io
+import logging
 import os
 import tempfile
 from copy import deepcopy
+
+logger = logging.getLogger(__name__)
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -107,6 +110,7 @@ from seattrellis.project_bundle import (
     scan_project_privacy,
 )
 from seattrellis.schema_migration import (
+    SchemaMigrationResult,
     merge_normalized_data,
     migrate_json_file,
     parse_migratable_artifact,
@@ -517,6 +521,31 @@ def project_migration_batch_apply(
         shared_references=preview.shared_references,
         ready=True,
     )
+
+
+def _rollback_single_migration_write(
+    result: SchemaMigrationResult,
+    *,
+    in_place: bool,
+) -> None:
+    """Undo one migration whose post-write validation failed.
+
+    Restores the pre-write backup when the destination already existed
+    (including the in-place case where source and output are the same file),
+    otherwise removes the freshly written output so no orphan artifact is left.
+    """
+
+    output_path = result.output_path
+    if output_path is None:
+        return
+    try:
+        if result.backup_path is not None:
+            restore_json_backup(result.backup_path, output_path)
+        elif not in_place:
+            output_path.unlink(missing_ok=True)
+    except (OSError, ValueError):
+        # Rollback is best-effort; the migration error is the primary report.
+        pass
 
 
 def _rollback_migration_batch(
@@ -1114,11 +1143,19 @@ def _migrate_project_artifact(
             dry_run=dry_run,
             create_backup=True,
         )
-        after_valid = (
-            None
-            if result.dry_run
-            else _validate_migration_output(result.output_path)
-        )
+        try:
+            after_valid = (
+                None
+                if result.dry_run
+                else _validate_migration_output(result.output_path)
+            )
+        except Exception:
+            # The output was already written.  Roll it back so a failed
+            # migration never leaves an overwritten source or an orphan
+            # output behind: restore the pre-write backup when one exists,
+            # otherwise remove the freshly written output file.
+            _rollback_single_migration_write(result, in_place=request.in_place)
+            raise
         reference_checks = (
             _project_reference_checks(source_model, source_path)
             if isinstance(source_model, SeatTrellisProject)
@@ -2345,10 +2382,11 @@ def export_draft(
                 ),
             ) from exc
         except ValueError as exc:
+            logger.info("Export rejected: %s", exc)
             raise ApiProblem(
                 status_code=422,
                 code="export_rejected",
-                message=str(exc) or "This export could not be prepared.",
+                message="This export could not be prepared with the chosen options.",
             ) from exc
         data = Path(temporary_path).read_bytes()
     finally:

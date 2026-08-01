@@ -56,3 +56,23 @@ def test_project_bundle_uses_a_clean_default_name_and_rejects_corrupt_zip(tmp_pa
     corrupt.write_bytes(b"not a zip")
     with pytest.raises(InputFileError, match="Could not restore project bundle"):
         restore_project_bundle(corrupt, tmp_path / "corrupt-restore")
+
+
+def test_project_bundle_rejects_an_oversized_manifest(tmp_path) -> None:
+    from seattrellis.project_bundle import MAX_MANIFEST_BYTES
+
+    bundle = tmp_path / "bloated.seattrellis.zip"
+    # A manifest far larger than the 1 MiB cap must be rejected before any
+    # other archive entry is read, so a high-compression manifest cannot
+    # expand unboundedly in memory.
+    bloated_manifest = {
+        "kind": "seattrellis_project_bundle",
+        "format_version": 1,
+        "project_file": "project.seattrellis.json",
+        "files": ["padding" * (MAX_MANIFEST_BYTES + 1)],
+    }
+    with ZipFile(bundle, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(bloated_manifest))
+
+    with pytest.raises(InputFileError, match="manifest is unexpectedly large"):
+        restore_project_bundle(bundle, tmp_path / "bloated-restore")
