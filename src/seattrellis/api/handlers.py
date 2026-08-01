@@ -36,6 +36,7 @@ from seattrellis.api.models import (
     ProjectHistoryResponse,
     ProjectListResponse,
     ProjectMigrationRequest,
+    ProjectMigrationChange,
     ProjectMigrationResponse,
     ProjectRotationLoadRequest,
     ProjectRotationLoadResponse,
@@ -87,7 +88,11 @@ from seattrellis.project_bundle import (
     restore_project_bundle as restore_bundle,
     scan_project_privacy,
 )
-from seattrellis.schema_migration import migrate_json_file
+from seattrellis.schema_migration import (
+    merge_normalized_data,
+    migrate_json_file,
+    parse_migratable_artifact,
+)
 from seattrellis.service_types import (
     CANVAS_EXPORT_FORMATS,
     ExportRequest,
@@ -564,6 +569,13 @@ def _migrate_project_artifact(
         )
         if not source_path.is_file():
             raise InputFileError("The selected project artifact does not exist.")
+        source_data = read_json(source_path)
+        _artifact, source_model = parse_migratable_artifact(source_data, source_path)
+        normalized_data = source_model.model_dump(mode="json")
+        change_count, changes = _migration_change_summary(
+            source_data,
+            merge_normalized_data(source_data, normalized_data),
+        )
         output_path = _migration_output_path(
             paths,
             source_path,
@@ -575,6 +587,11 @@ def _migrate_project_artifact(
             in_place=request.in_place,
             dry_run=dry_run,
             create_backup=True,
+        )
+        after_valid = (
+            None
+            if result.dry_run
+            else _validate_migration_output(result.output_path)
         )
     except (InputFileError, OSError, ValueError) as exc:
         raise ApiProblem(
@@ -590,6 +607,13 @@ def _migrate_project_artifact(
         output_path=str(result.output_path) if result.output_path is not None else None,
         backup_path=str(result.backup_path) if result.backup_path is not None else None,
         dry_run=result.dry_run,
+        before_valid=True,
+        after_valid=after_valid,
+        rollback_available=(
+            result.backup_path is not None or not request.in_place
+        ),
+        change_count=change_count,
+        changes=changes,
     )
 
 
@@ -613,6 +637,89 @@ def _migration_output_path(
         candidate = directory / f"{stem}.migrated-{suffix}.json"
         suffix += 1
     return candidate
+
+
+def _validate_migration_output(path: Path | None) -> bool:
+    """Reparse a written artifact so the API can report post-write validity."""
+
+    if path is None or not path.is_file():
+        raise InputFileError("The migrated artifact was not written.")
+    parse_migratable_artifact(read_json(path), path)
+    return True
+
+
+def _migration_change_summary(
+    before: object,
+    after: object,
+    *,
+    limit: int = 200,
+) -> tuple[int, list[ProjectMigrationChange]]:
+    """Compare normalized JSON without returning any original values."""
+
+    count = 0
+    changes: list[ProjectMigrationChange] = []
+
+    def visit(left: object, right: object, path: str) -> None:
+        nonlocal count
+        if isinstance(left, dict) and isinstance(right, dict):
+            keys = sorted(set(left) | set(right))
+            for key in keys:
+                child_path = f"{path}.{key}" if path else str(key)
+                if key not in left:
+                    record(child_path, "added", None, _json_type(right[key]))
+                elif key not in right:
+                    record(child_path, "removed", _json_type(left[key]), None)
+                else:
+                    visit(left[key], right[key], child_path)
+            return
+        if isinstance(left, list) and isinstance(right, list):
+            shared = min(len(left), len(right))
+            for index in range(shared):
+                visit(left[index], right[index], f"{path}[{index}]")
+            for index in range(shared, len(left)):
+                record(f"{path}[{index}]", "removed", _json_type(left[index]), None)
+            for index in range(shared, len(right)):
+                record(f"{path}[{index}]", "added", None, _json_type(right[index]))
+            return
+        if left != right:
+            record(path or "$", "changed", _json_type(left), _json_type(right))
+
+    def record(
+        path: str,
+        change: Literal["added", "removed", "changed"],
+        before_type: str | None,
+        after_type: str | None,
+    ) -> None:
+        nonlocal count
+        count += 1
+        if len(changes) < limit:
+            changes.append(
+                ProjectMigrationChange(
+                    path=path,
+                    change=change,
+                    before_type=before_type,
+                    after_type=after_type,
+                )
+            )
+
+    visit(before, after, "")
+    return count, changes
+
+
+def _json_type(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return "unknown"
 
 
 def _resolve_project_artifact(paths: ProjectPaths, requested: str) -> Path:

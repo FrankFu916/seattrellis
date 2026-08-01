@@ -41,9 +41,11 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 - `POST /api/v1/projects/artifacts/restore` 从一个历史或输出文件创建新的输出 snapshot，
   不覆盖原始文件；
 - `POST /api/v1/projects/migration/preview` 校验项目主文件或项目内 artifact，并返回当前
-  schema、默认迁移目标和是否会创建备份；
+  schema、默认迁移目标、字段级结构变化、迁移前校验和回滚提示；差异只包含路径和类型，
+  不返回学生原始值；
 - `POST /api/v1/projects/migration/apply` 写入迁移结果。默认创建新的 `.migrated.json` 文件，
-  只有显式传入 `in_place: true` 才会替换源文件，并先生成 `.bak` 备份；
+  只有显式传入 `in_place: true` 才会替换源文件，并先生成 `.bak` 备份；写入后会再次
+  校验输出文件，并返回备份路径和字段变化摘要；
 - `POST /api/v1/projects/rotation/save` 根据当前每一期的服务端编辑草稿写入新的
   `rotation-plan.json` 输出；保存会校验名单和布局与生成时一致，不覆盖已有文件，并把
   Web 编辑命令写入每一期 snapshot 的 `metadata.manual_edit`；

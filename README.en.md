@@ -103,7 +103,9 @@ the ordinary flow. The **Detailed seating rules** panel only exposes rules that
 are connected to solving, validation, and scoring. Common named groups can be
 added in the ordinary settings as together/apart requests; the JSON compatibility
 field remains available for more complex group relationships. Relationship
-cooling is available in the detailed panel. The optional **Advanced
+cooling is available in the detailed panel. The project migration view shows
+privacy-safe field changes, validation state, and the available backup or
+rollback path without returning original values. The optional **Advanced
 settings** section is for complete rules JSON, candidate count, seed, time limit,
 and solver backend details. The default path does not require any of these
 settings.

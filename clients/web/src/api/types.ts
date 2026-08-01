@@ -567,6 +567,18 @@ export type ProjectMigrationResponse = {
   output_path: string | null;
   backup_path: string | null;
   dry_run: boolean;
+  before_valid: boolean;
+  after_valid: boolean | null;
+  rollback_available: boolean;
+  change_count: number;
+  changes: ProjectMigrationChange[];
+};
+
+export type ProjectMigrationChange = {
+  path: string;
+  change: "added" | "removed" | "changed";
+  before_type: string | null;
+  after_type: string | null;
 };
 
 export type ProjectRotationSaveResponse = {

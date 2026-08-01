@@ -18,6 +18,7 @@ import type {
   ProjectArtifact,
   ProjectArtifactCompareResponse,
   ProjectHistoryResponse,
+  ProjectMigrationChange,
   ProjectMigrationResponse,
   ProjectPrivacyResponse,
   ProjectRotationLoadResponse,
@@ -61,6 +62,20 @@ function artifactKindLabel(
       return t("project.kindRotation");
     default:
       return t("project.kindUnknown");
+  }
+}
+
+function migrationChangeLabel(
+  change: ProjectMigrationChange["change"],
+  t: Translate,
+): string {
+  switch (change) {
+    case "added":
+      return t("project.migrationAdded");
+    case "removed":
+      return t("project.migrationRemoved");
+    default:
+      return t("project.migrationChanged");
   }
 }
 
@@ -701,9 +716,47 @@ export function ProjectWorkspacePanel({
               <div className="project-migration-result" data-testid="project-migration-result" role="status">
                 <strong>{t("project.migrationReady")}</strong>
                 <span>{t("project.migrationSchema", { version: migrationPreview.schema_version })}</span>
+                <span>
+                  {migrationPreview.before_valid
+                    ? t("project.migrationBeforeValid")
+                    : t("project.migrationAfterPending")}
+                </span>
+                <span>
+                  {migrationPreview.after_valid === null
+                    ? t("project.migrationAfterPending")
+                    : migrationPreview.after_valid
+                      ? t("project.migrationAfterValid")
+                      : t("project.migrationAfterPending")}
+                </span>
+                <span>
+                  {migrationPreview.rollback_available
+                    ? t("project.migrationRollback")
+                    : t("project.migrationSourcePreserved")}
+                </span>
+                <span>
+                  {migrationPreview.change_count
+                    ? t("project.migrationChanges", { count: migrationPreview.change_count })
+                    : t("project.migrationChangesNone")}
+                </span>
                 <small>{migrationPreview.output_path ?? t("project.migrationInPlaceTarget")}</small>
                 {migrationPreview.backup_path && (
                   <small>{t("project.migrationBackup", { path: migrationPreview.backup_path })}</small>
+                )}
+                {migrationPreview.changes.length > 0 && (
+                  <details className="project-migration-details" data-testid="project-migration-details">
+                    <summary>{t("project.migrationShowChanges")}</summary>
+                    <ul>
+                      {migrationPreview.changes.map((change) => (
+                        <li key={`${change.change}-${change.path}`}>
+                          <code>{change.path}</code>
+                          <span>{migrationChangeLabel(change.change, t)}</span>
+                          <small>
+                            {change.before_type ?? "—"} → {change.after_type ?? "—"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
               </div>
             )}

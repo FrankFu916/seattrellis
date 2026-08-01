@@ -427,6 +427,15 @@ class ProjectMigrationRequest(ProjectPathRequest):
         return text or None
 
 
+class ProjectMigrationChange(ApiModel):
+    """Privacy-safe description of one normalized JSON field change."""
+
+    path: str
+    change: Literal["added", "removed", "changed"]
+    before_type: str | None = None
+    after_type: str | None = None
+
+
 class ProjectMigrationResponse(VersionedResponse):
     """Preview or result of one schema migration without exposing file data."""
 
@@ -437,6 +446,11 @@ class ProjectMigrationResponse(VersionedResponse):
     output_path: str | None = None
     backup_path: str | None = None
     dry_run: bool
+    before_valid: bool = True
+    after_valid: bool | None = None
+    rollback_available: bool = False
+    change_count: int = Field(default=0, ge=0)
+    changes: list[ProjectMigrationChange] = Field(default_factory=list)
 
 
 class ProjectRotationSaveRequest(ProjectPathRequest):

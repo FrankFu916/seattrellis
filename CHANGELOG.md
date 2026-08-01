@@ -63,6 +63,9 @@
 - Added project schema migration controls to the React workbench. Teachers can
   preview a migration, write a new migrated file by default, or explicitly
   migrate in place with an automatic backup.
+- Migration previews now show privacy-safe field paths and type changes, before
+  and after validation state, and whether the original or a backup can be used
+  to roll back.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.

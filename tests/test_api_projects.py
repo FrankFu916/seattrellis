@@ -165,6 +165,12 @@ def test_project_schema_migration_can_preview_and_write_a_new_file(tmp_path) -> 
     assert preview_payload["dry_run"] is True
     assert preview_payload["artifact"] == "project"
     assert preview_payload["output_path"].endswith(".migrated.json")
+    assert preview_payload["before_valid"] is True
+    assert preview_payload["after_valid"] is None
+    assert preview_payload["rollback_available"] is True
+    assert isinstance(preview_payload["changes"], list)
+    assert "Alice" not in preview.text
+    assert "Bob" not in preview.text
     assert not Path(preview_payload["output_path"]).exists()
     assert source.read_bytes() == original
 
@@ -176,6 +182,9 @@ def test_project_schema_migration_can_preview_and_write_a_new_file(tmp_path) -> 
     applied_payload = applied.json()
     migrated = Path(applied_payload["output_path"])
     assert applied_payload["dry_run"] is False
+    assert applied_payload["before_valid"] is True
+    assert applied_payload["after_valid"] is True
+    assert applied_payload["rollback_available"] is True
     assert migrated.exists()
     assert migrated.parent == source.parent
     assert source.read_bytes() == original
@@ -194,6 +203,9 @@ def test_project_schema_migration_in_place_keeps_a_backup(tmp_path) -> None:
     payload = response.json()
     assert payload["output_path"] == str(source)
     assert payload["backup_path"]
+    assert payload["before_valid"] is True
+    assert payload["after_valid"] is True
+    assert payload["rollback_available"] is True
     assert Path(payload["backup_path"]).exists()
     assert source.exists()
 

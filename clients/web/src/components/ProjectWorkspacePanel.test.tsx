@@ -163,6 +163,18 @@ describe("ProjectWorkspacePanel", () => {
       output_path: "/classes/demo.seattrellis.migrated.json",
       backup_path: null,
       dry_run: true,
+      before_valid: true,
+      after_valid: null,
+      rollback_available: true,
+      change_count: 1,
+      changes: [
+        {
+          path: "schema_version",
+          change: "changed",
+          before_type: "string",
+          after_type: "string",
+        },
+      ],
     });
     vi.mocked(applyProjectMigration).mockResolvedValue({
       api_version: "1",
@@ -173,6 +185,18 @@ describe("ProjectWorkspacePanel", () => {
       output_path: "/classes/demo.seattrellis.migrated.json",
       backup_path: null,
       dry_run: false,
+      before_valid: true,
+      after_valid: true,
+      rollback_available: true,
+      change_count: 1,
+      changes: [
+        {
+          path: "schema_version",
+          change: "changed",
+          before_type: "string",
+          after_type: "string",
+        },
+      ],
     });
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:backup");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
@@ -302,6 +326,12 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getByTestId("project-migration-result")).toHaveTextContent(
       "Migration check passed",
+    );
+    expect(screen.getByTestId("project-migration-result")).toHaveTextContent(
+      "1 field changes detected",
+    );
+    expect(screen.getByTestId("project-migration-details")).toHaveTextContent(
+      "schema_version",
     );
     await user.click(screen.getByTestId("project-migration-apply"));
     await waitFor(() => {

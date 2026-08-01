@@ -103,6 +103,9 @@ also offers **Save current rotation**. It writes every period's current seats,
 locks, and editing commands as a new rotation-plan output without replacing the
 source artifact. Existing rotation outputs can be opened with **Continue a
 rotation**, which recreates the period drafts so the plan can be adjusted again.
+Migration previews also show privacy-safe field paths and type changes, before
+and after validation, and the available backup or rollback path without
+returning original student values.
 
 ## Advanced tools
 

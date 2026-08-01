@@ -73,7 +73,7 @@ def migrate_json_file(
         else None
     )
     _write_json_data_atomically(
-        _merge_normalized_data(source_data, normalized_data),
+        merge_normalized_data(source_data, normalized_data),
         output_path,
     )
     return SchemaMigrationResult(
@@ -229,7 +229,7 @@ def _model_to_data(model: BaseModel) -> dict[str, Any]:
     return model.model_dump(mode="json")
 
 
-def _merge_normalized_data(original: Any, normalized: Any) -> Any:
+def merge_normalized_data(original: Any, normalized: Any) -> Any:
     """Overlay validated values while retaining unknown extension fields.
 
     Migrations validate and normalize fields understood by this version, but a
@@ -241,7 +241,7 @@ def _merge_normalized_data(original: Any, normalized: Any) -> Any:
     if isinstance(original, dict) and isinstance(normalized, dict):
         merged = dict(original)
         for key, value in normalized.items():
-            merged[key] = _merge_normalized_data(original.get(key), value)
+            merged[key] = merge_normalized_data(original.get(key), value)
         return merged
     if (
         isinstance(original, list)
@@ -249,7 +249,7 @@ def _merge_normalized_data(original: Any, normalized: Any) -> Any:
         and len(original) == len(normalized)
     ):
         return [
-            _merge_normalized_data(original_item, normalized_item)
+            merge_normalized_data(original_item, normalized_item)
             for original_item, normalized_item in zip(original, normalized)
         ]
     return normalized
