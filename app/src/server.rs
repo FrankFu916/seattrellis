@@ -397,10 +397,11 @@ fn route(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
 ) -> Response {
-    // Ignore any query string when routing.
-    let path = match request.path.split_once('?') {
-        Some((path, _)) => path,
-        None => &request.path,
+    // Split the query string off for routing: the raw path decides the route,
+    // and the query is handed to handlers that read it (e.g. `projects/recent`).
+    let (path, query) = match request.path.split_once('?') {
+        Some((path, query)) => (path, Some(query)),
+        None => (&request.path[..], None),
     };
     let segments = path_segments(path);
 
@@ -431,6 +432,54 @@ fn route(
         }
         ("POST", ["api", "v1", "exports"]) => {
             export_response(&request.body, editor_store, solve_requests)
+        }
+        ("POST", ["api", "v1", "layouts", "drafts"]) => {
+            layout_create_response(&request.body)
+        }
+        ("GET", ["api", "v1", "layouts", "drafts", draft_id]) => {
+            layout_get_response(draft_id)
+        }
+        ("POST", ["api", "v1", "layouts", "drafts", draft_id, "commands"]) => {
+            layout_command_response(draft_id, &request.body)
+        }
+        ("GET", ["api", "v1", "layouts", "drafts", draft_id, "compiled"]) => {
+            layout_compiled_response(draft_id)
+        }
+        ("DELETE", ["api", "v1", "layouts", "drafts", draft_id]) => {
+            layout_delete_response(draft_id)
+        }
+        ("GET", ["api", "v1", "projects", "recent"]) => {
+            projects_recent_response(query)
+        }
+        ("POST", ["api", "v1", "projects", "history"]) => {
+            project_history_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "privacy"]) => {
+            project_privacy_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "bundle"]) => {
+            project_bundle_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "restore"]) => {
+            project_restore_response(&request.body, request.content_type.as_deref())
+        }
+        ("POST", ["api", "v1", "projects", "migration", "preview"]) => {
+            migration_preview_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "migration", "apply"]) => {
+            migration_apply_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "migration", "reference-checks"]) => {
+            migration_reference_checks_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "migration", "batch", "preview"]) => {
+            migration_batch_preview_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "migration", "batch", "apply"]) => {
+            migration_batch_apply_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "migration", "restore"]) => {
+            migration_restore_response(&request.body)
         }
         ("GET", []) | ("GET", ["index.html"]) => index_response(web_root),
         ("GET", _) if path.starts_with("/api/") => json_error(404, "not found"),
@@ -1120,6 +1169,508 @@ fn export_response_value(request_value: &Value, state: &editing::EditorState) ->
         "hard_constraints_satisfied": true,
         "total_cost": null,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Layout routes
+// ---------------------------------------------------------------------------
+
+/// `POST /api/v1/layouts/drafts`: create a layout draft from a
+/// `CreateLayoutDraftRequest` JSON document and return the initial
+/// `LayoutStateResponse`. Domain validation failures (missing name, multiple
+/// sources, unknown template, oversized grid) are 422.
+fn layout_create_response(body: &[u8]) -> Response {
+    if body.is_empty() {
+        return json_error(400, "empty request body");
+    }
+    let body_str = match std::str::from_utf8(body) {
+        Ok(text) => text,
+        Err(_) => return json_error(400, "request body is not valid UTF-8"),
+    };
+    match crate::layouts::create_layout_draft_json(body_str) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) if message.contains("poisoned") => json_error(500, &message),
+        Err(message) => json_error(422, &message),
+    }
+}
+
+/// `GET /api/v1/layouts/drafts/{id}`: fetch the current layout state.
+fn layout_get_response(draft_id: &str) -> Response {
+    match crate::layouts::get_layout_state_json(draft_id) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) if message.contains("poisoned") => json_error(500, &message),
+        Err(_) => json_error(404, "layout draft was not found"),
+    }
+}
+
+/// `POST /api/v1/layouts/drafts/{id}/commands`: dispatch a layout command.
+/// Maps domain errors to 400 (bad command), 404 (unknown draft), or 409
+/// (stale revision / duplicate / wrong-target conflicts).
+fn layout_command_response(draft_id: &str, body: &[u8]) -> Response {
+    let body_str = match std::str::from_utf8(body) {
+        Ok(text) => text,
+        Err(_) => return json_error(400, "command body is not valid UTF-8"),
+    };
+    match crate::layouts::dispatch_layout_command_json(draft_id, body_str) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => {
+            let status = if message.contains("poisoned") {
+                500
+            } else if message.contains("unknown layout draft") {
+                404
+            } else if message.contains("different draft")
+                || message.contains("already been applied")
+                || message.contains("stale revision")
+                || message.contains("Unsupported layout command action")
+            {
+                409
+            } else {
+                400
+            };
+            json_error(status, &message)
+        }
+    }
+}
+
+/// `GET /api/v1/layouts/drafts/{id}/compiled`: compile the draft into the
+/// strict solver layout. Unknown drafts are 404; a draft that cannot compile
+/// (e.g. no seats left) is 422.
+fn layout_compiled_response(draft_id: &str) -> Response {
+    match crate::layouts::compile_layout_draft_json(draft_id) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) if message.contains("poisoned") => json_error(500, &message),
+        Err(message) if message.contains("unknown layout draft") => json_error(404, &message),
+        Err(message) => json_error(422, &message),
+    }
+}
+
+/// `DELETE /api/v1/layouts/drafts/{id}`: remove a layout draft (204), or 404
+/// when it never existed.
+fn layout_delete_response(draft_id: &str) -> Response {
+    if crate::layouts::delete_layout_draft(draft_id) {
+        Response {
+            status: 204,
+            content_type: None,
+            content_disposition: None,
+            body: Vec::new(),
+        }
+    } else {
+        json_error(404, "layout draft was not found")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Project routes
+// ---------------------------------------------------------------------------
+
+/// `GET /api/v1/projects/recent?root=..&limit=..`: list recent project files
+/// under `root` (default `.`), capped at `limit` (default 20, 1..=100).
+fn projects_recent_response(query: Option<&str>) -> Response {
+    let params = parse_query(query.unwrap_or(""));
+    let root = params
+        .get("root")
+        .cloned()
+        .unwrap_or_else(|| ".".to_string());
+    let limit = match params.get("limit") {
+        None => 20,
+        Some(raw) => match raw.parse::<usize>() {
+            Ok(value) => value,
+            Err(_) => {
+                return json_error(422, "The project list limit must be between 1 and 100.")
+            }
+        },
+    };
+    match crate::projects::list_projects_json(&root, limit) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => json_error(422, &message),
+    }
+}
+
+/// Parse a URL query string into its percent-decoded key/value pairs.
+fn parse_query(query: &str) -> HashMap<String, String> {
+    let mut params = HashMap::new();
+    for pair in query.split('&').filter(|pair| !pair.is_empty()) {
+        let (key, value) = match pair.split_once('=') {
+            Some((key, value)) => (key, value),
+            None => (pair, ""),
+        };
+        let key = percent_decode(key).unwrap_or_else(|_| key.to_string());
+        let value = percent_decode(value).unwrap_or_else(|_| value.to_string());
+        params.insert(key, value);
+    }
+    params
+}
+
+/// `POST /api/v1/projects/history`: return the history and outputs listing for
+/// a project file (`{project_path, include_outputs?}`).
+fn project_history_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    project_result_response(crate::projects::project_history_json(&project_path))
+}
+
+/// `POST /api/v1/projects/privacy`: scan a project for sensitive fields
+/// (`{project_path, include_outputs?}`).
+fn project_privacy_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    project_result_response(crate::projects::project_privacy_json(&project_path))
+}
+
+/// `POST /api/v1/projects/bundle`: pack a project into a self-contained
+/// `.seattrellis.zip` byte stream for download. A successful pack is recorded
+/// as a recently-opened project.
+fn project_bundle_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    match crate::projects::pack_project_json(&project_path) {
+        Ok(bytes) => {
+            record_recent(&project_path);
+            let filename = crate::projects::default_bundle_name(&project_path)
+                .unwrap_or_else(|_| "project.seattrellis.zip".to_string());
+            Response {
+                status: 200,
+                content_type: Some("application/zip"),
+                content_disposition: Some(format!("attachment; filename=\"{filename}\"")),
+                body: bytes,
+            }
+        }
+        Err(message) => project_result_response(Err(message)),
+    }
+}
+
+/// `POST /api/v1/projects/restore`: restore a project from a multipart
+/// `bundle` upload into `output_dir`, honoring the optional `overwrite` flag.
+/// A successful restore is recorded as a recently-opened project.
+fn project_restore_response(body: &[u8], content_type: Option<&str>) -> Response {
+    let Some(content_type) = content_type else {
+        return json_error(400, "multipart/form-data upload expected");
+    };
+    let Some(boundary) = multipart_boundary(content_type) else {
+        return json_error(400, "multipart/form-data boundary is missing");
+    };
+    let fields = match parse_multipart(body, &boundary) {
+        Ok(fields) => fields,
+        Err(message) => return json_error(422, &message),
+    };
+    let Some(bundle) = fields.get("bundle") else {
+        return json_error(422, "upload is missing a 'bundle' field");
+    };
+    if bundle.is_empty() {
+        return json_error(422, "uploaded project bundle is empty");
+    }
+    let output_dir = match fields.get("output_dir") {
+        Some(bytes) => match std::str::from_utf8(bytes) {
+            Ok(value) if !value.trim().is_empty() => value.trim().to_string(),
+            _ => {
+                return json_error(422, "Choose a destination folder for the restored project.")
+            }
+        },
+        None => {
+            return json_error(422, "Choose a destination folder for the restored project.")
+        }
+    };
+    let output_dir = resolve_request_path(&output_dir);
+    let overwrite = fields
+        .get("overwrite")
+        .map(|bytes| std::str::from_utf8(bytes).unwrap_or("false"))
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false);
+
+    match crate::projects::restore_project_bundle(bundle, &output_dir, overwrite) {
+        Ok(project_path) => {
+            let project_path_str = project_path.to_string_lossy().into_owned();
+            record_recent(&project_path_str);
+            let destination = project_path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from(&output_dir));
+            Response::json(
+                200,
+                json!({
+                    "api_version": "1",
+                    "project_path": project_path_str,
+                    "output_dir": destination.to_string_lossy(),
+                }),
+            )
+        }
+        Err(message) => json_error(422, &message),
+    }
+}
+
+/// Record a recently-accessed project under its display name.
+fn record_recent(project_path: &str) {
+    let name = project_recent_name(project_path);
+    crate::projects::record_recent_project(project_path, &name);
+}
+
+/// A display name for a project file, derived from its filename stem.
+fn project_recent_name(project_path: &str) -> String {
+    let name = Path::new(project_path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    for suffix in [".seattrellis.json", ".project.json", ".json"] {
+        if let Some(stripped) = name.strip_suffix(suffix) {
+            return stripped.to_string();
+        }
+    }
+    name
+}
+
+/// Map a projects-domain `Result<String, String>` onto a response, translating
+/// domain error strings to HTTP status codes (404 for missing artifacts, 422
+/// for validation problems, 500 for a poisoned store).
+fn project_result_response(result: Result<String, String>) -> Response {
+    match result {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) if message.contains("poisoned") => json_error(500, &message),
+        Err(message) if message.contains("not found") || message.contains("does not exist") => {
+            json_error(404, &message)
+        }
+        Err(message) => json_error(422, &message),
+    }
+}
+
+/// Resolve a path from a request against the current working directory so the
+/// project domain modules always receive an absolute reference. Absolute paths
+/// pass through unchanged.
+fn resolve_request_path(path: &str) -> String {
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        return path.to_string();
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => cwd.join(candidate).to_string_lossy().into_owned(),
+        Err(_) => path.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Migration routes
+// ---------------------------------------------------------------------------
+
+/// `POST /api/v1/projects/migration/preview`: preview a migration of a project
+/// artifact (`{project_path, artifact_path?, in_place?}`).
+fn migration_preview_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    match crate::migration::migration_preview_json(&project_path) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => migration_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/migration/apply`: apply a migration to a project
+/// artifact (`{project_path, artifact_path?, in_place?}`).
+fn migration_apply_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let in_place = match optional_bool(&value, "in_place") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    match crate::migration::migration_apply_json(&project_path, in_place) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => migration_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/migration/reference-checks`: report per-field
+/// reference status for a project artifact. The workbench surfaces these inside
+/// the migration preview; the standalone route keeps the underlying check
+/// available to scripts and tests.
+fn migration_reference_checks_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    match crate::migration::migration_reference_checks_json(&project_path) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => migration_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/migration/batch/preview`: preview migrations for a
+/// set of project artifacts (`{project_paths, in_place?}`).
+fn migration_batch_preview_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let paths = match required_string_array(&value, "project_paths") {
+        Ok(paths) => paths,
+        Err(response) => return response,
+    };
+    let paths: Vec<String> = paths.iter().map(|path| resolve_request_path(path)).collect();
+    match crate::migration::migration_batch_preview_json(&paths) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => migration_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/migration/batch/apply`: apply migrations for a set of
+/// project artifacts (`{project_paths, in_place?}`), rolling back on failure.
+fn migration_batch_apply_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let paths = match required_string_array(&value, "project_paths") {
+        Ok(paths) => paths,
+        Err(response) => return response,
+    };
+    let in_place = match optional_bool(&value, "in_place") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let paths: Vec<String> = paths.iter().map(|path| resolve_request_path(path)).collect();
+    match crate::migration::migration_batch_apply_json(&paths, in_place) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => migration_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/migration/restore`: restore a migration backup over
+/// its original artifact. The frontend sends `{project_path, source_path,
+/// backup_path}`; the backup is restored onto `source_path`.
+fn migration_restore_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let backup_path = match required_string(&value, "backup_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let source_path = match required_string(&value, "source_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let backup_path = resolve_request_path(&backup_path);
+    let source_path = resolve_request_path(&source_path);
+    match crate::migration::migration_restore_json(&backup_path, &source_path) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => migration_error_response(&message),
+    }
+}
+
+/// Map a migration-domain error onto the matching HTTP status: 404 for a
+/// missing artifact, 409 for a blocked batch, 422 for validation problems.
+fn migration_error_response(message: &str) -> Response {
+    if message.contains("poisoned") {
+        json_error(500, message)
+    } else if message.contains("does not exist") || message.contains("not found") {
+        json_error(404, message)
+    } else if message.contains("reference checks") {
+        json_error(409, message)
+    } else {
+        json_error(422, message)
+    }
+}
+
+/// Parse a JSON object request body, returning a 400 response on empty or
+/// invalid JSON.
+fn parse_body_json(body: &[u8]) -> Result<Value, Response> {
+    if body.is_empty() {
+        return Err(json_error(400, "empty request body"));
+    }
+    serde_json::from_slice(body).map_err(|_| json_error(400, "request body is not valid JSON"))
+}
+
+/// Read a required string field from a parsed JSON object body.
+fn required_string(value: &Value, field: &str) -> Result<String, Response> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            json_error(
+                400,
+                &format!("request body is missing a '{field}' string field"),
+            )
+        })
+}
+
+/// Read an optional boolean field from a parsed JSON object body (default
+/// false when absent).
+fn optional_bool(value: &Value, field: &str) -> Result<bool, Response> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::Bool(value)) => Ok(*value),
+        _ => Err(json_error(
+            400,
+            &format!("request field '{field}' must be a boolean"),
+        )),
+    }
+}
+
+/// Read a required array-of-strings field from a parsed JSON object body.
+fn required_string_array(value: &Value, field: &str) -> Result<Vec<String>, Response> {
+    let array = value
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            json_error(
+                400,
+                &format!("request body is missing a '{field}' string array field"),
+            )
+        })?;
+    array
+        .iter()
+        .map(|item| item.as_str().map(str::to_string))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| {
+            json_error(
+                400,
+                &format!("request field '{field}' must be an array of strings"),
+            )
+        })
 }
 
 fn index_response(web_root: &Path) -> Response {
@@ -2428,5 +2979,732 @@ mod tests {
         assert!(safe_join(&root, "/..").is_none());
         assert!(safe_join(&root, "/assets/../../secret").is_none());
         assert!(safe_join(&root, "/%2e%2e/secret").is_none());
+    }
+
+    // --- Layout route integration tests ------------------------------------
+
+    /// Layout routes: create a draft, fetch it, dispatch a command, compile it,
+    /// and delete it. Covers the full draft lifecycle against the real JSON
+    /// contract (`LayoutStateResponse` / `LayoutCommand` / `CompiledLayoutResponse`).
+    #[test]
+    fn layout_draft_lifecycle_create_get_command_compiled_delete() {
+        let root = test_web_root();
+
+        // 1. Create a 3x4 rectangular draft.
+        let create_body = json!({ "name": "Layout Test", "rows": 3, "columns": 4 });
+        let create = route_one(
+            &request(
+                "POST",
+                "/api/v1/layouts/drafts",
+                &serde_json::to_vec(&create_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            create.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&create.body)
+        );
+        let state = body_json(&create);
+        assert_eq!(state["kind"], "seattrellis_layout_state");
+        assert_eq!(state["api_version"], "1");
+        assert_eq!(state["name"], "Layout Test");
+        assert_eq!(state["rows"], 3);
+        assert_eq!(state["columns"], 4);
+        assert_eq!(state["revision"], 0);
+        assert_eq!(state["usable_seat_count"], 12);
+        let draft_id = state["draft_id"].as_str().unwrap().to_string();
+
+        // 2. Fetch the state through the GET route.
+        let get = route_one(
+            &request("GET", &format!("/api/v1/layouts/drafts/{draft_id}"), b""),
+            &root,
+        );
+        assert_eq!(get.status, 200);
+        assert_eq!(body_json(&get)["draft_id"], draft_id);
+
+        // 3. Dispatch a command that converts a seat into an aisle.
+        let command = json!({
+            "command_id": "cmd-layout-1",
+            "draft_id": draft_id,
+            "base_revision": 0,
+            "action": "apply",
+            "operation": {"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "aisle"}}
+        });
+        let applied = route_one(
+            &request(
+                "POST",
+                &format!("/api/v1/layouts/drafts/{draft_id}/commands"),
+                &serde_json::to_vec(&command).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            applied.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&applied.body)
+        );
+        let after = body_json(&applied);
+        assert_eq!(after["revision"], 1);
+        assert_eq!(after["usable_seat_count"], 11);
+
+        // 4. Compile the edited draft into the strict solver layout.
+        let compiled = route_one(
+            &request(
+                "GET",
+                &format!("/api/v1/layouts/drafts/{draft_id}/compiled"),
+                b"",
+            ),
+            &root,
+        );
+        assert_eq!(
+            compiled.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&compiled.body)
+        );
+        let compiled_val = body_json(&compiled);
+        assert_eq!(compiled_val["api_version"], "1");
+        assert_eq!(compiled_val["draft_id"], draft_id);
+        // 11 seats + the 1 aisle cell = 12 layout nodes.
+        assert_eq!(
+            compiled_val["layout"]["seats"].as_array().map(Vec::len),
+            Some(12)
+        );
+
+        // 5. Delete the draft (204, then 404).
+        let del = route_one(
+            &request("DELETE", &format!("/api/v1/layouts/drafts/{draft_id}"), b""),
+            &root,
+        );
+        assert_eq!(del.status, 204);
+        let del_again = route_one(
+            &request("DELETE", &format!("/api/v1/layouts/drafts/{draft_id}"), b""),
+            &root,
+        );
+        assert_eq!(del_again.status, 404);
+    }
+
+    /// Layout command error mapping: unknown draft -> 404, malformed body -> 400,
+    /// stale base revision -> 409.
+    #[test]
+    fn layout_command_errors_map_to_4xx() {
+        let root = test_web_root();
+
+        // Unknown draft -> 404.
+        let command = json!({
+            "command_id": "cmd-missing",
+            "draft_id": "missing",
+            "base_revision": 0,
+            "action": "apply",
+            "operation": {"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "seat"}}
+        });
+        let response = route_one(
+            &request(
+                "POST",
+                "/api/v1/layouts/drafts/missing/commands",
+                &serde_json::to_vec(&command).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(response.status, 404);
+
+        // Malformed JSON body -> 400.
+        let bad = route_one(
+            &request("POST", "/api/v1/layouts/drafts/x/commands", b"not json"),
+            &root,
+        );
+        assert_eq!(bad.status, 400);
+
+        // Stale base revision -> 409 after one applied command.
+        let create_body = json!({ "name": "Stale", "rows": 2, "columns": 2 });
+        let create = route_one(
+            &request(
+                "POST",
+                "/api/v1/layouts/drafts",
+                &serde_json::to_vec(&create_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(create.status, 200);
+        let draft_id = body_json(&create)["draft_id"].as_str().unwrap().to_string();
+        let first = json!({
+            "command_id": "cmd-1",
+            "draft_id": draft_id,
+            "base_revision": 0,
+            "action": "apply",
+            "operation": {"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "aisle"}}
+        });
+        let ok = route_one(
+            &request(
+                "POST",
+                &format!("/api/v1/layouts/drafts/{draft_id}/commands"),
+                &serde_json::to_vec(&first).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(ok.status, 200);
+        let stale = json!({
+            "command_id": "cmd-2",
+            "draft_id": draft_id,
+            "base_revision": 0,
+            "action": "apply",
+            "operation": {"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "aisle"}}
+        });
+        let conflict = route_one(
+            &request(
+                "POST",
+                &format!("/api/v1/layouts/drafts/{draft_id}/commands"),
+                &serde_json::to_vec(&stale).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(conflict.status, 409);
+    }
+
+    /// Layout create validation: multiple sources or an unknown template are 422.
+    #[test]
+    fn layout_create_validation_error_is_422() {
+        let root = test_web_root();
+        let multiple_sources = json!({ "template_id": "standard-30", "rows": 5, "columns": 6 });
+        let response = route_one(
+            &request(
+                "POST",
+                "/api/v1/layouts/drafts",
+                &serde_json::to_vec(&multiple_sources).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(response.status, 422);
+
+        let unknown_template = json!({ "template_id": "standard-999" });
+        let response = route_one(
+            &request(
+                "POST",
+                "/api/v1/layouts/drafts",
+                &serde_json::to_vec(&unknown_template).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(response.status, 422);
+    }
+
+    // --- Project route integration tests ------------------------------------
+
+    /// Copy the repo's example project (plus every referenced file) into a fresh
+    /// temporary directory, returning `(dir, copied project path)`.
+    fn example_project_copy(tag: &str) -> (PathBuf, PathBuf) {
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+        let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis_projects_test_{}_{}_{}",
+            std::process::id(),
+            tag,
+            seq
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for name in [
+            "project.seattrellis.json",
+            "students.csv",
+            "classroom.json",
+            "rules_multi_candidate.json",
+        ] {
+            fs::copy(examples.join(name), dir.join(name)).unwrap();
+        }
+        for name in ["history", "outputs"] {
+            copy_dir(&examples.join(name), &dir.join(name));
+        }
+        let project_path = dir.join("project.seattrellis.json");
+        (dir, project_path)
+    }
+
+    fn copy_dir(source: &Path, dest: &Path) {
+        if !source.is_dir() {
+            return;
+        }
+        fs::create_dir_all(dest).unwrap();
+        for entry in fs::read_dir(source).unwrap().flatten() {
+            let target = dest.join(entry.file_name());
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                copy_dir(&entry.path(), &target);
+            } else {
+                fs::copy(entry.path(), target).unwrap();
+            }
+        }
+    }
+
+    /// Build a multipart body from named fields (name -> raw bytes).
+    fn multipart_form(fields: &[(&str, &[u8])], boundary: &str) -> Vec<u8> {
+        let mut body = Vec::new();
+        for (name, value) in fields {
+            body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+            body.extend_from_slice(
+                format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
+            );
+            body.extend_from_slice(value);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+        body
+    }
+
+    /// Project routes: list recent projects under a root, read history and
+    /// privacy for a real project, pack it into a zip, and restore the zip into
+    /// a fresh destination. Covers the full workspace flow against example data.
+    #[test]
+    fn project_routes_list_history_privacy_pack_restore() {
+        let root = test_web_root();
+        let (dir, project_path) = example_project_copy("flow");
+        // Canonicalize so the asserted path matches the `list_projects` output
+        // (which canonicalizes; on macOS `/var` resolves to `/private/var`).
+        let project_path_str = fs::canonicalize(&project_path)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let root_str = dir.to_string_lossy().into_owned();
+
+        // 1. List recent projects under the fixture directory.
+        let list = route_one(
+            &request(
+                "GET",
+                &format!("/api/v1/projects/recent?root={root_str}&limit=20"),
+                b"",
+            ),
+            &root,
+        );
+        assert_eq!(
+            list.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&list.body)
+        );
+        let list_val = body_json(&list);
+        assert_eq!(list_val["api_version"], "1");
+        let projects = list_val["projects"].as_array().unwrap();
+        assert!(
+            projects.iter().any(|project| project["path"] == project_path_str),
+            "project list should include {project_path_str}: {projects:?}"
+        );
+
+        // 2. Project history.
+        let history_body = json!({ "project_path": project_path_str, "include_outputs": true });
+        let history = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/history",
+                &serde_json::to_vec(&history_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            history.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&history.body)
+        );
+        let history_val = body_json(&history);
+        assert_eq!(history_val["api_version"], "1");
+        assert_eq!(history_val["project_name"], "Demo Class");
+        assert!(history_val["history"].is_array());
+        assert!(history_val["outputs"].is_array());
+
+        // 3. Project privacy scan.
+        let privacy_body = json!({ "project_path": project_path_str, "include_outputs": true });
+        let privacy = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/privacy",
+                &serde_json::to_vec(&privacy_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            privacy.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&privacy.body)
+        );
+        let privacy_val = body_json(&privacy);
+        assert_eq!(privacy_val["api_version"], "1");
+        assert!(
+            privacy_val["files_scanned"].as_u64().unwrap_or(0) > 0,
+            "privacy scan should read at least one file"
+        );
+
+        // 4. Pack the project into a zip.
+        let bundle_body = json!({ "project_path": project_path_str, "include_outputs": true });
+        let bundle = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/bundle",
+                &serde_json::to_vec(&bundle_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            bundle.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&bundle.body)
+        );
+        assert_eq!(bundle.content_type, Some("application/zip"));
+        assert!(bundle
+            .content_disposition
+            .as_deref()
+            .unwrap()
+            .contains("filename=\"project.seattrellis.zip\""));
+        assert!(
+            bundle.body.starts_with(b"PK"),
+            "zip bytes should start with the PK magic"
+        );
+
+        // 5. Restore the zip into a fresh destination directory.
+        let output_dir = dir.join("restored");
+        let output_dir_str = output_dir.to_string_lossy().into_owned();
+        let boundary = "----SeatTrellisRestoreBoundary";
+        let restore_body = multipart_form(
+            &[
+                ("bundle", bundle.body.as_slice()),
+                ("output_dir", output_dir_str.as_bytes()),
+                ("overwrite", b"false"),
+            ],
+            boundary,
+        );
+        let restore = route_one(
+            &request_with_content_type(
+                "POST",
+                "/api/v1/projects/restore",
+                &restore_body,
+                Some(&format!("multipart/form-data; boundary={boundary}")),
+            ),
+            &root,
+        );
+        assert_eq!(
+            restore.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&restore.body)
+        );
+        let restore_val = body_json(&restore);
+        assert_eq!(restore_val["api_version"], "1");
+        let restored_path = restore_val["project_path"].as_str().unwrap();
+        assert!(
+            Path::new(restored_path).is_file(),
+            "restored project file should exist: {restored_path}"
+        );
+    }
+
+    /// Project routes error mapping: a missing project file is 404, an
+    /// existing-but-invalid project is 422, and a bad bundle upload is 422.
+    #[test]
+    fn project_routes_validation_errors() {
+        let root = test_web_root();
+
+        // Missing project file -> 404.
+        let history_body = json!({ "project_path": "/nonexistent/project.seattrellis.json" });
+        let history = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/history",
+                &serde_json::to_vec(&history_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(history.status, 404);
+
+        let bundle_body = json!({ "project_path": "/nonexistent/project.seattrellis.json" });
+        let bundle = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/bundle",
+                &serde_json::to_vec(&bundle_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(bundle.status, 404);
+
+        // An existing file that is not a project artifact -> 422.
+        let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis_projects_invalid_test_{seq}_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let invalid = dir.join("broken.seattrellis.json");
+        fs::write(&invalid, r#"{"not": "a project"}"#).unwrap();
+        let invalid_str = invalid.to_string_lossy().into_owned();
+        let history_body = json!({ "project_path": invalid_str });
+        let history = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/history",
+                &serde_json::to_vec(&history_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(history.status, 422);
+
+        // A multipart restore without a `bundle` field is 422.
+        let boundary = "bnd";
+        let body = multipart_form(&[("output_dir", b"/tmp")], boundary);
+        let restore = route_one(
+            &request_with_content_type(
+                "POST",
+                "/api/v1/projects/restore",
+                &body,
+                Some(&format!("multipart/form-data; boundary={boundary}")),
+            ),
+            &root,
+        );
+        assert_eq!(restore.status, 422);
+    }
+
+    // --- Migration route integration tests ----------------------------------
+
+    /// Migration routes: preview, reference checks, single apply, batch preview
+    /// and apply, and backup restore against real project fixtures in a temp dir.
+    #[test]
+    fn migration_routes_preview_checks_apply_batch_restore() {
+        let root = test_web_root();
+        let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis_migration_server_test_{}_{}",
+            std::process::id(),
+            seq
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // Real referenced files so reference checks pass and batch apply is ready.
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+        for name in ["students.csv", "classroom.json", "rules_multi_candidate.json"] {
+            fs::copy(examples.join(name), dir.join(name)).unwrap();
+        }
+        fs::create_dir_all(dir.join("history")).unwrap();
+        fs::create_dir_all(dir.join("outputs")).unwrap();
+
+        // Two minimal (pre-migration) project files missing the canonical fields.
+        let minimal = r#"{
+            "kind": "seattrellis_project",
+            "name": "Mig Demo",
+            "students": "students.csv",
+            "layout": "classroom.json",
+            "rules": "rules_multi_candidate.json",
+            "history_dir": "history",
+            "outputs_dir": "outputs"
+        }"#;
+        fs::write(dir.join("mig1.seattrellis.json"), minimal).unwrap();
+        fs::write(dir.join("mig2.seattrellis.json"), minimal).unwrap();
+        let p1 = dir.join("mig1.seattrellis.json").to_string_lossy().into_owned();
+        let p2 = dir.join("mig2.seattrellis.json").to_string_lossy().into_owned();
+
+        // 1. Preview a single migration -> changes detected, refs ok.
+        let preview_body = json!({ "project_path": p1, "in_place": false });
+        let preview = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/preview",
+                &serde_json::to_vec(&preview_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            preview.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&preview.body)
+        );
+        let preview_val = body_json(&preview);
+        assert_eq!(preview_val["api_version"], "1");
+        assert_eq!(preview_val["dry_run"], true);
+        assert!(
+            preview_val["change_count"].as_u64().unwrap() > 0,
+            "the minimal fixture should be missing canonical fields"
+        );
+        assert!(preview_val["reference_checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|check| check["status"] == "ok"));
+
+        // 2. Standalone reference checks route.
+        let checks_body = json!({ "project_path": p1 });
+        let checks = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/reference-checks",
+                &serde_json::to_vec(&checks_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            checks.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&checks.body)
+        );
+        assert_eq!(body_json(&checks)["ready"], true);
+
+        // 3. Apply a single migration out-of-place -> a migrated sibling file.
+        let apply_body = json!({ "project_path": p1, "in_place": false });
+        let apply = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/apply",
+                &serde_json::to_vec(&apply_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            apply.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&apply.body)
+        );
+        let apply_val = body_json(&apply);
+        assert_eq!(apply_val["dry_run"], false);
+        assert!(apply_val["change_count"].as_u64().unwrap() > 0);
+        let output_path = apply_val["output_path"].as_str().unwrap();
+        assert!(Path::new(output_path).is_file(), "migrated file should exist");
+
+        // 4. Batch preview + batch apply over both fixtures.
+        let batch_body = json!({ "project_paths": [p1, p2], "in_place": false });
+        let batch_preview = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/batch/preview",
+                &serde_json::to_vec(&batch_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            batch_preview.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&batch_preview.body)
+        );
+        let batch_preview_val = body_json(&batch_preview);
+        assert_eq!(
+            batch_preview_val["projects"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(batch_preview_val["ready"], true);
+
+        let batch_apply = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/batch/apply",
+                &serde_json::to_vec(&batch_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            batch_apply.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&batch_apply.body)
+        );
+        let batch_apply_val = body_json(&batch_apply);
+        assert_eq!(
+            batch_apply_val["projects"].as_array().map(Vec::len),
+            Some(2)
+        );
+
+        // 5. Apply in place creates a backup, then restore it.
+        let in_place_body = json!({ "project_path": p1, "in_place": true });
+        let in_place = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/apply",
+                &serde_json::to_vec(&in_place_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            in_place.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&in_place.body)
+        );
+        let in_place_val = body_json(&in_place);
+        let backup_path = in_place_val["backup_path"].as_str().unwrap().to_string();
+        assert!(
+            Path::new(&backup_path).is_file(),
+            "in-place apply should create a backup: {backup_path}"
+        );
+
+        let restore_body = json!({
+            "project_path": p1,
+            "source_path": p1,
+            "backup_path": backup_path,
+        });
+        let restore = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/restore",
+                &serde_json::to_vec(&restore_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            restore.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&restore.body)
+        );
+        let restore_val = body_json(&restore);
+        assert_eq!(restore_val["restored_valid"], true);
+        assert_eq!(restore_val["source_path"], p1);
+    }
+
+    /// Migration error mapping: a missing artifact is 404 and a batch with a
+    /// single path is 422.
+    #[test]
+    fn migration_routes_validation_errors() {
+        let root = test_web_root();
+
+        // Missing project artifact -> 404.
+        let preview_body = json!({ "project_path": "/nonexistent/mig.json" });
+        let preview = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/preview",
+                &serde_json::to_vec(&preview_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(preview.status, 404);
+
+        // Batch preview requires at least 2 paths -> 422.
+        let batch_body = json!({ "project_paths": ["/tmp/only-one.json"] });
+        let batch = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/migration/batch/preview",
+                &serde_json::to_vec(&batch_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(batch.status, 422);
+    }
+
+    /// `projects/recent` rejects a non-numeric limit as 422.
+    #[test]
+    fn projects_recent_invalid_limit_is_422() {
+        let root = test_web_root();
+        let response = route_one(
+            &request("GET", "/api/v1/projects/recent?root=.&limit=abc", b""),
+            &root,
+        );
+        assert_eq!(response.status, 422);
+        let response = route_one(
+            &request("GET", "/api/v1/projects/recent?root=.&limit=0", b""),
+            &root,
+        );
+        assert_eq!(response.status, 422);
     }
 }
