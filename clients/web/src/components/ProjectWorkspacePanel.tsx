@@ -352,8 +352,11 @@ export function ProjectWorkspacePanel({
         migrationArtifactPath || undefined,
         migrationInPlace,
       );
-      setMigrationPreview(result);
       await refreshProjects();
+      // Refreshing the project list resets transient selection state. Keep the
+      // apply result so a backup created by an in-place migration remains
+      // available for the next explicit recovery action.
+      setMigrationPreview(result);
       setStatus(t("project.statusMigrationApplied", { path: result.output_path ?? result.source_path }));
     } catch (caught) {
       setError(t("project.error", { message: errorMessage(caught) }));
