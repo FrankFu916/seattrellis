@@ -79,17 +79,22 @@ export function ExportPreviewDialog({
     return null;
   }
 
-  const previewAssignments = assignments.map((assignment, index) => ({
-    ...assignment,
-    student: assignment.student
-      ? {
-          ...assignment.student,
-          name: privacy.anonymize
-            ? t("export.anonymousStudent", { index: index + 1 })
-            : assignment.student.name,
-        }
-      : assignment.student,
-  }));
+  let anonymousIndex = 0;
+  const previewAssignments = assignments.map((assignment) => {
+    if (!assignment.student) {
+      return assignment;
+    }
+    anonymousIndex += 1;
+    return {
+      ...assignment,
+      student: {
+        ...assignment.student,
+        name: privacy.anonymize
+          ? t("export.anonymousStudent", { index: anonymousIndex })
+          : assignment.student.name,
+      },
+    };
+  });
   const templateLabel = {
     public: t("export.templatePublic"),
     teacher: t("export.templateTeacher"),
