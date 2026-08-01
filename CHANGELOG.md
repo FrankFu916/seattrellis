@@ -74,6 +74,10 @@
 - Added a batch migration preview for class projects. It checks several project
   files together and highlights shared roster, layout, rules, or output paths
   before any migration is written.
+- Added batch migration writing for class projects. Teachers can select several
+  projects in the workspace, review one combined preflight result, and write the
+  batch only after every reference check passes; a failed batch rolls back files
+  already written during that run.
 - Added future rotation controls to the React workbench. Teachers can choose
   the number and names of upcoming periods, review repeat-neighbor metrics,
   switch between period-specific editing drafts, and continue editing or
