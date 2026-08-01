@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
+from seattrellis import __version__
 from seattrellis.desktop import DesktopOptions, run_desktop_app
 
 
@@ -31,6 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--title",
         default="SeatTrellis",
         help="Window title (default: SeatTrellis).",
+    )
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"seattrellis-desktop {__version__}",
     )
     return parser
 

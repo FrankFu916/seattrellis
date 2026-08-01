@@ -10,7 +10,16 @@ from seattrellis.io.json_files import InputFileError, load_snapshot, write_json_
 from seattrellis.io.students import students_from_records
 from seattrellis.io.validation import validate_loaded_inputs
 from seattrellis.models import ClassroomLayout, SeatNode, Student
-from seattrellis.models.rules import FixedSeatRule, GroupRule, HardRules, PairRule, RuleSet, SoftRules, WeightedRule
+from seattrellis.models.rules import (
+    CoolingRule,
+    FixedSeatRule,
+    GroupRule,
+    HardRules,
+    PairRule,
+    RuleSet,
+    SoftRules,
+    WeightedRule,
+)
 from seattrellis.service import compute_solve
 from seattrellis.service_types import SolveInput
 from seattrellis.solver import SeatTrellisSolveError, solve_seating
@@ -242,10 +251,15 @@ def test_validate_reports_unknown_rule_field(tmp_path) -> None:
     assert "Extra inputs are not permitted" in message
 
 
-def test_validate_warns_for_model_only_groups_and_cooling() -> None:
+def test_validate_accepts_active_cooling_without_model_only_warning() -> None:
     rules = _quiet_rules()
     rules.groups = [GroupRule(name="Team A", students=["S1", "S2"], separate=True)]
-    rules.soft.cooling.enabled = True
+    rules.soft.cooling = CoolingRule(
+        enabled=True,
+        weight=8,
+        cooling_period=2,
+        relation_types=["desk_mate"],
+    )
 
     report = validate_loaded_inputs(
         [Student(student_id="S1"), Student(student_id="S2")],
@@ -253,10 +267,8 @@ def test_validate_warns_for_model_only_groups_and_cooling() -> None:
         rules,
     )
 
-    assert any("rules.groups is currently model-only" in warning for warning in report.warnings)
-    assert any("rules.soft.cooling is currently model-only" in warning for warning in report.warnings)
-    with pytest.raises(InputFileError, match="Warnings treated as errors"):
-        report.raise_for_errors(strict=True)
+    assert not any("rules.soft.cooling" in warning for warning in report.warnings)
+    report.raise_for_errors(strict=True)
 
 
 def test_missing_student_id_warning_reports_only_an_aggregate_count() -> None:
@@ -274,7 +286,7 @@ def test_missing_student_id_warning_reports_only_an_aggregate_count() -> None:
     assert "PRIVATE_BOB" not in warning
 
 
-def test_solve_output_carries_model_only_warnings() -> None:
+def test_group_rules_are_applied_without_model_only_warning() -> None:
     rules = _quiet_rules()
     rules.groups = [GroupRule(name="Team A", students=["S1", "S2"], together=True)]
 
@@ -287,10 +299,12 @@ def test_solve_output_carries_model_only_warnings() -> None:
         )
     )
 
-    assert result.warnings
-    assert any("rules.groups is currently model-only" in warning for warning in result.warnings)
+    assert not any("rules.groups" in warning for warning in result.warnings)
     assert result.candidate_set.warnings == result.warnings
-    assert result.candidate_set.candidates[0].snapshot.metadata["warnings"] == result.warnings
+    if result.warnings:
+        assert result.candidate_set.candidates[0].snapshot.metadata["warnings"] == result.warnings
+    else:
+        assert "warnings" not in result.candidate_set.candidates[0].snapshot.metadata
 
 
 def test_fixed_seat_is_enforced() -> None:
@@ -321,6 +335,28 @@ def test_must_be_adjacent_is_enforced() -> None:
     solution = solve_seating(students, layout, rules)
 
     assert normalize_edge(solution.assignment_map["S1"], solution.assignment_map["S2"]) in build_adjacency_edges(layout)
+
+
+def test_group_together_is_enforced_as_pairwise_adjacency() -> None:
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+    layout = _line_layout(3)
+    rules = _quiet_rules()
+    rules.groups = [GroupRule(name="Support pair", students=["S1", "S2"], together=True)]
+
+    solution = solve_seating(students, layout, rules)
+
+    assert normalize_edge(solution.assignment_map["S1"], solution.assignment_map["S2"]) in build_adjacency_edges(layout)
+
+
+def test_group_separate_is_enforced_as_pairwise_non_adjacency() -> None:
+    students = [Student(student_id="S1"), Student(student_id="S2")]
+    layout = _line_layout(3)
+    rules = _quiet_rules()
+    rules.groups = [GroupRule(name="Separate pair", students=["S1", "S2"], separate=True)]
+
+    solution = solve_seating(students, layout, rules)
+
+    assert normalize_edge(solution.assignment_map["S1"], solution.assignment_map["S2"]) not in build_adjacency_edges(layout)
 
 
 def test_rule_reference_unknown_student_fails() -> None:

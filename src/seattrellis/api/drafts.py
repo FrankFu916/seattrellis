@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from threading import RLock
 from time import monotonic
 from uuid import uuid4
@@ -37,6 +38,7 @@ class _StoredDraft:
     undo_stack: list[EditingSession] = field(default_factory=list)
     redo_stack: list[EditingSession] = field(default_factory=list)
     applied_command_ids: set[str] = field(default_factory=set)
+    command_log: list[dict[str, object]] = field(default_factory=list)
     touched_at: float = field(default_factory=monotonic)
 
 
@@ -75,6 +77,7 @@ class EditorDraftStore:
         candidate_copy = _copy_candidate_set(candidate_set)
         candidate = candidate_copy.get_candidate("recommended")
         locks = lock_state_from_snapshot(candidate.snapshot)
+        command_log = _command_log_from_snapshot(candidate.snapshot)
         stored = _StoredDraft(
             candidate_set=candidate_copy,
             candidate_id=candidate.candidate_id,
@@ -84,6 +87,7 @@ class EditorDraftStore:
                 locked_seats=locks.locked_seats,
             ),
             draft_id=uuid4().hex,
+            command_log=command_log,
         )
         with self._lock:
             self._prune()
@@ -114,6 +118,15 @@ class EditorDraftStore:
             stored = self._get(draft_id)
             stored.touched_at = monotonic()
             current = stored.session.current_snapshot()
+            if stored.command_log:
+                metadata = dict(current.metadata)
+                metadata["manual_edit"] = {
+                    "source": "web_editor",
+                    "draft_id": stored.draft_id,
+                    "operation_count": len(stored.command_log),
+                    "commands": deepcopy(stored.command_log),
+                }
+                current = current.model_copy(update={"metadata": metadata})
             return current.model_copy(deep=True)
 
     def dispatch(
@@ -134,6 +147,12 @@ class EditorDraftStore:
                 self._redo(stored)
             stored.revision += 1
             stored.applied_command_ids.add(command.command_id)
+            command_record = command.model_dump(mode="json", exclude_none=True)
+            # Persist an audit timestamp with the anonymous command summary.
+            # The timestamp is deliberately server-side and contains no
+            # student or seat identifiers.
+            command_record["recorded_at"] = datetime.now(timezone.utc).isoformat()
+            stored.command_log.append(command_record)
             stored.touched_at = monotonic()
             return _build_state(stored)
 
@@ -290,6 +309,22 @@ def _clean_session(session: EditingSession) -> EditingSession:
 
 def _copy_candidate_set(candidate_set: CandidateSet) -> CandidateSet:
     return candidate_set.model_copy(deep=True)
+
+
+def _command_log_from_snapshot(snapshot: SeatingSnapshot) -> list[dict[str, object]]:
+    """Carry forward bounded web-edit provenance when reopening an artifact."""
+
+    manual_edit = snapshot.metadata.get("manual_edit")
+    if not isinstance(manual_edit, dict):
+        return []
+    commands = manual_edit.get("commands")
+    if not isinstance(commands, list):
+        return []
+    return [
+        deepcopy(command)
+        for command in commands[:10_000]
+        if isinstance(command, dict)
+    ]
 
 
 def _clean_draft_id(value: str) -> str:

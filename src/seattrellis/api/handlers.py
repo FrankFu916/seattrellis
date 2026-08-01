@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import importlib.util
+import csv
+import html
+import io
 import os
 import tempfile
+from copy import deepcopy
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
 from seattrellis.api.errors import ApiProblem
@@ -25,8 +30,35 @@ from seattrellis.api.models import (
     HealthResponse,
     InspectClassResponse,
     ProjectArtifactItem,
+    ProjectArtifactOperation,
+    ProjectArtifactProvenance,
+    ProjectArtifactCompareResponse,
+    ProjectArtifactDiff,
+    ProjectArtifactAssignmentChange,
+    ProjectArtifactRequest,
+    ProjectArtifactRestoreResponse,
+    ProjectArtifactSummary,
     ProjectHistoryResponse,
     ProjectListResponse,
+    ProjectMigrationRequest,
+    ProjectMigrationRestoreRequest,
+    ProjectMigrationRestoreResponse,
+    ProjectMigrationChange,
+    ProjectMigrationReferenceCheck,
+    ProjectMigrationResponse,
+    ProjectMigrationBatchRequest,
+    ProjectMigrationBatchResponse,
+    ProjectMigrationSharedReference,
+    ProjectGroupMemberChange,
+    ProjectGroupPreview,
+    ProjectGroupRegisterRequest,
+    ProjectGroupRegisterPreviewRequest,
+    ProjectGroupRegisterPeriodPreview,
+    ProjectGroupRegisterPreviewResponse,
+    ProjectRotationLoadRequest,
+    ProjectRotationLoadResponse,
+    ProjectRotationSaveRequest,
+    ProjectRotationSaveResponse,
     ProjectPathRequest,
     ProjectPrivacyResponse,
     ProjectRestoreResponse,
@@ -56,8 +88,15 @@ from seattrellis.application.teacher_goals import (
     list_teacher_goals,
 )
 from seattrellis.exporters import export_snapshot
-from seattrellis.io.json_files import InputFileError, read_json
-from seattrellis.io.project import load_project_paths
+from seattrellis.io.json_files import (
+    InputFileError,
+    load_candidate_set,
+    load_rotation_plan,
+    load_seating_artifact,
+    read_json,
+    write_json_model,
+)
+from seattrellis.io.project import ProjectPaths, load_project_paths
 from seattrellis.io.validation import ValidationIssue
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.project_bundle import (
@@ -65,6 +104,12 @@ from seattrellis.project_bundle import (
     pack_project,
     restore_project_bundle as restore_bundle,
     scan_project_privacy,
+)
+from seattrellis.schema_migration import (
+    merge_normalized_data,
+    migrate_json_file,
+    parse_migratable_artifact,
+    restore_json_backup,
 )
 from seattrellis.service_types import (
     CANVAS_EXPORT_FORMATS,
@@ -74,6 +119,11 @@ from seattrellis.service_types import (
     RotationInput,
 )
 from seattrellis.service import compute_rotation_plan
+from seattrellis.models.candidate import CandidatePlan, CandidateSet
+from seattrellis.models.rotation import RotationPlan
+from seattrellis.models.project import SeatTrellisProject
+from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.scoring import score_snapshot
 from seattrellis.solver.errors import SeatTrellisSolveError
 from seattrellis.solver.registry import registered_solver_backends
 
@@ -110,6 +160,14 @@ def capabilities() -> CapabilitiesResponse:
             "class-generation",
             "rotation-plans",
             "project-workspace",
+            "project-migration",
+            "project-migration-restore",
+            "project-migration-batch",
+            "project-migration-batch-apply",
+            "project-rotation-save",
+            "project-rotation-load",
+            "project-group-register",
+            "project-group-register-preview",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -231,6 +289,1107 @@ def project_history(request: ProjectPathRequest) -> ProjectHistoryResponse:
     )
 
 
+def project_artifact_compare(
+    request: ProjectArtifactRequest,
+) -> ProjectArtifactCompareResponse:
+    """Compare two validated project artifacts without returning student data."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        left_path = _resolve_project_artifact(paths, request.artifact_path)
+        if request.compare_to_path is None:
+            raise InputFileError("compare_to_path is required for artifact comparison.")
+        right_path = _resolve_project_artifact(paths, request.compare_to_path)
+        if left_path == right_path:
+            raise InputFileError("An artifact cannot be compared with itself.")
+        left_kind, left_snapshot, left_created_at = _snapshot_for_artifact(left_path)
+        right_kind, right_snapshot, right_created_at = _snapshot_for_artifact(right_path)
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_artifact_unavailable",
+            message="The selected project artifacts could not be compared.",
+        ) from exc
+
+    left_summary = _artifact_summary(
+        left_path,
+        kind=left_kind,
+        snapshot=left_snapshot,
+        created_at=left_created_at,
+    )
+    right_summary = _artifact_summary(
+        right_path,
+        kind=right_kind,
+        snapshot=right_snapshot,
+        created_at=right_created_at,
+    )
+    left_assignments = {item.student_key: item.seat_id for item in left_snapshot.assignments}
+    right_assignments = {item.student_key: item.seat_id for item in right_snapshot.assignments}
+    all_students = set(left_assignments) | set(right_assignments)
+    assignment_details: list[ProjectArtifactAssignmentChange] = []
+    for index, student_key in enumerate(sorted(all_students), start=1):
+        before_seat_id = left_assignments.get(student_key)
+        after_seat_id = right_assignments.get(student_key)
+        if before_seat_id == after_seat_id:
+            continue
+        change = (
+            "seated"
+            if before_seat_id is None
+            else "unseated"
+            if after_seat_id is None
+            else "moved"
+        )
+        assignment_details.append(
+            ProjectArtifactAssignmentChange(
+                student_ref=f"student-{index}",
+                change=change,
+                before_seat_id=before_seat_id,
+                after_seat_id=after_seat_id,
+            )
+        )
+    return ProjectArtifactCompareResponse(
+        left=left_summary,
+        right=right_summary,
+        diff=ProjectArtifactDiff(
+            assignment_changes=sum(
+                left_assignments.get(student) != right_assignments.get(student)
+                for student in all_students
+            ),
+            roster_added=len(set(right_assignments) - set(left_assignments)),
+            roster_removed=len(set(left_assignments) - set(right_assignments)),
+            layout_changed=(
+                left_snapshot.layout.model_dump(mode="json")
+                != right_snapshot.layout.model_dump(mode="json")
+            ),
+            rules_changed=(
+                left_snapshot.rules.model_dump(mode="json")
+                != right_snapshot.rules.model_dump(mode="json")
+            ),
+            solver_status_changed=left_snapshot.solver_status != right_snapshot.solver_status,
+            assignment_details=assignment_details,
+        ),
+    )
+
+
+def project_artifact_restore(
+    request: ProjectArtifactRequest,
+) -> ProjectArtifactRestoreResponse:
+    """Restore an artifact as a new output snapshot without overwriting history."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        source_path = _resolve_project_artifact(paths, request.artifact_path)
+        kind, snapshot, _created_at = _snapshot_for_artifact(source_path)
+        if kind == "rotation_plan":
+            raise InputFileError(
+                "Select a snapshot or candidate set inside a rotation plan before restoring it."
+            )
+        paths.outputs_dir.mkdir(parents=True, exist_ok=True)
+        metadata = deepcopy(snapshot.metadata)
+        metadata["restored_from"] = source_path.name
+        metadata["restored_at"] = datetime.now(timezone.utc).isoformat()
+        restored = snapshot.model_copy(update={"metadata": metadata})
+        target = _next_restored_path(paths.outputs_dir, source_path.stem)
+        write_json_model(restored, target)
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_artifact_restore_failed",
+            message="The selected project artifact could not be restored.",
+        ) from exc
+    return ProjectArtifactRestoreResponse(
+        project_path=str(paths.project_file),
+        source_artifact=str(source_path),
+        restored_artifact=str(target),
+    )
+
+
+def project_migration_preview(
+    request: ProjectMigrationRequest,
+) -> ProjectMigrationResponse:
+    """Validate a project artifact and describe a safe migration target."""
+
+    return _migrate_project_artifact(request, dry_run=True)
+
+
+def project_migration_apply(
+    request: ProjectMigrationRequest,
+) -> ProjectMigrationResponse:
+    """Write a migrated artifact, preserving the source unless explicitly in-place."""
+
+    return _migrate_project_artifact(request, dry_run=False)
+
+
+def project_migration_batch_preview(
+    request: ProjectMigrationBatchRequest,
+) -> ProjectMigrationBatchResponse:
+    """Preview several project migrations and detect shared references."""
+
+    previews: list[ProjectMigrationResponse] = []
+    references: dict[Path, list[tuple[str, str]]] = {}
+    for project_path in request.project_paths:
+        preview = _migrate_project_artifact(
+            ProjectMigrationRequest(
+                project_path=project_path,
+                in_place=request.in_place,
+            ),
+            dry_run=True,
+        )
+        previews.append(preview)
+        if preview.artifact != "project":
+            continue
+        project_root = Path(preview.source_path).parent
+        for check in preview.reference_checks:
+            if check.status != "ok":
+                continue
+            resolved = (project_root / check.path).resolve()
+            references.setdefault(resolved, []).append(
+                (preview.project_path, check.field)
+            )
+
+    shared_references = [
+        ProjectMigrationSharedReference(
+            path=str(path),
+            projects=sorted({project for project, _field in owners}),
+            fields=sorted({field for _project, field in owners}),
+        )
+        for path, owners in sorted(references.items(), key=lambda item: str(item[0]))
+        if len({project for project, _field in owners}) >= 2
+    ]
+    ready = all(
+        check.status == "ok"
+        for preview in previews
+        for check in preview.reference_checks
+    )
+    return ProjectMigrationBatchResponse(
+        projects=previews,
+        shared_references=shared_references,
+        ready=ready,
+    )
+
+
+def project_migration_batch_apply(
+    request: ProjectMigrationBatchRequest,
+) -> ProjectMigrationBatchResponse:
+    """Write several migrations only after every selected project passes preflight.
+
+    A normal migration writes a new sibling artifact and leaves the source
+    untouched.  In-place batches are also guarded by a rollback pass: if a
+    later project fails, already migrated sources are restored from the backup
+    created for that migration.  Backup files are deliberately retained so a
+    teacher can inspect or recover them after an interrupted run.
+    """
+
+    preview = project_migration_batch_preview(request)
+    if not preview.ready:
+        raise ApiProblem(
+            status_code=409,
+            code="project_migration_batch_not_ready",
+            message="Review the migration reference checks before writing this batch.",
+        )
+
+    applied: list[ProjectMigrationResponse] = []
+    try:
+        for project_path in request.project_paths:
+            applied.append(
+                _migrate_project_artifact(
+                    ProjectMigrationRequest(
+                        project_path=project_path,
+                        in_place=request.in_place,
+                    ),
+                    dry_run=False,
+                )
+            )
+    except Exception as exc:
+        _rollback_migration_batch(applied, in_place=request.in_place)
+        # Do not forward a path or parser detail from one project.  The batch
+        # endpoint exposes one stable, actionable error contract.
+        raise ApiProblem(
+            status_code=422,
+            code="project_migration_batch_failed",
+            message="The migration batch was not completed; earlier changes were rolled back.",
+        ) from exc
+
+    return ProjectMigrationBatchResponse(
+        projects=applied,
+        shared_references=preview.shared_references,
+        ready=True,
+    )
+
+
+def _rollback_migration_batch(
+    applied: list[ProjectMigrationResponse],
+    *,
+    in_place: bool,
+) -> None:
+    """Best-effort rollback of artifacts written before a batch failure."""
+
+    for result in reversed(applied):
+        try:
+            if in_place and result.backup_path:
+                restore_json_backup(
+                    result.backup_path,
+                    result.source_path,
+                    create_safety_backup=False,
+                )
+            elif not in_place and result.output_path:
+                output = Path(result.output_path).resolve()
+                if output.is_file():
+                    output.unlink()
+        except (InputFileError, OSError, ValueError):
+            # The primary failure is more useful than a secondary rollback
+            # detail.  Backups remain available for explicit recovery.
+            continue
+
+
+def project_migration_restore(
+    request: ProjectMigrationRestoreRequest,
+) -> ProjectMigrationRestoreResponse:
+    """Restore an in-place migration backup without allowing arbitrary paths."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        source_path = _resolve_project_artifact(paths, request.source_path)
+        backup_path = _resolve_project_migration_backup(paths, request.backup_path)
+        expected_prefix = f"{source_path.name}.bak"
+        if backup_path.parent != source_path.parent or not backup_path.name.startswith(
+            expected_prefix
+        ):
+            raise InputFileError(
+                "The migration backup does not belong to the selected project artifact."
+            )
+        artifact, backup_model = parse_migratable_artifact(
+            read_json(backup_path), backup_path
+        )
+        safety_backup = restore_json_backup(backup_path, source_path)
+        restored_artifact, restored_model = parse_migratable_artifact(
+            read_json(source_path), source_path
+        )
+        if restored_artifact != artifact:
+            raise InputFileError("The restored backup has a different artifact type.")
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_migration_restore_failed",
+            message="The migration backup could not be restored.",
+        ) from exc
+    return ProjectMigrationRestoreResponse(
+        project_path=str(paths.project_file),
+        source_path=str(source_path),
+        backup_path=str(backup_path),
+        safety_backup_path=str(safety_backup) if safety_backup is not None else None,
+        artifact=artifact,
+        schema_version=getattr(
+            restored_model,
+            "schema_version",
+            getattr(backup_model, "schema_version"),
+        ),
+        restored_valid=True,
+    )
+
+
+def project_rotation_save(
+    request: ProjectRotationSaveRequest,
+    *,
+    draft_store: EditorDraftStore,
+) -> ProjectRotationSaveResponse:
+    """Save all current rotation drafts without exposing them to the client."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        snapshots: list[SeatingSnapshot] = []
+        for source_period, draft_id in zip(
+            request.rotation_plan.periods,
+            request.draft_ids,
+            strict=True,
+        ):
+            snapshot = draft_store.snapshot(draft_id)
+            _ensure_rotation_draft_matches_source(snapshot, source_period.snapshot)
+            metadata = dict(snapshot.metadata)
+            metadata["project_persistence"] = {
+                "source": "react_rotation_editor",
+                "rotation_plan": request.rotation_plan.name,
+                "period": source_period.period,
+                "draft_id": draft_id,
+            }
+            snapshots.append(snapshot.model_copy(update={"metadata": metadata}))
+
+        saved_at = datetime.now(timezone.utc)
+        periods = [
+            source_period.model_copy(update={"snapshot": snapshot})
+            for source_period, snapshot in zip(
+                request.rotation_plan.periods,
+                snapshots,
+                strict=True,
+            )
+        ]
+        plan = request.rotation_plan.model_copy(
+            update={
+                "periods": periods,
+                "metadata": {
+                    **request.rotation_plan.metadata,
+                    "saved_at": saved_at.isoformat(),
+                    "saved_from": "react_rotation_editor",
+                },
+            }
+        )
+        paths.outputs_dir.mkdir(parents=True, exist_ok=True)
+        output_path = _next_rotation_output_path(
+            paths.outputs_dir,
+            request.output_name,
+        )
+        write_json_model(plan, output_path)
+    except EditorDraftNotFoundError as exc:
+        raise ApiProblem(
+            status_code=409,
+            code="rotation_draft_expired",
+            message="One of the rotation periods has expired. Generate the rotation again before saving.",
+        ) from exc
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_rotation_save_failed",
+            message="The edited rotation plan could not be saved to this project.",
+        ) from exc
+    return ProjectRotationSaveResponse(
+        project_path=str(paths.project_file),
+        output_path=str(output_path),
+        period_count=plan.period_count,
+        saved_at=saved_at,
+    )
+
+
+def project_rotation_load(
+    request: ProjectRotationLoadRequest,
+    *,
+    draft_store: EditorDraftStore,
+) -> ProjectRotationLoadResponse:
+    """Recreate editable drafts from a saved rotation artifact."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        artifact_path = _resolve_project_artifact(paths, request.artifact_path)
+        plan = load_rotation_plan(artifact_path)
+        period_editors: list[EditorStateEnvelope] = []
+        for period in plan.periods:
+            period_score = score_snapshot(period.snapshot)
+            period_candidate = CandidatePlan(
+                candidate_id=f"period-{period.period}",
+                snapshot=period.snapshot,
+                score=period_score,
+                hard_constraints_satisfied=(
+                    period_score.breakdown.hard_constraint_summary.satisfied
+                ),
+                metadata={
+                    "source": "project_rotation_load",
+                    "rotation_plan": plan.name,
+                    "rotation_period": period.period,
+                },
+            )
+            period_editors.append(
+                draft_store.create(
+                    CandidateSet(
+                        candidates=[period_candidate],
+                        recommended_candidate_id=period_candidate.candidate_id,
+                        metadata={
+                            "source": "project_rotation_load",
+                            "artifact_path": str(artifact_path),
+                            "period_count": plan.period_count,
+                        },
+                    )
+                )
+            )
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_rotation_load_failed",
+            message="The saved rotation plan could not be opened for editing.",
+        ) from exc
+    return ProjectRotationLoadResponse(
+        project_path=str(paths.project_file),
+        artifact_path=str(artifact_path),
+        rotation_plan=plan,
+        editor=period_editors[0],
+        period_editors=period_editors,
+    )
+
+
+def project_group_register(request: ProjectGroupRegisterRequest) -> ProjectDownloadArtifact:
+    """Render a printable or tabular register from a saved rotation plan."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        artifact_path = _resolve_project_artifact(paths, request.artifact_path)
+        plan = load_rotation_plan(artifact_path)
+        rows = _group_register_rows(plan, locale=request.locale)
+        if request.format == "csv":
+            data = _render_group_register_csv(rows, locale=request.locale)
+            content_type = "text/csv; charset=utf-8"
+            suffix = "csv"
+        else:
+            data = _render_group_register_html(
+                plan.name,
+                rows,
+                locale=request.locale,
+            )
+            content_type = "text/html; charset=utf-8"
+            suffix = "html"
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_group_register_failed",
+            message="The selected rotation plan could not produce a group register.",
+        ) from exc
+    return ProjectDownloadArtifact(
+        data=data,
+        filename=f"group-register.{suffix}",
+        content_type=content_type,
+    )
+
+
+def project_group_register_preview(
+    request: ProjectGroupRegisterPreviewRequest,
+) -> ProjectGroupRegisterPreviewResponse:
+    """Summarize membership changes before a register is downloaded.
+
+    This endpoint intentionally reuses the register request contract so the
+    selected project and rotation artifact are validated in exactly the same
+    way as the download action.  Only counts and deterministic anonymous
+    references cross the API boundary; names and student IDs stay in the
+    locally rendered register.
+    """
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        artifact_path = _resolve_project_artifact(paths, request.artifact_path)
+        plan = load_rotation_plan(artifact_path)
+        periods = _group_register_period_previews(plan)
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_group_register_preview_failed",
+            message="The selected rotation plan could not be previewed.",
+        ) from exc
+    return ProjectGroupRegisterPreviewResponse(
+        project_path=str(paths.project_file),
+        artifact_path=str(artifact_path),
+        plan_name=plan.name,
+        period_count=plan.period_count,
+        periods=periods,
+        has_changes=any(
+            group.added_count > 0 or group.removed_count > 0
+            for period in periods
+            for group in period.groups
+        ),
+    )
+
+
+def _group_register_period_previews(
+    plan: RotationPlan,
+) -> list[ProjectGroupRegisterPeriodPreview]:
+    """Build one privacy-safe group summary for every rotation period."""
+
+    group_names = sorted(
+        {
+            group.name
+            for period in plan.periods
+            for group in period.snapshot.rules.groups
+        }
+    )
+    all_members = sorted(
+        {
+            student_key
+            for period in plan.periods
+            for group in period.snapshot.rules.groups
+            for student_key in group.students
+            if student_key
+        }
+    )
+    anonymous_refs = {
+        student_key: f"student-{index}"
+        for index, student_key in enumerate(all_members, start=1)
+    }
+    previous_members: dict[str, set[str]] | None = None
+    previews: list[ProjectGroupRegisterPeriodPreview] = []
+    for period in plan.periods:
+        groups_by_name = {group.name: group for group in period.snapshot.rules.groups}
+        roster_keys = {student.key for student in period.snapshot.students}
+        assigned_keys = {
+            assignment.student_key for assignment in period.snapshot.assignments
+        }
+        current_members: dict[str, set[str]] = {}
+        for name in group_names:
+            group = groups_by_name.get(name)
+            current_members[name] = {
+                student_key for student_key in (group.students if group else []) if student_key
+            }
+        group_previews: list[ProjectGroupPreview] = []
+        for name in group_names:
+            members = current_members[name]
+            previous = (
+                previous_members.get(name, set())
+                if previous_members is not None
+                else set()
+            )
+            added = members - previous if previous_members is not None else set()
+            removed = previous - members if previous_members is not None else set()
+            member_changes = [
+                ProjectGroupMemberChange(
+                    student_ref=anonymous_refs[student_key],
+                    change="added",
+                )
+                for student_key in sorted(added)
+            ] + [
+                ProjectGroupMemberChange(
+                    student_ref=anonymous_refs[student_key],
+                    change="removed",
+                )
+                for student_key in sorted(removed)
+            ]
+            group_previews.append(
+                ProjectGroupPreview(
+                    name=name,
+                    member_count=len(members),
+                    seated_count=len(members & roster_keys & assigned_keys),
+                    unseated_count=len(members & roster_keys - assigned_keys),
+                    missing_count=len(members - roster_keys),
+                    added_count=len(added),
+                    removed_count=len(removed),
+                    member_changes=member_changes[:50],
+                )
+            )
+        previews.append(
+            ProjectGroupRegisterPeriodPreview(
+                period=period.period,
+                label=period.label,
+                compared_to_period=(
+                    period.period - 1 if previous_members is not None else None
+                ),
+                groups=group_previews,
+            )
+        )
+        previous_members = current_members
+    return previews
+
+
+def _group_register_rows(
+    plan: RotationPlan,
+    *,
+    locale: Literal["zh", "en"],
+) -> list[dict[str, str]]:
+    """Build rows while retaining empty, missing, and unseated members."""
+
+    periods = plan.periods
+    group_names = sorted(
+        {
+            group.name
+            for period in periods
+            for group in period.snapshot.rules.groups
+        }
+    )
+    rows: list[dict[str, str]] = []
+    if not group_names:
+        return [
+            {
+                "period": "",
+                "group": "没有命名小组" if locale == "zh" else "No named groups",
+                "student_id": "",
+                "student": "",
+                "seat": "",
+                "status": "empty",
+            }
+        ]
+    for period in periods:
+        groups = {group.name: group for group in period.snapshot.rules.groups}
+        student_by_key = {student.key: student for student in period.snapshot.students}
+        seat_by_student = {
+            assignment.student_key: assignment.seat_id
+            for assignment in period.snapshot.assignments
+        }
+        for name in group_names:
+            group = groups.get(name)
+            members = list(group.students) if group is not None else []
+            if not members:
+                rows.append(
+                    {
+                        "period": period.label,
+                        "group": name,
+                        "student_id": "",
+                        "student": "",
+                        "seat": "",
+                        "status": "empty",
+                    }
+                )
+                continue
+            for student_key in members:
+                student = student_by_key.get(student_key)
+                if student is None:
+                    status = "missing"
+                    display_name = ""
+                    seat = ""
+                else:
+                    seat = seat_by_student.get(student_key, "")
+                    status = "seated" if seat else "unseated"
+                    display_name = student.display_name
+                rows.append(
+                    {
+                        "period": period.label,
+                        "group": name,
+                        "student_id": student_key,
+                        "student": display_name,
+                        "seat": seat,
+                        "status": status,
+                    }
+                )
+    return rows
+
+
+def _render_group_register_csv(
+    rows: list[dict[str, str]],
+    *,
+    locale: Literal["zh", "en"],
+) -> bytes:
+    headers = (
+        ["期次", "小组", "学生编号", "姓名", "座位", "状态"]
+        if locale == "zh"
+        else ["Period", "Group", "Student ID", "Student", "Seat", "Status"]
+    )
+    fields = ["period", "group", "student_id", "student", "seat", "status"]
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(
+            [
+                _group_register_status_label(row[field], locale=locale)
+                if field == "status"
+                else row[field]
+                for field in fields
+            ]
+        )
+    return output.getvalue().encode("utf-8-sig")
+
+
+def _group_register_status_label(
+    status: str,
+    *,
+    locale: Literal["zh", "en"],
+) -> str:
+    labels = {
+        "zh": {
+            "seated": "已入座",
+            "unseated": "未入座",
+            "missing": "名单中不存在",
+            "empty": "空组",
+        },
+        "en": {
+            "seated": "Seated",
+            "unseated": "Unseated",
+            "missing": "Missing from roster",
+            "empty": "Empty group",
+        },
+    }
+    return labels[locale].get(status, status)
+
+
+def _group_register_cell(
+    row: dict[str, str],
+    field: str,
+    *,
+    locale: Literal["zh", "en"],
+) -> str:
+    value = row[field]
+    if field == "status":
+        value = _group_register_status_label(value, locale=locale)
+    return html.escape(value)
+
+
+def _render_group_register_html(
+    plan_name: str,
+    rows: list[dict[str, str]],
+    *,
+    locale: Literal["zh", "en"],
+) -> bytes:
+    title = "小组登记表" if locale == "zh" else "Group register"
+    headers = (
+        ["期次", "小组", "学生编号", "姓名", "座位", "状态"]
+        if locale == "zh"
+        else ["Period", "Group", "Student ID", "Student", "Seat", "Status"]
+    )
+    fields = ["period", "group", "student_id", "student", "seat", "status"]
+    table_rows = "".join(
+        "<tr>"
+        + "".join(
+            f"<td>{_group_register_cell(row, field, locale=locale)}</td>"
+            for field in fields
+        )
+        + "</tr>"
+        for row in rows
+    )
+    header_row = "".join(f"<th>{html.escape(label)}</th>" for label in headers)
+    document = f"""<!doctype html>
+<html lang="{locale}">
+<head><meta charset="utf-8"><title>{html.escape(title)} · {html.escape(plan_name)}</title>
+<style>
+body {{ font: 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; margin: 32px; color: #1f2933; }}
+h1 {{ margin-bottom: 4px; }}
+p {{ color: #52606d; }}
+table {{ border-collapse: collapse; width: 100%; }}
+th, td {{ border: 1px solid #cbd5e1; padding: 7px 9px; text-align: left; }}
+th {{ background: #eef2f6; }}
+@media print {{ body {{ margin: 10mm; }} }}
+</style></head>
+<body><h1>{html.escape(title)}</h1><p>{html.escape(plan_name)}</p>
+<table><thead><tr>{header_row}</tr></thead><tbody>{table_rows}</tbody></table>
+</body></html>"""
+    return document.encode("utf-8")
+
+
+def _ensure_rotation_draft_matches_source(
+    current: SeatingSnapshot,
+    source: SeatingSnapshot,
+) -> None:
+    """Prevent a draft from being saved under the wrong rotation period."""
+
+    if {student.key for student in current.students} != {
+        student.key for student in source.students
+    }:
+        raise InputFileError("A rotation editing draft has a different roster.")
+    if current.layout.model_dump(mode="json") != source.layout.model_dump(mode="json"):
+        raise InputFileError("A rotation editing draft has a different layout.")
+
+
+def _next_rotation_output_path(
+    outputs_dir: Path,
+    output_name: str | None,
+) -> Path:
+    """Choose a new rotation artifact without overwriting an existing output."""
+
+    base_name = output_name or "rotation-plan.json"
+    candidate = outputs_dir / base_name
+    if not candidate.exists():
+        return candidate
+    stem = candidate.stem
+    suffix = candidate.suffix or ".json"
+    index = 2
+    while True:
+        candidate = outputs_dir / f"{stem}-{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
+def _migrate_project_artifact(
+    request: ProjectMigrationRequest,
+    *,
+    dry_run: bool,
+) -> ProjectMigrationResponse:
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        source_path = (
+            paths.project_file
+            if request.artifact_path is None
+            else _resolve_project_artifact(paths, request.artifact_path)
+        )
+        if not source_path.is_file():
+            raise InputFileError("The selected project artifact does not exist.")
+        source_data = read_json(source_path)
+        _artifact, source_model = parse_migratable_artifact(source_data, source_path)
+        normalized_data = source_model.model_dump(mode="json")
+        change_count, changes = _migration_change_summary(
+            source_data,
+            merge_normalized_data(source_data, normalized_data),
+        )
+        output_path = _migration_output_path(
+            paths,
+            source_path,
+            in_place=request.in_place,
+        )
+        result = migrate_json_file(
+            source_path,
+            output=output_path,
+            in_place=request.in_place,
+            dry_run=dry_run,
+            create_backup=True,
+        )
+        after_valid = (
+            None
+            if result.dry_run
+            else _validate_migration_output(result.output_path)
+        )
+        reference_checks = (
+            _project_reference_checks(source_model, source_path)
+            if isinstance(source_model, SeatTrellisProject)
+            else []
+        )
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_migration_failed",
+            message="The selected project artifact could not be migrated.",
+        ) from exc
+    return ProjectMigrationResponse(
+        project_path=str(paths.project_file),
+        source_path=str(source_path),
+        artifact=result.artifact,
+        schema_version=result.schema_version,
+        output_path=str(result.output_path) if result.output_path is not None else None,
+        backup_path=str(result.backup_path) if result.backup_path is not None else None,
+        dry_run=result.dry_run,
+        before_valid=True,
+        after_valid=after_valid,
+        rollback_available=(
+            result.backup_path is not None or not request.in_place
+        ),
+        change_count=change_count,
+        changes=changes,
+        reference_checks=reference_checks,
+    )
+
+
+def _project_reference_checks(
+    project: object,
+    project_path: Path,
+) -> list[ProjectMigrationReferenceCheck]:
+    """Check project references without reading their contents into the API."""
+
+    checks: list[ProjectMigrationReferenceCheck] = []
+    for field, expected in (
+        ("students", "file"),
+        ("layout", "file"),
+        ("rules", "file"),
+        ("history_dir", "directory"),
+        ("outputs_dir", "directory"),
+    ):
+        configured = getattr(project, field, None)
+        if configured is None:
+            continue
+        configured_path = str(configured)
+        resolved = (project_path.parent / configured_path).resolve()
+        if not resolved.exists():
+            status = "missing"
+        elif expected == "file" and not resolved.is_file():
+            status = "wrong_type"
+        elif expected == "directory" and not resolved.is_dir():
+            status = "wrong_type"
+        else:
+            status = "ok"
+        checks.append(
+            ProjectMigrationReferenceCheck(
+                field=field,  # type: ignore[arg-type]
+                path=configured_path,
+                expected=expected,  # type: ignore[arg-type]
+                status=status,  # type: ignore[arg-type]
+            )
+        )
+    return checks
+
+
+def _migration_output_path(
+    paths: ProjectPaths,
+    source_path: Path,
+    *,
+    in_place: bool,
+) -> Path | None:
+    if in_place:
+        return None
+    if source_path == paths.project_file:
+        directory = source_path.parent
+    else:
+        directory = paths.outputs_dir
+    directory.mkdir(parents=True, exist_ok=True)
+    stem = source_path.name.removesuffix(".json")
+    candidate = directory / f"{stem}.migrated.json"
+    suffix = 2
+    while candidate.exists():
+        candidate = directory / f"{stem}.migrated-{suffix}.json"
+        suffix += 1
+    return candidate
+
+
+def _validate_migration_output(path: Path | None) -> bool:
+    """Reparse a written artifact so the API can report post-write validity."""
+
+    if path is None or not path.is_file():
+        raise InputFileError("The migrated artifact was not written.")
+    parse_migratable_artifact(read_json(path), path)
+    return True
+
+
+def _migration_change_summary(
+    before: object,
+    after: object,
+    *,
+    limit: int = 200,
+) -> tuple[int, list[ProjectMigrationChange]]:
+    """Compare normalized JSON without returning any original values."""
+
+    count = 0
+    changes: list[ProjectMigrationChange] = []
+
+    def visit(left: object, right: object, path: str) -> None:
+        nonlocal count
+        if isinstance(left, dict) and isinstance(right, dict):
+            keys = sorted(set(left) | set(right))
+            for key in keys:
+                child_path = f"{path}.{key}" if path else str(key)
+                if key not in left:
+                    record(child_path, "added", None, _json_type(right[key]))
+                elif key not in right:
+                    record(child_path, "removed", _json_type(left[key]), None)
+                else:
+                    visit(left[key], right[key], child_path)
+            return
+        if isinstance(left, list) and isinstance(right, list):
+            shared = min(len(left), len(right))
+            for index in range(shared):
+                visit(left[index], right[index], f"{path}[{index}]")
+            for index in range(shared, len(left)):
+                record(f"{path}[{index}]", "removed", _json_type(left[index]), None)
+            for index in range(shared, len(right)):
+                record(f"{path}[{index}]", "added", None, _json_type(right[index]))
+            return
+        if left != right:
+            record(path or "$", "changed", _json_type(left), _json_type(right))
+
+    def record(
+        path: str,
+        change: Literal["added", "removed", "changed"],
+        before_type: str | None,
+        after_type: str | None,
+    ) -> None:
+        nonlocal count
+        count += 1
+        if len(changes) < limit:
+            changes.append(
+                ProjectMigrationChange(
+                    path=path,
+                    change=change,
+                    before_type=before_type,
+                    after_type=after_type,
+                )
+            )
+
+    visit(before, after, "")
+    return count, changes
+
+
+def _json_type(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return "unknown"
+
+
+def _resolve_project_artifact(paths: ProjectPaths, requested: str) -> Path:
+    """Resolve an artifact only when it remains inside the project workspace."""
+
+    candidate = Path(requested).expanduser().resolve()
+    allowed_directories = [
+        directory
+        for directory in (
+            paths.history_dir,
+            paths.outputs_dir,
+        )
+        if directory is not None
+    ]
+    if candidate == paths.project_file:
+        return candidate
+    if not candidate.is_file() or not any(
+        candidate.parent == directory or directory in candidate.parents
+        for directory in allowed_directories
+    ):
+        raise InputFileError(
+            "The artifact must be a file inside the project history or outputs directory."
+        )
+    return candidate
+
+
+def _resolve_project_migration_backup(paths: ProjectPaths, requested: str) -> Path:
+    """Resolve a migration backup inside the selected project workspace."""
+
+    candidate = Path(requested).expanduser().resolve()
+    allowed_directories = [paths.root]
+    if paths.history_dir is not None:
+        allowed_directories.append(paths.history_dir)
+    allowed_directories.append(paths.outputs_dir)
+    inside_workspace = any(
+        candidate.parent == directory or directory in candidate.parents
+        for directory in allowed_directories
+    )
+    if not candidate.is_file() or not inside_workspace:
+        raise InputFileError(
+            "The migration backup must be a file inside the project workspace."
+        )
+    if ".bak" not in candidate.name:
+        raise InputFileError("The selected file is not a migration backup.")
+    return candidate
+
+
+def _snapshot_for_artifact(
+    path: Path,
+) -> tuple[
+    Literal["snapshot", "candidate_set", "rotation_plan", "unknown"],
+    SeatingSnapshot,
+    datetime | None,
+]:
+    data = read_json(path)
+    kind = data.get("kind")
+    if kind == "candidate_set":
+        artifact = load_candidate_set(path)
+        return "candidate_set", artifact.get_candidate("recommended").snapshot, artifact.created_at
+    if kind == "rotation_plan":
+        artifact = load_rotation_plan(path)
+        return "rotation_plan", artifact.periods[0].snapshot, artifact.created_at
+    if kind in {None, "snapshot"}:
+        artifact = load_seating_artifact(path)
+        if not isinstance(artifact, SeatingSnapshot):
+            raise InputFileError(f"Expected a snapshot artifact: {path}")
+        return "snapshot", artifact, artifact.created_at
+    raise InputFileError(f"Unsupported project artifact kind: {kind}")
+
+
+def _artifact_summary(
+    path: Path,
+    *,
+    kind: Literal["snapshot", "candidate_set", "rotation_plan", "unknown"],
+    snapshot: SeatingSnapshot,
+    created_at: datetime | None,
+) -> ProjectArtifactSummary:
+    return ProjectArtifactSummary(
+        name=path.name,
+        path=str(path),
+        kind=kind,
+        created_at=created_at,
+        student_count=len(snapshot.students),
+        assignment_count=len(snapshot.assignments),
+        enabled_seat_count=len(snapshot.layout.enabled_seats),
+        solver_status=snapshot.solver_status,
+    )
+
+
+def _next_restored_path(outputs_dir: Path, source_stem: str) -> Path:
+    clean_stem = source_stem.removesuffix(".snapshot")
+    base = outputs_dir / f"restored-{clean_stem}.snapshot.json"
+    if not base.exists():
+        return base
+    index = 2
+    while True:
+        candidate = outputs_dir / f"restored-{clean_stem}-{index}.snapshot.json"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
 def project_privacy(request: ProjectPathRequest) -> ProjectPrivacyResponse:
     """Scan a project using the same conservative bundle policy as the CLI."""
 
@@ -262,6 +1421,15 @@ class ProjectBundleArtifact:
 
     data: bytes
     filename: str
+
+
+@dataclass(frozen=True)
+class ProjectDownloadArtifact:
+    """A generated local download with an explicit content type."""
+
+    data: bytes
+    filename: str
+    content_type: str
 
 
 def pack_project_for_web(request: ProjectPathRequest) -> ProjectBundleArtifact:
@@ -321,6 +1489,8 @@ def _artifact_items(
             warnings.append(f"Could not read project artifact {path.name}.")
             continue
         kind = data.get("kind")
+        if kind is None and "assignments" in data:
+            kind = "snapshot"
         if kind not in {"snapshot", "candidate_set", "rotation_plan"}:
             kind = "unknown"
         periods = data.get("periods")
@@ -334,6 +1504,11 @@ def _artifact_items(
         if not isinstance(students, list) and isinstance(first_snapshot, dict):
             students = first_snapshot.get("students")
         created_at = _parse_artifact_datetime(data.get("created_at"))
+        provenance = _artifact_provenance(data, kind=kind)
+        operation_history, operation_history_truncated = _artifact_operation_history(
+            data,
+            kind=kind,
+        )
         items.append(
             ProjectArtifactItem(
                 name=path.name,
@@ -344,11 +1519,239 @@ def _artifact_items(
                 size_bytes=stat.st_size,
                 student_count=len(students) if isinstance(students, list) else None,
                 period_count=len(periods) if isinstance(periods, list) else None,
+                provenance=provenance,
+                operation_history=operation_history,
+                operation_history_truncated=operation_history_truncated,
             )
         )
         # Candidate scores and student records are intentionally not returned
         # in this browsing response.
     return items
+
+
+_SAFE_EDIT_OPERATION_KINDS = frozenset(
+    {
+        "swap_students",
+        "move_student",
+        "batch_move",
+        "seat_student",
+        "unseat_student",
+        "lock_student",
+        "unlock_student",
+        "lock_seat",
+        "unlock_seat",
+    }
+)
+
+
+def _artifact_operation_history(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> tuple[list[ProjectArtifactOperation], bool]:
+    """Return a bounded, identifier-free summary of editing commands."""
+
+    entries: list[ProjectArtifactOperation] = []
+    truncated = False
+    for metadata, period in _artifact_metadata_entries(data, kind=kind):
+        manual_edit = metadata.get("manual_edit")
+        if not isinstance(manual_edit, dict):
+            manual_edit = metadata.get("source_manual_edit")
+        if not isinstance(manual_edit, dict):
+            continue
+        commands = manual_edit.get("commands")
+        if isinstance(commands, list):
+            for command in commands:
+                if not isinstance(command, dict):
+                    continue
+                if len(entries) >= 100:
+                    truncated = True
+                    break
+                action = command.get("action")
+                safe_action = action if action in {"apply", "undo", "redo"} else "unknown"
+                operations = command.get("operations")
+                kinds: list[str] = []
+                if isinstance(operations, list):
+                    for operation in operations:
+                        if not isinstance(operation, dict):
+                            continue
+                        operation_kind = operation.get("kind")
+                        safe_kind = (
+                            operation_kind
+                            if isinstance(operation_kind, str)
+                            and operation_kind in _SAFE_EDIT_OPERATION_KINDS
+                            else "other"
+                        )
+                        if safe_kind not in kinds and len(kinds) < 5:
+                            kinds.append(safe_kind)
+                entries.append(
+                    ProjectArtifactOperation(
+                        sequence=len(entries) + 1,
+                        action=safe_action,  # type: ignore[arg-type]
+                        operation_count=(
+                            min(len(operations), 100)
+                            if isinstance(operations, list)
+                            else 0
+                        ),
+                        operation_kinds=kinds,
+                        period=period,
+                        recorded_at=_parse_artifact_datetime(command.get("recorded_at")),
+                    )
+                )
+            continue
+
+        operations = manual_edit.get("operations")
+        if isinstance(operations, list):
+            if len(entries) >= 100:
+                truncated = True
+                continue
+            kinds = []
+            for operation in operations:
+                if not isinstance(operation, dict):
+                    continue
+                operation_kind = operation.get("kind")
+                safe_kind = (
+                    operation_kind
+                    if isinstance(operation_kind, str)
+                    and operation_kind in _SAFE_EDIT_OPERATION_KINDS
+                    else "other"
+                )
+                if safe_kind not in kinds and len(kinds) < 5:
+                    kinds.append(safe_kind)
+            entries.append(
+                ProjectArtifactOperation(
+                    sequence=len(entries) + 1,
+                    action="apply",
+                    operation_count=min(len(operations), 100),
+                    operation_kinds=kinds,
+                    period=period,
+                    recorded_at=_parse_artifact_datetime(manual_edit.get("recorded_at")),
+                )
+            )
+    return entries, truncated
+
+
+def _artifact_metadata_values(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> list[dict[str, object]]:
+    """Collect nested metadata locally for provenance and timeline summaries."""
+
+    return [metadata for metadata, _period in _artifact_metadata_entries(data, kind=kind)]
+
+
+def _artifact_metadata_entries(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> list[tuple[dict[str, object], int | None]]:
+    """Collect metadata together with a safe rotation-period context."""
+
+    metadata_values: list[tuple[dict[str, object], int | None]] = []
+    top_metadata = data.get("metadata")
+    if isinstance(top_metadata, dict):
+        metadata_values.append((top_metadata, _metadata_period(top_metadata)))
+    if kind == "rotation_plan":
+        periods = data.get("periods")
+        if isinstance(periods, list):
+            for period in periods:
+                if not isinstance(period, dict):
+                    continue
+                period_number = _safe_period(period.get("period"))
+                snapshot = period.get("snapshot")
+                if isinstance(snapshot, dict) and isinstance(snapshot.get("metadata"), dict):
+                    metadata = snapshot["metadata"]
+                    metadata_values.append(
+                        (metadata, _metadata_period(metadata) or period_number)
+                    )
+    elif kind == "candidate_set":
+        candidates = data.get("candidates")
+        if isinstance(candidates, list):
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                snapshot = candidate.get("snapshot")
+                if isinstance(snapshot, dict) and isinstance(snapshot.get("metadata"), dict):
+                    metadata = snapshot["metadata"]
+                    metadata_values.append((metadata, _metadata_period(metadata)))
+    return metadata_values
+
+
+def _metadata_period(metadata: dict[str, object]) -> int | None:
+    """Read a persisted rotation period without exposing arbitrary metadata."""
+
+    persistence = metadata.get("project_persistence")
+    candidate = persistence.get("period") if isinstance(persistence, dict) else None
+    return _safe_period(candidate) or _safe_period(metadata.get("rotation_period"))
+
+
+def _safe_period(value: object) -> int | None:
+    """Return a positive period number, ignoring booleans and malformed values."""
+
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        return value
+    return None
+
+
+def _artifact_provenance(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> ProjectArtifactProvenance | None:
+    """Summarize artifact origin without returning student-sensitive metadata.
+
+    Older history files do not carry provenance.  They remain visible with an
+    ``unknown`` source, while newer generated, edited, rotated, and restored
+    artifacts expose a small stable summary.  Nested period/candidate metadata
+    is inspected locally and reduced to counts only.
+    """
+
+    metadata_values = _artifact_metadata_values(data, kind=kind)
+
+    parent_name: str | None = None
+    operation_count = 0
+    has_operation_count = False
+    source: str | None = None
+    for metadata in metadata_values:
+        restored_from = metadata.get("restored_from")
+        if parent_name is None and isinstance(restored_from, str) and restored_from.strip():
+            parent_name = Path(restored_from).name
+        persistence = metadata.get("project_persistence")
+        if isinstance(persistence, dict):
+            artifact_path = persistence.get("artifact_path")
+            if parent_name is None and isinstance(artifact_path, str) and artifact_path.strip():
+                parent_name = Path(artifact_path).name
+            if persistence.get("source") == "react_rotation_editor":
+                source = "rotation_edit"
+        if metadata.get("saved_from") == "react_rotation_editor":
+            source = "rotation_edit"
+        manual_edit = metadata.get("manual_edit")
+        if not isinstance(manual_edit, dict):
+            manual_edit = metadata.get("source_manual_edit")
+        if isinstance(manual_edit, dict):
+            count = manual_edit.get("operation_count")
+            if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                operation_count += count
+                has_operation_count = True
+            if source != "rotation_edit":
+                source = "manual_edit"
+
+    if parent_name is not None:
+        source = "restored"
+    if source is None:
+        # A solver status or candidate metadata marks a file as generated even
+        # when it predates the explicit provenance fields.
+        if data.get("solver_status") or data.get("kind") in {"candidate_set", "rotation_plan"}:
+            source = "generated"
+        else:
+            source = "unknown"
+
+    return ProjectArtifactProvenance(
+        source=source,  # type: ignore[arg-type]
+        parent_name=parent_name,
+        operation_count=min(operation_count, 100_000) if has_operation_count else None,
+    )
 
 
 def _path_sort_key(path: Path) -> int:
@@ -487,6 +1890,8 @@ def generate_class(
 
 def generate_rotation_plan(
     request: GenerateRotationPlanRequest,
+    *,
+    draft_store: EditorDraftStore | None = None,
 ) -> GenerateRotationPlanResponse:
     """Generate future periods through the shared class workflow boundary."""
 
@@ -528,11 +1933,41 @@ def generate_rotation_plan(
             code="plan_not_found",
             message="No rotation plan was found with the current room and rules.",
         ) from exc
+    editor_store = draft_store or EditorDraftStore()
+    period_editors: list[EditorStateEnvelope] = []
+    for period in output.plan.periods:
+        period_score = score_snapshot(period.snapshot)
+        period_candidate = CandidatePlan(
+            candidate_id=f"period-{period.period}",
+            snapshot=period.snapshot,
+            score=period_score,
+            hard_constraints_satisfied=(
+                period_score.breakdown.hard_constraint_summary.satisfied
+            ),
+            metadata={
+                "rotation_plan": output.plan.name,
+                "rotation_period": period.period,
+            },
+        )
+        period_editors.append(
+            editor_store.create(
+                CandidateSet(
+                    candidates=[period_candidate],
+                    recommended_candidate_id=period_candidate.candidate_id,
+                    metadata={
+                        "source": "rotation_plan",
+                        "period_count": output.plan.period_count,
+                    },
+                )
+            )
+        )
     return GenerateRotationPlanResponse(
         class_name=draft.name,
         goal=_goal_summary(readiness.resolved_goal),
         warnings=list(dict.fromkeys((*readiness.warnings, *output.plan.warnings))),
         rotation_plan=output.plan,
+        editor=period_editors[0],
+        period_editors=period_editors,
     )
 
 

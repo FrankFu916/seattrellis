@@ -150,6 +150,11 @@ def test_editor_commands_are_atomic_and_undo_redo_at_command_level() -> None:
     assert redone.revision == 3
     assert next(item for item in redone.students if item.student_key == "PRIVATE-1").seat_id == "A2"
 
+    snapshot = store.snapshot(state.draft_id)
+    assert snapshot.metadata["manual_edit"]["source"] == "web_editor"
+    assert snapshot.metadata["manual_edit"]["operation_count"] == 3
+    assert snapshot.metadata["manual_edit"]["commands"][0]["command_id"] == "swap-and-lock"
+
 
 def test_failed_multi_operation_command_rolls_back_all_changes() -> None:
     store = EditorDraftStore()
@@ -174,6 +179,32 @@ def test_failed_multi_operation_command_rolls_back_all_changes() -> None:
     assert unchanged.revision == 0
     assert unchanged.undo_depth == 0
     assert not next(item for item in unchanged.seats if item.seat_id == "A1").locked
+
+
+def test_reopened_draft_preserves_existing_edit_provenance() -> None:
+    source = _candidate_set()
+    candidate = source.candidates[0]
+    snapshot = candidate.snapshot.model_copy(
+        update={
+            "metadata": {
+                "manual_edit": {
+                    "source": "web_editor",
+                    "commands": [{"command_id": "previous-edit", "action": "apply"}],
+                }
+            }
+        }
+    )
+    reopened = source.model_copy(
+        update={
+            "candidates": [candidate.model_copy(update={"snapshot": snapshot})]
+        }
+    )
+
+    store = EditorDraftStore()
+    state = store.create(reopened)
+    output = store.snapshot(state.draft_id)
+    assert output.metadata["manual_edit"]["operation_count"] == 1
+    assert output.metadata["manual_edit"]["commands"][0]["command_id"] == "previous-edit"
 
 
 def test_stale_duplicate_and_wrong_draft_commands_are_rejected() -> None:

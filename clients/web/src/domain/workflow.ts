@@ -73,11 +73,34 @@ export function seatRemainingStudents(
 ): SeatAssignment[] {
   const remaining = [...getUnseatedStudents(students, assignments)];
   return assignments.map((seat) => {
-    if (seat.student || remaining.length === 0) {
+    if (seat.student || seat.locked || remaining.length === 0) {
       return seat;
     }
     return { ...seat, student: remaining.shift() };
   });
+}
+
+/**
+ * Keep a draft seating plan usable while the roster is edited in place.
+ *
+ * Existing students retain their seats, removed students are cleared, and
+ * newly added students are placed in the first available unlocked seats. The
+ * function intentionally preserves the current room geometry and lock state;
+ * editing a name or score must not unexpectedly reset a teacher's layout.
+ */
+export function reconcileStudentAssignments(
+  assignments: SeatAssignment[],
+  students: Student[],
+): SeatAssignment[] {
+  const studentsById = new Map(students.map((student) => [student.id, student]));
+  const reconciled = assignments.map((seat) => {
+    if (!seat.student) {
+      return seat;
+    }
+    const student = studentsById.get(seat.student.id);
+    return student ? { ...seat, student } : { ...seat, student: undefined };
+  });
+  return seatRemainingStudents(reconciled, students);
 }
 
 export function deriveDiagnostics(
@@ -132,4 +155,3 @@ export function getAdjacentStep(
   );
   return workflowSteps[nextIndex];
 }
-

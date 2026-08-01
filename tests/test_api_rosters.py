@@ -37,6 +37,22 @@ def test_roster_draft_exposes_bounded_preview_and_mapping_suggestions() -> None:
     assert state.mapping_issues == []
 
 
+def test_roster_draft_keeps_headerless_uploads_and_suggests_identity_columns() -> None:
+    state = RosterDraftStore().create(
+        _table("小林,18513806422\n小周,18513806423\n")
+    )
+
+    assert state.headerless is True
+    assert state.row_count == 2
+    assert [row.cells for row in state.preview_rows] == [
+        ["小林", "18513806422"],
+        ["小周", "18513806423"],
+    ]
+    assert {
+        item.field: item.column_index for item in state.suggested_mapping
+    } == {"student_id": 1, "name": 0}
+
+
 def test_roster_preview_supports_incremental_and_replace_updates() -> None:
     store = RosterDraftStore()
     state = store.create(_table("id,name,score\nS1,Alice,93\nS2,Bob,81\n"))

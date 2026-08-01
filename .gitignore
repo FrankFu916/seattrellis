@@ -23,5 +23,7 @@ real_students/
 real_classes/
 .env
 .DS_Store
+node_modules/
+.workbuddy/
 .idea/
 .vscode/

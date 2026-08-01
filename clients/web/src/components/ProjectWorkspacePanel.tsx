@@ -1,17 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  compareProjectArtifacts,
+  applyProjectMigration,
+  applyProjectMigrationBatch,
   downloadProjectBundle,
   fetchProjectHistory,
   listRecentProjects,
+  loadProjectRotationPlan,
+  downloadProjectGroupRegister,
+  previewProjectGroupRegister,
+  previewProjectMigration,
+  previewProjectMigrationBatch,
+  restoreProjectMigrationBackup,
+  restoreProjectArtifact,
   restoreProjectBundle,
   RosterApiError,
+  saveProjectRotationPlan,
   scanProjectPrivacy,
 } from "../api/client";
 import type {
   ProjectArtifact,
+  ProjectArtifactCompareResponse,
+  ProjectArtifactOperation,
   ProjectHistoryResponse,
+  ProjectGroupRegisterPreviewResponse,
+  ProjectMigrationChange,
+  ProjectMigrationBatchResponse,
+  ProjectMigrationReferenceCheck,
+  ProjectMigrationResponse,
   ProjectPrivacyResponse,
+  ProjectRotationLoadResponse,
+  RotationPlan,
   RecentProject,
 } from "../api/types";
 import type { Locale, Translate } from "../i18n/messages";
@@ -19,6 +39,9 @@ import type { Locale, Translate } from "../i18n/messages";
 type ProjectWorkspacePanelProps = {
   locale: Locale;
   t: Translate;
+  rotationPlan?: RotationPlan | null;
+  rotationDraftIds?: string[];
+  onRotationLoad?: (result: ProjectRotationLoadResponse) => void;
 };
 
 function errorMessage(error: unknown): string {
@@ -51,6 +74,102 @@ function artifactKindLabel(
   }
 }
 
+function artifactSourceLabel(
+  artifact: ProjectArtifact,
+  t: Translate,
+): string | null {
+  switch (artifact.provenance?.source) {
+    case "generated":
+      return t("project.sourceGenerated");
+    case "manual_edit":
+      return t("project.sourceManualEdit");
+    case "rotation_edit":
+      return t("project.sourceRotationEdit");
+    case "restored":
+      return t("project.sourceRestored");
+    case "unknown":
+      return t("project.sourceUnknown");
+    default:
+      return null;
+  }
+}
+
+function operationActionLabel(
+  action: ProjectArtifactOperation["action"],
+  t: Translate,
+): string {
+  switch (action) {
+    case "apply":
+      return t("project.operationApply");
+    case "undo":
+      return t("project.operationUndo");
+    case "redo":
+      return t("project.operationRedo");
+    default:
+      return t("project.operationUnknown");
+  }
+}
+
+function operationKindLabel(kind: string, t: Translate): string {
+  switch (kind) {
+    case "swap_students":
+      return t("project.operation.swapStudents");
+    case "move_student":
+      return t("project.operation.moveStudent");
+    case "batch_move":
+      return t("project.operation.batchMove");
+    case "seat_student":
+      return t("project.operation.seatStudent");
+    case "unseat_student":
+      return t("project.operation.unseatStudent");
+    case "lock_student":
+      return t("project.operation.lockStudent");
+    case "unlock_student":
+      return t("project.operation.unlockStudent");
+    case "lock_seat":
+      return t("project.operation.lockSeat");
+    case "unlock_seat":
+      return t("project.operation.unlockSeat");
+    default:
+      return t("project.operationOther");
+  }
+}
+
+function migrationChangeLabel(
+  change: ProjectMigrationChange["change"],
+  t: Translate,
+): string {
+  switch (change) {
+    case "added":
+      return t("project.migrationAdded");
+    case "removed":
+      return t("project.migrationRemoved");
+    default:
+      return t("project.migrationChanged");
+  }
+}
+
+function migrationReferenceFieldLabel(
+  field: ProjectMigrationReferenceCheck["field"],
+  t: Translate,
+): string {
+  return t(`project.migrationReference.${field}` as Parameters<Translate>[0]);
+}
+
+function migrationReferenceStatusLabel(
+  status: ProjectMigrationReferenceCheck["status"],
+  t: Translate,
+): string {
+  switch (status) {
+    case "ok":
+      return t("project.migrationReferenceOk");
+    case "missing":
+      return t("project.migrationReferenceMissing");
+    default:
+      return t("project.migrationReferenceWrongType");
+  }
+}
+
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -65,6 +184,9 @@ function triggerDownload(blob: Blob, filename: string): void {
 export function ProjectWorkspacePanel({
   locale,
   t,
+  rotationPlan = null,
+  rotationDraftIds = [],
+  onRotationLoad,
 }: ProjectWorkspacePanelProps) {
   const [root, setRoot] = useState(".");
   const [projects, setProjects] = useState<RecentProject[]>([]);
@@ -73,9 +195,42 @@ export function ProjectWorkspacePanel({
   const [privacy, setPrivacy] = useState<ProjectPrivacyResponse | null>(null);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restoreTarget, setRestoreTarget] = useState("./restored-project");
-  const [busy, setBusy] = useState<"loading" | "scanning" | "backup" | "restore" | null>(null);
+  const [compareLeftPath, setCompareLeftPath] = useState("");
+  const [compareRightPath, setCompareRightPath] = useState("");
+  const [restoreArtifactPath, setRestoreArtifactPath] = useState("");
+  const [loadRotationPath, setLoadRotationPath] = useState("");
+  const [groupRegisterFormat, setGroupRegisterFormat] = useState<"html" | "csv">("html");
+  const [groupRegisterPreview, setGroupRegisterPreview] =
+    useState<ProjectGroupRegisterPreviewResponse | null>(null);
+  const [migrationArtifactPath, setMigrationArtifactPath] = useState("");
+  const [migrationInPlace, setMigrationInPlace] = useState(false);
+  const [migrationPreview, setMigrationPreview] = useState<ProjectMigrationResponse | null>(null);
+  const [batchMigrationPaths, setBatchMigrationPaths] = useState<string[]>([]);
+  const [batchMigrationInPlace, setBatchMigrationInPlace] = useState(false);
+  const [batchMigrationPreview, setBatchMigrationPreview] =
+    useState<ProjectMigrationBatchResponse | null>(null);
+  const [comparison, setComparison] = useState<ProjectArtifactCompareResponse | null>(null);
+  const [busy, setBusy] = useState<
+    "loading"
+    | "scanning"
+    | "backup"
+    | "restore"
+    | "compare"
+    | "restore-artifact"
+    | "migration-preview"
+    | "migration-apply"
+    | "migration-restore"
+    | "migration-batch-preview"
+    | "migration-batch-apply"
+    | "rotation-save"
+    | "rotation-load"
+    | "group-register-preview"
+    | "group-register"
+    | null
+  >(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [operationPeriodFilter, setOperationPeriodFilter] = useState<"all" | number>("all");
 
   const allArtifacts = useMemo(
     () => [
@@ -84,6 +239,68 @@ export function ProjectWorkspacePanel({
     ],
     [history],
   );
+  const rotationArtifacts = useMemo(
+    () => allArtifacts.filter((artifact) => artifact.kind === "rotation_plan"),
+    [allArtifacts],
+  );
+  const operationPeriods = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          allArtifacts.flatMap((artifact) =>
+            (artifact.operation_history ?? [])
+              .map((operation) => operation.period)
+              .filter((period): period is number => typeof period === "number"),
+          ),
+        ),
+      ).sort((left, right) => left - right),
+    [allArtifacts],
+  );
+  useEffect(() => {
+    if (!allArtifacts.length) {
+      setCompareLeftPath("");
+      setCompareRightPath("");
+      setRestoreArtifactPath("");
+      setLoadRotationPath("");
+      setGroupRegisterPreview(null);
+      setMigrationArtifactPath("");
+      setMigrationPreview(null);
+      setBatchMigrationPaths([]);
+      setBatchMigrationPreview(null);
+      setOperationPeriodFilter("all");
+      return;
+    }
+    setCompareLeftPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current)
+        ? current
+        : allArtifacts[0].path,
+    );
+    setCompareRightPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current) &&
+      current !== allArtifacts[0].path
+        ? current
+        : allArtifacts[1]?.path ?? "",
+    );
+    setRestoreArtifactPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current)
+        ? current
+        : allArtifacts[0].path,
+    );
+    setMigrationArtifactPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current) ? current : "",
+    );
+    setBatchMigrationPaths((current) =>
+      current.filter((path) => projects.some((project) => project.path === path)),
+    );
+    setLoadRotationPath((current) =>
+      rotationArtifacts.some((artifact) => artifact.path === current)
+        ? current
+        : rotationArtifacts[0]?.path ?? "",
+    );
+    setOperationPeriodFilter((current) =>
+      current === "all" || operationPeriods.includes(current) ? current : "all",
+    );
+  }, [allArtifacts, operationPeriods, projects, rotationArtifacts]);
 
   async function openProject(path: string): Promise<void> {
     if (!path) {
@@ -97,6 +314,10 @@ export function ProjectWorkspacePanel({
     try {
       const response = await fetchProjectHistory(path);
       setHistory(response);
+      setComparison(null);
+      setMigrationPreview(null);
+      setBatchMigrationPreview(null);
+      setGroupRegisterPreview(null);
       setStatus(t("project.statusLoaded", { name: response.project_name }));
     } catch (caught) {
       setHistory(null);
@@ -186,6 +407,231 @@ export function ProjectWorkspacePanel({
     }
   }
 
+  async function handleCompare(): Promise<void> {
+    if (!selectedPath || !compareLeftPath || !compareRightPath) {
+      return;
+    }
+    setBusy("compare");
+    setError("");
+    try {
+      setComparison(
+        await compareProjectArtifacts(selectedPath, compareLeftPath, compareRightPath),
+      );
+      setStatus(t("project.statusCompared"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRestoreArtifact(): Promise<void> {
+    if (!selectedPath || !restoreArtifactPath) {
+      return;
+    }
+    setBusy("restore-artifact");
+    setError("");
+    try {
+      const result = await restoreProjectArtifact(selectedPath, restoreArtifactPath);
+      await refreshProjects();
+      setStatus(t("project.statusArtifactRestored", { name: result.restored_artifact }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleMigrationPreview(): Promise<void> {
+    if (!selectedPath) {
+      return;
+    }
+    setBusy("migration-preview");
+    setError("");
+    try {
+      const result = await previewProjectMigration(
+        selectedPath,
+        migrationArtifactPath || undefined,
+        migrationInPlace,
+      );
+      setMigrationPreview(result);
+      setStatus(t("project.statusMigrationPreview"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleMigrationApply(): Promise<void> {
+    if (!selectedPath || !migrationPreview) {
+      return;
+    }
+    setBusy("migration-apply");
+    setError("");
+    try {
+      const result = await applyProjectMigration(
+        selectedPath,
+        migrationArtifactPath || undefined,
+        migrationInPlace,
+      );
+      await refreshProjects();
+      // Refreshing the project list resets transient selection state. Keep the
+      // apply result so a backup created by an in-place migration remains
+      // available for the next explicit recovery action.
+      setMigrationPreview(result);
+      setStatus(t("project.statusMigrationApplied", { path: result.output_path ?? result.source_path }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleMigrationRestore(): Promise<void> {
+    if (!selectedPath || !migrationPreview?.backup_path) {
+      return;
+    }
+    setBusy("migration-restore");
+    setError("");
+    try {
+      const result = await restoreProjectMigrationBackup(
+        selectedPath,
+        migrationPreview.source_path,
+        migrationPreview.backup_path,
+      );
+      await refreshProjects();
+      setStatus(t("project.statusMigrationRestored", { path: result.source_path }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleBatchMigrationPreview(): Promise<void> {
+    if (batchMigrationPaths.length < 2) {
+      return;
+    }
+    setBusy("migration-batch-preview");
+    setError("");
+    try {
+      const result = await previewProjectMigrationBatch(
+        batchMigrationPaths,
+        batchMigrationInPlace,
+      );
+      setBatchMigrationPreview(result);
+      setStatus(t("project.statusMigrationBatchPreview"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleBatchMigrationApply(): Promise<void> {
+    if (batchMigrationPaths.length < 2 || !batchMigrationPreview?.ready) {
+      return;
+    }
+    setBusy("migration-batch-apply");
+    setError("");
+    try {
+      const result = await applyProjectMigrationBatch(
+        batchMigrationPaths,
+        batchMigrationInPlace,
+      );
+      setBatchMigrationPreview(result);
+      await refreshProjects();
+      setStatus(t("project.statusMigrationBatchApplied", { count: result.projects.length }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRotationSave(): Promise<void> {
+    if (
+      !selectedPath ||
+      !rotationPlan ||
+      rotationDraftIds.length !== rotationPlan.periods.length
+    ) {
+      return;
+    }
+    setBusy("rotation-save");
+    setError("");
+    try {
+      const result = await saveProjectRotationPlan(
+        selectedPath,
+        rotationPlan,
+        rotationDraftIds,
+      );
+      await refreshProjects();
+      setStatus(t("project.statusRotationSaved", { path: result.output_path }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRotationLoad(): Promise<void> {
+    if (!selectedPath || !loadRotationPath || !onRotationLoad) {
+      return;
+    }
+    setBusy("rotation-load");
+    setError("");
+    try {
+      const result = await loadProjectRotationPlan(selectedPath, loadRotationPath);
+      onRotationLoad(result);
+      setStatus(t("project.statusRotationLoaded", { name: result.rotation_plan.name }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleGroupRegister(): Promise<void> {
+    if (!selectedPath || !loadRotationPath) {
+      return;
+    }
+    setBusy("group-register");
+    setError("");
+    try {
+      const result = await downloadProjectGroupRegister(
+        selectedPath,
+        loadRotationPath,
+        groupRegisterFormat,
+        locale === "zh-CN" ? "zh" : "en",
+      );
+      triggerDownload(result.blob, result.filename);
+      setStatus(t("project.statusGroupRegister", { name: result.filename }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleGroupRegisterPreview(): Promise<void> {
+    if (!selectedPath || !loadRotationPath) {
+      return;
+    }
+    setBusy("group-register-preview");
+    setError("");
+    try {
+      setGroupRegisterPreview(
+        await previewProjectGroupRegister(selectedPath, loadRotationPath),
+      );
+      setStatus(t("project.statusGroupRegisterPreview"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section
       className="side-card project-workspace-card"
@@ -251,14 +697,26 @@ export function ProjectWorkspacePanel({
                 <h3>{t("project.history")}</h3>
                 {!history.history.length && <p className="project-empty">{t("project.noArtifacts")}</p>}
                 {history.history.map((artifact) => (
-                  <ArtifactRow key={artifact.path} artifact={artifact} t={t} locale={locale} />
+                  <ArtifactRow
+                    key={artifact.path}
+                    artifact={artifact}
+                    t={t}
+                    locale={locale}
+                    operationPeriodFilter={operationPeriodFilter}
+                  />
                 ))}
               </div>
               <div className="project-artifact-group" data-testid="project-outputs">
                 <h3>{t("project.outputs")}</h3>
                 {!history.outputs.length && <p className="project-empty">{t("project.noArtifacts")}</p>}
                 {history.outputs.map((artifact) => (
-                  <ArtifactRow key={artifact.path} artifact={artifact} t={t} locale={locale} />
+                  <ArtifactRow
+                    key={artifact.path}
+                    artifact={artifact}
+                    t={t}
+                    locale={locale}
+                    operationPeriodFilter={operationPeriodFilter}
+                  />
                 ))}
               </div>
             </div>
@@ -267,8 +725,562 @@ export function ProjectWorkspacePanel({
                 {t("project.warning")}: {history.warnings.length}
               </p>
             )}
+            {allArtifacts.length > 0 && (
+              <div className="project-history-tools" data-testid="project-history-tools">
+                <h3>{t("project.compareTitle")}</h3>
+                {operationPeriods.length > 0 && (
+                  <label className="project-field project-history-filter" htmlFor="project-operation-period-filter">
+                    <span>{t("project.operationPeriodFilter")}</span>
+                    <select
+                      id="project-operation-period-filter"
+                      data-testid="project-operation-period-filter"
+                      value={operationPeriodFilter}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setOperationPeriodFilter(value === "all" ? "all" : Number(value));
+                      }}
+                    >
+                      <option value="all">{t("project.operationPeriodAll")}</option>
+                      {operationPeriods.map((period) => (
+                        <option key={period} value={period}>
+                          {t("project.operationPeriod", { period })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div className="project-compare-fields">
+                  <label className="project-field">
+                    <span>{t("project.compareLeft")}</span>
+                    <select
+                      data-testid="project-compare-left"
+                      value={compareLeftPath}
+                      onChange={(event) => setCompareLeftPath(event.target.value)}
+                    >
+                      {allArtifacts.map((artifact) => (
+                        <option key={`left-${artifact.path}`} value={artifact.path}>
+                          {artifact.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="project-field">
+                    <span>{t("project.compareRight")}</span>
+                    <select
+                      data-testid="project-compare-right"
+                      value={compareRightPath}
+                      onChange={(event) => setCompareRightPath(event.target.value)}
+                    >
+                      {allArtifacts.map((artifact) => (
+                        <option key={`right-${artifact.path}`} value={artifact.path}>
+                          {artifact.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-compare-button"
+                  onClick={() => void handleCompare()}
+                  disabled={
+                    !compareLeftPath ||
+                    !compareRightPath ||
+                    compareLeftPath === compareRightPath ||
+                    busy !== null
+                  }
+                >
+                  {busy === "compare" ? t("project.comparing") : t("project.compareAction")}
+                </button>
+                {rotationArtifacts.length > 0 && (
+                  <>
+                    {onRotationLoad && (
+                      <>
+                        <label className="project-field">
+                          <span>{t("project.openRotation")}</span>
+                          <select
+                            data-testid="project-open-rotation-select"
+                            value={loadRotationPath}
+                            onChange={(event) => {
+                              setLoadRotationPath(event.target.value);
+                              setGroupRegisterPreview(null);
+                            }}
+                          >
+                            {rotationArtifacts.map((artifact) => (
+                              <option key={`open-rotation-${artifact.path}`} value={artifact.path}>
+                                {artifact.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          data-testid="project-open-rotation-button"
+                          onClick={() => void handleRotationLoad()}
+                          disabled={!loadRotationPath || busy !== null}
+                        >
+                          {busy === "rotation-load"
+                            ? t("project.openingRotation")
+                            : t("project.openRotationAction")}
+                        </button>
+                      </>
+                    )}
+                    <label className="project-field">
+                      <span>{t("project.groupRegisterFormat")}</span>
+                      <select
+                        data-testid="project-group-register-format"
+                        value={groupRegisterFormat}
+                        onChange={(event) =>
+                          setGroupRegisterFormat(event.target.value as "html" | "csv")
+                        }
+                      >
+                        <option value="html">HTML · {t("project.groupRegisterPrint")}</option>
+                        <option value="csv">CSV · {t("project.groupRegisterData")}</option>
+                      </select>
+                    </label>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      data-testid="project-group-register-preview-button"
+                      onClick={() => void handleGroupRegisterPreview()}
+                      disabled={!loadRotationPath || busy !== null}
+                    >
+                      {busy === "group-register-preview"
+                        ? t("project.groupRegisterPreviewing")
+                        : t("project.groupRegisterPreviewAction")}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      data-testid="project-group-register-button"
+                      onClick={() => void handleGroupRegister()}
+                      disabled={!loadRotationPath || busy !== null}
+                    >
+                      {busy === "group-register"
+                        ? t("project.groupRegistering")
+                        : t("project.groupRegisterAction")}
+                    </button>
+                    {groupRegisterPreview && (
+                      <div
+                        className="project-group-register-preview"
+                        data-testid="project-group-register-preview"
+                        role="status"
+                      >
+                        <strong>{t("project.groupRegisterPreviewTitle")}</strong>
+                        <small>
+                          {t("project.groupRegisterPreviewSummary", {
+                            periods: groupRegisterPreview.period_count,
+                            name: groupRegisterPreview.plan_name,
+                          })}
+                        </small>
+                        {groupRegisterPreview.periods.map((period) => (
+                          <details
+                            key={period.period}
+                            className="project-group-register-period"
+                            open={period.period === groupRegisterPreview.period_count}
+                          >
+                            <summary>
+                              {t("project.groupRegisterPeriod", {
+                                period: period.label,
+                              })}
+                              {period.compared_to_period !== null
+                                ? ` · ${t("project.groupRegisterCompared", {
+                                    period: period.compared_to_period,
+                                  })}`
+                                : ""}
+                            </summary>
+                            {period.groups.length === 0 ? (
+                              <span>{t("project.groupRegisterNoGroups")}</span>
+                            ) : (
+                              <ul>
+                                {period.groups.map((group) => (
+                                  <li key={`${period.period}-${group.name}`}>
+                                    <strong>{group.name}</strong>
+                                    <span>
+                                      {t("project.groupRegisterMemberSummary", {
+                                        members: group.member_count,
+                                        seated: group.seated_count,
+                                        unseated: group.unseated_count,
+                                        missing: group.missing_count,
+                                      })}
+                                    </span>
+                                    {(group.added_count > 0 || group.removed_count > 0) && (
+                                      <small>
+                                        {t("project.groupRegisterChangeSummary", {
+                                          added: group.added_count,
+                                          removed: group.removed_count,
+                                        })}
+                                      </small>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </details>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                <label className="project-field">
+                  <span>{t("project.restoreArtifact")}</span>
+                  <select
+                    data-testid="project-restore-artifact-select"
+                    value={restoreArtifactPath}
+                    onChange={(event) => setRestoreArtifactPath(event.target.value)}
+                  >
+                    {allArtifacts.map((artifact) => (
+                      <option key={`restore-${artifact.path}`} value={artifact.path}>
+                        {artifact.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-restore-artifact-button"
+                  onClick={() => void handleRestoreArtifact()}
+                  disabled={!restoreArtifactPath || busy !== null}
+                >
+                  {busy === "restore-artifact"
+                    ? t("project.restoringArtifact")
+                    : t("project.restoreArtifactAction")}
+                </button>
+                {comparison && (
+                  <div
+                    className="project-compare-result"
+                    data-testid="project-compare-result"
+                    role="status"
+                  >
+                    <strong>{t("project.compareResult")}</strong>
+                    <span>
+                      {t("project.assignmentChanges", {
+                        count: comparison.diff.assignment_changes,
+                      })}
+                    </span>
+                    <span>
+                      {t("project.rosterAdded", { count: comparison.diff.roster_added })}
+                    </span>
+                    <span>
+                      {t("project.rosterRemoved", {
+                        count: comparison.diff.roster_removed,
+                      })}
+                    </span>
+                    <span>
+                      {t("project.layoutChanged", {
+                        value: comparison.diff.layout_changed
+                          ? t("project.yes")
+                          : t("project.no"),
+                      })}
+                    </span>
+                    <span>
+                      {t("project.rulesChanged", {
+                        value: comparison.diff.rules_changed
+                          ? t("project.yes")
+                          : t("project.no"),
+                      })}
+                    </span>
+                    {comparison.diff.assignment_details.length > 0 ? (
+                      <details
+                        className="project-compare-details"
+                        data-testid="project-assignment-details"
+                      >
+                        <summary>{t("project.assignmentDetails")}</summary>
+                        <ul>
+                          {comparison.diff.assignment_details.map((change) => (
+                            <li
+                              key={`${change.student_ref}-${change.before_seat_id ?? "none"}-${change.after_seat_id ?? "none"}`}
+                            >
+                              <strong>{change.student_ref}</strong>
+                              <span>
+                                {change.change === "moved"
+                                  ? t("project.assignmentMoved")
+                                  : change.change === "seated"
+                                    ? t("project.assignmentSeated")
+                                    : t("project.assignmentUnseated")}
+                              </span>
+                              <small>
+                                {t("project.assignmentBefore")}: {change.before_seat_id ?? "—"}
+                                {" → "}
+                                {t("project.assignmentAfter")}: {change.after_seat_id ?? "—"}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
+
+        {selectedPath && (
+          <div className="project-migration" data-testid="project-migration">
+            <h3>{t("project.migrationTitle")}</h3>
+            <p className="muted">{t("project.migrationHint")}</p>
+            <label className="project-field" htmlFor="project-migration-artifact">
+              <span>{t("project.migrationArtifact")}</span>
+              <select
+                id="project-migration-artifact"
+                data-testid="project-migration-artifact"
+                value={migrationArtifactPath}
+                onChange={(event) => {
+                  setMigrationArtifactPath(event.target.value);
+                  setMigrationPreview(null);
+                }}
+              >
+                <option value="">{t("project.migrationProjectFile")}</option>
+                {allArtifacts.map((artifact) => (
+                  <option key={`migration-${artifact.path}`} value={artifact.path}>
+                    {artifact.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="rule-toggle">
+              <input
+                type="checkbox"
+                data-testid="project-migration-in-place"
+                checked={migrationInPlace}
+                onChange={(event) => {
+                  setMigrationInPlace(event.target.checked);
+                  setMigrationPreview(null);
+                }}
+              />
+              <span>{t("project.migrationInPlace")}</span>
+            </label>
+            <div className="project-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                data-testid="project-migration-preview"
+                onClick={() => void handleMigrationPreview()}
+                disabled={busy !== null}
+              >
+                {busy === "migration-preview"
+                  ? t("project.migrationPreviewing")
+                  : t("project.migrationPreview")}
+              </button>
+              {migrationPreview && (
+                <button
+                  className="primary-button"
+                  type="button"
+                  data-testid="project-migration-apply"
+                  onClick={() => void handleMigrationApply()}
+                  disabled={busy !== null}
+                >
+                  {busy === "migration-apply"
+                    ? t("project.migrationApplying")
+                    : t("project.migrationApply")}
+                </button>
+              )}
+              {migrationPreview?.backup_path && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-migration-restore"
+                  onClick={() => void handleMigrationRestore()}
+                  disabled={busy !== null}
+                >
+                  {busy === "migration-restore"
+                    ? t("project.migrationRestoring")
+                    : t("project.migrationRestore")}
+                </button>
+              )}
+            </div>
+            {migrationPreview && (
+              <div className="project-migration-result" data-testid="project-migration-result" role="status">
+                <strong>{t("project.migrationReady")}</strong>
+                <span>{t("project.migrationSchema", { version: migrationPreview.schema_version })}</span>
+                <span>
+                  {migrationPreview.before_valid
+                    ? t("project.migrationBeforeValid")
+                    : t("project.migrationAfterPending")}
+                </span>
+                <span>
+                  {migrationPreview.after_valid === null
+                    ? t("project.migrationAfterPending")
+                    : migrationPreview.after_valid
+                      ? t("project.migrationAfterValid")
+                      : t("project.migrationAfterPending")}
+                </span>
+                <span>
+                  {migrationPreview.rollback_available
+                    ? t("project.migrationRollback")
+                    : t("project.migrationSourcePreserved")}
+                </span>
+                <span>
+                  {migrationPreview.change_count
+                    ? t("project.migrationChanges", { count: migrationPreview.change_count })
+                    : t("project.migrationChangesNone")}
+                </span>
+                <small>{migrationPreview.output_path ?? t("project.migrationInPlaceTarget")}</small>
+                {migrationPreview.backup_path && (
+                  <small>{t("project.migrationBackup", { path: migrationPreview.backup_path })}</small>
+                )}
+                {migrationPreview.changes.length > 0 && (
+                  <details className="project-migration-details" data-testid="project-migration-details">
+                    <summary>{t("project.migrationShowChanges")}</summary>
+                    <ul>
+                      {migrationPreview.changes.map((change) => (
+                        <li key={`${change.change}-${change.path}`}>
+                          <code>{change.path}</code>
+                          <span>{migrationChangeLabel(change.change, t)}</span>
+                          <small>
+                            {change.before_type ?? "—"} → {change.after_type ?? "—"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {migrationPreview.reference_checks && migrationPreview.reference_checks.length > 0 && (
+                  <details className="project-migration-details" open>
+                    <summary>{t("project.migrationReferenceTitle")}</summary>
+                    <ul className="project-migration-references">
+                      {migrationPreview.reference_checks.map((reference) => (
+                        <li key={reference.field}>
+                          <strong>{migrationReferenceFieldLabel(reference.field, t)}</strong>
+                          <span>{reference.path}</span>
+                          <small className={`migration-reference-${reference.status}`}>
+                            {migrationReferenceStatusLabel(reference.status, t)}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+            <details className="project-batch-migration" data-testid="project-batch-migration">
+              <summary>{t("project.migrationBatchTitle")}</summary>
+              <p className="muted">{t("project.migrationBatchHint")}</p>
+              <fieldset className="project-migration-projects">
+                <legend>{t("project.migrationBatchProjects")}</legend>
+                {projects.map((project) => (
+                  <label className="rule-toggle" key={project.path}>
+                    <input
+                      type="checkbox"
+                      data-testid={`project-migration-project-${project.path.replace(/[^a-zA-Z0-9]+/g, "-")}`}
+                      checked={batchMigrationPaths.includes(project.path)}
+                      onChange={(event) => {
+                        setBatchMigrationPreview(null);
+                        setBatchMigrationPaths((current) =>
+                          event.target.checked
+                            ? [...current, project.path]
+                            : current.filter((path) => path !== project.path),
+                        );
+                      }}
+                    />
+                    <span>
+                      {project.name}
+                      <small>{project.path}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <label className="rule-toggle">
+                <input
+                  type="checkbox"
+                  data-testid="project-migration-batch-in-place"
+                  checked={batchMigrationInPlace}
+                  onChange={(event) => {
+                    setBatchMigrationInPlace(event.target.checked);
+                    setBatchMigrationPreview(null);
+                  }}
+                />
+                <span>{t("project.migrationBatchInPlace")}</span>
+              </label>
+              <div className="project-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-migration-batch-preview"
+                  onClick={() => void handleBatchMigrationPreview()}
+                  disabled={batchMigrationPaths.length < 2 || busy !== null}
+                >
+                  {busy === "migration-batch-preview"
+                    ? t("project.migrationBatchPreviewing")
+                    : t("project.migrationBatchPreview")}
+                </button>
+                {batchMigrationPreview?.ready && (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    data-testid="project-migration-batch-apply"
+                    onClick={() => void handleBatchMigrationApply()}
+                    disabled={busy !== null}
+                  >
+                    {busy === "migration-batch-apply"
+                      ? t("project.migrationBatchApplying")
+                      : t("project.migrationBatchApply")}
+                  </button>
+                )}
+              </div>
+              {batchMigrationPreview && (
+                <div
+                  className="project-migration-result"
+                  data-testid="project-migration-batch-result"
+                  role="status"
+                >
+                  <strong>
+                    {batchMigrationPreview.ready
+                      ? t("project.migrationReady")
+                      : t("project.migrationBatchNotReady")}
+                  </strong>
+                  <span>
+                    {t("project.migrationBatchProjectsCount", {
+                      count: batchMigrationPreview.projects.length,
+                    })}
+                  </span>
+                  {batchMigrationPreview.shared_references.length > 0 && (
+                    <details className="project-migration-details" open>
+                      <summary>{t("project.migrationBatchShared")}</summary>
+                      <ul className="project-migration-references">
+                        {batchMigrationPreview.shared_references.map((reference) => (
+                          <li key={`${reference.path}-${reference.projects.join("|")}`}>
+                            <strong>{reference.path}</strong>
+                            <span>
+                              {t("project.migrationBatchSharedProjects", {
+                                count: reference.projects.length,
+                              })}
+                            </span>
+                            <small>{reference.fields.join(", ")}</small>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+            </details>
+          </div>
+        )}
+
+        {selectedPath &&
+          rotationPlan &&
+          rotationDraftIds.length === rotationPlan.periods.length && (
+            <div className="project-migration" data-testid="project-rotation-save">
+              <h3>{t("project.rotationSaveTitle")}</h3>
+              <p className="muted">{t("project.rotationSaveHint")}</p>
+              <button
+                className="primary-button"
+                type="button"
+                data-testid="project-rotation-save-button"
+                onClick={() => void handleRotationSave()}
+                disabled={busy !== null}
+              >
+                {busy === "rotation-save"
+                  ? t("project.rotationSaving")
+                  : t("project.rotationSaveAction")}
+              </button>
+            </div>
+          )}
 
         <div className="project-actions">
           <button
@@ -360,11 +1372,19 @@ function ArtifactRow({
   artifact,
   locale,
   t,
+  operationPeriodFilter,
 }: {
   artifact: ProjectArtifact;
   locale: Locale;
   t: Translate;
+  operationPeriodFilter: "all" | number;
 }) {
+  const sourceLabel = artifactSourceLabel(artifact, t);
+  const operationHistory = artifact.operation_history ?? [];
+  const visibleOperationHistory =
+    operationPeriodFilter === "all"
+      ? operationHistory
+      : operationHistory.filter((operation) => operation.period === operationPeriodFilter);
   return (
     <article className="project-artifact-row">
       <strong>{artifactKindLabel(artifact, t)}</strong>
@@ -375,6 +1395,68 @@ function ArtifactRow({
           ? ` · ${artifact.period_count} ${t("project.periods")}`
           : ""}
       </small>
+      {sourceLabel && (
+        <small className="project-artifact-provenance" data-testid="project-artifact-provenance">
+          {sourceLabel}
+          {artifact.provenance?.parent_name
+            ? ` · ${t("project.sourceParent", {
+                name: artifact.provenance.parent_name,
+              })}`
+            : ""}
+          {artifact.provenance?.operation_count != null
+            ? ` · ${t("project.sourceOperations", {
+                count: artifact.provenance.operation_count,
+              })}`
+            : ""}
+        </small>
+      )}
+      {visibleOperationHistory.length > 0 && (
+        <details
+          className="project-artifact-history"
+          data-testid="project-artifact-operation-history"
+        >
+          <summary>{t("project.operationHistory")}</summary>
+          <ol>
+            {visibleOperationHistory.map((operation) => {
+              const kinds = operation.operation_kinds
+                .map((kind) => operationKindLabel(kind, t))
+                .join(locale === "zh-CN" ? "、" : ", ");
+              return (
+                <li key={`${artifact.path}-${operation.sequence}`}>
+                  <strong>
+                    {t("project.operationStep", { sequence: operation.sequence })}
+                  </strong>
+                  <span>{operationActionLabel(operation.action, t)}</span>
+                  <small>
+                    {operation.operation_count > 0
+                      ? t("project.operationSummary", {
+                          count: operation.operation_count,
+                          kinds,
+                        })
+                      : t("project.operationNoChanges")}
+                  </small>
+                  {(operation.period != null || operation.recorded_at) && (
+                    <small className="project-operation-context">
+                      {operation.period != null
+                        ? t("project.operationPeriod", { period: operation.period })
+                        : ""}
+                      {operation.period != null && operation.recorded_at ? " · " : ""}
+                      {operation.recorded_at
+                        ? t("project.operationRecordedAt", {
+                            date: formatDate(operation.recorded_at, locale),
+                          })
+                        : ""}
+                    </small>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+          {artifact.operation_history_truncated && (
+            <small>{t("project.operationHistoryTruncated")}</small>
+          )}
+        </details>
+      )}
     </article>
   );
 }

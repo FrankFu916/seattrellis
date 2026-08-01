@@ -73,7 +73,7 @@ def migrate_json_file(
         else None
     )
     _write_json_data_atomically(
-        _merge_normalized_data(source_data, normalized_data),
+        merge_normalized_data(source_data, normalized_data),
         output_path,
     )
     return SchemaMigrationResult(
@@ -82,6 +82,38 @@ def migrate_json_file(
         output_path=output_path,
         backup_path=backup_path,
     )
+
+
+def restore_json_backup(
+    backup: str | Path,
+    destination: str | Path,
+    *,
+    create_safety_backup: bool = True,
+) -> Path | None:
+    """Restore a migration backup atomically and return a safety copy.
+
+    The caller is responsible for validating that both paths belong to the
+    same project workspace.  The destination is never replaced until the
+    existing file has been copied to a distinct ``.pre-restore.bak`` file.
+    This makes the one-click recovery action reversible if a teacher chooses
+    the wrong backup.
+    """
+
+    backup_path = Path(backup)
+    destination_path = Path(destination)
+    if _same_path(backup_path, destination_path):
+        raise InputFileError("A migration backup and its destination must differ.")
+    backup_data = read_json(backup_path)
+    if destination_path.exists() and not destination_path.is_file():
+        raise InputFileError(f"Migration destination is not a file: {destination_path}")
+
+    safety_backup: Path | None = None
+    if create_safety_backup and destination_path.exists():
+        safety_backup = _create_named_backup(destination_path, ".pre-restore.bak")
+    # If the write fails, the safety copy remains available for diagnostics;
+    # the atomic writer has not replaced the destination at that point.
+    _write_json_data_atomically(backup_data, destination_path)
+    return safety_backup
 
 
 def parse_migratable_artifact(
@@ -179,6 +211,21 @@ def _create_backup(path: Path) -> Path:
     return backup
 
 
+def _create_named_backup(path: Path, suffix: str) -> Path:
+    """Copy ``path`` to the next unused sibling using a descriptive suffix."""
+
+    backup = path.with_name(f"{path.name}{suffix}")
+    index = 1
+    while backup.exists():
+        backup = path.with_name(f"{path.name}{suffix}.{index}")
+        index += 1
+    try:
+        shutil.copy2(path, backup)
+    except OSError as exc:
+        raise InputFileError(f"Could not back up {path} to {backup}: {exc}") from exc
+    return backup
+
+
 def _write_json_data_atomically(data: dict[str, Any], output: Path) -> None:
     """Write a complete sibling file before atomically replacing the destination."""
 
@@ -229,7 +276,7 @@ def _model_to_data(model: BaseModel) -> dict[str, Any]:
     return model.model_dump(mode="json")
 
 
-def _merge_normalized_data(original: Any, normalized: Any) -> Any:
+def merge_normalized_data(original: Any, normalized: Any) -> Any:
     """Overlay validated values while retaining unknown extension fields.
 
     Migrations validate and normalize fields understood by this version, but a
@@ -241,7 +288,7 @@ def _merge_normalized_data(original: Any, normalized: Any) -> Any:
     if isinstance(original, dict) and isinstance(normalized, dict):
         merged = dict(original)
         for key, value in normalized.items():
-            merged[key] = _merge_normalized_data(original.get(key), value)
+            merged[key] = merge_normalized_data(original.get(key), value)
         return merged
     if (
         isinstance(original, list)
@@ -249,7 +296,7 @@ def _merge_normalized_data(original: Any, normalized: Any) -> Any:
         and len(original) == len(normalized)
     ):
         return [
-            _merge_normalized_data(original_item, normalized_item)
+            merge_normalized_data(original_item, normalized_item)
             for original_item, normalized_item in zip(original, normalized)
         ]
     return normalized

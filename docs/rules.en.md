@@ -199,6 +199,40 @@ Pair history is interpreted against the current student list and current layout;
 
 Both the fallback solver and the OR-Tools solver support this rule. The current implementation is heuristic scoring: it tends to reduce repeated desk-mate and neighbor relationships, but it does not guarantee global optimality.
 
+## cooling
+
+`cooling` is the strict form of recent-neighbor avoidance. It adds a penalty when
+a selected relationship appeared in any of the previous `cooling_period`
+snapshots, equivalent to `avoid_recent_neighbors` with `max_recent_count=0`.
+It never overrides fixed-seat, adjacency, or minimum-distance hard rules. With
+no history, the fairness summary reports that the objective was unavailable.
+When both `cooling` and `avoid_recent_neighbors` are enabled, they are compiled
+into one stricter history window and relation set, with weights added.
+
+```json
+{
+  "soft": {
+    "cooling": {
+      "enabled": true,
+      "weight": 12,
+      "cooling_period": 3,
+      "relation_types": ["desk_mate", "adjacent_any"],
+      "within_distance": 2
+    }
+  }
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `cooling_period` | Positive number of recent snapshots to avoid |
+| `relation_types` | Relationship types such as `desk_mate` or `adjacent_any` |
+| `within_distance` | Chebyshev threshold used by the `within_distance` relation |
+
+Fallback and OR-Tools use the same pair-history cost. Finished-plan scoring,
+candidate comparisons, and fairness summaries reuse that rule, so the objective
+does not disappear between solving and reporting.
+
 ## Multiple Candidates And Scoring
 
 Multi-candidate mode does not add or relax rules. `solve --candidates N` applies the normal hard constraints and soft costs, then continues solving with different seeds and a constraint that excludes each previously generated complete assignment. Hard constraints remain absolute. Candidate generation and recommendation are heuristic and do not guarantee enumeration of every feasible plan or a global optimum.

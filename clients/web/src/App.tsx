@@ -7,6 +7,7 @@ import {
   exportDraft,
   fetchEditorState,
   generateClass,
+  generateRotationPlan,
   loadBootstrap,
 } from "./api/client";
 import {
@@ -17,12 +18,17 @@ import {
 import type {
   BootstrapData,
   CommonConstraint,
+  CommonGroupRule,
   CommonPreferenceId,
   CustomRoomSettings,
+  DetailedRuleSettings,
   EditorCommand,
   EditorOperation,
   EditorState,
+  ProjectRotationLoadResponse,
   AdvancedSolveSettings,
+  RotationPlan,
+  RotationSettings,
   SeatAssignment,
   Student,
 } from "./api/types";
@@ -32,6 +38,10 @@ import { ExportPreviewDialog } from "./components/ExportPreviewDialog";
 import { ProjectWorkspacePanel } from "./components/ProjectWorkspacePanel";
 import { RosterImportPanel } from "./components/RosterImportPanel";
 import { SeatingCanvas } from "./components/SeatingCanvas";
+import {
+  rosterIsValid,
+  StudentRosterEditor,
+} from "./components/StudentRosterEditor";
 import { StepNavigation } from "./components/StepNavigation";
 import { UnseatedTray } from "./components/UnseatedTray";
 import { WorkflowPanel } from "./components/WorkflowPanel";
@@ -39,6 +49,7 @@ import {
   deriveDiagnostics,
   getAdjacentStep,
   getUnseatedStudents,
+  reconcileStudentAssignments,
   seatRemainingStudents,
   swapStudents,
   toggleSeatLock,
@@ -46,6 +57,7 @@ import {
 } from "./domain/workflow";
 import {
   buildGenerateClassRequest,
+  buildGenerateRotationPlanRequest,
   InvalidAdvancedSettingError,
 } from "./domain/generation";
 import {
@@ -75,6 +87,55 @@ const DEFAULT_ROOM_SETTINGS: CustomRoomSettings = {
   aisleColumns: "",
   disabledSeats: "",
   layoutJson: "",
+};
+
+const DEFAULT_ROTATION_SETTINGS: RotationSettings = {
+  enabled: false,
+  periodCount: 4,
+  periodLabels: "",
+};
+
+const DEFAULT_DETAILED_RULE_SETTINGS: DetailedRuleSettings = {
+  enabled: false,
+  fairRotation: {
+    enabled: true,
+    weight: 10,
+    lookback: 4,
+  },
+  avoidRecentNeighbors: {
+    enabled: true,
+    weight: 10,
+    lookback: 4,
+    maxRecentCount: 1,
+    withinDistance: 2,
+    relationTypes: ["desk_mate", "adjacent_any"],
+  },
+  cooling: {
+    enabled: false,
+    weight: 12,
+    coolingPeriod: 3,
+    withinDistance: 2,
+    relationTypes: ["desk_mate", "adjacent_any"],
+  },
+  scorePosition: {
+    enabled: true,
+    weight: 18,
+    direction: "high_front",
+  },
+  scoreDistribution: {
+    enabled: true,
+    weight: 18,
+    scope: "row",
+  },
+  mentorPairing: {
+    enabled: true,
+    weight: 18,
+    mentorPercentile: 0.75,
+    learnerPercentile: 0.25,
+    relation: "desk_mate",
+    avoidRecentRepeats: true,
+    historyLookback: 4,
+  },
 };
 
 function getInitialLocale(): Locale {
@@ -154,10 +215,20 @@ export function App() {
   const [showStudentIds, setShowStudentIds] = useState(false);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSolveSettings>(DEFAULT_ADVANCED_SETTINGS);
+  const [rotationSettings, setRotationSettings] = useState<RotationSettings>(
+    DEFAULT_ROTATION_SETTINGS,
+  );
+  const [detailedRules, setDetailedRules] = useState<DetailedRuleSettings>(
+    DEFAULT_DETAILED_RULE_SETTINGS,
+  );
+  const [rotationPlan, setRotationPlan] = useState<RotationPlan | null>(null);
+  const [rotationEditors, setRotationEditors] = useState<EditorState[]>([]);
+  const [activeRotationPeriod, setActiveRotationPeriod] = useState(1);
   const [roomSettings, setRoomSettings] =
     useState<CustomRoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [preferences, setPreferences] = useState<CommonPreferenceId[]>([]);
   const [constraints, setConstraints] = useState<CommonConstraint[]>([]);
+  const [groups, setGroups] = useState<CommonGroupRule[]>([]);
   const [assignments, setAssignments] = useState<SeatAssignment[]>(() =>
     createSeatAssignments(4, 5, demoStudents, 16),
   );
@@ -165,6 +236,7 @@ export function App() {
   const [history, setHistory] = useState<SeatAssignment[][]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [editorDraftId, setEditorDraftId] = useState<string | null>(null);
@@ -180,6 +252,19 @@ export function App() {
     document.documentElement.lang = locale;
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
   }, [locale]);
+
+  useEffect(() => {
+    function warnBeforeUnload(event: BeforeUnloadEvent): void {
+      if (!isDirty) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = t("app.unsavedChanges");
+    }
+
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty, t]);
 
   useEffect(() => {
     let current = true;
@@ -253,6 +338,9 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+    setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
   }
 
   function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
@@ -261,6 +349,9 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+    setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
   }
 
   function handleConstraintAdd() {
@@ -272,6 +363,8 @@ export function App() {
         first: students[0]?.id ?? "",
         second: students[1]?.id ?? students[0]?.id ?? "",
         seatId: "",
+        distance: 2,
+        metric: "graph",
       },
     ]);
   }
@@ -289,6 +382,36 @@ export function App() {
 
   function handleConstraintRemove(id: string) {
     setConstraints((current) => current.filter((constraint) => constraint.id !== id));
+  }
+
+  function handleConstraintBatchAdd(next: CommonConstraint[]) {
+    setConstraints((current) => [...current, ...next]);
+  }
+
+  function handleGroupAdd() {
+    setGroups((current) => [
+      ...current,
+      {
+        id: newCommandId(),
+        name: locale === "zh-CN" ? `小组 ${current.length + 1}` : `Group ${current.length + 1}`,
+        mode: "separate",
+        students: students.slice(0, 2).map((student) => student.id),
+      },
+    ]);
+  }
+
+  function handleGroupChange(id: string, changes: Partial<CommonGroupRule>) {
+    setGroups((current) =>
+      current.map((group) => (group.id === id ? { ...group, ...changes } : group)),
+    );
+  }
+
+  function handleGroupRemove(id: string) {
+    setGroups((current) => current.filter((group) => group.id !== id));
+  }
+
+  function handleGroupBatchAdd(next: CommonGroupRule[]) {
+    setGroups((current) => [...current, ...next]);
   }
 
   function handlePreferenceToggle(id: CommonPreferenceId) {
@@ -326,6 +449,7 @@ export function App() {
       setHistory((previous) => [...previous, assignments]);
       setAssignments(updated);
       setSelectedSeatId(null);
+      setIsDirty(true);
     } else {
       setSelectedSeatId(seatId);
     }
@@ -389,6 +513,7 @@ export function App() {
       setEditorRevision(editor.revision);
       setEditorUndoDepth(editor.undo_depth);
       setSelectedSeatId(null);
+      setIsDirty(true);
     } catch (err) {
       setSaveError(friendlyError(err));
       setSelectedSeatId(null);
@@ -407,6 +532,7 @@ export function App() {
       }
       setAssignments(latest);
       setSelectedSeatId(null);
+      setIsDirty(true);
       return previous.slice(0, -1);
     });
   }
@@ -433,6 +559,53 @@ export function App() {
     }
     setHistory((previous) => [...previous, assignments]);
     setAssignments((current) => toggleSeatLock(current, selectedSeatId));
+    setIsDirty(true);
+  }
+
+  function applyEditorState(editor: EditorState) {
+    const plan = editorToPlan(editor);
+    setStudents(plan.students);
+    setAssignments(plan.assignments);
+    setEditorDraftId(editor.draft_id);
+    setEditorRevision(editor.revision);
+    setEditorUndoDepth(editor.undo_depth);
+    setSelectedSeatId(null);
+    setIsDirty(false);
+  }
+
+  async function handleRotationPeriodSelect(period: number) {
+    const target = rotationEditors.find(
+      (editor) => editor.candidate_id === `period-${period}`,
+    );
+    if (!target) {
+      return;
+    }
+    if (target.draft_id === editorDraftId) {
+      setActiveRotationPeriod(period);
+      return;
+    }
+    setSaveError(null);
+    try {
+      const editor = await fetchEditorState(target.draft_id);
+      applyEditorState(editor);
+      setActiveRotationPeriod(period);
+    } catch (err) {
+      setSaveError(friendlyError(err));
+    }
+  }
+
+  function handleRotationLoad(result: ProjectRotationLoadResponse) {
+    const editors = result.period_editors.length
+      ? result.period_editors
+      : [result.editor];
+    applyEditorState(editors[0]);
+    setRotationEditors(editors);
+    setRotationPlan(result.rotation_plan);
+    setActiveRotationPeriod(1);
+    setHistory([]);
+    setSelectedSeatId(null);
+    setSaveError(null);
+    setStep("adjust");
   }
 
   async function handleGenerate() {
@@ -444,39 +617,53 @@ export function App() {
         ? "我的班级"
         : "My class";
     try {
-      const response = await generateClass(
-        buildGenerateClassRequest({
-          className,
-          students,
-          selectedRoomId,
-          selectedGoalId,
-          settings: advancedSettings,
-          roomSettings,
-          constraints,
-          preferences,
-        }),
-      );
-      const editor = await fetchEditorState(response.editor.draft_id);
-      const plan = editorToPlan(editor);
-      setStudents(plan.students);
-      setAssignments(plan.assignments);
-      setEditorDraftId(editor.draft_id);
-      setEditorRevision(editor.revision);
-      setEditorUndoDepth(editor.undo_depth);
+      const requestArgs = {
+        className,
+        students,
+        selectedRoomId,
+        selectedGoalId,
+        settings: advancedSettings,
+        roomSettings,
+        constraints,
+        groups,
+        preferences,
+        detailedRules,
+      };
+      const response = rotationSettings.enabled
+        ? await generateRotationPlan(
+            buildGenerateRotationPlanRequest({
+              ...requestArgs,
+              rotation: rotationSettings,
+            }),
+          )
+        : await generateClass(buildGenerateClassRequest(requestArgs));
+      const isRotation = "rotation_plan" in response;
+      const periodEditors =
+        isRotation && response.period_editors?.length
+          ? response.period_editors
+          : [response.editor];
+      const editor = await fetchEditorState(periodEditors[0].draft_id);
+      applyEditorState(editor);
+      setRotationEditors(isRotation ? periodEditors : []);
+      setActiveRotationPeriod(1);
+      setRotationPlan(isRotation ? response.rotation_plan : null);
       setHistory([]);
       setSelectedSeatId(null);
+      setIsDirty(false);
       setStep("adjust");
     } catch (err) {
       if (err instanceof InvalidAdvancedSettingError) {
         setSaveError(
           err.kind === "seed"
             ? t("generate.seedInvalid")
-            : t("generate.jsonInvalid", {
+            : err.kind === "rotation"
+              ? t("rotation.labelsInvalid")
+              : t("generate.jsonInvalid", {
                   field:
                     err.kind === "rules"
                       ? t("generate.customRules")
-                    : t("room.invalid"),
-              }),
+                      : t("room.invalid"),
+                }),
         );
       } else {
         setSaveError(friendlyError(err));
@@ -509,6 +696,7 @@ export function App() {
       link.remove();
       URL.revokeObjectURL(url);
       setPreviewOpen(false);
+      setIsDirty(false);
     } catch (err) {
       setSaveError(friendlyError(err));
     } finally {
@@ -525,10 +713,39 @@ export function App() {
     setHistory([]);
     setSelectedSeatId(null);
     setSelectedFileName(null);
+    setGroups([]);
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+    setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
     setStep("room");
+  }
+
+  function handleStudentsEdited(editedStudents: Student[]) {
+    setStudents(editedStudents);
+    setRevision((prev) => prev + 1);
+    setAssignments((current) =>
+      reconcileStudentAssignments(current, editedStudents),
+    );
+    setHistory([]);
+    setGroups((current) => {
+      const validIds = new Set(editedStudents.map((student) => student.id));
+      return current
+        .map((group) => ({
+          ...group,
+          students: group.students.filter((student) => validIds.has(student)),
+        }))
+        .filter((group) => group.students.length > 0);
+    });
+    setSelectedSeatId(null);
+    setEditorDraftId(null);
+    setEditorRevision(0);
+    setEditorUndoDepth(0);
+    setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
   }
 
   return (
@@ -557,6 +774,7 @@ export function App() {
             locale={locale}
             t={t}
             studentCount={students.length}
+            rosterValid={rosterIsValid(students)}
             students={students}
             seatIds={assignments.map((seat) => seat.seatId)}
             selectedFileName={selectedFileName}
@@ -569,8 +787,13 @@ export function App() {
             orientation={orientation}
             showStudentIds={showStudentIds}
             advancedSettings={advancedSettings}
+            rotationSettings={rotationSettings}
+            detailedRules={detailedRules}
+            rotationPlan={rotationPlan}
+            activeRotationPeriod={activeRotationPeriod}
             roomSettings={roomSettings}
             constraints={constraints}
+            groups={groups}
             preferences={preferences}
             error={step === "generate" ? saveError : null}
             selectedSeat={selectedSeat}
@@ -579,13 +802,20 @@ export function App() {
             }
             isGenerating={isGenerating}
             rosterSlot={
-              <RosterImportPanel
-                locale={locale}
-                t={t}
-                currentStudents={students}
-                currentRevision={revision}
-                onImportConfirmed={handleRosterImported}
-              />
+              <div className="roster-workspace-stack">
+                <RosterImportPanel
+                  locale={locale}
+                  t={t}
+                  currentStudents={students}
+                  currentRevision={revision}
+                  onImportConfirmed={handleRosterImported}
+                />
+                <StudentRosterEditor
+                  students={students}
+                  t={t}
+                  onChange={handleStudentsEdited}
+                />
+              </div>
             }
             onFileSelected={setSelectedFileName}
             onRoomChange={handleRoomChange}
@@ -596,10 +826,24 @@ export function App() {
             onAdvancedSettingsChange={(changes) =>
               setAdvancedSettings((current) => ({ ...current, ...changes }))
             }
+            onRotationSettingsChange={(changes) =>
+              setRotationSettings((current) => ({ ...current, ...changes }))
+            }
+            onDetailedRulesChange={(changes) =>
+              setDetailedRules((current) => ({ ...current, ...changes }))
+            }
+            onRotationPeriodSelect={(period) => {
+              void handleRotationPeriodSelect(period);
+            }}
             onRoomSettingsChange={handleRoomSettingsChange}
             onConstraintAdd={handleConstraintAdd}
+            onConstraintBatchAdd={handleConstraintBatchAdd}
             onConstraintChange={handleConstraintChange}
             onConstraintRemove={handleConstraintRemove}
+            onGroupAdd={handleGroupAdd}
+            onGroupBatchAdd={handleGroupBatchAdd}
+            onGroupChange={handleGroupChange}
+            onGroupRemove={handleGroupRemove}
             onPreferenceToggle={handlePreferenceToggle}
             onBack={() => setStep((current) => getAdjacentStep(current, -1))}
             onNext={() => setStep((current) => getAdjacentStep(current, 1))}
@@ -630,7 +874,13 @@ export function App() {
           <aside className="workspace-side-rail">
             <UnseatedTray students={unseatedStudents} t={t} />
             <DiagnosticsPanel diagnostics={diagnostics} t={t} />
-            <ProjectWorkspacePanel locale={locale} t={t} />
+            <ProjectWorkspacePanel
+              locale={locale}
+              t={t}
+              rotationPlan={rotationPlan}
+              rotationDraftIds={rotationEditors.map((editor) => editor.draft_id)}
+              onRotationLoad={handleRotationLoad}
+            />
           </aside>
         </main>
       </div>

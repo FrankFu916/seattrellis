@@ -16,7 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, expect
+from seattrellis import cli
 
 WORKBENCH_URL = "http://127.0.0.1:8765"
 
@@ -57,15 +58,25 @@ async def main() -> int:
                 """() => document.querySelector('.app-header')?.textContent?.includes('3 名学生')""",
                 timeout=30_000,
             )
-        print("2. CSV roster imported with metadata")
+        # Import moves the workflow to the room step. Return to the roster
+        # step to verify that the imported records remain editable there.
+        await page.locator(".step-navigation button").filter(has_text="名单").click()
+        await page.wait_for_selector(".student-editor-row", timeout=10_000)
+        # Make one in-place correction after import so the browser check also
+        # covers the ordinary roster editor, not only file parsing.
+        first_student_row = page.locator(".student-editor-row").nth(1)
+        await first_student_row.locator("input").nth(1).fill("Alice Updated")
+        await first_student_row.locator("input").nth(2).fill("93")
+        print("3. CSV roster imported and student details edited")
 
         # Exercise the ordinary custom-room controls as well as the importer.
+        await page.locator(".step-navigation button").filter(has_text="教室").click()
         await page.locator("[data-testid='custom-room-toggle']").check()
         custom_room = page.locator(".custom-room-fields")
         await custom_room.locator("input[type='number']").nth(0).fill("2")
         await custom_room.locator("input[type='number']").nth(1).fill("3")
         await custom_room.locator("input").nth(3).fill("2-3")
-        print("3. custom classroom dimensions applied")
+        print("4. custom classroom dimensions applied")
 
         # Use the visual editor once as well. This verifies that an irregular
         # room can be created without asking a teacher to write layout JSON.
@@ -75,15 +86,15 @@ async def main() -> int:
         await page.locator(".layout-kind-button.kind-aisle").click()
         await page.locator("[data-testid='layout-editor-save']").click()
         await page.wait_for_selector(".layout-editor-status", timeout=30_000)
-        print("4. visual classroom layout edited and saved")
+        print("5. visual classroom layout edited and saved")
 
         # Importing a roster advances the workflow to the room step.
         # Continue room -> goal -> generate.
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-goal", timeout=10_000)
         await page.locator(".preference-list input[type='checkbox']").first.check()
-        await page.locator(".constraints-card .secondary-button").click()
-        print("5. common preference and hard constraint added")
+        await page.locator(".constraints-card .secondary-button").first.click()
+        print("6. common preference and hard constraint added")
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-generate", timeout=10_000)
 
@@ -95,76 +106,145 @@ async def main() -> int:
         await advanced.locator("input[type='number']").nth(1).fill("5")
         await page.locator("details.advanced-settings select").select_option("fallback")
         await advanced.locator("input[type='number']").nth(2).fill("17")
-        print("6. advanced generation settings applied")
+        print("7. advanced generation settings applied")
+        detailed = page.locator("details.detailed-rules-settings")
+        await detailed.locator("summary").click()
+        await detailed.locator("[data-testid='detailed-rules-toggle']").check()
+        await detailed.locator("select").nth(0).select_option("high_back")
+        print("8. detailed score and history rules applied")
+        rotation = page.locator("details.rotation-settings")
+        await rotation.locator("summary").click()
+        await page.locator("[data-testid='rotation-toggle']").check()
+        await page.locator("[data-testid='rotation-period-count']").fill("2")
+        await page.locator("[data-testid='rotation-period-labels']").fill("第 1 周，第 2 周")
+        print("9. future rotation settings applied")
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-adjust", timeout=60_000)
         await page.wait_for_selector(".seat-occupied", timeout=15_000)
         occupied = await page.locator(".seat-occupied").count()
-        print(f"7. generated plan rendered {occupied} occupied seats")
+        await page.wait_for_selector("[data-testid='rotation-plan-summary']", timeout=15_000)
+        print(f"10. generated plan rendered {occupied} occupied seats and rotation summary")
         if occupied == 0:
             await browser.close()
             return 1
+
+        await page.locator("[data-testid='rotation-period-2']").click()
+        await expect(page.locator("[data-testid='rotation-period-2']")).to_have_attribute(
+            "aria-pressed", "true", timeout=30_000
+        )
+        print("11. switched to the second rotation period")
 
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-export", timeout=15_000)
         await page.wait_for_selector(".export-options", timeout=15_000)
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector(".preview-dialog", timeout=15_000)
-        print("8. export preview opened")
+        print("12. export preview opened")
 
         async with page.expect_download(timeout=30_000) as download_info:
             await page.locator(".preview-dialog button.primary-button").click()
         download = await download_info.value
-        print(f"9. downloaded export: {download.suggested_filename}")
+        print(f"13. downloaded export: {download.suggested_filename}")
 
         # The project panel is available alongside the main teacher flow. Use
-        # the repository's example project so this check exercises the real
-        # API, not only the component's demo fallback.
-        project_select = page.locator("[data-testid='project-select']")
-        await page.wait_for_function(
-            """() => {
-                const select = document.querySelector('[data-testid="project-select"]');
-                return select && select.options.length > 0 && Boolean(select.value);
-            }""",
-            timeout=30_000,
-        )
-        await page.wait_for_selector("[data-testid='project-history']", timeout=30_000)
-        history_rows = await page.locator("[data-testid='project-history'] .project-artifact-row").count()
-        print(f"10. project history rendered {history_rows} artifacts")
-        if history_rows == 0:
-            await browser.close()
-            return 1
-
-        await page.click("[data-testid='project-privacy-button']")
-        await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
-        print("11. project privacy scan rendered")
-
-        async with page.expect_download(timeout=30_000) as bundle_info:
-            await page.click("[data-testid='project-backup-button']")
-        bundle = await bundle_info.value
-        if not bundle.suggested_filename.endswith(".seattrellis.zip"):
-            await browser.close()
-            return 1
-        print(f"12. downloaded project bundle: {bundle.suggested_filename}")
-
-        with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as directory:
-            bundle_path = Path(directory) / bundle.suggested_filename
-            await bundle.save_as(str(bundle_path))
-            restore_target = Path(directory) / "restored"
-            await page.locator("[data-testid='project-restore-file']").set_input_files(str(bundle_path))
-            await page.locator("[data-testid='project-restore-target']").fill(str(restore_target))
-            await page.click("[data-testid='project-restore-button']")
+        # a fresh temporary project so migration and restore are exercised
+        # without modifying a checkout or a teacher's existing files.
+        with tempfile.TemporaryDirectory(prefix="seattrellis-browser-project-") as directory:
+            cli.init_demo(output_dir=Path(directory) / "class", overwrite=True)
+            await page.locator("[data-testid='project-root-input']").fill(directory)
+            await page.locator("[data-testid='project-root-input']").press("Enter")
             await page.wait_for_function(
                 """() => {
-                    const status = document.querySelector('[data-testid="project-status"]');
-                    return Boolean(status && status.textContent?.includes('restored'));
+                    const select = document.querySelector('[data-testid="project-select"]');
+                    return select && select.options.length > 0 && Boolean(select.value);
                 }""",
                 timeout=30_000,
             )
-            if not (restore_target / "project.seattrellis.json").exists():
+            await page.wait_for_selector("[data-testid='project-history']", timeout=30_000)
+            history_rows = await page.locator("[data-testid='project-history'] .project-artifact-row").count()
+            print(f"14. project history rendered {history_rows} artifacts")
+            if history_rows == 0:
                 await browser.close()
                 return 1
-        print("13. project bundle restored successfully")
+
+            await page.click("[data-testid='project-privacy-button']")
+            await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
+            print("15. project privacy scan rendered")
+
+            # Compare two historical artifacts and create a new output snapshot.
+            compare_button = page.locator("[data-testid='project-compare-button']")
+            if await compare_button.is_enabled():
+                await compare_button.click()
+                await page.wait_for_function(
+                    """() => Boolean(
+                        document.querySelector('[data-testid="project-compare-result"]')
+                        || document.querySelector('[data-testid="project-error"]')
+                    )""",
+                    timeout=30_000,
+                )
+                compare_error = page.locator("[data-testid='project-error']")
+                if await compare_error.is_visible():
+                    print(f"15. project comparison failed: {await compare_error.text_content()}")
+                    await browser.close()
+                    return 1
+                await page.wait_for_selector("[data-testid='project-compare-result']", timeout=30_000)
+                print("16. project history comparison rendered")
+                assignment_details = page.locator("[data-testid='project-assignment-details']")
+                if await assignment_details.count():
+                    await assignment_details.locator("summary").click()
+                    await expect(assignment_details).to_contain_text("student-")
+                    print("17. anonymous assignment changes expanded")
+                await page.locator("[data-testid='project-restore-artifact-button']").click()
+                await page.wait_for_function(
+                    """() => {
+                        const status = document.querySelector('[data-testid="project-status"]');
+                        return Boolean(status && /restored|恢复/.test(status.textContent || ''));
+                    }""",
+                    timeout=30_000,
+                )
+                print("18. historical artifact restored as a new plan")
+
+            await page.locator("[data-testid='project-migration-in-place']").check()
+            await page.locator("[data-testid='project-migration-preview']").click()
+            await page.wait_for_selector("[data-testid='project-migration-result']", timeout=30_000)
+            await page.locator("[data-testid='project-migration-apply']").click()
+            await page.wait_for_selector("[data-testid='project-migration-restore']", timeout=30_000)
+            await page.locator("[data-testid='project-migration-restore']").click()
+            await page.wait_for_function(
+                """() => {
+                    const status = document.querySelector('[data-testid="project-status"]');
+                    return Boolean(status && /restored|恢复/.test(status.textContent || ''));
+                }""",
+                timeout=30_000,
+            )
+            print("19. project migration backup restored with a safety copy")
+
+            async with page.expect_download(timeout=30_000) as bundle_info:
+                await page.click("[data-testid='project-backup-button']")
+            bundle = await bundle_info.value
+            if not bundle.suggested_filename.endswith(".seattrellis.zip"):
+                await browser.close()
+                return 1
+            print(f"20. downloaded project bundle: {bundle.suggested_filename}")
+
+            with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as restore_directory:
+                bundle_path = Path(restore_directory) / bundle.suggested_filename
+                await bundle.save_as(str(bundle_path))
+                restore_target = Path(restore_directory) / "restored"
+                await page.locator("[data-testid='project-restore-file']").set_input_files(str(bundle_path))
+                await page.locator("[data-testid='project-restore-target']").fill(str(restore_target))
+                await page.click("[data-testid='project-restore-button']")
+                await page.wait_for_function(
+                    """() => {
+                        const status = document.querySelector('[data-testid="project-status"]');
+                        return Boolean(status && /restored|恢复/.test(status.textContent || ''));
+                    }""",
+                    timeout=30_000,
+                )
+                if not (restore_target / "project.seattrellis.json").exists():
+                    await browser.close()
+                    return 1
+            print("21. project bundle restored successfully")
 
         await browser.close()
         return 0

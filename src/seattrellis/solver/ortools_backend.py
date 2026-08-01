@@ -9,7 +9,7 @@ from seattrellis.history import avoid_recent_neighbors_cost
 from seattrellis.io.validation import format_infeasible_diagnostic
 from seattrellis.models.history import PairHistory, SeatHistory
 from seattrellis.models.layout import ClassroomLayout, SeatNode
-from seattrellis.models.rules import RuleSet
+from seattrellis.models.rules import RuleSet, effective_neighbor_rule
 from seattrellis.models.student import Student
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.solver.adjacency import SeatEdge
@@ -207,7 +207,7 @@ def _build_pair_objective_terms(
     edges: set[SeatEdge],
     pair_history: PairHistory | None,
 ) -> list[tuple[Any, int]]:
-    rule = rules.soft.avoid_recent_neighbors
+    rule = effective_neighbor_rule(rules)
     if not rule.enabled or rule.weight == 0:
         return []
 

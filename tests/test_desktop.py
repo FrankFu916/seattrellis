@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
 from seattrellis.desktop_app import build_parser
 import pytest
 
@@ -33,3 +36,46 @@ def test_standalone_desktop_parser_has_stable_defaults() -> None:
 
     custom = build_parser().parse_args(["--width", "1440", "--height", "960", "--title", "Classroom"])
     assert (custom.width, custom.height, custom.title) == (1440, 960, "Classroom")
+
+
+def test_standalone_desktop_parser_exposes_version(capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        build_parser().parse_args(["--version"])
+
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == "seattrellis-desktop 1.8.3"
+
+
+def test_desktop_session_serves_bootstrap_before_api_authentication(tmp_path) -> None:
+    """The embedded window must receive HTML before React attaches its token."""
+
+    (tmp_path / "index.html").write_text(
+        "<!doctype html><title>SeatTrellis</title>", encoding="utf-8"
+    )
+    session = DesktopSession(
+        DesktopOptions(port=0, startup_timeout_seconds=5),
+        static_dir=str(tmp_path),
+    )
+    try:
+        try:
+            page_url = session.start()
+        except PermissionError as exc:
+            pytest.skip(f"This test environment does not allow loopback sockets: {exc}")
+        with urlopen(page_url, timeout=5) as response:
+            assert response.status == 200
+            assert "SeatTrellis" in response.read().decode("utf-8")
+
+        api_url = page_url.split("?", 1)[0] + "api/v1/health"
+        with pytest.raises(HTTPError) as missing_session:
+            urlopen(api_url, timeout=5)
+        assert missing_session.value.code == 401
+
+        request = Request(
+            api_url,
+            headers={"Authorization": f"Bearer {session.session_token}"},
+        )
+        with urlopen(request, timeout=5) as response:
+            assert response.status == 200
+            assert '"status":"ok"' in response.read().decode("utf-8")
+    finally:
+        session.stop()

@@ -72,6 +72,14 @@ def test_system_and_catalog_contracts_are_versioned() -> None:
         "class-generation",
         "rotation-plans",
         "project-workspace",
+        "project-migration",
+        "project-migration-restore",
+        "project-migration-batch",
+        "project-migration-batch-apply",
+        "project-rotation-save",
+        "project-rotation-load",
+        "project-group-register",
+        "project-group-register-preview",
         "layout-editing",
         "roster-mapping",
         "roster-update-preview",
@@ -157,6 +165,12 @@ def test_generate_rotation_plan_returns_versioned_periods() -> None:
     assert [period.label for period in response.rotation_plan.periods] == [
         "Monday",
         "Friday",
+    ]
+    assert response.editor.candidate_id == "period-1"
+    assert response.editor.students[0].student_key == "PRIVATE-001"
+    assert [editor.candidate_id for editor in response.period_editors] == [
+        "period-1",
+        "period-2",
     ]
 
 
@@ -265,9 +279,20 @@ def test_fastapi_routes_use_only_the_versioned_prefix_when_available() -> None:
         f"{API_PREFIX}/classes/inspect",
         f"{API_PREFIX}/classes/generate",
         f"{API_PREFIX}/classes/rotation",
-        f"{API_PREFIX}/projects/recent",
-        f"{API_PREFIX}/projects/history",
-        f"{API_PREFIX}/projects/privacy",
+            f"{API_PREFIX}/projects/recent",
+            f"{API_PREFIX}/projects/history",
+            f"{API_PREFIX}/projects/artifacts/compare",
+            f"{API_PREFIX}/projects/artifacts/restore",
+                f"{API_PREFIX}/projects/migration/preview",
+                f"{API_PREFIX}/projects/migration/apply",
+                f"{API_PREFIX}/projects/migration/restore",
+                f"{API_PREFIX}/projects/migration/batch/preview",
+                f"{API_PREFIX}/projects/migration/batch/apply",
+                f"{API_PREFIX}/projects/rotation/save",
+                f"{API_PREFIX}/projects/rotation/load",
+                f"{API_PREFIX}/projects/rotation/group-register",
+                f"{API_PREFIX}/projects/rotation/group-register/preview",
+            f"{API_PREFIX}/projects/privacy",
         f"{API_PREFIX}/projects/bundle",
         f"{API_PREFIX}/projects/restore",
         f"{API_PREFIX}/editing/drafts/{{draft_id}}",

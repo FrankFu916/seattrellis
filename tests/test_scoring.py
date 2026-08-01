@@ -21,6 +21,7 @@ from seattrellis.models.history import (
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
 from seattrellis.models.rules import (
     AvoidRecentNeighborsRule,
+    CoolingRule,
     FairRotationRule,
     FixedSeatRule,
     HardRules,
@@ -358,6 +359,45 @@ class TestScoreRecentNeighbors:
             relation_totals={},
         )
         score = score_snapshot(snap, pair_history=pair_history)
+        assert score.breakdown.avoid_recent_neighbors_score.status == "available"
+
+    def test_cooling_uses_the_shared_recent_neighbor_score(self) -> None:
+        students = _students(2)
+        layout = _layout(rows=1, cols=3)
+        rules = RuleSet(
+            seed=42,
+            soft=SoftRules(
+                height_back=WeightedRule(enabled=False, weight=0),
+                vision_front=WeightedRule(enabled=False, weight=0),
+                randomize=WeightedRule(enabled=False, weight=0),
+                cooling=CoolingRule(
+                    enabled=True,
+                    weight=10,
+                    cooling_period=2,
+                    relation_types=["desk_mate"],
+                    within_distance=1,
+                ),
+            ),
+        )
+        snap = _snapshot(
+            students=students,
+            layout=layout,
+            rules=rules,
+            assignments=[
+                SeatAssignment(student_key="S01", student_name="Student01", seat_id="R1C1"),
+                SeatAssignment(student_key="S02", student_name="Student02", seat_id="R1C2"),
+            ],
+        )
+        pair_history = PairHistory(
+            history_count=1,
+            student_count=2,
+            pair_count=1,
+            pairs={},
+            relation_totals={},
+        )
+
+        score = score_snapshot(snap, pair_history=pair_history)
+
         assert score.breakdown.avoid_recent_neighbors_score.status == "available"
 
 

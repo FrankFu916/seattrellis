@@ -8,12 +8,15 @@ seattrellis workspace
 ```
 
 The React workbench is the default path for ordinary teachers. It covers roster
-import and mapping, room templates, custom rows and columns, aisles and
+import and mapping, inline student editing, room templates, custom rows and columns, aisles and
 unavailable seats, common seating goals, combined preferences, adjacency and
 fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo,
-export, and class-project backups. Its **Advanced settings** section is reserved for candidate count, seed,
-time limit, solver backend, and a complete rules JSON object; common classroom
-and seating requests stay in the ordinary flow.
+export, and class-project backups. Its **Advanced settings** section contains
+solver controls and complete rules JSON. The separate **Detailed seating rules**
+panel exposes the implemented history, neighbor, cooling, score, and peer-support
+rules with ordinary form controls. Common named groups can be configured directly
+as together/apart requests; the JSON field remains available for more complex
+group relationships and is compiled as hard pair constraints.
 
 ## Streamlit compatibility and advanced tools
 
@@ -34,12 +37,15 @@ and English. It does not clear loaded data, the current step, or solve results.
 
 The default workspace keeps the ordinary path focused on classroom tasks:
 
-1. Enter a class name and import a CSV, XLSX, or XLSM roster. A name column is
-   enough to begin.
+1. Enter a class name and import a CSV, XLSX, or XLSM roster. Common headerless
+   exports keep their first data row and ask you to confirm the name or ID column.
+   A name column is enough to begin; you can also add or correct student records
+   directly in the roster editor.
 2. Accept the recommended 30-, 48-, or 60-seat room, or set custom rows, seats
    per row, aisle positions, and unavailable seats.
 3. Choose Daily rotation, Quick shuffle, or Peer support, combine preferences,
-   and add keep-apart, keep-together, or fixed-seat requests.
+   and add keep-apart, keep-together, fixed-seat, minimum-distance, or named
+   group requests.
 4. Review the recommended map, then swap, move, lock, undo, or redo as needed.
 5. Prepare and download either a public print or a teacher print.
 
@@ -51,6 +57,23 @@ Before generation, the workspace explains which optional history, score,
 height, or vision information is unavailable. Quick shuffle remains available
 when the roster contains names only.
 
+The Generate step can also create a future rotation. Choose the number of
+periods and optionally provide labels separated by commas or new lines. Each
+period has its own editing draft; select a period in the summary to load it
+into the normal editing and export flow, while the summary lists all periods
+and repeated-neighbor metrics.
+
+### Detailed seating rules
+
+Open **Detailed seating rules** on the Generate step when the common preference
+cards are not precise enough. The panel can configure historical position
+lookback, recent-neighbor and cooling relation types/distance, high-score front/back
+placement, row or group score distribution, and mentor/learner percentiles.
+Weights are soft objectives, so hard requests such as “keep these two students
+apart” still take priority. Group score balancing requires `group_id` on the
+layout seats. The raw rules JSON field remains available for compatibility, while
+the detailed panel covers the active cooling objective as well.
+
 ### React workbench project panel
 
 `seattrellis workspace` also shows a Project panel beside the classroom flow.
@@ -59,13 +82,39 @@ Enter a local folder and refresh it to find `*.project.json` and
 metadata only; student records and scores are not sent to the browser as part
 of this view.
 
-The panel can scan the selected project for sensitive fields, download a
-`.seattrellis.zip` backup, and restore an uploaded bundle to a local folder.
-The same path-safety and manifest checks used by the CLI apply to browser
-uploads. The classroom editor supports clicking cells to create seats, aisles,
-platforms, or empty space, changing the grid, moving or mirroring the layout,
-and saving the result for generation. Student and rules editors, history
-comparison, and in-place recovery remain on the roadmap.
+The panel can scan the selected project for sensitive fields, compare two
+history or output artifacts, create a new current-plan snapshot from one of
+them, download a `.seattrellis.zip` backup, and restore an uploaded bundle to a
+local folder. Comparison returns counts plus an expandable list of anonymous
+student references and before/after seat IDs; student names and scores never
+enter the browser response. Recovery writes a new output file and never
+overwrites the selected history artifact. The **Project format migration** area
+first validates the selected project or artifact against the current schema.
+Writing creates a sibling `*.migrated.json` file by default; an explicit
+in-place option replaces the source only after creating a `.bak` backup. The
+same path-safety and manifest checks used by the CLI apply to browser uploads.
+The classroom editor supports clicking cells to create seats, aisles, platforms,
+or empty space, changing the grid, moving or mirroring the layout, and saving
+the result for generation. Student editing is available in the roster step. The
+detailed rules panel covers the implemented soft rules, and custom RuleSet JSON
+now reports field-level errors before generation, including unknown fields,
+malformed hard rules, and roster or seat references that do not exist. A full
+visual editor for every complex rule and batch management remains on the roadmap;
+common group relationships are already available in the ordinary goal step.
+When a rotation has been generated and a class project is selected, the panel
+also offers **Save current rotation**. It writes every period's current seats,
+locks, and editing commands as a new rotation-plan output without replacing the
+source artifact. Existing rotation outputs can be opened with **Continue a
+rotation**, which recreates the period drafts so the plan can be adjusted again.
+Migration previews also show privacy-safe field paths and type changes, before
+and after validation, and the available backup or rollback path without
+returning original student values.
+For a saved rotation plan, the Project panel can also download a group register as
+printable HTML or CSV. Each period lists the group, student, seat, and status, while
+retaining empty groups, unseated students, and members missing from the roster.
+Before downloading, use the membership preview to review group sizes, seated and
+unseated counts, and additions/removals between adjacent periods. The preview uses
+anonymous references and does not return names or student IDs to the browser.
 
 ## Advanced tools
 

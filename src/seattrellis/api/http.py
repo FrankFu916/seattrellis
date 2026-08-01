@@ -21,6 +21,17 @@ from seattrellis.api.handlers import (
     list_projects,
     pack_project_for_web,
     project_history,
+    project_artifact_compare,
+    project_artifact_restore,
+    project_migration_apply,
+    project_migration_batch_apply,
+    project_migration_batch_preview,
+    project_migration_preview,
+    project_migration_restore,
+    project_group_register,
+    project_group_register_preview,
+    project_rotation_load,
+    project_rotation_save,
     project_privacy,
     restore_project_bundle_file,
     room_templates,
@@ -55,9 +66,18 @@ from seattrellis.api.models import (
     TeacherGoalsResponse,
     ProjectHistoryResponse,
     ProjectListResponse,
+    ProjectMigrationRequest,
+    ProjectMigrationResponse,
+    ProjectMigrationRestoreRequest,
+    ProjectMigrationRestoreResponse,
+    ProjectGroupRegisterRequest,
     ProjectPathRequest,
     ProjectPrivacyResponse,
+    ProjectRotationLoadRequest,
+    ProjectRotationLoadResponse,
     ProjectRestoreResponse,
+    ProjectRotationSaveRequest,
+    ProjectRotationSaveResponse,
 )
 from seattrellis.editing import EditingError
 from seattrellis.editing_protocol import (
@@ -198,7 +218,23 @@ def create_app(
         return generate_class(request, draft_store=resolved_store)
 
     def generate_rotation(request: GenerateRotationPlanRequest) -> GenerateRotationPlanResponse:
-        return generate_rotation_plan(request)
+        return generate_rotation_plan(request, draft_store=resolved_store)
+
+    def save_rotation(request: ProjectRotationSaveRequest) -> ProjectRotationSaveResponse:
+        return project_rotation_save(request, draft_store=resolved_store)
+
+    def load_rotation(request: ProjectRotationLoadRequest) -> ProjectRotationLoadResponse:
+        return project_rotation_load(request, draft_store=resolved_store)
+
+    def download_group_register(request: ProjectGroupRegisterRequest) -> Any:
+        artifact = project_group_register(request)
+        return Response(
+            content=artifact.data,
+            media_type=artifact.content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
+            },
+        )
 
     def get_editor_state(draft_id: str) -> EditorStateEnvelope:
         try:
@@ -363,7 +399,7 @@ def create_app(
                 code="invalid_roster_file",
                 message=(
                     "The roster could not be read. Use a UTF-8 CSV or a valid "
-                    "Excel workbook with a header row."
+                    "Excel workbook. A header row is optional."
                 ),
             ) from exc
 
@@ -556,6 +592,94 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/projects/history",
         project_history,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/artifacts/compare",
+        project_artifact_compare,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/artifacts/restore",
+        project_artifact_restore,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/preview",
+        project_migration_preview,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/apply",
+        project_migration_apply,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/batch/preview",
+        project_migration_batch_preview,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/batch/apply",
+        project_migration_batch_apply,
+        methods=["POST"],
+        response_model=None,
+        responses={409: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/restore",
+        project_migration_restore,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/rotation/save",
+        save_rotation,
+        methods=["POST"],
+        response_model=None,
+        responses={409: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/rotation/load",
+        load_rotation,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/rotation/group-register",
+        download_group_register,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/rotation/group-register/preview",
+        project_group_register_preview,
         methods=["POST"],
         response_model=None,
         responses={422: {"model": ErrorResponse}},

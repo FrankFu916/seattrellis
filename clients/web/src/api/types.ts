@@ -88,6 +88,7 @@ export type RosterMappingIssueItem = {
 export type RosterDraftResponse = {
   draft_id: string;
   source_format: "csv" | "xlsx";
+  headerless: boolean;
   row_count: number;
   column_count: number;
   columns: RosterColumnItem[];
@@ -226,10 +227,18 @@ export type HardRulesPayload = {
   }>;
 };
 
+export type CommonGroupRule = {
+  id: string;
+  name: string;
+  mode: "together" | "separate";
+  students: string[];
+};
+
 export type CommonConstraintKind =
   | "avoid_adjacent"
   | "must_adjacent"
-  | "fixed_seat";
+  | "fixed_seat"
+  | "min_distance";
 
 export type CommonConstraint = {
   id: string;
@@ -237,6 +246,8 @@ export type CommonConstraint = {
   first: string;
   second: string;
   seatId: string;
+  distance: number;
+  metric: "euclidean" | "graph";
 };
 
 export type CommonPreferenceId =
@@ -247,6 +258,57 @@ export type CommonPreferenceId =
   | "score_position"
   | "score_distribution"
   | "mentor_pairing";
+
+export type RuleRelation =
+  | "desk_mate"
+  | "horizontal"
+  | "vertical"
+  | "diagonal"
+  | "adjacent_any"
+  | "within_distance";
+
+export type DetailedRuleSettings = {
+  enabled: boolean;
+  fairRotation: {
+    enabled: boolean;
+    weight: number;
+    lookback: number;
+  };
+  avoidRecentNeighbors: {
+    enabled: boolean;
+    weight: number;
+    lookback: number;
+    maxRecentCount: number;
+    withinDistance: number;
+    relationTypes: RuleRelation[];
+  };
+  cooling: {
+    enabled: boolean;
+    weight: number;
+    coolingPeriod: number;
+    withinDistance: number;
+    relationTypes: RuleRelation[];
+  };
+  scorePosition: {
+    enabled: boolean;
+    weight: number;
+    direction: "high_front" | "high_back";
+  };
+  scoreDistribution: {
+    enabled: boolean;
+    weight: number;
+    scope: "row" | "group";
+  };
+  mentorPairing: {
+    enabled: boolean;
+    weight: number;
+    mentorPercentile: number;
+    learnerPercentile: number;
+    relation: RuleRelation;
+    avoidRecentRepeats: boolean;
+    historyLookback: number;
+  };
+};
 
 export type CustomRoomSettings = {
   enabled: boolean;
@@ -324,6 +386,12 @@ export type AdvancedSolveSettings = {
   customRulesJson: string;
 };
 
+export type RotationSettings = {
+  enabled: boolean;
+  periodCount: number;
+  periodLabels: string;
+};
+
 export type GenerateClassResponse = {
   class_name: string;
   recommended_candidate_id: string;
@@ -334,6 +402,47 @@ export type GenerateClassResponse = {
   }>;
   warnings: string[];
   editor: EditorState;
+};
+
+export type RotationPeriod = {
+  period: number;
+  label: string;
+  snapshot: {
+    assignments: Array<{
+      student_key: string;
+      student_name: string;
+      seat_id: string;
+    }>;
+    solver_status: string;
+  };
+};
+
+export type RotationPlan = {
+  schema_version?: string;
+  kind: "rotation_plan";
+  created_at?: string;
+  name: string;
+  periods: RotationPeriod[];
+  base_history_count: number;
+  fairness_summary: Record<string, unknown>;
+  pair_repeat_summary: Record<string, unknown>;
+  warnings: string[];
+  metadata?: Record<string, unknown>;
+};
+
+export type GenerateRotationPlanRequest = {
+  draft: GenerateClassRequest["draft"];
+  period_count: number;
+  period_labels?: string[];
+  options?: GenerateClassRequest["options"];
+};
+
+export type GenerateRotationPlanResponse = {
+  class_name: string;
+  warnings: string[];
+  rotation_plan: RotationPlan;
+  editor: EditorState;
+  period_editors?: EditorState[];
 };
 
 export type ExportDraftRequest = {
@@ -371,6 +480,21 @@ export type ProjectListResponse = {
   projects: RecentProject[];
 };
 
+export type ProjectArtifactProvenance = {
+  source: "generated" | "manual_edit" | "rotation_edit" | "restored" | "unknown";
+  parent_name: string | null;
+  operation_count: number | null;
+};
+
+export type ProjectArtifactOperation = {
+  sequence: number;
+  action: "apply" | "undo" | "redo" | "unknown";
+  operation_count: number;
+  operation_kinds: string[];
+  period?: number | null;
+  recorded_at?: string | null;
+};
+
 export type ProjectArtifact = {
   name: string;
   path: string;
@@ -380,6 +504,9 @@ export type ProjectArtifact = {
   size_bytes: number;
   student_count: number | null;
   period_count: number | null;
+  provenance: ProjectArtifactProvenance | null;
+  operation_history?: ProjectArtifactOperation[];
+  operation_history_truncated?: boolean;
 };
 
 export type ProjectHistoryResponse = {
@@ -389,6 +516,39 @@ export type ProjectHistoryResponse = {
   history: ProjectArtifact[];
   outputs: ProjectArtifact[];
   warnings: string[];
+};
+
+export type ProjectArtifactSummary = {
+  name: string;
+  path: string;
+  kind: "snapshot" | "candidate_set" | "rotation_plan" | "unknown";
+  created_at: string | null;
+  student_count: number | null;
+  assignment_count: number | null;
+  enabled_seat_count: number | null;
+  solver_status: string | null;
+};
+
+export type ProjectArtifactDiff = {
+  assignment_changes: number;
+  roster_added: number;
+  roster_removed: number;
+  layout_changed: boolean;
+  rules_changed: boolean;
+  solver_status_changed: boolean;
+  assignment_details: Array<{
+    student_ref: string;
+    change: "moved" | "seated" | "unseated";
+    before_seat_id: string | null;
+    after_seat_id: string | null;
+  }>;
+};
+
+export type ProjectArtifactCompareResponse = {
+  api_version: "1";
+  left: ProjectArtifactSummary;
+  right: ProjectArtifactSummary;
+  diff: ProjectArtifactDiff;
 };
 
 export type ProjectPrivacyFinding = {
@@ -408,4 +568,116 @@ export type ProjectRestoreResponse = {
   api_version: "1";
   project_path: string;
   output_dir: string;
+};
+
+export type ProjectArtifactRestoreResponse = {
+  api_version: "1";
+  project_path: string;
+  source_artifact: string;
+  restored_artifact: string;
+};
+
+export type ProjectGroupMemberChange = {
+  student_ref: string;
+  change: "added" | "removed";
+};
+
+export type ProjectGroupPreview = {
+  name: string;
+  member_count: number;
+  seated_count: number;
+  unseated_count: number;
+  missing_count: number;
+  added_count: number;
+  removed_count: number;
+  member_changes: ProjectGroupMemberChange[];
+};
+
+export type ProjectGroupRegisterPeriodPreview = {
+  period: number;
+  label: string;
+  compared_to_period: number | null;
+  groups: ProjectGroupPreview[];
+};
+
+export type ProjectGroupRegisterPreviewResponse = {
+  api_version: "1";
+  project_path: string;
+  artifact_path: string;
+  plan_name: string;
+  period_count: number;
+  periods: ProjectGroupRegisterPeriodPreview[];
+  has_changes: boolean;
+};
+
+export type ProjectMigrationResponse = {
+  api_version: "1";
+  project_path: string;
+  source_path: string;
+  artifact: string;
+  schema_version: string | number;
+  output_path: string | null;
+  backup_path: string | null;
+  dry_run: boolean;
+  before_valid: boolean;
+  after_valid: boolean | null;
+  rollback_available: boolean;
+  change_count: number;
+  changes: ProjectMigrationChange[];
+  reference_checks?: ProjectMigrationReferenceCheck[];
+};
+
+export type ProjectMigrationSharedReference = {
+  path: string;
+  projects: string[];
+  fields: string[];
+};
+
+export type ProjectMigrationBatchResponse = {
+  api_version: "1";
+  projects: ProjectMigrationResponse[];
+  shared_references: ProjectMigrationSharedReference[];
+  ready: boolean;
+};
+
+export type ProjectMigrationReferenceCheck = {
+  field: "students" | "layout" | "rules" | "history_dir" | "outputs_dir";
+  path: string;
+  expected: "file" | "directory";
+  status: "ok" | "missing" | "wrong_type";
+};
+
+export type ProjectMigrationRestoreResponse = {
+  api_version: "1";
+  project_path: string;
+  source_path: string;
+  backup_path: string;
+  safety_backup_path: string | null;
+  artifact: string;
+  schema_version: string | number;
+  restored_valid: boolean;
+};
+
+export type ProjectMigrationChange = {
+  path: string;
+  change: "added" | "removed" | "changed";
+  before_type: string | null;
+  after_type: string | null;
+};
+
+export type ProjectRotationSaveResponse = {
+  api_version: "1";
+  project_path: string;
+  output_path: string;
+  period_count: number;
+  saved_at: string;
+};
+
+export type ProjectRotationLoadResponse = {
+  api_version: "1";
+  project_path: string;
+  artifact_path: string;
+  rotation_plan: RotationPlan;
+  editor: EditorState;
+  period_editors: EditorState[];
 };

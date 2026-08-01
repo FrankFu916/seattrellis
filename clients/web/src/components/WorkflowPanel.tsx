@@ -4,8 +4,12 @@ import type {
   AdvancedSolveSettings,
   CatalogOption,
   CommonConstraint,
+  CommonGroupRule,
   CommonPreferenceId,
   CustomRoomSettings,
+  DetailedRuleSettings,
+  RotationPlan,
+  RotationSettings,
   RoomTemplate,
   SeatAssignment,
   Student,
@@ -13,6 +17,11 @@ import type {
 import type { WorkflowStep } from "../domain/workflow";
 import type { Locale, MessageKey, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
+import { DetailedRulesPanel } from "./DetailedRulesPanel";
+import { BulkConstraintEditor } from "./BulkConstraintEditor";
+import { BulkGroupEditor } from "./BulkGroupEditor";
+import { RotationPlanSummary } from "./RotationPlanSummary";
+import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
 
 const PREFERENCE_OPTIONS: Array<{
   id: CommonPreferenceId;
@@ -33,6 +42,7 @@ type WorkflowPanelProps = {
   locale: Locale;
   t: Translate;
   studentCount: number;
+  rosterValid: boolean;
   students: Student[];
   seatIds: string[];
   selectedFileName: string | null;
@@ -45,8 +55,13 @@ type WorkflowPanelProps = {
   orientation: "portrait" | "landscape";
   showStudentIds: boolean;
   advancedSettings: AdvancedSolveSettings;
+  detailedRules: DetailedRuleSettings;
+  rotationSettings: RotationSettings;
+  rotationPlan: RotationPlan | null;
+  activeRotationPeriod: number;
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
+  groups: CommonGroupRule[];
   preferences: CommonPreferenceId[];
   error: string | null;
   selectedSeat: SeatAssignment | undefined;
@@ -62,13 +77,21 @@ type WorkflowPanelProps = {
   onAdvancedSettingsChange: (
     changes: Partial<AdvancedSolveSettings>,
   ) => void;
+  onRotationSettingsChange: (changes: Partial<RotationSettings>) => void;
+  onDetailedRulesChange: (changes: Partial<DetailedRuleSettings>) => void;
+  onRotationPeriodSelect: (period: number) => void;
   onRoomSettingsChange: (changes: Partial<CustomRoomSettings>) => void;
   onConstraintAdd: () => void;
+  onConstraintBatchAdd: (constraints: CommonConstraint[]) => void;
   onConstraintChange: (
     id: string,
     changes: Partial<CommonConstraint>,
   ) => void;
   onConstraintRemove: (id: string) => void;
+  onGroupAdd: () => void;
+  onGroupBatchAdd: (groups: CommonGroupRule[]) => void;
+  onGroupChange: (id: string, changes: Partial<CommonGroupRule>) => void;
+  onGroupRemove: (id: string) => void;
   onPreferenceToggle: (id: CommonPreferenceId) => void;
   onBack: () => void;
   onNext: () => void;
@@ -97,6 +120,7 @@ export function WorkflowPanel({
   locale,
   t,
   studentCount,
+  rosterValid,
   students,
   seatIds,
   selectedFileName,
@@ -109,8 +133,13 @@ export function WorkflowPanel({
   orientation,
   showStudentIds,
   advancedSettings,
+  detailedRules,
+  rotationSettings,
+  rotationPlan,
+  activeRotationPeriod,
   roomSettings,
   constraints,
+  groups,
   preferences,
   error,
   selectedSeat,
@@ -124,10 +153,18 @@ export function WorkflowPanel({
   onOrientationChange,
   onShowStudentIdsChange,
   onAdvancedSettingsChange,
+  onRotationSettingsChange,
+  onDetailedRulesChange,
+  onRotationPeriodSelect,
   onRoomSettingsChange,
   onConstraintAdd,
+  onConstraintBatchAdd,
   onConstraintChange,
   onConstraintRemove,
+  onGroupAdd,
+  onGroupBatchAdd,
+  onGroupChange,
+  onGroupRemove,
   onPreferenceToggle,
   onBack,
   onNext,
@@ -398,6 +435,7 @@ export function WorkflowPanel({
                         <option value="avoid_adjacent">{t("constraints.avoidAdjacent")}</option>
                         <option value="must_adjacent">{t("constraints.mustAdjacent")}</option>
                         <option value="fixed_seat">{t("constraints.fixedSeat")}</option>
+                        <option value="min_distance">{t("constraints.minDistance")}</option>
                       </select>
                       <select
                         aria-label={t("constraints.student")}
@@ -439,6 +477,37 @@ export function WorkflowPanel({
                           ))}
                         </select>
                       )}
+                      {constraint.kind === "min_distance" ? (
+                        <>
+                          <label className="constraint-detail-field">
+                            <span className="sr-only">{t("constraints.distance")}</span>
+                            <input
+                              type="number"
+                              min={0.1}
+                              step={0.1}
+                              aria-label={t("constraints.distance")}
+                              value={constraint.distance}
+                              onChange={(event) =>
+                                onConstraintChange(constraint.id, {
+                                  distance: Math.max(0.1, Number(event.target.value) || 0.1),
+                                })
+                              }
+                            />
+                          </label>
+                          <select
+                            aria-label={t("constraints.metric")}
+                            value={constraint.metric}
+                            onChange={(event) =>
+                              onConstraintChange(constraint.id, {
+                                metric: event.target.value as CommonConstraint["metric"],
+                              })
+                            }
+                          >
+                            <option value="graph">{t("constraints.metricGraph")}</option>
+                            <option value="euclidean">{t("constraints.metricEuclidean")}</option>
+                          </select>
+                        </>
+                      ) : null}
                       <button
                         className="icon-button"
                         type="button"
@@ -454,6 +523,87 @@ export function WorkflowPanel({
               <datalist id="available-seat-ids">
                 {seatIds.map((seatId) => <option key={seatId} value={seatId} />)}
               </datalist>
+              <BulkConstraintEditor
+                students={students}
+                seatIds={seatIds}
+                existingConstraints={constraints}
+                t={t}
+                onAdd={onConstraintBatchAdd}
+              />
+            </section>
+            <section className="constraints-card" aria-labelledby="groups-title">
+              <div className="constraints-heading">
+                <div>
+                  <h2 id="groups-title">{t("groups.title")}</h2>
+                  <p>{t("groups.hint")}</p>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={onGroupAdd}
+                  disabled={students.length < 2}
+                >
+                  {t("groups.add")}
+                </button>
+              </div>
+              {groups.length === 0 ? (
+                <p className="muted">{t("groups.empty")}</p>
+              ) : (
+                <div className="constraint-list">
+                  {groups.map((group) => (
+                    <div className="constraint-row group-row" key={group.id}>
+                      <input
+                        aria-label={t("groups.name")}
+                        value={group.name}
+                        placeholder={t("groups.namePlaceholder")}
+                        onChange={(event) =>
+                          onGroupChange(group.id, { name: event.target.value })
+                        }
+                      />
+                      <select
+                        aria-label={t("groups.mode")}
+                        value={group.mode}
+                        onChange={(event) =>
+                          onGroupChange(group.id, {
+                            mode: event.target.value as CommonGroupRule["mode"],
+                          })
+                        }
+                      >
+                        <option value="separate">{t("groups.separate")}</option>
+                        <option value="together">{t("groups.together")}</option>
+                      </select>
+                      <input
+                        aria-label={t("groups.students")}
+                        value={group.students.join(", ")}
+                        placeholder={t("groups.studentsPlaceholder")}
+                        onChange={(event) =>
+                          onGroupChange(group.id, {
+                            students: event.target.value
+                              .split(/[,，\n]+/u)
+                              .map((student) => student.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                      />
+                      <button
+                        className="icon-button"
+                        type="button"
+                        aria-label={t("groups.remove")}
+                        onClick={() => onGroupRemove(group.id)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <small className="constraint-help">{t("groups.studentsHint")}</small>
+              <BulkGroupEditor
+                students={students}
+                existingGroups={groups}
+                t={t}
+                onAdd={onGroupBatchAdd}
+              />
             </section>
           </div>
         ) : null}
@@ -491,6 +641,11 @@ export function WorkflowPanel({
               <span aria-hidden="true">✓</span>
               {t("generate.note")}
             </p>
+            {!rosterValid ? (
+              <p className="inline-error" role="alert">
+                {t("generate.rosterInvalid")}
+              </p>
+            ) : null}
             <details className="advanced-settings">
               <summary>{t("generate.advanced")}</summary>
               <p className="advanced-settings-hint">
@@ -579,8 +734,71 @@ export function WorkflowPanel({
                     }
                   />
                   <small>{t("generate.customRulesHint")}</small>
+                  <RuleSetDiagnosticsPanel
+                    source={advancedSettings.customRulesJson}
+                    students={students}
+                    seatIds={seatIds}
+                    t={t}
+                  />
                 </label>
               </div>
+            </details>
+            <DetailedRulesPanel
+              settings={detailedRules}
+              t={t}
+              onChange={onDetailedRulesChange}
+            />
+            <details className="rotation-settings" open={rotationSettings.enabled}>
+              <summary>{t("rotation.title")}</summary>
+              <p className="advanced-settings-hint">{t("rotation.hint")}</p>
+              <label className="rotation-toggle">
+                <input
+                  data-testid="rotation-toggle"
+                  type="checkbox"
+                  checked={rotationSettings.enabled}
+                  onChange={(event) =>
+                    onRotationSettingsChange({ enabled: event.target.checked })
+                  }
+                />
+                <span>{t("rotation.enabled")}</span>
+              </label>
+              {rotationSettings.enabled ? (
+                <div className="rotation-fields">
+                  <label className="advanced-field">
+                    <span>{t("rotation.periodCount")}</span>
+                    <input
+                      data-testid="rotation-period-count"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={rotationSettings.periodCount}
+                      onChange={(event) =>
+                        onRotationSettingsChange({
+                          periodCount: Math.min(
+                            20,
+                            Math.max(1, Number(event.target.value) || 1),
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="advanced-field advanced-field-wide">
+                    <span>{t("rotation.periodLabels")}</span>
+                    <input
+                      data-testid="rotation-period-labels"
+                      type="text"
+                      value={rotationSettings.periodLabels}
+                      placeholder={t("rotation.periodLabelsPlaceholder")}
+                      onChange={(event) =>
+                        onRotationSettingsChange({
+                          periodLabels: event.target.value,
+                        })
+                      }
+                    />
+                    <small>{t("rotation.periodLabelsHint")}</small>
+                  </label>
+                </div>
+              ) : null}
             </details>
             {error ? (
               <p className="inline-error" role="alert">
@@ -592,6 +810,14 @@ export function WorkflowPanel({
 
         {step === "adjust" ? (
           <div className="adjust-tools">
+            {rotationPlan ? (
+              <RotationPlanSummary
+                plan={rotationPlan}
+                t={t}
+                activePeriod={activeRotationPeriod}
+                onPeriodSelect={onRotationPeriodSelect}
+              />
+            ) : null}
             <div className="selection-status" aria-live="polite">
               <span
                 className={selectedSeat ? "selection-dot active" : "selection-dot"}
@@ -711,7 +937,7 @@ export function WorkflowPanel({
             className="primary-button"
             type="button"
             onClick={onGenerate}
-            disabled={isGenerating}
+            disabled={isGenerating || !rosterValid}
           >
             {isGenerating ? t("action.generating") : t("action.generate")}
             <span aria-hidden="true">→</span>

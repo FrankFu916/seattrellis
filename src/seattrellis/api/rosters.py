@@ -199,6 +199,7 @@ def _draft_response(stored: _StoredRoster) -> RosterDraftResponse:
     return RosterDraftResponse(
         draft_id=stored.draft_id,
         source_format=stored.table.source_format,
+        headerless=stored.table.headerless,
         row_count=stored.table.row_count,
         column_count=stored.table.column_count,
         columns=[

@@ -44,6 +44,19 @@ def test_csv_upload_bytes_uses_same_lossless_reader() -> None:
     assert table.rows[0].cells == ("001", "小林")
 
 
+def test_headerless_csv_keeps_first_data_row_and_marks_the_table() -> None:
+    table = read_roster_table_bytes(
+        "小林,18513806422\n小周,18513806423\n".encode(),
+        filename="class.csv",
+    )
+
+    assert table.headerless is True
+    assert table.headers == ("Column 1", "Column 2")
+    assert table.row_count == 2
+    assert table.rows[0].row_number == 1
+    assert table.rows[0].cells == ("小林", "18513806422")
+
+
 @pytest.mark.parametrize(
     ("content", "limits", "message"),
     [
@@ -127,4 +140,3 @@ def test_unsupported_and_empty_inputs_fail_clearly() -> None:
         read_roster_table_bytes(b"data", filename="roster.txt")
     with pytest.raises(InputFileError, match="header row is required"):
         read_roster_table_bytes(b"", filename="roster.csv")
-

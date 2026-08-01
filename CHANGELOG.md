@@ -1,9 +1,37 @@
 # Changelog
 
+## 1.8.3
+
+### User-facing changes
+
+- Improved roster import review with localized, actionable messages. Changing
+  a mapping or import mode clears the old preview, and incomplete results cannot
+  be confirmed accidentally.
+- Added safe batch migration for local class projects with combined preflight
+  checks and rollback of files written during a failed run.
+- Added an unsaved-changes warning when closing the browser or desktop
+  workbench after editing seats.
+
 ## Unreleased
 
 ### User-facing changes
 
+- Improved roster import in the React and desktop workbench. Headerless CSV/Excel
+  exports keep their first data row, common name/ID columns are suggested, and
+  the review step now uses localized labels and an inline confirmation card.
+- Preview failures now stay in the import review screen with a clear retry
+  message; internal HTTP and parser details are no longer shown to teachers.
+- Changing a roster column mapping or import mode now clears the previous
+  preview, and an incomplete server response cannot be confirmed as an import.
+- The browser and desktop workbench now warn before closing a window with
+  unsaved seat adjustments.
+- Added printable HTML and CSV group registers for saved rotation plans. Each
+  period keeps empty groups, unseated students, and roster members that could
+  not be found in the saved class data.
+- Added a privacy-safe membership preview for rotation group registers. Teachers
+  can review group sizes, seated/unseated counts, and additions/removals between
+  periods before downloading; names and student IDs are not returned by the
+  preview API.
 - Added a Project workspace panel to the React workbench. Teachers can browse
   recent local classes, review saved history and generated files, and open a
   privacy check without exposing student records in the browser response.
@@ -13,6 +41,9 @@
   who need more control can set candidate count, seed, time limit, solver
   backend, and complete custom rules JSON without making those fields part of
   the everyday teacher flow.
+- Added field-level checks for custom RuleSet JSON. The workbench now identifies
+  unsupported fields, malformed hard rules, unknown students or seats, and
+  invalid group definitions before a solve is started.
 - Added ordinary teacher controls for irregular classrooms: custom rows and
   columns, aisle columns, unavailable seats, and an optional complete layout
   definition.
@@ -22,20 +53,103 @@
   result without writing layout JSON.
 - Added combinable seating preferences and repeatable hard requests for keeping
   students apart, keeping them together, or fixing a student to a seat.
+- Added a collapsed bulk relationship editor to the ordinary seating settings.
+  Teachers can paste one pair per line for apart, together, minimum-distance, or
+  fixed-seat requests; the preview reports unknown references and duplicates
+  before anything is added.
+- Added a collapsed bulk group editor. A teacher can paste lines such as
+  “Lab A: S01, S04, S08”, choose together or apart, and review unknown IDs,
+  missing members, or duplicate group names before adding anything.
 - Fixed roster import in the React workbench: full replacement now uses the
   current API contract, authenticated desktop requests keep their bearer
   header, imported student metadata is retained, and the same file can be
   selected again after cancelling.
+- Added an inline roster editor to the ordinary workflow. Teachers can add,
+  remove, or correct student IDs, names, scores, height, vision, needs, and
+  notes without preparing another spreadsheet.
+- Added history comparison and safe artifact recovery to the Project panel.
+  Teachers can compare two saved plans without exposing student records in the
+  browser, then create a new current-plan snapshot from a selected history or
+  output file without overwriting the original.
+- Added an expandable anonymous assignment diff to project comparison. It shows
+  which seat references moved, were newly occupied, or became empty without
+  sending student names or IDs to the browser.
+- Project history now shows where each saved plan came from (generated, manually
+  edited, rotated, or restored), its immediate source filename, and the number
+  of recorded operations without exposing the underlying student data or command
+  payloads.
+- Project history can now expand an anonymous operation timeline, showing each
+  apply, undo, or redo step and the kind of adjustment it contained without
+  exposing student or seat identifiers.
+- Rotation history now keeps the period and UTC time for each editing event.
+  The Project workspace can filter the anonymous timeline by rotation period,
+  making multi-period changes easier to review without exposing student data.
+- Project migration preview now checks every referenced roster, layout, rules,
+  history, and output path and marks missing or wrong-type references before a
+  migration is written.
+- Added a batch migration preview for class projects. It checks several project
+  files together and highlights shared roster, layout, rules, or output paths
+  before any migration is written.
+- Added batch migration writing for class projects. Teachers can select several
+  projects in the workspace, review one combined preflight result, and write the
+  batch only after every reference check passes; a failed batch rolls back files
+  already written during that run.
+- Added future rotation controls to the React workbench. Teachers can choose
+  the number and names of upcoming periods, review repeat-neighbor metrics,
+  switch between period-specific editing drafts, and continue editing or
+  exporting the selected period through the same workflow.
+- Added **Save current rotation** to the React Project panel. After selecting a
+  class project, teachers can save all edited periods, locks, and web editing
+  commands as a new rotation-plan output without replacing the original plan.
+- Added **Continue a rotation** to the Project panel. A saved rotation output
+  can be opened again with a fresh editor draft for every period, so teachers
+  can keep adjusting it instead of treating the file as read-only history.
+- Added a detailed rule panel to the React workbench. Teachers can tune history
+  lookback, recent-neighbor distance, relationship cooling, score placement and
+  distribution, and peer-support pairing without writing JSON. Common
+  together/apart group relationships are available in the ordinary settings,
+  with the raw rules field retained for complex cases.
+- Added an ordinary **Group relationships** editor. Teachers can name a group,
+  choose together/apart behavior, and enter its student IDs without editing the
+  full rules JSON; invalid or incomplete groups are ignored until they contain
+  at least two members.
+- Group `together` and `separate` definitions are now compiled into the same
+  hard adjacency checks used by every solver backend and manual-plan validator.
+- Cooling periods now compile into the shared recent-neighbor objective used by
+  fallback, OR-Tools, scoring, fairness summaries, and the optional native
+  validator.
+- Added project schema migration controls to the React workbench. Teachers can
+  preview a migration, write a new migrated file by default, or explicitly
+  migrate in place with an automatic backup.
+- Migration previews now show privacy-safe field paths and type changes, before
+  and after validation state, and whether the original or a backup can be used
+  to roll back.
+- In-place migration backups can now be restored from the Project workspace;
+  the file changed by the restore is kept as a second safety backup.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.
+- Hardened the desktop session handoff for embedded WebViews that do not expose
+  `sessionStorage`; the one-time token is retained in memory for the first API
+  requests instead of showing a `session_required` page.
 
 ### Engineering and maintenance
 
 - Added versioned `/api/v1/projects/*` endpoints for recent projects, artifact
   metadata, privacy scanning, bundle download, and safe bundle restore.
+- Added `/api/v1/projects/migration/preview` and `/api/v1/projects/migration/apply`
+  so browser and desktop clients share the same guarded schema-migration path as
+  the CLI.
+- Added `/api/v1/projects/rotation/save`; the local service rebuilds a rotation
+  artifact from server-owned editing drafts and keeps the source output intact.
+- Added `/api/v1/projects/rotation/load`; the local service validates a project
+  rotation artifact and recreates its period editing drafts without writing
+  student data to browser storage.
 - Added API contract tests, React component tests, and a real-browser acceptance
-  path covering project history, privacy, backup, and restore.
+  path covering project history, comparison, recovery, privacy, backup, and
+  restore.
+- The rotation API now returns an editing draft for every generated period, so
+  a multi-period result does not become a read-only branch of the application.
 - Added a standalone `seattrellis-desktop` entry point and a reproducible
   PyInstaller onedir recipe for the optional desktop preview. The workflow
   produces unsigned bundles for inspection; installers and signing remain a

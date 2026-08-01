@@ -1,14 +1,18 @@
 import type {
   AdvancedSolveSettings,
   CommonConstraint,
+  CommonGroupRule,
   CommonPreferenceId,
   CustomRoomSettings,
+  DetailedRuleSettings,
   GenerateClassRequest,
+  GenerateRotationPlanRequest,
+  RotationSettings,
   HardRulesPayload,
   Student,
 } from "../api/types";
 
-export type AdvancedSettingErrorKind = "rules" | "layout" | "seed";
+export type AdvancedSettingErrorKind = "rules" | "layout" | "seed" | "rotation";
 
 export class InvalidAdvancedSettingError extends Error {
   readonly kind: AdvancedSettingErrorKind;
@@ -137,6 +141,11 @@ function buildHardRules(constraints: CommonConstraint[]): HardRulesPayload | und
   const fixed_seats: Array<{ student: string; seat_id: string }> = [];
   const must_be_adjacent: Array<{ students: [string, string] }> = [];
   const cannot_be_adjacent: Array<{ students: [string, string] }> = [];
+  const min_distance: Array<{
+    students: [string, string];
+    distance: number;
+    metric: "euclidean" | "graph";
+  }> = [];
   for (const constraint of constraints) {
     if (constraint.kind === "fixed_seat" && constraint.first && constraint.seatId) {
       fixed_seats.push({ student: constraint.first, seat_id: constraint.seatId });
@@ -144,16 +153,96 @@ function buildHardRules(constraints: CommonConstraint[]): HardRulesPayload | und
       must_be_adjacent.push({ students: [constraint.first, constraint.second] });
     } else if (constraint.kind === "avoid_adjacent" && constraint.first && constraint.second) {
       cannot_be_adjacent.push({ students: [constraint.first, constraint.second] });
+    } else if (
+      constraint.kind === "min_distance" &&
+      constraint.first &&
+      constraint.second &&
+      Number.isFinite(constraint.distance) &&
+      constraint.distance > 0
+    ) {
+      min_distance.push({
+        students: [constraint.first, constraint.second],
+        distance: constraint.distance,
+        metric: constraint.metric,
+      });
     }
   }
-  if (!fixed_seats.length && !must_be_adjacent.length && !cannot_be_adjacent.length) {
+  if (
+    !fixed_seats.length &&
+    !must_be_adjacent.length &&
+    !cannot_be_adjacent.length &&
+    !min_distance.length
+  ) {
     return undefined;
   }
-  return { fixed_seats, must_be_adjacent, cannot_be_adjacent };
+  return { fixed_seats, must_be_adjacent, cannot_be_adjacent, min_distance };
+}
+
+function validateDetailedRules(settings: DetailedRuleSettings): void {
+  if (!settings.enabled) {
+    return;
+  }
+  const nonNegativeIntegers = [
+    settings.fairRotation.weight,
+    settings.fairRotation.lookback,
+    settings.avoidRecentNeighbors.weight,
+    settings.avoidRecentNeighbors.lookback,
+    settings.avoidRecentNeighbors.maxRecentCount,
+    settings.cooling.weight,
+    settings.cooling.coolingPeriod,
+    settings.cooling.withinDistance,
+    settings.scorePosition.weight,
+    settings.scoreDistribution.weight,
+    settings.mentorPairing.weight,
+    settings.mentorPairing.historyLookback,
+  ];
+  if (nonNegativeIntegers.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
+  const supportedRelations = new Set([
+    "desk_mate",
+    "horizontal",
+    "vertical",
+    "diagonal",
+    "adjacent_any",
+    "within_distance",
+  ]);
+  if (
+    !Number.isSafeInteger(settings.avoidRecentNeighbors.withinDistance) ||
+    settings.avoidRecentNeighbors.withinDistance < 1 ||
+    settings.avoidRecentNeighbors.relationTypes.length === 0 ||
+    settings.avoidRecentNeighbors.relationTypes.some((relation) => !supportedRelations.has(relation))
+  ) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
+  if (
+    !Number.isSafeInteger(settings.cooling.coolingPeriod) ||
+    settings.cooling.coolingPeriod < 1 ||
+    !Number.isSafeInteger(settings.cooling.withinDistance) ||
+    settings.cooling.withinDistance < 1 ||
+    settings.cooling.relationTypes.length === 0 ||
+    settings.cooling.relationTypes.some((relation) => !supportedRelations.has(relation))
+  ) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
+  const { mentorPercentile, learnerPercentile } = settings.mentorPairing;
+  if (
+    !Number.isFinite(mentorPercentile) ||
+    !Number.isFinite(learnerPercentile) ||
+    mentorPercentile < 0 ||
+    mentorPercentile > 1 ||
+    learnerPercentile < 0 ||
+    learnerPercentile > 1 ||
+    learnerPercentile >= mentorPercentile
+  ) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
 }
 
 function buildRulesOverlay(
   preferences: CommonPreferenceId[],
+  detailedRules?: DetailedRuleSettings,
+  groups?: CommonGroupRule[],
 ): Record<string, unknown> | undefined {
   const soft: Record<string, unknown> = {};
   for (const preference of preferences) {
@@ -173,6 +262,61 @@ function buildRulesOverlay(
       soft.mentor_pairing = { enabled: true };
     }
   }
+  if (detailedRules?.enabled) {
+    soft.fair_rotation = {
+      enabled: detailedRules.fairRotation.enabled,
+      weight: detailedRules.fairRotation.weight,
+      lookback: detailedRules.fairRotation.lookback,
+    };
+    soft.avoid_recent_neighbors = {
+      enabled: detailedRules.avoidRecentNeighbors.enabled,
+      weight: detailedRules.avoidRecentNeighbors.weight,
+      lookback: detailedRules.avoidRecentNeighbors.lookback,
+      max_recent_count: detailedRules.avoidRecentNeighbors.maxRecentCount,
+      within_distance: detailedRules.avoidRecentNeighbors.withinDistance,
+      relation_types: detailedRules.avoidRecentNeighbors.relationTypes,
+    };
+    soft.cooling = {
+      enabled: detailedRules.cooling.enabled,
+      weight: detailedRules.cooling.weight,
+      cooling_period: detailedRules.cooling.coolingPeriod,
+      within_distance: detailedRules.cooling.withinDistance,
+      relation_types: detailedRules.cooling.relationTypes,
+    };
+    soft.score_position = {
+      enabled: detailedRules.scorePosition.enabled,
+      weight: detailedRules.scorePosition.weight,
+      direction: detailedRules.scorePosition.direction,
+    };
+    soft.score_distribution = {
+      enabled: detailedRules.scoreDistribution.enabled,
+      weight: detailedRules.scoreDistribution.weight,
+      scope: detailedRules.scoreDistribution.scope,
+    };
+    soft.mentor_pairing = {
+      enabled: detailedRules.mentorPairing.enabled,
+      weight: detailedRules.mentorPairing.weight,
+      mentor_percentile: detailedRules.mentorPairing.mentorPercentile,
+      learner_percentile: detailedRules.mentorPairing.learnerPercentile,
+      relation: detailedRules.mentorPairing.relation,
+      avoid_recent_repeats: detailedRules.mentorPairing.avoidRecentRepeats,
+      history_lookback: detailedRules.mentorPairing.historyLookback,
+    };
+  }
+  const validGroups = (groups ?? [])
+    .map((group) => ({
+      name: group.name.trim(),
+      students: [...new Set(group.students.map((student) => student.trim()).filter(Boolean))],
+      separate: group.mode === "separate",
+      together: group.mode === "together",
+    }))
+    .filter((group) => group.name && group.students.length >= 2);
+  if (validGroups.length) {
+    return {
+      ...(Object.keys(soft).length ? { soft } : {}),
+      groups: validGroups,
+    };
+  }
   return Object.keys(soft).length ? { soft } : undefined;
 }
 
@@ -184,7 +328,9 @@ export function buildGenerateClassRequest({
   settings,
   roomSettings,
   constraints,
+  groups,
   preferences,
+  detailedRules,
 }: {
   className: string;
   students: Student[];
@@ -193,7 +339,9 @@ export function buildGenerateClassRequest({
   settings: AdvancedSolveSettings;
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
+  groups?: CommonGroupRule[];
   preferences: CommonPreferenceId[];
+  detailedRules?: DetailedRuleSettings;
 }): GenerateClassRequest {
   const customRules = parseJsonObject(settings.customRulesJson, "rules");
   const customLayout = roomSettings.enabled
@@ -202,7 +350,10 @@ export function buildGenerateClassRequest({
       : buildGridLayout(roomSettings)
     : undefined;
   const hardRules = buildHardRules(constraints);
-  const rulesOverlay = buildRulesOverlay(preferences);
+  if (detailedRules) {
+    validateDetailedRules(detailedRules);
+  }
+  const rulesOverlay = buildRulesOverlay(preferences, detailedRules, groups);
   const seedText = settings.seed.trim();
   const seed = seedText === "" ? undefined : Number(seedText);
   if (seed !== undefined && !Number.isSafeInteger(seed)) {
@@ -241,5 +392,62 @@ export function buildGenerateClassRequest({
       time_limit_seconds: settings.timeLimitSeconds,
       backend: settings.backend,
     },
+  };
+}
+
+export function buildGenerateRotationPlanRequest({
+  className,
+  students,
+  selectedRoomId,
+  selectedGoalId,
+  settings,
+  roomSettings,
+  constraints,
+  groups,
+  preferences,
+  detailedRules,
+  rotation,
+}: {
+  className: string;
+  students: Student[];
+  selectedRoomId: string;
+  selectedGoalId: string;
+  settings: AdvancedSolveSettings;
+  roomSettings: CustomRoomSettings;
+  constraints: CommonConstraint[];
+  groups?: CommonGroupRule[];
+  preferences: CommonPreferenceId[];
+  detailedRules?: DetailedRuleSettings;
+  rotation: RotationSettings;
+}): GenerateRotationPlanRequest {
+  const base = buildGenerateClassRequest({
+    className,
+    students,
+    selectedRoomId,
+    selectedGoalId,
+    settings,
+    roomSettings,
+    constraints,
+    groups,
+    preferences,
+    detailedRules,
+  });
+  const periodLabels = rotation.periodLabels
+    .split(/[\n,，]+/u)
+    .map((label) => label.trim())
+    .filter(Boolean);
+  if (
+    !Number.isInteger(rotation.periodCount) ||
+    rotation.periodCount < 1 ||
+    rotation.periodCount > 20 ||
+    (periodLabels.length > 0 && periodLabels.length !== rotation.periodCount)
+  ) {
+    throw new InvalidAdvancedSettingError("rotation");
+  }
+  return {
+    draft: base.draft,
+    period_count: rotation.periodCount,
+    ...(periodLabels.length ? { period_labels: periodLabels } : {}),
+    options: base.options,
   };
 }

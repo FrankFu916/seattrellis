@@ -4,7 +4,9 @@ import { RosterApiError, previewRosterUpdate, uploadRosterDraft } from "../api/c
 import { demoStudents } from "../api/demo";
 import type {
   RosterDraftResponse,
+  RosterConflictItem,
   RosterFieldName,
+  RosterMappingIssueItem,
   RosterMappingItem,
   RosterUpdateMode,
   RosterUpdatePreviewResponse,
@@ -34,6 +36,49 @@ type RosterImportPanelProps = {
   onImportConfirmed: (students: Student[]) => void;
 };
 
+function fieldLabel(field: RosterFieldName | null, t: Translate): string {
+  if (!field) {
+    return t("roster.identityField");
+  }
+  return t(`roster.field.${field}` as Parameters<Translate>[0]);
+}
+
+function mappingIssueMessage(issue: RosterMappingIssueItem, t: Translate): string {
+  switch (issue.code) {
+    case "missing_identity":
+      return t("roster.mappingIssueMissingIdentity");
+    case "ambiguous_header":
+      return t("roster.mappingIssueAmbiguous", {
+        field: fieldLabel(issue.field, t),
+      });
+    default:
+      return t("roster.mappingIssueGeneric");
+  }
+}
+
+function conflictMessage(conflict: RosterConflictItem, t: Translate): string {
+  switch (conflict.code) {
+    case "duplicate_existing_student_id":
+      return t("roster.conflictDuplicateExistingId");
+    case "duplicate_incoming_student_id":
+      return t("roster.conflictDuplicateIncomingId");
+    case "duplicate_incoming_name":
+      return t("roster.conflictDuplicateIncomingName");
+    case "existing_student_matched_twice":
+      return t("roster.conflictMatchedTwice");
+    case "duplicate_resulting_identifier":
+      return t("roster.conflictDuplicateResult");
+    case "ambiguous_student_id":
+      return t("roster.conflictAmbiguousId");
+    case "ambiguous_name":
+      return t("roster.conflictAmbiguousName");
+    case "student_id_name_mismatch":
+      return t("roster.conflictIdNameMismatch");
+    default:
+      return t("roster.conflictGeneric");
+  }
+}
+
 export function RosterImportPanel({
   locale,
   t,
@@ -53,13 +98,32 @@ export function RosterImportPanel({
 
   const friendlyError = useCallback((err: unknown): string => {
     if (err instanceof RosterApiError) {
-      return err.message;
+      switch (err.code) {
+        case "roster_file_required":
+          return t("roster.errorFileRequired");
+        case "roster_file_too_large":
+          return t("roster.errorFileTooLarge");
+        case "invalid_roster_file":
+          return t("roster.errorInvalidFile");
+        case "roster_mapping_rejected":
+          return t("roster.errorMappingRejected");
+        case "feature_unavailable":
+          return t("roster.errorUnavailable");
+        case "roster_draft_not_found":
+          return t("roster.errorExpired");
+        default:
+          return t("roster.errorGeneric");
+      }
     }
     if (err instanceof Error) {
-      return err.message;
+      // Do not expose implementation details (for example a raw fetch or
+      // parser error) in the teacher-facing panel.  Keep the original error
+      // available to the browser console while presenting a useful action.
+      console.error("Roster import failed", err);
+      return t("roster.errorGeneric");
     }
-    return String(err);
-  }, []);
+    return t("roster.errorGeneric");
+  }, [t]);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -91,10 +155,22 @@ export function RosterImportPanel({
 
   function handleMappingChange(columnIndex: number, field: RosterFieldName | null) {
     setMapping((prev) => ({ ...prev, [columnIndex]: field }));
+    // A preview belongs to the exact mapping and mode used to create it.
+    // Clear it as soon as either input changes so the confirmation button can
+    // never apply an outdated result.
+    setPreview(null);
+    setError(null);
   }
 
   async function handlePreview() {
     if (!draft) {
+      return;
+    }
+    const hasIdentityMapping = Object.values(mapping).some(
+      (field) => field === "name" || field === "student_id",
+    );
+    if (!hasIdentityMapping) {
+      setError(t("roster.mappingIssueMissingIdentity"));
       return;
     }
     setPhase("previewing");
@@ -122,33 +198,31 @@ export function RosterImportPanel({
       setIsPreviewing(false);
     } catch (err) {
       setError(friendlyError(err));
-      setPhase("error");
+      // Keep the draft and mapping visible so the teacher can correct the
+      // selection and retry.  A preview failure is not an upload failure.
+      setPhase("mapping");
       setIsPreviewing(false);
     }
   }
 
   function handleConfirm() {
-    if (preview?.resulting_students) {
-      onImportConfirmed(
-        preview.resulting_students.map((student) => ({
-          id: student.student_id || student.name || "",
-          name: student.name || student.student_id || "",
-          gender: student.gender,
-          heightCm: student.height_cm,
-          score: student.score,
-          vision: student.vision,
-          tags: student.tags,
-          needs: student.needs,
-          notes: student.notes,
-          attributes: student.attributes,
-        })),
-      );
-    } else if (preview && preview.can_apply) {
-      // Fallback: if resulting students are not provided but it's safe,
-      // derive from changes — but the API always provides resulting_students
-      // when can_apply is true. If not, we cannot proceed safely.
-      onImportConfirmed(currentStudents);
+    if (!preview?.can_apply || hasConflicts || !preview.resulting_students) {
+      return;
     }
+    onImportConfirmed(
+      preview.resulting_students.map((student) => ({
+        id: student.student_id || student.name || "",
+        name: student.name || student.student_id || "",
+        gender: student.gender,
+        heightCm: student.height_cm,
+        score: student.score,
+        vision: student.vision,
+        tags: student.tags,
+        needs: student.needs,
+        notes: student.notes,
+        attributes: student.attributes,
+      })),
+    );
     reset();
   }
 
@@ -184,6 +258,9 @@ export function RosterImportPanel({
   }, [preview, t]);
 
   const hasConflicts = (preview?.action_counts.conflict ?? 0) > 0 || (preview?.conflicts.length ?? 0) > 0;
+  const canConfirm = Boolean(
+    preview?.can_apply && preview.resulting_students && !hasConflicts,
+  );
 
   return (
     <div className="roster-import-panel">
@@ -223,6 +300,13 @@ export function RosterImportPanel({
           <h3>{t("roster.previewTitle")}</h3>
           <p className="muted">{t("roster.previewHint")}</p>
 
+          {draft.headerless ? (
+            <div className="roster-import-note" role="status">
+              <strong>{t("roster.headerlessTitle")}</strong>
+              <span>{t("roster.headerlessHint")}</span>
+            </div>
+          ) : null}
+
           <div className="roster-preview-table" role="table">
             <div className="roster-preview-head" role="row">
               {draft.columns.map((col) => (
@@ -244,6 +328,7 @@ export function RosterImportPanel({
 
           <fieldset className="mapping-fieldset">
             <legend>{t("roster.mapping")}</legend>
+            <p className="mapping-help">{t("roster.mappingHint")}</p>
             {draft.columns.map((col) => (
               <label key={col.index} className="mapping-row">
                 <span>{columnLabel(col.index, col.header)}</span>
@@ -259,7 +344,7 @@ export function RosterImportPanel({
                   <option value="">{t("roster.notMapped")}</option>
                   {FIELD_OPTIONS.map((field) => (
                     <option key={field} value={field}>
-                      {field}
+                      {fieldLabel(field, t)}
                     </option>
                   ))}
                 </select>
@@ -270,7 +355,16 @@ export function RosterImportPanel({
           {draft.mapping_issues.length > 0 ? (
             <ul className="mapping-issues" role="alert">
               {draft.mapping_issues.map((issue, idx) => (
-                <li key={idx}>{issue.message}</li>
+                <li key={idx}>
+                  {mappingIssueMessage(issue, t)}
+                  {issue.column_indices.length > 0 ? (
+                    <small>
+                      {t("roster.columnsToCheck", {
+                        columns: issue.column_indices.map((index) => index + 1).join(", "),
+                      })}
+                    </small>
+                  ) : null}
+                </li>
               ))}
             </ul>
           ) : null}
@@ -282,7 +376,11 @@ export function RosterImportPanel({
                 type="radio"
                 name="roster-mode"
                 checked={mode === "incremental"}
-                onChange={() => setMode("incremental")}
+                onChange={() => {
+                  setMode("incremental");
+                  setPreview(null);
+                  setError(null);
+                }}
               />
               <span>
                 <strong>{t("roster.incremental")}</strong>
@@ -294,7 +392,11 @@ export function RosterImportPanel({
                 type="radio"
                 name="roster-mode"
                 checked={mode === "replace"}
-                onChange={() => setMode("replace")}
+                onChange={() => {
+                  setMode("replace");
+                  setPreview(null);
+                  setError(null);
+                }}
               />
               <span>
                 <strong>{t("roster.overwrite")}</strong>
@@ -309,7 +411,7 @@ export function RosterImportPanel({
             onClick={handlePreview}
             disabled={isPreviewing}
           >
-            {isPreviewing ? t("roster.previewing") : t("action.preview")}
+            {isPreviewing ? t("roster.previewing") : t("roster.previewAction")}
           </button>
 
           {isPreviewing ? (
@@ -334,8 +436,12 @@ export function RosterImportPanel({
                 ))}
               </div>
 
-              <p className={hasConflicts ? "preview-warn" : "preview-ok"}>
-                {hasConflicts ? t("roster.hasConflicts") : t("roster.canApply")}
+              <p className={!canConfirm ? "preview-warn" : "preview-ok"}>
+                {hasConflicts
+                  ? t("roster.hasConflicts")
+                  : canConfirm
+                    ? t("roster.canApply")
+                    : t("roster.previewIncomplete")}
               </p>
 
               {preview.conflicts.length > 0 ? (
@@ -343,13 +449,24 @@ export function RosterImportPanel({
                   <summary>{t("roster.conflicts")}</summary>
                   <ul>
                     {preview.conflicts.map((conflict, idx) => (
-                      <li key={idx}>{conflict.message}</li>
+                      <li key={idx}>
+                        {conflictMessage(conflict, t)}
+                        {conflict.incoming_index !== null ? (
+                          <small>
+                            {t("roster.rowToCheck", {
+                              row: conflict.incoming_index + 2,
+                            })}
+                          </small>
+                        ) : null}
+                      </li>
                     ))}
                   </ul>
                 </details>
               ) : (
                 <p className="muted">{t("roster.noConflicts")}</p>
               )}
+
+              <p className="preview-confirm-hint">{t("roster.confirmHint")}</p>
 
               <div className="preview-actions">
                 <button
@@ -363,7 +480,7 @@ export function RosterImportPanel({
                   type="button"
                   className="primary-button"
                   onClick={handleConfirm}
-                  disabled={!preview.can_apply || hasConflicts}
+                  disabled={!canConfirm}
                 >
                   {t("roster.confirm")}
                 </button>

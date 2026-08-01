@@ -284,6 +284,11 @@ class GenerateRotationPlanResponse(VersionedResponse):
     goal: ResolvedGoalSummary
     warnings: list[str] = Field(default_factory=list)
     rotation_plan: RotationPlan
+    # The first period is exposed through the same editing protocol as a
+    # regular solve.  Each additional period has its own draft as well, so a
+    # teacher can switch periods without losing the existing edit history.
+    editor: EditorStateEnvelope
+    period_editors: list[EditorStateEnvelope] = Field(default_factory=list)
 
 
 class RecentProjectItem(ApiModel):
@@ -317,6 +322,43 @@ class ProjectPathRequest(ApiModel):
         return text
 
 
+class ProjectArtifactProvenance(ApiModel):
+    """Privacy-safe origin information for a project artifact.
+
+    The history endpoint intentionally exposes only a summary.  In particular,
+    it never returns command payloads, student identifiers, or the raw metadata
+    object.  ``parent_name`` is reduced to a filename before it crosses the API
+    boundary so the UI can show a source chain without leaking local paths.
+    """
+
+    source: Literal[
+        "generated",
+        "manual_edit",
+        "rotation_edit",
+        "restored",
+        "unknown",
+    ]
+    parent_name: str | None = None
+    operation_count: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class ProjectArtifactOperation(ApiModel):
+    """One anonymous editing event shown in a project history timeline."""
+
+    sequence: int = Field(ge=1)
+    action: Literal["apply", "undo", "redo", "unknown"]
+    operation_count: int = Field(ge=0, le=100)
+    operation_kinds: list[str] = Field(default_factory=list, max_length=5)
+    # Rotation plans contain one editing timeline per period.  These fields
+    # are optional so older artifacts remain wire-compatible and continue to
+    # render without inventing a period or timestamp.
+    period: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+    recorded_at: datetime | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+
+
 class ProjectArtifactItem(ApiModel):
     """Metadata for one historical or generated project artifact."""
 
@@ -328,6 +370,12 @@ class ProjectArtifactItem(ApiModel):
     size_bytes: int = Field(ge=0)
     student_count: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=0)
+    provenance: ProjectArtifactProvenance | None = None
+    operation_history: list[ProjectArtifactOperation] = Field(
+        default_factory=list,
+        max_length=100,
+    )
+    operation_history_truncated: bool = False
 
 
 class ProjectHistoryResponse(VersionedResponse):
@@ -338,6 +386,351 @@ class ProjectHistoryResponse(VersionedResponse):
     history: list[ProjectArtifactItem] = Field(default_factory=list)
     outputs: list[ProjectArtifactItem] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class ProjectArtifactRequest(ProjectPathRequest):
+    """Select one project artifact without allowing arbitrary file access."""
+
+    artifact_path: str
+    compare_to_path: str | None = None
+
+    @field_validator("artifact_path", "compare_to_path", mode="before")
+    def clean_artifact_path(cls, value: object, info: ValidationInfo) -> object:
+        if value is None and info.field_name == "compare_to_path":
+            return None
+        if not isinstance(value, str):
+            raise ValueError(f"{info.field_name} must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError(f"{info.field_name} cannot be empty.")
+        return text
+
+
+class ProjectArtifactSummary(ApiModel):
+    """Privacy-safe summary of a snapshot-like project artifact."""
+
+    name: str
+    path: str
+    kind: Literal["snapshot", "candidate_set", "rotation_plan", "unknown"]
+    created_at: datetime | None = None
+    student_count: int | None = Field(default=None, ge=0)
+    assignment_count: int | None = Field(default=None, ge=0)
+    enabled_seat_count: int | None = Field(default=None, ge=0)
+    solver_status: str | None = None
+
+
+class ProjectArtifactAssignmentChange(ApiModel):
+    """One privacy-safe assignment change without exposing student identifiers."""
+
+    student_ref: str
+    change: Literal["moved", "seated", "unseated"]
+    before_seat_id: str | None = None
+    after_seat_id: str | None = None
+
+
+class ProjectArtifactDiff(ApiModel):
+    """Counts and structural changes between two local artifacts."""
+
+    assignment_changes: int = Field(ge=0)
+    roster_added: int = Field(ge=0)
+    roster_removed: int = Field(ge=0)
+    layout_changed: bool
+    rules_changed: bool
+    solver_status_changed: bool
+    assignment_details: list[ProjectArtifactAssignmentChange] = Field(default_factory=list)
+
+
+class ProjectArtifactCompareResponse(VersionedResponse):
+    left: ProjectArtifactSummary
+    right: ProjectArtifactSummary
+    diff: ProjectArtifactDiff
+
+
+class ProjectArtifactRestoreResponse(VersionedResponse):
+    """Safe recovery creates a new output artifact rather than overwriting history."""
+
+    project_path: str
+    source_artifact: str
+    restored_artifact: str
+
+
+class ProjectMigrationRequest(ProjectPathRequest):
+    """Select a project file or in-project artifact for safe migration."""
+
+    artifact_path: str | None = None
+    in_place: bool = False
+
+    @field_validator("artifact_path", mode="before")
+    def clean_optional_artifact_path(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        return text or None
+
+
+class ProjectMigrationChange(ApiModel):
+    """Privacy-safe description of one normalized JSON field change."""
+
+    path: str
+    change: Literal["added", "removed", "changed"]
+    before_type: str | None = None
+    after_type: str | None = None
+
+
+class ProjectMigrationReferenceCheck(ApiModel):
+    """Status of one file or directory referenced by a project file."""
+
+    field: Literal["students", "layout", "rules", "history_dir", "outputs_dir"]
+    path: str
+    expected: Literal["file", "directory"]
+    status: Literal["ok", "missing", "wrong_type"]
+
+
+class ProjectMigrationResponse(VersionedResponse):
+    """Preview or result of one schema migration without exposing file data."""
+
+    project_path: str
+    source_path: str
+    artifact: str
+    schema_version: str | int
+    output_path: str | None = None
+    backup_path: str | None = None
+    dry_run: bool
+    before_valid: bool = True
+    after_valid: bool | None = None
+    rollback_available: bool = False
+    change_count: int = Field(default=0, ge=0)
+    changes: list[ProjectMigrationChange] = Field(default_factory=list)
+    reference_checks: list[ProjectMigrationReferenceCheck] = Field(default_factory=list)
+
+
+class ProjectMigrationBatchRequest(ApiModel):
+    """Preview several project files together before a migration run."""
+
+    project_paths: list[str] = Field(min_length=2, max_length=20)
+    in_place: bool = False
+
+    @field_validator("project_paths", mode="before")
+    def clean_project_paths(cls, value: object) -> list[str]:
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("project_paths must be a list of strings.")
+        cleaned: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("project_paths must contain non-empty strings.")
+            path = item.strip()
+            if path in cleaned:
+                raise ValueError("project_paths must not contain duplicates.")
+            cleaned.append(path)
+        return cleaned
+
+
+class ProjectMigrationSharedReference(ApiModel):
+    """A reference file shared by multiple selected projects."""
+
+    path: str
+    projects: list[str] = Field(min_length=2, max_length=20)
+    fields: list[str] = Field(min_length=1, max_length=5)
+
+
+class ProjectMigrationBatchResponse(VersionedResponse):
+    """Combined migration preview with cross-project reference warnings."""
+
+    projects: list[ProjectMigrationResponse] = Field(min_length=2, max_length=20)
+    shared_references: list[ProjectMigrationSharedReference] = Field(default_factory=list)
+    ready: bool = True
+
+
+class ProjectMigrationRestoreRequest(ProjectPathRequest):
+    """Restore one migration backup to its original project artifact."""
+
+    source_path: str
+    backup_path: str
+
+    @field_validator("source_path", "backup_path", mode="before")
+    def clean_restore_path(cls, value: object, info: ValidationInfo) -> str:
+        if not isinstance(value, str):
+            raise ValueError(f"{info.field_name} must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError(f"{info.field_name} cannot be empty.")
+        return text
+
+
+class ProjectMigrationRestoreResponse(VersionedResponse):
+    """Result of a safe migration-backup restoration."""
+
+    project_path: str
+    source_path: str
+    backup_path: str
+    safety_backup_path: str | None = None
+    artifact: str
+    schema_version: str | int
+    restored_valid: bool = True
+
+
+class ProjectRotationSaveRequest(ProjectPathRequest):
+    """Persist the current server-owned period drafts as a project artifact."""
+
+    rotation_plan: RotationPlan
+    draft_ids: list[str] = Field(min_length=1, max_length=20)
+    output_name: str | None = None
+
+    @field_validator("draft_ids", mode="before")
+    def clean_draft_ids(cls, value: object) -> list[str]:
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("draft_ids must be a list of strings.")
+        cleaned: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("draft_ids must contain non-empty strings.")
+            draft_id = item.strip()
+            if draft_id in cleaned:
+                raise ValueError("draft_ids must be unique.")
+            cleaned.append(draft_id)
+        return cleaned
+
+    @field_validator("output_name", mode="before")
+    def clean_output_name(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("output_name must be a string.")
+        name = value.strip()
+        if not name:
+            return None
+        if name in {".", ".."} or any(char in name for char in ("/", "\\", ":", "\x00")):
+            raise ValueError("output_name must be a file name, not a path.")
+        if not name.endswith(".json"):
+            name = f"{name}.json"
+        return name
+
+    @model_validator(mode="after")
+    def draft_count_matches_plan(
+        self,
+    ) -> "ProjectRotationSaveRequest":
+        if len(self.draft_ids) != len(self.rotation_plan.periods):
+            raise ValueError(
+                "draft_ids must contain one editing draft for every rotation period."
+            )
+        return self
+
+
+class ProjectRotationSaveResponse(VersionedResponse):
+    """Result of saving edited rotation periods to a new project artifact."""
+
+    project_path: str
+    output_path: str
+    period_count: int = Field(ge=1)
+    saved_at: datetime
+
+
+class ProjectRotationLoadRequest(ProjectPathRequest):
+    """Select one saved rotation plan for continued local editing."""
+
+    artifact_path: str
+
+    @field_validator("artifact_path", mode="before")
+    def clean_rotation_artifact_path(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("artifact_path cannot be empty.")
+        return text
+
+
+class ProjectRotationLoadResponse(VersionedResponse):
+    """Rotation plan and fresh editing drafts restored from a project file."""
+
+    project_path: str
+    artifact_path: str
+    rotation_plan: RotationPlan
+    editor: EditorStateEnvelope
+    period_editors: list[EditorStateEnvelope] = Field(min_length=1)
+
+
+class ProjectGroupRegisterRequest(ProjectPathRequest):
+    """Request a printable register for named groups in one rotation plan."""
+
+    artifact_path: str
+    format: Literal["html", "csv"] = "html"
+    locale: Literal["zh", "en"] = "zh"
+
+    @field_validator("artifact_path", mode="before")
+    def clean_group_register_artifact_path(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("artifact_path cannot be empty.")
+        return text
+
+
+class ProjectGroupRegisterPreviewRequest(ProjectPathRequest):
+    """Select a saved rotation plan for a privacy-safe membership preview."""
+
+    artifact_path: str
+
+    @field_validator("artifact_path", mode="before")
+    def clean_preview_artifact_path(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("artifact_path cannot be empty.")
+        return text
+
+
+class ProjectGroupMemberChange(ApiModel):
+    """One anonymous membership change between two rotation periods."""
+
+    student_ref: str
+    change: Literal["added", "removed"]
+
+
+class ProjectGroupPreview(ApiModel):
+    """Privacy-safe summary of one named group in one period.
+
+    The API deliberately returns anonymous references instead of student IDs or
+    names.  Teachers can use the counts to spot changes before downloading the
+    full register, while project history and preview responses do not add a
+    second path for student records to leave the local service.
+    """
+
+    name: str
+    member_count: int = Field(ge=0)
+    seated_count: int = Field(ge=0)
+    unseated_count: int = Field(ge=0)
+    missing_count: int = Field(ge=0)
+    added_count: int = Field(ge=0)
+    removed_count: int = Field(ge=0)
+    member_changes: list[ProjectGroupMemberChange] = Field(
+        default_factory=list,
+        max_length=50,
+    )
+
+
+class ProjectGroupRegisterPeriodPreview(ApiModel):
+    """Group summaries for one period and its comparison baseline."""
+
+    period: int = Field(ge=1)
+    label: str
+    compared_to_period: int | None = Field(default=None, ge=1)
+    groups: list[ProjectGroupPreview] = Field(default_factory=list)
+
+
+class ProjectGroupRegisterPreviewResponse(VersionedResponse):
+    """Preview group membership changes without returning student records."""
+
+    project_path: str
+    artifact_path: str
+    plan_name: str
+    period_count: int = Field(ge=1)
+    periods: list[ProjectGroupRegisterPeriodPreview] = Field(min_length=1)
+    has_changes: bool = False
 
 
 class PrivacyFindingItem(ApiModel):
@@ -494,7 +887,7 @@ class RosterColumnItem(ApiModel):
 
 
 class RosterPreviewRow(ApiModel):
-    row_number: int = Field(ge=2)
+    row_number: int = Field(ge=1)
     cells: list[str | int | float | bool | None]
 
 
@@ -519,6 +912,7 @@ class RosterMappingIssueItem(ApiModel):
 class RosterDraftResponse(VersionedResponse):
     draft_id: str
     source_format: Literal["csv", "xlsx"]
+    headerless: bool = False
     row_count: int = Field(ge=0)
     column_count: int = Field(ge=1)
     columns: list[RosterColumnItem]

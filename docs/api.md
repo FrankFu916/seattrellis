@@ -35,7 +35,35 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 本地 React 工作台使用同一套项目服务：
 
 - `GET /api/v1/projects/recent?root=...&limit=...` 返回最近项目的名称、路径和修改时间；
-- `POST /api/v1/projects/history` 返回历史/生成文件的元数据，不返回学生记录；
+- `POST /api/v1/projects/history` 返回历史/生成文件的元数据，不返回学生记录；每个文件还
+  可带有隐私安全的 `provenance` 摘要（来源类型、上一级文件名和操作次数），不会在
+  摘要中返回原始操作命令或上一级文件的本机路径；`operation_history` 只包含脱敏后的
+  操作序号、动作类型和调整类别；
+- `POST /api/v1/projects/artifacts/compare` 比较两个历史或输出文件，只返回隐私安全的
+  方案摘要和结构变化数量；
+- `POST /api/v1/projects/artifacts/restore` 从一个历史或输出文件创建新的输出 snapshot，
+  不覆盖原始文件；
+- `POST /api/v1/projects/migration/preview` 校验项目主文件或项目内 artifact，并返回当前
+  schema、默认迁移目标、字段级结构变化、迁移前校验和回滚提示；差异只包含路径和类型，
+  不返回学生原始值。迁移项目主文件时还会返回每个名单、布局、规则、历史目录和输出目录
+  引用的存在性与类型检查；
+- `POST /api/v1/projects/migration/apply` 写入迁移结果。默认创建新的 `.migrated.json` 文件，
+  只有显式传入 `in_place: true` 才会替换源文件，并先生成 `.bak` 备份；写入后会再次
+  校验输出文件，并返回备份路径和字段变化摘要；
+- `POST /api/v1/projects/migration/batch/preview` 一次检查多个项目主文件，返回每个项目的
+  独立迁移摘要，并标出多个项目共同引用的名单、布局、规则或目录；该接口只预览，不会写入文件；
+- `POST /api/v1/projects/rotation/save` 根据当前每一期的服务端编辑草稿写入新的
+  `rotation-plan.json` 输出；保存会校验名单和布局与生成时一致，不覆盖已有文件，并把
+  Web 编辑命令写入每一期 snapshot 的 `metadata.manual_edit`；
+- `POST /api/v1/projects/rotation/load` 从项目 history 或 outputs 中安全载入一个
+  `rotation_plan`，重新创建每一期的短期编辑草稿，供浏览器或桌面端继续调整；
+- `POST /api/v1/projects/rotation/group-register` 从已保存的 `rotation_plan` 生成小组登记表，
+  支持可打印 HTML 和带 UTF-8 BOM 的 CSV；每一期都会保留空组、名单中不存在的成员和未入座学生，
+  不会改写原始项目文件；
+- `POST /api/v1/projects/rotation/group-register/preview` 在下载前按期次汇总小组人数、已入座、
+  未入座和名单缺失情况，并比较相邻期次的新增/移出人数。响应只含匿名引用和统计，不返回姓名或学号；
+- `POST /api/v1/classes/rotation` 根据一个班级草稿生成多个未来 period，并返回每一期的
+  独立编辑草稿；
 - `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；
 - `POST /api/v1/projects/bundle` 下载 `.seattrellis.zip`；
 - `POST /api/v1/projects/restore` 接收本地 bundle 路径或 multipart 上传并恢复到指定目录。

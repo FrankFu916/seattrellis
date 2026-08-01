@@ -9,11 +9,22 @@ import type {
   ExportDraftRequest,
   GenerateClassRequest,
   GenerateClassResponse,
+  GenerateRotationPlanRequest,
+  GenerateRotationPlanResponse,
   HealthResponse,
   ProjectHistoryResponse,
+  ProjectArtifactCompareResponse,
+  ProjectArtifactRestoreResponse,
+  ProjectGroupRegisterPreviewResponse,
+  ProjectMigrationResponse,
+  ProjectMigrationBatchResponse,
+  ProjectMigrationRestoreResponse,
+  ProjectRotationLoadResponse,
+  ProjectRotationSaveResponse,
   ProjectListResponse,
   ProjectPrivacyResponse,
   ProjectRestoreResponse,
+  RotationPlan,
   LayoutCommand,
   LayoutStateResponse,
   RosterDraftResponse,
@@ -25,6 +36,7 @@ const API_ROOT = "/api/v1";
 const REQUEST_TIMEOUT_MS = 1800;
 const ROSTER_TIMEOUT_MS = 30_000;
 const GENERATE_TIMEOUT_MS = 30_000;
+let cachedDesktopSessionToken: string | null | undefined;
 
 export const EDITOR_PROTOCOL_VERSION = "1.0";
 
@@ -132,6 +144,201 @@ export async function fetchProjectHistory(
       include_outputs: includeOutputs,
     }),
   });
+}
+
+export async function compareProjectArtifacts(
+  projectPath: string,
+  artifactPath: string,
+  compareToPath: string,
+): Promise<ProjectArtifactCompareResponse> {
+  return fetchJson<ProjectArtifactCompareResponse>("/projects/artifacts/compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      artifact_path: artifactPath,
+      compare_to_path: compareToPath,
+    }),
+  }, 30_000);
+}
+
+export async function restoreProjectArtifact(
+  projectPath: string,
+  artifactPath: string,
+): Promise<ProjectArtifactRestoreResponse> {
+  return fetchJson<ProjectArtifactRestoreResponse>("/projects/artifacts/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      artifact_path: artifactPath,
+    }),
+  }, 30_000);
+}
+
+export async function previewProjectMigration(
+  projectPath: string,
+  artifactPath?: string,
+  inPlace = false,
+): Promise<ProjectMigrationResponse> {
+  return fetchJson<ProjectMigrationResponse>("/projects/migration/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      ...(artifactPath ? { artifact_path: artifactPath } : {}),
+      in_place: inPlace,
+    }),
+  }, 30_000);
+}
+
+export async function applyProjectMigration(
+  projectPath: string,
+  artifactPath?: string,
+  inPlace = false,
+): Promise<ProjectMigrationResponse> {
+  return fetchJson<ProjectMigrationResponse>("/projects/migration/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      ...(artifactPath ? { artifact_path: artifactPath } : {}),
+      in_place: inPlace,
+    }),
+  }, 30_000);
+}
+
+export async function previewProjectMigrationBatch(
+  projectPaths: string[],
+  inPlace = false,
+): Promise<ProjectMigrationBatchResponse> {
+  return fetchJson<ProjectMigrationBatchResponse>("/projects/migration/batch/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_paths: projectPaths, in_place: inPlace }),
+  }, 30_000);
+}
+
+export async function applyProjectMigrationBatch(
+  projectPaths: string[],
+  inPlace = false,
+): Promise<ProjectMigrationBatchResponse> {
+  return fetchJson<ProjectMigrationBatchResponse>("/projects/migration/batch/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_paths: projectPaths, in_place: inPlace }),
+  }, 30_000);
+}
+
+export async function restoreProjectMigrationBackup(
+  projectPath: string,
+  sourcePath: string,
+  backupPath: string,
+): Promise<ProjectMigrationRestoreResponse> {
+  return fetchJson<ProjectMigrationRestoreResponse>(
+    "/projects/migration/restore",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_path: projectPath,
+        source_path: sourcePath,
+        backup_path: backupPath,
+      }),
+    },
+    30_000,
+  );
+}
+
+export async function saveProjectRotationPlan(
+  projectPath: string,
+  rotationPlan: RotationPlan,
+  draftIds: string[],
+  outputName?: string,
+): Promise<ProjectRotationSaveResponse> {
+  return fetchJson<ProjectRotationSaveResponse>(
+    "/projects/rotation/save",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_path: projectPath,
+        rotation_plan: rotationPlan,
+        draft_ids: draftIds,
+        ...(outputName ? { output_name: outputName } : {}),
+      }),
+    },
+    30_000,
+  );
+}
+
+export async function loadProjectRotationPlan(
+  projectPath: string,
+  artifactPath: string,
+): Promise<ProjectRotationLoadResponse> {
+  return fetchJson<ProjectRotationLoadResponse>(
+    "/projects/rotation/load",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_path: projectPath,
+        artifact_path: artifactPath,
+      }),
+    },
+    30_000,
+  );
+}
+
+export async function downloadProjectGroupRegister(
+  projectPath: string,
+  artifactPath: string,
+  format: "html" | "csv" = "html",
+  locale: "zh" | "en" = "zh",
+): Promise<{ blob: Blob; filename: string }> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const sessionToken = readDesktopSessionToken();
+  if (sessionToken) {
+    headers.set("Authorization", `Bearer ${sessionToken}`);
+  }
+  const response = await fetch(`${API_ROOT}/projects/rotation/group-register`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      project_path: projectPath,
+      artifact_path: artifactPath,
+      format,
+      locale,
+    }),
+  });
+  if (!response.ok) {
+    const detail = await safeErrorDetail(response);
+    throw new RosterApiError(response.status, detail.code, detail.message);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return {
+    blob: await response.blob(),
+    filename: match ? match[1] : `group-register.${format}`,
+  };
+}
+
+export async function previewProjectGroupRegister(
+  projectPath: string,
+  artifactPath: string,
+): Promise<ProjectGroupRegisterPreviewResponse> {
+  return fetchJson<ProjectGroupRegisterPreviewResponse>(
+    "/projects/rotation/group-register/preview",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_path: projectPath,
+        artifact_path: artifactPath,
+      }),
+    },
+    30_000,
+  );
 }
 
 export async function scanProjectPrivacy(
@@ -281,6 +488,20 @@ export async function generateClass(
   );
 }
 
+export async function generateRotationPlan(
+  request: GenerateRotationPlanRequest,
+): Promise<GenerateRotationPlanResponse> {
+  return fetchJson<GenerateRotationPlanResponse>(
+    "/classes/rotation",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    GENERATE_TIMEOUT_MS,
+  );
+}
+
 export async function fetchEditorState(draftId: string): Promise<EditorState> {
   return fetchJson<EditorState>(`/editing/drafts/${draftId}`);
 }
@@ -327,18 +548,36 @@ function readDesktopSessionToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  try {
-    const query = new URLSearchParams(window.location.search);
-    const fromUrl = query.get("session");
-    if (fromUrl) {
+  if (cachedDesktopSessionToken !== undefined) {
+    return cachedDesktopSessionToken;
+  }
+
+  const fromUrl = new URLSearchParams(window.location.search).get("session");
+  if (fromUrl) {
+    // Some embedded WebView environments make sessionStorage unavailable. Keep
+    // an in-memory copy so the initial authenticated API calls still work.
+    cachedDesktopSessionToken = fromUrl;
+    try {
       window.sessionStorage.setItem("seattrellis.desktop.session", fromUrl);
+    } catch {
+      // The in-memory token above is sufficient for this desktop window.
+    }
+    try {
       // The credential is needed only for the first page load. Removing it
       // from the visible URL avoids leaking it through copied links or logs.
       window.history.replaceState({}, document.title, window.location.pathname);
-      return fromUrl;
+    } catch {
+      // History APIs may be restricted by an embedded WebView; keep the URL.
     }
-    return window.sessionStorage.getItem("seattrellis.desktop.session");
-  } catch {
-    return null;
+    return cachedDesktopSessionToken;
   }
+
+  try {
+    cachedDesktopSessionToken = window.sessionStorage.getItem(
+      "seattrellis.desktop.session",
+    );
+  } catch {
+    cachedDesktopSessionToken = null;
+  }
+  return cachedDesktopSessionToken;
 }

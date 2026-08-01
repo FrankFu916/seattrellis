@@ -25,7 +25,7 @@ from seattrellis.models.candidate import (
 )
 from seattrellis.models.history import PairHistory, SeatHistory
 from seattrellis.models.layout import ClassroomLayout
-from seattrellis.models.rules import RuleSet
+from seattrellis.models.rules import RuleSet, effective_neighbor_rule
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student, student_needs_front
 from seattrellis.solver.adjacency import build_adjacency_edges
@@ -318,7 +318,7 @@ def _score_recent_neighbors(
     rules: RuleSet,
     pair_history: PairHistory | None,
 ) -> ScoreDimension:
-    rule = rules.soft.avoid_recent_neighbors
+    rule = effective_neighbor_rule(rules)
     if not rule.enabled or rule.weight == 0:
         return _not_available("avoid_recent_neighbors is disabled.")
     if pair_history is None or pair_history.history_count == 0:
@@ -644,7 +644,7 @@ def _history_baseline_scores(
     previous_snapshots = snapshots[:-1]
     latest = snapshots[-1]
     seat_history = build_seat_history(students, layout, previous_snapshots)
-    pair_rule = rules.soft.avoid_recent_neighbors
+    pair_rule = effective_neighbor_rule(rules)
     pair_history = build_pair_history(
         students,
         layout,

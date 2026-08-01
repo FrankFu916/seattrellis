@@ -77,23 +77,42 @@ The `workspace` command starts the local API server and opens the browser
 workbench automatically (default address `http://127.0.0.1:8765`). The
 React workbench keeps the ordinary teacher flow focused:
 
-1. Upload a CSV or Excel roster, confirm auto-detected field mappings, preview
-   incremental or overwrite import impact, then apply;
+1. Upload a CSV or Excel roster, confirm auto-detected field mappings (common
+   headerless exports keep their first data row), preview incremental or full
+   replacement impact, then apply. You can also add,
+   remove, or correct student records directly in the workbench;
 2. Choose a classroom template, or set your own rows, columns, aisles, and
    unavailable seats. For irregular rooms, open the visual editor to turn
    cells into seats, aisles, platforms, or empty space;
 3. Choose a seating goal, then combine common preferences and requests such as
-   keeping students apart, keeping them together, or fixing a seat;
-4. Generate a plan, inspect score dimensions, and manually adjust seats with
-   undo and redo;
+   keeping students apart, keeping them together, or fixing a seat. When the
+   common controls are not precise enough, open **Detailed seating rules** to
+   configure history lookback, neighbor distance, score placement/distribution,
+   and peer-support pairing;
+4. Generate one plan or several future periods, inspect score dimensions, and
+   manually adjust seats with undo and redo;
 5. Export as HTML, Excel, PNG, PDF, Word, SVG, or PPTX.
 
 The Project panel beside the workflow can browse recent local project history,
 scan a project before sharing, and download or restore a `.seattrellis.zip`
-backup. Common irregular rooms and seating requests can be entered directly in
-the ordinary flow. The optional **Advanced settings** section is for complete
-rules JSON, candidate count, seed, time limit, and solver backend details.
-The default path does not require any of these settings.
+backup. Comparison can also expand an anonymous list of before/after seat
+changes. After generating a multi-period rotation and selecting a class project,
+you can save the current edits and operation history as a new rotation-plan
+output, or reopen an existing rotation output to continue editing. Common
+irregular rooms and seating requests can be entered directly in
+the ordinary flow. The **Detailed seating rules** panel only exposes rules that
+are connected to solving, validation, and scoring. Common named groups can be
+added in the ordinary settings as together/apart requests; the JSON compatibility
+field remains available for more complex group relationships. Relationship
+cooling is available in the detailed panel. The project migration view shows
+privacy-safe field changes, validation state, and the available backup or
+rollback path without returning original values. The optional **Advanced
+settings** section is for complete rules JSON, candidate count, seed, time limit,
+and solver backend details. The default path does not require any of these
+settings.
+For a saved rotation plan, the Project panel can also download a period-by-period
+group register as printable HTML or CSV. Empty groups, unseated students, and
+roster members missing from the saved data remain visible in the register.
 
 Use `--no-open-browser` to suppress auto-opening, or `--host` and `--port` to
 customize the listen address. For development, run the Vite dev server from
@@ -110,9 +129,9 @@ The Streamlit web UI is retained as a compatibility and advanced-configuration
 interface. It still exposes preset and rules overlays, history directories,
 candidate count, seed, time limit, backend selection, and detailed export
 privacy controls. Existing JSON and CLI workflows remain supported. The
-ordinary room and constraint controls in React are translated into the same
-layout and rules models. New users should use `seattrellis workspace`
-instead.
+ordinary room, constraint, and implemented detailed-rule controls in React are
+translated into the same layout and rules models. New users should use
+`seattrellis workspace` instead.
 
 ### Desktop development shell
 
@@ -130,7 +149,10 @@ python scripts/build_desktop.py
 ```
 
 Release archives are currently unsigned. Installers, signing, notarisation,
-and update support are planned separately.
+and update support are planned separately. The desktop shell passes a one-time
+local session token to the embedded workbench. If an older window still shows
+`session_required`, close the old process and reinstall or rebuild the desktop
+bundle from the current source.
 
 ## CLI
 
@@ -244,7 +266,7 @@ Current fair rotation and relationship avoidance use heuristic scoring from hist
 
 ## Release
 
-The current stable release is v1.8.2. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
+The current stable release is v1.8.3. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
