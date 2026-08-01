@@ -44,6 +44,10 @@
   lookback, recent-neighbor distance, relationship cooling, score placement and
   distribution, and peer-support pairing without writing JSON. Group constraints
   remain available through the raw rules file.
+- Added an ordinary **Group relationships** editor. Teachers can name a group,
+  choose together/apart behavior, and enter its student IDs without editing the
+  full rules JSON; invalid or incomplete groups are ignored until they contain
+  at least two members.
 - Group `together` and `separate` definitions are now compiled into the same
   hard adjacency checks used by every solver backend and manual-plan validator.
 - Cooling periods now compile into the shared recent-neighbor objective used by

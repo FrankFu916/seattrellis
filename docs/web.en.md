@@ -42,7 +42,8 @@ The default workspace keeps the ordinary path focused on classroom tasks:
 2. Accept the recommended 30-, 48-, or 60-seat room, or set custom rows, seats
    per row, aisle positions, and unavailable seats.
 3. Choose Daily rotation, Quick shuffle, or Peer support, combine preferences,
-   and add keep-apart, keep-together, or fixed-seat requests.
+   and add keep-apart, keep-together, fixed-seat, minimum-distance, or named
+   group requests.
 4. Review the recommended map, then swap, move, lock, undo, or redo as needed.
 5. Prepare and download either a public print or a teacher print.
 
@@ -94,7 +95,8 @@ The classroom editor supports clicking cells to create seats, aisles, platforms,
 or empty space, changing the grid, moving or mirroring the layout, and saving
 the result for generation. Student editing is available in the roster step. The
 detailed rules panel covers the implemented soft rules. A full visual RuleSet
-editor for all hard constraints and group membership remains on the roadmap.
+editor for every remaining hard-rule field remains on the roadmap; common group
+relationships are already available in the ordinary goal step.
 
 ## Advanced tools
 
