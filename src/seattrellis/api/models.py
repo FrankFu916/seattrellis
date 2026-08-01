@@ -453,6 +453,34 @@ class ProjectMigrationResponse(VersionedResponse):
     changes: list[ProjectMigrationChange] = Field(default_factory=list)
 
 
+class ProjectMigrationRestoreRequest(ProjectPathRequest):
+    """Restore one migration backup to its original project artifact."""
+
+    source_path: str
+    backup_path: str
+
+    @field_validator("source_path", "backup_path", mode="before")
+    def clean_restore_path(cls, value: object, info: ValidationInfo) -> str:
+        if not isinstance(value, str):
+            raise ValueError(f"{info.field_name} must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError(f"{info.field_name} cannot be empty.")
+        return text
+
+
+class ProjectMigrationRestoreResponse(VersionedResponse):
+    """Result of a safe migration-backup restoration."""
+
+    project_path: str
+    source_path: str
+    backup_path: str
+    safety_backup_path: str | None = None
+    artifact: str
+    schema_version: str | int
+    restored_valid: bool = True
+
+
 class ProjectRotationSaveRequest(ProjectPathRequest):
     """Persist the current server-owned period drafts as a project artifact."""
 

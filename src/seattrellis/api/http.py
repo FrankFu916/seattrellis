@@ -25,6 +25,7 @@ from seattrellis.api.handlers import (
     project_artifact_restore,
     project_migration_apply,
     project_migration_preview,
+    project_migration_restore,
     project_group_register,
     project_rotation_load,
     project_rotation_save,
@@ -64,6 +65,8 @@ from seattrellis.api.models import (
     ProjectListResponse,
     ProjectMigrationRequest,
     ProjectMigrationResponse,
+    ProjectMigrationRestoreRequest,
+    ProjectMigrationRestoreResponse,
     ProjectGroupRegisterRequest,
     ProjectPathRequest,
     ProjectPrivacyResponse,
@@ -618,6 +621,14 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/projects/migration/apply",
         project_migration_apply,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/restore",
+        project_migration_restore,
         methods=["POST"],
         response_model=None,
         responses={422: {"model": ErrorResponse}},

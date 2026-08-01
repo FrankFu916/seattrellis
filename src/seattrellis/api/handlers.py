@@ -39,6 +39,8 @@ from seattrellis.api.models import (
     ProjectHistoryResponse,
     ProjectListResponse,
     ProjectMigrationRequest,
+    ProjectMigrationRestoreRequest,
+    ProjectMigrationRestoreResponse,
     ProjectMigrationChange,
     ProjectMigrationResponse,
     ProjectGroupRegisterRequest,
@@ -96,6 +98,7 @@ from seattrellis.schema_migration import (
     merge_normalized_data,
     migrate_json_file,
     parse_migratable_artifact,
+    restore_json_backup,
 )
 from seattrellis.service_types import (
     CANVAS_EXPORT_FORMATS,
@@ -146,6 +149,7 @@ def capabilities() -> CapabilitiesResponse:
             "rotation-plans",
             "project-workspace",
             "project-migration",
+            "project-migration-restore",
             "project-rotation-save",
             "project-rotation-load",
             "project-group-register",
@@ -399,6 +403,52 @@ def project_migration_apply(
     """Write a migrated artifact, preserving the source unless explicitly in-place."""
 
     return _migrate_project_artifact(request, dry_run=False)
+
+
+def project_migration_restore(
+    request: ProjectMigrationRestoreRequest,
+) -> ProjectMigrationRestoreResponse:
+    """Restore an in-place migration backup without allowing arbitrary paths."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        source_path = _resolve_project_artifact(paths, request.source_path)
+        backup_path = _resolve_project_migration_backup(paths, request.backup_path)
+        expected_prefix = f"{source_path.name}.bak"
+        if backup_path.parent != source_path.parent or not backup_path.name.startswith(
+            expected_prefix
+        ):
+            raise InputFileError(
+                "The migration backup does not belong to the selected project artifact."
+            )
+        artifact, backup_model = parse_migratable_artifact(
+            read_json(backup_path), backup_path
+        )
+        safety_backup = restore_json_backup(backup_path, source_path)
+        restored_artifact, restored_model = parse_migratable_artifact(
+            read_json(source_path), source_path
+        )
+        if restored_artifact != artifact:
+            raise InputFileError("The restored backup has a different artifact type.")
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_migration_restore_failed",
+            message="The migration backup could not be restored.",
+        ) from exc
+    return ProjectMigrationRestoreResponse(
+        project_path=str(paths.project_file),
+        source_path=str(source_path),
+        backup_path=str(backup_path),
+        safety_backup_path=str(safety_backup) if safety_backup is not None else None,
+        artifact=artifact,
+        schema_version=getattr(
+            restored_model,
+            "schema_version",
+            getattr(backup_model, "schema_version"),
+        ),
+        restored_valid=True,
+    )
 
 
 def project_rotation_save(
@@ -955,6 +1005,27 @@ def _resolve_project_artifact(paths: ProjectPaths, requested: str) -> Path:
         raise InputFileError(
             "The artifact must be a file inside the project history or outputs directory."
         )
+    return candidate
+
+
+def _resolve_project_migration_backup(paths: ProjectPaths, requested: str) -> Path:
+    """Resolve a migration backup inside the selected project workspace."""
+
+    candidate = Path(requested).expanduser().resolve()
+    allowed_directories = [paths.root]
+    if paths.history_dir is not None:
+        allowed_directories.append(paths.history_dir)
+    allowed_directories.append(paths.outputs_dir)
+    inside_workspace = any(
+        candidate.parent == directory or directory in candidate.parents
+        for directory in allowed_directories
+    )
+    if not candidate.is_file() or not inside_workspace:
+        raise InputFileError(
+            "The migration backup must be a file inside the project workspace."
+        )
+    if ".bak" not in candidate.name:
+        raise InputFileError("The selected file is not a migration backup.")
     return candidate
 
 

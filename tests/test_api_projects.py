@@ -210,6 +210,39 @@ def test_project_schema_migration_in_place_keeps_a_backup(tmp_path) -> None:
     assert source.exists()
 
 
+def test_project_schema_migration_backup_can_be_restored_safely(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    client = _client()
+    source = paths["project"]
+    original = source.read_bytes()
+
+    applied = client.post(
+        "/api/v1/projects/migration/apply",
+        json={"project_path": str(source), "in_place": True},
+    )
+    assert applied.status_code == 200, applied.text
+    applied_payload = applied.json()
+    backup = Path(applied_payload["backup_path"])
+    changed = json.loads(source.read_text(encoding="utf-8"))
+    changed["name"] = "Changed locally"
+    source.write_text(json.dumps(changed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    restored = client.post(
+        "/api/v1/projects/migration/restore",
+        json={
+            "project_path": str(source),
+            "source_path": str(source),
+            "backup_path": str(backup),
+        },
+    )
+    assert restored.status_code == 200, restored.text
+    restored_payload = restored.json()
+    assert restored_payload["restored_valid"] is True
+    assert restored_payload["source_path"] == str(source)
+    assert Path(restored_payload["safety_backup_path"]).exists()
+    assert source.read_bytes() == original
+
+
 def test_project_rotation_save_persists_current_period_drafts(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
     client = _client()
