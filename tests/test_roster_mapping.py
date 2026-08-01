@@ -37,6 +37,15 @@ def test_suggestions_are_deterministic_and_cover_known_chinese_aliases() -> None
     }
 
 
+def test_headerless_roster_suggests_name_and_long_numeric_id_columns() -> None:
+    table = _table("小林,18513806422\n小周,18513806423\n")
+
+    suggestion = suggest_roster_mapping(table)
+
+    assert suggestion.mapping.as_dict() == {"student_id": 1, "name": 0}
+    assert suggestion.requires_input is False
+
+
 def test_duplicate_alias_headers_are_left_for_manual_mapping() -> None:
     table = _table("学号,姓名,姓名\n1,Alice,Alias\n")
 
@@ -125,4 +134,3 @@ def test_mapping_template_parser_is_strict() -> None:
         RosterMappingTemplate.from_dict({**data, "schema_version": 2})
     with pytest.raises(ValueError, match="Unknown roster mapping template fields"):
         RosterMappingTemplate.from_dict({**data, "source_path": "/private/class.xlsx"})
-

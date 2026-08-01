@@ -393,7 +393,7 @@ def create_app(
                 code="invalid_roster_file",
                 message=(
                     "The roster could not be read. Use a UTF-8 CSV or a valid "
-                    "Excel workbook with a header row."
+                    "Excel workbook. A header row is optional."
                 ),
             ) from exc
 

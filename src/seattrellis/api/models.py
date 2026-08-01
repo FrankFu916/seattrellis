@@ -705,7 +705,7 @@ class RosterColumnItem(ApiModel):
 
 
 class RosterPreviewRow(ApiModel):
-    row_number: int = Field(ge=2)
+    row_number: int = Field(ge=1)
     cells: list[str | int | float | bool | None]
 
 
@@ -730,6 +730,7 @@ class RosterMappingIssueItem(ApiModel):
 class RosterDraftResponse(VersionedResponse):
     draft_id: str
     source_format: Literal["csv", "xlsx"]
+    headerless: bool = False
     row_count: int = Field(ge=0)
     column_count: int = Field(ge=1)
     columns: list[RosterColumnItem]

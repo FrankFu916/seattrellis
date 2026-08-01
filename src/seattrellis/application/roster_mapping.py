@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -261,6 +262,9 @@ def suggest_roster_mapping(table: RosterTable) -> RosterMappingSuggestion:
                 )
             )
 
+    if table.headerless:
+        _add_headerless_identity_suggestions(table, assignments)
+
     mapping = RosterMapping(
         assignments=tuple(assignments),
         header_fingerprint=roster_header_fingerprint(table),
@@ -273,6 +277,75 @@ def suggest_roster_mapping(table: RosterTable) -> RosterMappingSuggestion:
             )
         )
     return RosterMappingSuggestion(mapping=mapping, issues=tuple(issues))
+
+
+def _add_headerless_identity_suggestions(
+    table: RosterTable,
+    assignments: list[ColumnMapping],
+) -> None:
+    """Infer only name/ID columns for a headerless file from value shapes."""
+
+    assigned_fields = {assignment.field for assignment in assignments}
+    assigned_columns = {assignment.column_index for assignment in assignments}
+    samples = table.rows[: min(20, len(table.rows))]
+    if not samples:
+        return
+
+    candidates: list[tuple[int, float, float]] = []
+    for column in table.columns:
+        if column.index in assigned_columns:
+            continue
+        values = [row.cell(column.index) for row in samples]
+        non_empty = [str(value).strip() for value in values if str(value).strip()]
+        if not non_empty:
+            continue
+        identifier_ratio = sum(
+            _looks_like_identifier(value) for value in non_empty
+        ) / len(non_empty)
+        name_ratio = sum(_looks_like_person_name(value) for value in non_empty) / len(
+            non_empty
+        )
+        candidates.append((column.index, identifier_ratio, name_ratio))
+
+    if "student_id" not in assigned_fields:
+        id_candidates = sorted(
+            (item for item in candidates if item[1] >= 0.6),
+            key=lambda item: (-item[1], item[0]),
+        )
+        if id_candidates:
+            assignments.append(
+                ColumnMapping(field="student_id", column_index=id_candidates[0][0])
+            )
+            assigned_columns.add(id_candidates[0][0])
+
+    if "name" not in assigned_fields:
+        name_candidates = sorted(
+            (
+                item
+                for item in candidates
+                if item[2] >= 0.6 and item[0] not in assigned_columns
+            ),
+            key=lambda item: (-item[2], item[0]),
+        )
+        if name_candidates:
+            assignments.append(
+                ColumnMapping(field="name", column_index=name_candidates[0][0])
+            )
+
+
+def _looks_like_identifier(value: str) -> bool:
+    text = value.strip()
+    return bool(re.fullmatch(r"[A-Za-z]*\d{4,}", text))
+
+
+def _looks_like_person_name(value: str) -> bool:
+    text = value.strip()
+    if _looks_like_identifier(text) or any(character.isdigit() for character in text):
+        return False
+    return bool(text) and all(
+        character.isalpha() or "\u4e00" <= character <= "\u9fff"
+        for character in text
+    )
 
 
 def create_roster_mapping(

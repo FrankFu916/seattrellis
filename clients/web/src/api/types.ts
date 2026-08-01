@@ -88,6 +88,7 @@ export type RosterMappingIssueItem = {
 export type RosterDraftResponse = {
   draft_id: string;
   source_format: "csv" | "xlsx";
+  headerless: boolean;
   row_count: number;
   column_count: number;
   columns: RosterColumnItem[];
