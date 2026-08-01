@@ -41,6 +41,9 @@
   Teachers can paste one pair per line for apart, together, minimum-distance, or
   fixed-seat requests; the preview reports unknown references and duplicates
   before anything is added.
+- Added a collapsed bulk group editor. A teacher can paste lines such as
+  “Lab A: S01, S04, S08”, choose together or apart, and review unknown IDs,
+  missing members, or duplicate group names before adding anything.
 - Fixed roster import in the React workbench: full replacement now uses the
   current API contract, authenticated desktop requests keep their bearer
   header, imported student metadata is retained, and the same file can be
