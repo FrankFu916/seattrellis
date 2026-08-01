@@ -376,6 +376,12 @@ fn json_error(status: u16, message: &str) -> Response {
     Response::json(status, json!({ "error": message }))
 }
 
+/// A structured error with a machine-readable `code` and a human `message`,
+/// mirroring the `plan_not_found` / `invalid_class_draft` style responses.
+fn code_json_error(status: u16, code: &str, message: &str) -> Response {
+    Response::json(status, json!({ "error": code, "message": message }))
+}
+
 /// Split a request path (query string already stripped) into segments.
 fn path_segments(path: &str) -> Vec<&str> {
     path.trim_start_matches('/')
@@ -557,9 +563,20 @@ fn localized(zh: &str, en: &str) -> Value {
 /// cost-ranked greedy solver over the request body, then open an editable
 /// draft for the recommended plan so the workbench can adjust and export it.
 ///
+/// Two request shapes are accepted:
+///
+/// 1. The raw `CoreSolveRequest` (`api_version` / `student_count` /
+///    `seat_positions` / ...), used by tests and advanced clients.
+/// 2. The React workbench's `GenerateClassRequest`
+///    (`draft.students` + `draft.room.template_id` + `draft.goal.goal_id`),
+///    detected by the presence of `draft.room.template_id` and expanded into
+///    a `CoreSolveRequest` via [`crate::room_templates::room_template_grid`]
+///    and [`crate::goal_rules::goal_rules`] before solving.
+///
 /// Returns the frontend `GenerateClassResponse` shape (`class_name`, `goal`,
 /// `warnings`, `recommended_candidate_id`, `candidates`, `editor`). When the
-/// solver reports the plan infeasible, the response is `409 plan_not_found`.
+/// solver reports the plan infeasible, the response is `409 plan_not_found`;
+/// an unknown room template or goal on the frontend path is `422`.
 fn generate_response(
     body: &[u8],
     editor_store: &EditorDraftStore,
@@ -568,13 +585,30 @@ fn generate_response(
     if body.is_empty() {
         return json_error(400, "empty request body");
     }
-    let request: CoreSolveRequest = match serde_json::from_slice(body) {
-        Ok(request) => request,
-        Err(_) => return json_error(400, "request body is not a valid solve problem"),
-    };
     let raw_request: Value = match serde_json::from_slice(body) {
         Ok(value) => value,
         Err(_) => return json_error(400, "request body is not valid JSON"),
+    };
+
+    // Expand the workbench's GenerateClassRequest into the core solve shape;
+    // anything without a `draft.room.template_id` is already a CoreSolveRequest.
+    let (core_request, goal_id) = if is_frontend_class_request(&raw_request) {
+        let goal_id = raw_request
+            .pointer("/draft/goal/goal_id")
+            .and_then(Value::as_str)
+            .unwrap_or("daily-rotation")
+            .to_string();
+        match frontend_class_request_to_core(&raw_request) {
+            Ok(value) => (value, goal_id),
+            Err(response) => return response,
+        }
+    } else {
+        (raw_request.clone(), "daily-rotation".to_string())
+    };
+
+    let request: CoreSolveRequest = match serde_json::from_value(core_request.clone()) {
+        Ok(request) => request,
+        Err(_) => return json_error(400, "request body is not a valid solve problem"),
     };
 
     let response = match seattrellis_core::solve_problem(&request) {
@@ -620,11 +654,11 @@ fn generate_response(
         Err(message) => return json_error(500, &message),
     };
 
-    // Remember the request that produced this draft so export can rebuild the
-    // full plan (request + current assignment) after edits.
+    // Remember the (core-shaped) request that produced this draft so export
+    // can rebuild the full plan (request + current assignment) after edits.
     match solve_requests.lock() {
         Ok(mut guard) => {
-            guard.insert(draft_id.clone(), raw_request);
+            guard.insert(draft_id.clone(), core_request);
         }
         Err(_) => return json_error(500, "solve request store is poisoned"),
     }
@@ -642,7 +676,7 @@ fn generate_response(
         json!({
             "class_name": class_name,
             "goal": {
-                "goal_id": "daily-rotation",
+                "goal_id": goal_id,
                 "title": "日常轮换",
                 "description": "兼顾视力和身高需求，减少近期重复邻座，并适度轮换位置。",
                 "preset_name": null,
@@ -657,6 +691,144 @@ fn generate_response(
             "editor": editor,
         }),
     )
+}
+
+/// `true` when the body is a React workbench `GenerateClassRequest`, i.e. it
+/// carries a `draft` object whose `room.template_id` names a room template.
+fn is_frontend_class_request(value: &Value) -> bool {
+    value
+        .pointer("/draft/room/template_id")
+        .and_then(Value::as_str)
+        .map(|template_id| !template_id.is_empty())
+        .unwrap_or(false)
+}
+
+/// Adapt a React `GenerateClassRequest` (`draft.students` +
+/// `draft.room.template_id` + `draft.goal.goal_id`) into the core
+/// `CoreSolveRequest` JSON document, expanding the room template grid and the
+/// goal rule-set and mapping each student record onto the core `Student`
+/// shape (`key`/`display_name`/`score`/`height_cm`/`vision`/`tags`/`needs`).
+///
+/// Returns a `422` response naming the missing piece when the draft is
+/// malformed (`invalid_class_draft`), the room template is unknown
+/// (`room_not_found`) or the goal is unknown (`unknown_goal`).
+fn frontend_class_request_to_core(value: &Value) -> Result<Value, Response> {
+    let draft = value
+        .get("draft")
+        .and_then(Value::as_object)
+        .ok_or_else(|| code_json_error(422, "invalid_class_draft", "missing 'draft' object"))?;
+    let template_id = draft
+        .get("room")
+        .and_then(Value::as_object)
+        .and_then(|room| room.get("template_id"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            code_json_error(422, "invalid_class_draft", "missing draft.room.template_id")
+        })?;
+    let goal_id = draft
+        .get("goal")
+        .and_then(Value::as_object)
+        .and_then(|goal| goal.get("goal_id"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| code_json_error(422, "invalid_class_draft", "missing draft.goal.goal_id"))?;
+
+    let grid = match crate::room_templates::room_template_grid(template_id) {
+        Ok(grid) => grid,
+        Err(message) => return Err(code_json_error(422, "room_not_found", &message)),
+    };
+    let rules = match crate::goal_rules::goal_rules(goal_id) {
+        Ok(rules) => rules,
+        Err(message) => return Err(code_json_error(422, "unknown_goal", &message)),
+    };
+
+    let students: Vec<Value> = draft
+        .get("students")
+        .and_then(Value::as_array)
+        .map(|students| students.iter().map(core_student_value).collect())
+        .unwrap_or_default();
+
+    let options = value.get("options").and_then(Value::as_object);
+    let seed = options
+        .and_then(|options| options.get("seed"))
+        .and_then(Value::as_u64)
+        .unwrap_or(DEFAULT_SEED);
+
+    // The solver, the editor-draft builder and the renderer all assume
+    // `layout.seats[index]` aligns one-to-one with `seat_positions[index]`.
+    // The grid's full layout also carries disabled aisle cells, so hand the
+    // request the *enabled* seats in layout order (which `room_templates`
+    // guarantees are exactly `seat_positions`, in order). The physical aisle
+    // gap is preserved anyway because `seat_positions` skip the aisle column.
+    let layout = crate::room_templates::Layout {
+        layout_id: grid.layout.layout_id.clone(),
+        name: grid.layout.name.clone(),
+        seats: grid
+            .layout
+            .enabled_seats()
+            .iter()
+            .map(|seat| (*seat).clone())
+            .collect(),
+        adjacency: grid.layout.adjacency.clone(),
+    };
+
+    Ok(json!({
+        "api_version": 2,
+        "student_count": students.len(),
+        "seat_positions": grid.seat_positions.clone(),
+        "edges": grid.edges.clone(),
+        "layout": layout,
+        "rules": rules,
+        "students": students,
+        "seed": seed,
+    }))
+}
+
+/// Default solve seed when the frontend sends no `options.seed` (matches the
+/// rule-set default in `goal_rules.rs` / the core `RuleSet` model).
+const DEFAULT_SEED: u64 = 42;
+
+/// Map one React `draft.students` entry onto the core `Student` JSON shape.
+/// Absent or `null` fields are omitted so they deserialize to the core
+/// defaults; `vision` follows the core convention of storing its string
+/// rendering (`0.8` -> `"0.8"`, `"poor"` -> `"poor"`).
+fn core_student_value(student: &Value) -> Value {
+    let mut result = serde_json::Map::new();
+    // The core `key` mirrors Python's `student_id or name or ""`.
+    let student_id = student.get("student_id").and_then(Value::as_str).unwrap_or("");
+    let name = student.get("name").and_then(Value::as_str).unwrap_or("");
+    let key = if !student_id.is_empty() { student_id } else { name };
+    if !key.is_empty() {
+        result.insert("key".to_string(), json!(key));
+    }
+    if !name.is_empty() {
+        result.insert("display_name".to_string(), json!(name));
+    }
+    if let Some(score) = student.get("score").and_then(Value::as_f64) {
+        result.insert("score".to_string(), json!(score));
+    }
+    if let Some(height_cm) = student.get("height_cm").and_then(Value::as_f64) {
+        result.insert("height_cm".to_string(), json!(height_cm));
+    }
+    if let Some(vision) = student.get("vision") {
+        match vision {
+            Value::String(text) if !text.is_empty() => {
+                result.insert("vision".to_string(), json!(text));
+            }
+            Value::Number(number) => {
+                result.insert("vision".to_string(), json!(number.to_string()));
+            }
+            _ => {}
+        }
+    }
+    if let Some(tags) = student.get("tags").and_then(Value::as_array) {
+        result.insert("tags".to_string(), json!(tags));
+    }
+    if let Some(needs) = student.get("needs").and_then(Value::as_array) {
+        result.insert("needs".to_string(), json!(needs));
+    }
+    Value::Object(result)
 }
 
 /// Student keys for an editor draft: the solve request's `students` `key`,
@@ -1460,6 +1632,153 @@ mod tests {
         assert_eq!(response.status, 200);
         let value = body_json(&response);
         assert!(value["editor"]["draft_id"].is_string());
+    }
+
+    /// The React workbench's `GenerateClassRequest` shape: a draft carrying
+    /// students, a room template id and a goal id. It must be expanded onto a
+    /// room grid + goal rules, solved, and returned as a `GenerateClassResponse`
+    /// with a created editor draft.
+    #[test]
+    fn generate_frontend_class_request_adapts_and_creates_draft() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Physics Period 3",
+                "students": [
+                    {"student_id": "S1", "name": "Alice", "score": 93, "height_cm": 160},
+                    {"student_id": "S2", "name": "Bob", "score": 81, "height_cm": 172},
+                    {"student_id": "S3", "name": "Carol", "score": 75, "height_cm": 150}
+                ],
+                "room": {"template_id": "standard-30"},
+                "goal": {"goal_id": "daily-rotation"}
+            },
+            "options": {"candidate_count": 1, "seed": 42}
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+
+        // GenerateClassResponse shape.
+        assert_eq!(value["goal"]["goal_id"], "daily-rotation");
+        assert_eq!(value["warnings"], json!([]));
+        let draft_id = value["editor"]["draft_id"].as_str().unwrap();
+        assert_eq!(value["recommended_candidate_id"], draft_id);
+        let candidates = value["candidates"].as_array().unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0]["candidate_id"], draft_id);
+        assert_eq!(candidates[0]["recommended"], true);
+        let total_score = candidates[0]["total_score"].as_f64().expect("total_score is a number");
+        assert!(total_score.is_finite());
+
+        // The editor draft mirrors the 3 students and the 30-seat template.
+        let editor = &value["editor"];
+        assert_eq!(editor["draft_id"], draft_id);
+        let students = editor["students"].as_array().unwrap();
+        assert_eq!(students.len(), 3);
+        let keys: Vec<&str> = students
+            .iter()
+            .map(|student| student["student_key"].as_str().unwrap())
+            .collect();
+        assert_eq!(keys, vec!["S1", "S2", "S3"]);
+        for student in students {
+            assert!(
+                student["seat_id"].is_string(),
+                "every student is seated: {student}"
+            );
+        }
+        assert_eq!(editor["seats"].as_array().map(Vec::len), Some(30));
+        // The template's row-1 leftmost seat id is R1C1 (grid coordinates).
+        let seats = editor["seats"].as_array().unwrap();
+        assert_eq!(seats[0]["seat_id"], "R1C1");
+        assert_eq!(seats[0]["enabled"], true);
+        // Seat 30 is the last enabled seat: row 5, grid column 7.
+        assert_eq!(seats[29]["seat_id"], "R5C7");
+    }
+
+    /// The frontend path must echo the requested goal id (not hardcode it).
+    #[test]
+    fn generate_frontend_class_request_echoes_requested_goal() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Peer Class",
+                "students": [
+                    {"student_id": "S1", "name": "Alice", "score": 95},
+                    {"student_id": "S2", "name": "Bob", "score": 60},
+                    {"student_id": "S3", "name": "Carol", "score": 40}
+                ],
+                "room": {"template_id": "standard-48"},
+                "goal": {"goal_id": "peer-support"}
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["goal"]["goal_id"], "peer-support");
+        assert_eq!(value["editor"]["students"].as_array().map(Vec::len), Some(3));
+        assert_eq!(value["editor"]["seats"].as_array().map(Vec::len), Some(48));
+    }
+
+    /// An unknown room template id on the frontend path is a 422.
+    #[test]
+    fn generate_frontend_class_request_unknown_room_is_422() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "X",
+                "students": [{"student_id": "S1", "name": "Alice"}],
+                "room": {"template_id": "standard-99"},
+                "goal": {"goal_id": "daily-rotation"}
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            422,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["error"], "room_not_found");
+        assert!(value["message"].as_str().unwrap().contains("standard-99"));
+    }
+
+    /// An unknown goal id on the frontend path is a 422.
+    #[test]
+    fn generate_frontend_class_request_unknown_goal_is_422() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "X",
+                "students": [{"student_id": "S1", "name": "Alice"}],
+                "room": {"template_id": "standard-30"},
+                "goal": {"goal_id": "warp-speed"}
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            422,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["error"], "unknown_goal");
+        assert!(value["message"].as_str().unwrap().contains("warp-speed"));
     }
 
     #[test]

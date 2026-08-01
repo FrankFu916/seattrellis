@@ -9,7 +9,9 @@
 
 pub mod editing;
 pub mod export;
+pub mod goal_rules;
 pub mod render;
+pub mod room_templates;
 pub mod roster;
 pub mod server;
 
