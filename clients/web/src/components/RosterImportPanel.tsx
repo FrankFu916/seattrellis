@@ -155,6 +155,11 @@ export function RosterImportPanel({
 
   function handleMappingChange(columnIndex: number, field: RosterFieldName | null) {
     setMapping((prev) => ({ ...prev, [columnIndex]: field }));
+    // A preview belongs to the exact mapping and mode used to create it.
+    // Clear it as soon as either input changes so the confirmation button can
+    // never apply an outdated result.
+    setPreview(null);
+    setError(null);
   }
 
   async function handlePreview() {
@@ -201,27 +206,23 @@ export function RosterImportPanel({
   }
 
   function handleConfirm() {
-    if (preview?.resulting_students) {
-      onImportConfirmed(
-        preview.resulting_students.map((student) => ({
-          id: student.student_id || student.name || "",
-          name: student.name || student.student_id || "",
-          gender: student.gender,
-          heightCm: student.height_cm,
-          score: student.score,
-          vision: student.vision,
-          tags: student.tags,
-          needs: student.needs,
-          notes: student.notes,
-          attributes: student.attributes,
-        })),
-      );
-    } else if (preview && preview.can_apply) {
-      // Fallback: if resulting students are not provided but it's safe,
-      // derive from changes — but the API always provides resulting_students
-      // when can_apply is true. If not, we cannot proceed safely.
-      onImportConfirmed(currentStudents);
+    if (!preview?.can_apply || hasConflicts || !preview.resulting_students) {
+      return;
     }
+    onImportConfirmed(
+      preview.resulting_students.map((student) => ({
+        id: student.student_id || student.name || "",
+        name: student.name || student.student_id || "",
+        gender: student.gender,
+        heightCm: student.height_cm,
+        score: student.score,
+        vision: student.vision,
+        tags: student.tags,
+        needs: student.needs,
+        notes: student.notes,
+        attributes: student.attributes,
+      })),
+    );
     reset();
   }
 
@@ -257,6 +258,9 @@ export function RosterImportPanel({
   }, [preview, t]);
 
   const hasConflicts = (preview?.action_counts.conflict ?? 0) > 0 || (preview?.conflicts.length ?? 0) > 0;
+  const canConfirm = Boolean(
+    preview?.can_apply && preview.resulting_students && !hasConflicts,
+  );
 
   return (
     <div className="roster-import-panel">
@@ -372,7 +376,11 @@ export function RosterImportPanel({
                 type="radio"
                 name="roster-mode"
                 checked={mode === "incremental"}
-                onChange={() => setMode("incremental")}
+                onChange={() => {
+                  setMode("incremental");
+                  setPreview(null);
+                  setError(null);
+                }}
               />
               <span>
                 <strong>{t("roster.incremental")}</strong>
@@ -384,7 +392,11 @@ export function RosterImportPanel({
                 type="radio"
                 name="roster-mode"
                 checked={mode === "replace"}
-                onChange={() => setMode("replace")}
+                onChange={() => {
+                  setMode("replace");
+                  setPreview(null);
+                  setError(null);
+                }}
               />
               <span>
                 <strong>{t("roster.overwrite")}</strong>
@@ -424,8 +436,12 @@ export function RosterImportPanel({
                 ))}
               </div>
 
-              <p className={hasConflicts ? "preview-warn" : "preview-ok"}>
-                {hasConflicts ? t("roster.hasConflicts") : t("roster.canApply")}
+              <p className={!canConfirm ? "preview-warn" : "preview-ok"}>
+                {hasConflicts
+                  ? t("roster.hasConflicts")
+                  : canConfirm
+                    ? t("roster.canApply")
+                    : t("roster.previewIncomplete")}
               </p>
 
               {preview.conflicts.length > 0 ? (
@@ -464,7 +480,7 @@ export function RosterImportPanel({
                   type="button"
                   className="primary-button"
                   onClick={handleConfirm}
-                  disabled={!preview.can_apply || hasConflicts}
+                  disabled={!canConfirm}
                 >
                   {t("roster.confirm")}
                 </button>

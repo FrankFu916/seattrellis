@@ -111,4 +111,55 @@ describe("RosterImportPanel", () => {
     expect(screen.getByRole("button", { name: "检查导入变化" })).toBeInTheDocument();
     expect(screen.queryByText("HTTP 500: internal solver details")).not.toBeInTheDocument();
   });
+
+  it("clears confirmation when the mapping changes after a preview", async () => {
+    const user = userEvent.setup();
+    const onImportConfirmed = vi.fn();
+    const { container } = render(
+      <RosterImportPanel
+        locale="zh-CN"
+        t={createTranslator("zh-CN")}
+        currentStudents={[]}
+        currentRevision={0}
+        onImportConfirmed={onImportConfirmed}
+      />,
+    );
+    const file = new File(["小林,18513806422"], "students.csv", { type: "text/csv" });
+    await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, file);
+    await user.click(await screen.findByRole("button", { name: "检查导入变化" }));
+    expect(screen.getByRole("button", { name: "确认导入" })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getAllByRole("combobox")[0], "student_id");
+    expect(screen.queryByRole("button", { name: "确认导入" })).not.toBeInTheDocument();
+    expect(onImportConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("does not apply a preview without resulting students", async () => {
+    const user = userEvent.setup();
+    const onImportConfirmed = vi.fn();
+    vi.mocked(previewRosterUpdate).mockResolvedValueOnce({
+      draft_id: "roster-1",
+      base_revision: 0,
+      mode: "incremental",
+      can_apply: true,
+      action_counts: { add: 0, update: 0, unchanged: 0, remove: 0, conflict: 0 },
+      changes: [],
+      conflicts: [],
+      resulting_students: null,
+    });
+    const { container } = render(
+      <RosterImportPanel
+        locale="zh-CN"
+        t={createTranslator("zh-CN")}
+        currentStudents={[]}
+        currentRevision={0}
+        onImportConfirmed={onImportConfirmed}
+      />,
+    );
+    const file = new File(["小林,18513806422"], "students.csv", { type: "text/csv" });
+    await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, file);
+    await user.click(await screen.findByRole("button", { name: "检查导入变化" }));
+    expect(screen.getByRole("button", { name: "确认导入" })).toBeDisabled();
+    expect(onImportConfirmed).not.toHaveBeenCalled();
+  });
 });
