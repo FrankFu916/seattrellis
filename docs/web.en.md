@@ -14,8 +14,9 @@ fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo
 export, and class-project backups. Its **Advanced settings** section contains
 solver controls and complete rules JSON. The separate **Detailed seating rules**
 panel exposes the implemented history, neighbor, cooling, score, and peer-support
-rules with ordinary form controls. Group together/apart constraints remain
-available through JSON and are compiled as hard pair constraints.
+rules with ordinary form controls. Common named groups can be configured directly
+as together/apart requests; the JSON field remains available for more complex
+group relationships and is compiled as hard pair constraints.
 
 ## Streamlit compatibility and advanced tools
 

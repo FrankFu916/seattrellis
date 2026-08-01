@@ -11,8 +11,8 @@ React 工作台是普通教师的默认入口，覆盖名单导入、字段映�
 排数和列数、走廊与不可用座位、常用排座目标、组合偏好、相邻/固定座位要求、
 生成、可视化编辑教室、座位交换、撤销/重做、导出和班级项目备份。生成页的“高级设置”包含
 求解器参数和完整 rules JSON；旁边的“详细排座规则”面板则用表单提供已实现的历史轮换、
-邻座回避、关系冷却、成绩位置/均衡和互助搭档设置。`groups` 可以通过 JSON 配置组内
-必须相邻或不得相邻。
+邻座回避、关系冷却、成绩位置/均衡和互助搭档设置。常见的命名小组可以直接在普通设置中
+配置成员尽量相邻或保持分开；更复杂的组关系仍可通过 JSON 兼容入口配置。
 
 ## Streamlit 兼容与高级入口
 
@@ -25,9 +25,10 @@ streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 兼容页面。它仍然保留 preset、rules overlay、历史目录、候选数量、seed、时间限制、
 backend 和细粒度导出隐私设置，旧的 JSON/Project/CLI 工作流不需要迁移。
 
-## Streamlit 教师工作台
+## Streamlit 兼容工作台
 
-Streamlit 页面默认显示教师工作台，普通教师不需要准备 layout、rules 或 Project JSON：
+Streamlit 页面保留文件级教师工作流，普通教师不需要准备 layout、rules 或 Project JSON；
+新用户应优先使用上面的 React 工作台：
 
 1. 填写班级名称并导入 CSV、XLSX 或 XLSM 名单；只有姓名列也能开始，也可以在名单编辑器中
    直接添加或修正学生资料。

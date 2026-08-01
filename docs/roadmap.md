@@ -12,9 +12,57 @@ SeatTrellis 的求解、验证、历史公平性和导出能力已经具备稳�
 | [v1.3.0](https://github.com/FrankFu916/seattrellis/milestone/1) | 导出与隐私 | 统一导出请求、CLI/Web 隐私选项、A4 页面设置、中英文导出 |
 | [v1.4.0](https://github.com/FrankFu916/seattrellis/milestone/2) | 内核边界与基准 | 可切换求解后端、候选集报告、40/50/60 人基准、编辑协议和 Rust 原生验证试验 |
 | [v1.5.0](https://github.com/FrankFu916/seattrellis/milestone/3) | 简化教师流程 | 班级向导、标准教室、自然语言排座目标、一键生成和导出 |
-| [v1.6.0](https://github.com/FrankFu916/seattrellis/milestone/4) | React 可视化工作台 | 拖拽编辑、layout 编辑器、Excel 字段映射、实时约束诊断 |
+| [v1.6.0](https://github.com/FrankFu916/seattrellis/milestone/4) | React 可视化工作台 | 可视化 layout 编辑器、Excel 字段映射、实时约束诊断 |
 | [v1.7.0](https://github.com/FrankFu916/seattrellis/milestone/5) | 班级与轮换 | 多班级、历史版本、项目包、新规则和未来多期轮换 |
 | [v1.8.0](https://github.com/FrankFu916/seattrellis/milestone/6) | 桌面与正式分发 | 独立安装包、原生文件对话框、SVG/PPTX 和导出预览 |
+
+## v1.8.2 之后的待完成事项
+
+下面是当前仍未完成、并且会影响正式关闭路线图 Issue 的事项。已经合并的基础能力
+不再重复列为待办；例如关系冷却、项目 schema 迁移、历史比较、分期编辑、小组的
+相邻/分离约束和未签名 onedir 构建都已经完成。
+
+### v1.7.0：班级项目工作台（GitHub #16）
+
+- 完整的 RuleSet 可视化编辑器：覆盖所有 hard rule、复杂关系和原始 JSON 的逐项
+  诊断，不只提供当前的常用规则和已实现 soft rule 表单；
+- 每一期轮换方案的项目持久化：保存每期独立编辑后的 snapshot、操作日志、来源和
+  当前版本，重新打开项目后仍可继续调整和导出；
+- 小组登记表：根据命名小组和轮换期次生成可打印、可导出的登记表，并处理成员变化、
+  空组和未入座学生；
+- 更细的迁移向导：显示字段级变化、迁移前后校验、备份位置和失败后的回滚提示；
+- 将上述功能纳入 React、桌面端和 CLI 的一致性验收，并在完成后关闭 #16。
+
+### v1.8.0：桌面应用与正式分发（GitHub #17）
+
+- Windows、macOS 安装包和一个有明确安装说明的 Linux 分发形式；当前只有可复现的
+  未签名 onedir 压缩包；
+- 原生打开/另存为对话框、最近文件和未保存修改提示；
+- SVG、单页 16:9 PPTX 和实时导出预览；
+- 统一的跨平台主题 token，同时遵循各平台字体、快捷键、窗口控制和系统明暗色；
+- Windows/macOS 代码签名、公证、干净机器安装/卸载和退出后无残留进程验收；
+- 记录安装包大小、冷启动、离线行为和版本兼容性，并将已验证安装包和校验和附加到
+  GitHub Release；
+- 在三平台桌面 E2E 中覆盖打开班级 → 生成 → 调整 → 导出和主题切换。
+
+### 跨版本工程收尾
+
+- 对 v1.8 范围冻结后运行一次完整发布矩阵：Python 3.11–3.14、Rust/native 差分、
+  Playwright、视觉回归、40/50/60 人性能和打包隐私检查；
+- 将 React 工作台作为默认网页入口，Streamlit 明确标为兼容/高级入口，保持旧 CLI、
+  JSON 和 Project 文件兼容；
+- 在正式桌面发布前完成 README、快速开始、网页指南、桌面文档和 CHANGELOG 的用户
+  可感知变更说明。
+
+### 已确认但不阻塞 v1.8 的后续工作
+
+- layout 的拖拽、框选、多选和批量移动；当前编辑器已经支持点击和工具栏操作，先不
+  把交互编辑器与规则实现分成两套状态机；
+- Rust 原生后端的正式评估：完成 40–60 人基准、Python/Rust 差分、三平台 wheel 和
+  发布体积评估后，才决定是否在 v2.0 将 Rust heuristic backend 设为默认；
+- Streamlit 兼容入口至少保留到 v2.0，之后再根据使用数据决定是否停止新增功能或
+  逐步移除；C/C++ 仅在必须去掉 Python OR-Tools 运行时且有实证收益时重新评估；
+- 自动更新、云同步、账号、插件系统和远程 AI 助手暂不进入当前路线图。
 
 ## 产品设计原则
 

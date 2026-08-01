@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type {
   AdvancedSolveSettings,
   CommonConstraint,
-  CommonGroupRule,
   CustomRoomSettings,
   DetailedRuleSettings,
   RotationSettings,

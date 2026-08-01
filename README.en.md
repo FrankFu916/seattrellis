@@ -97,9 +97,10 @@ scan a project before sharing, and download or restore a `.seattrellis.zip`
 backup. Comparison can also expand an anonymous list of before/after seat
 changes. Common irregular rooms and seating requests can be entered directly in
 the ordinary flow. The **Detailed seating rules** panel only exposes rules that
-are connected to solving, validation, and scoring. `groups` can be configured
-in JSON for pairwise together/apart constraints, and relationship cooling is
-available in the detailed panel. The optional **Advanced
+are connected to solving, validation, and scoring. Common named groups can be
+added in the ordinary settings as together/apart requests; the JSON compatibility
+field remains available for more complex group relationships. Relationship
+cooling is available in the detailed panel. The optional **Advanced
 settings** section is for complete rules JSON, candidate count, seed, time limit,
 and solver backend details. The default path does not require any of these
 settings.
