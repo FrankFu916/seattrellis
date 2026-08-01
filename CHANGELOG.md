@@ -26,6 +26,9 @@
   current API contract, authenticated desktop requests keep their bearer
   header, imported student metadata is retained, and the same file can be
   selected again after cancelling.
+- Added an inline roster editor to the ordinary workflow. Teachers can add,
+  remove, or correct student IDs, names, scores, height, vision, needs, and
+  notes without preparing another spreadsheet.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.

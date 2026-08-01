@@ -4,7 +4,8 @@ This directory contains the independent React workbench. It is intentionally
 separate from the current Streamlit application so both experiences can coexist
 during migration.
 
-The browser workbench keeps the ordinary teacher flow simple: roster import,
+The browser workbench keeps the ordinary teacher flow simple: roster import and
+inline student editing,
 custom or preset room selection, visual classroom editing, combined seating
 preferences and common constraints, generation, manual adjustment, project
 backup, and export. The

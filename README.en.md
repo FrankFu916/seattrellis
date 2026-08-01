@@ -78,7 +78,8 @@ workbench automatically (default address `http://127.0.0.1:8765`). The
 React workbench keeps the ordinary teacher flow focused:
 
 1. Upload a CSV or Excel roster, confirm auto-detected field mappings, preview
-   incremental or overwrite import impact, then apply;
+   incremental or overwrite import impact, then apply. You can also add,
+   remove, or correct student records directly in the workbench;
 2. Choose a classroom template, or set your own rows, columns, aisles, and
    unavailable seats. For irregular rooms, open the visual editor to turn
    cells into seats, aisles, platforms, or empty space;

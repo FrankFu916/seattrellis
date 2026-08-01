@@ -8,7 +8,7 @@ seattrellis workspace
 ```
 
 The React workbench is the default path for ordinary teachers. It covers roster
-import and mapping, room templates, custom rows and columns, aisles and
+import and mapping, inline student editing, room templates, custom rows and columns, aisles and
 unavailable seats, common seating goals, combined preferences, adjacency and
 fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo,
 export, and class-project backups. Its **Advanced settings** section is reserved for candidate count, seed,
@@ -35,7 +35,8 @@ and English. It does not clear loaded data, the current step, or solve results.
 The default workspace keeps the ordinary path focused on classroom tasks:
 
 1. Enter a class name and import a CSV, XLSX, or XLSM roster. A name column is
-   enough to begin.
+   enough to begin; you can also add or correct student records directly in
+   the roster editor.
 2. Accept the recommended 30-, 48-, or 60-seat room, or set custom rows, seats
    per row, aisle positions, and unavailable seats.
 3. Choose Daily rotation, Quick shuffle, or Peer support, combine preferences,
