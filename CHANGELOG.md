@@ -42,9 +42,12 @@
   exporting the selected period through the same workflow.
 - Added a detailed rule panel to the React workbench. Teachers can tune history
   lookback, recent-neighbor distance, score placement and distribution, and
-  peer-support pairing without writing JSON. Group and cooling compatibility
-  remains available through the raw rules file and is still reported as
-  model-only until its solver semantics are complete.
+  peer-support pairing without writing JSON. Group constraints remain available
+  through the raw rules file while cooling is still reported as model-only.
+- Group `together` and `separate` definitions are now compiled into the same
+  hard adjacency checks used by every solver backend and manual-plan validator.
+  Cooling remains explicitly model-only until its soft history semantics are
+  implemented.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.

@@ -14,8 +14,9 @@ fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo
 export, and class-project backups. Its **Advanced settings** section contains
 solver controls and complete rules JSON. The separate **Detailed seating rules**
 panel exposes the implemented history, neighbor, score, and peer-support rules
-with ordinary form controls; groups and cooling remain JSON-compatible but are
-not presented as active solver features.
+with ordinary form controls. Group together/apart constraints remain available
+through JSON and are compiled as hard pair constraints; cooling remains
+JSON-compatible but is not an active solver feature.
 
 ## Streamlit compatibility and advanced tools
 
@@ -69,7 +70,7 @@ placement, row or group score distribution, and mentor/learner percentiles.
 Weights are soft objectives, so hard requests such as “keep these two students
 apart” still take priority. Group score balancing requires `group_id` on the
 layout seats. The raw rules JSON field remains available for compatibility, but
-the backend warns when a ruleset uses model-only `groups` or `cooling` fields.
+the backend warns when a ruleset uses model-only `cooling` fields.
 
 ### React workbench project panel
 
@@ -91,8 +92,8 @@ classroom editor supports clicking cells to create seats, aisles, platforms,
 or empty space, changing the grid, moving or mirroring the layout, and saving
 the result for generation. Student editing is available in the roster step. The
 detailed rules panel covers the implemented soft rules; a complete visual
-RuleSet editor, including groups, cooling, and migration assistance, remains on
-the roadmap.
+RuleSet editor, including cooling and migration assistance, remains on the
+roadmap.
 
 ## Advanced tools
 

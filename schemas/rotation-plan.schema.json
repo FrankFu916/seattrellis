@@ -288,7 +288,7 @@
     },
     "GroupRule": {
       "additionalProperties": false,
-      "description": "Defines a named group of students for separation or togetherness rules.",
+      "description": "Defines a named hard group rule for separation or togetherness.\n\nGroup membership is expanded into pair constraints by the shared rule\ncompiler. ``together`` therefore requires every member pair to be adjacent,\nwhile ``separate`` keeps every member pair apart.",
       "properties": {
         "name": {
           "title": "Name",
