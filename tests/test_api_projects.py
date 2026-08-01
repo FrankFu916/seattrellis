@@ -55,6 +55,36 @@ def test_project_workspace_lists_history_and_scans_privacy(tmp_path) -> None:
     assert any(item["file"] == "students.csv" for item in privacy_payload["findings"])
 
 
+def test_project_history_exposes_safe_artifact_provenance(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    source = paths["history"] / "week3.snapshot.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["metadata"] = {
+        "restored_from": "../../private/previous.snapshot.json",
+        "manual_edit": {
+            "operation_count": 2,
+            "commands": [{"student_id": "SENSITIVE", "seat_id": "R1C1"}],
+        },
+    }
+    source.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    history = _client().post(
+        "/api/v1/projects/history",
+        json={"project_path": str(paths["project"])},
+    )
+    assert history.status_code == 200, history.text
+    artifact = next(
+        item for item in history.json()["history"] if item["name"] == source.name
+    )
+    assert artifact["provenance"] == {
+        "source": "restored",
+        "parent_name": "previous.snapshot.json",
+        "operation_count": 2,
+    }
+    assert "SENSITIVE" not in history.text
+    assert "../" not in history.text
+
+
 def test_project_workspace_packs_and_restores_uploaded_bundle(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path / "source", overwrite=True)
     client = _client()

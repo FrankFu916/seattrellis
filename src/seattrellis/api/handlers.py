@@ -30,6 +30,7 @@ from seattrellis.api.models import (
     HealthResponse,
     InspectClassResponse,
     ProjectArtifactItem,
+    ProjectArtifactProvenance,
     ProjectArtifactCompareResponse,
     ProjectArtifactDiff,
     ProjectArtifactAssignmentChange,
@@ -1198,6 +1199,7 @@ def _artifact_items(
         if not isinstance(students, list) and isinstance(first_snapshot, dict):
             students = first_snapshot.get("students")
         created_at = _parse_artifact_datetime(data.get("created_at"))
+        provenance = _artifact_provenance(data, kind=kind)
         items.append(
             ProjectArtifactItem(
                 name=path.name,
@@ -1208,11 +1210,94 @@ def _artifact_items(
                 size_bytes=stat.st_size,
                 student_count=len(students) if isinstance(students, list) else None,
                 period_count=len(periods) if isinstance(periods, list) else None,
+                provenance=provenance,
             )
         )
         # Candidate scores and student records are intentionally not returned
         # in this browsing response.
     return items
+
+
+def _artifact_provenance(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> ProjectArtifactProvenance | None:
+    """Summarize artifact origin without returning student-sensitive metadata.
+
+    Older history files do not carry provenance.  They remain visible with an
+    ``unknown`` source, while newer generated, edited, rotated, and restored
+    artifacts expose a small stable summary.  Nested period/candidate metadata
+    is inspected locally and reduced to counts only.
+    """
+
+    metadata_values: list[dict[str, object]] = []
+    top_metadata = data.get("metadata")
+    if isinstance(top_metadata, dict):
+        metadata_values.append(top_metadata)
+
+    if kind == "rotation_plan":
+        periods = data.get("periods")
+        if isinstance(periods, list):
+            for period in periods:
+                if not isinstance(period, dict):
+                    continue
+                snapshot = period.get("snapshot")
+                if isinstance(snapshot, dict) and isinstance(snapshot.get("metadata"), dict):
+                    metadata_values.append(snapshot["metadata"])
+    elif kind == "candidate_set":
+        candidates = data.get("candidates")
+        if isinstance(candidates, list):
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                snapshot = candidate.get("snapshot")
+                if isinstance(snapshot, dict) and isinstance(snapshot.get("metadata"), dict):
+                    metadata_values.append(snapshot["metadata"])
+
+    parent_name: str | None = None
+    operation_count = 0
+    has_operation_count = False
+    source: str | None = None
+    for metadata in metadata_values:
+        restored_from = metadata.get("restored_from")
+        if parent_name is None and isinstance(restored_from, str) and restored_from.strip():
+            parent_name = Path(restored_from).name
+        persistence = metadata.get("project_persistence")
+        if isinstance(persistence, dict):
+            artifact_path = persistence.get("artifact_path")
+            if parent_name is None and isinstance(artifact_path, str) and artifact_path.strip():
+                parent_name = Path(artifact_path).name
+            if persistence.get("source") == "react_rotation_editor":
+                source = "rotation_edit"
+        if metadata.get("saved_from") == "react_rotation_editor":
+            source = "rotation_edit"
+        manual_edit = metadata.get("manual_edit")
+        if not isinstance(manual_edit, dict):
+            manual_edit = metadata.get("source_manual_edit")
+        if isinstance(manual_edit, dict):
+            count = manual_edit.get("operation_count")
+            if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                operation_count += count
+                has_operation_count = True
+            if source != "rotation_edit":
+                source = "manual_edit"
+
+    if parent_name is not None:
+        source = "restored"
+    if source is None:
+        # A solver status or candidate metadata marks a file as generated even
+        # when it predates the explicit provenance fields.
+        if data.get("solver_status") or data.get("kind") in {"candidate_set", "rotation_plan"}:
+            source = "generated"
+        else:
+            source = "unknown"
+
+    return ProjectArtifactProvenance(
+        source=source,  # type: ignore[arg-type]
+        parent_name=parent_name,
+        operation_count=min(operation_count, 100_000) if has_operation_count else None,
+    )
 
 
 def _path_sort_key(path: Path) -> int:

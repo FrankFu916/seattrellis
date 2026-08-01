@@ -322,6 +322,26 @@ class ProjectPathRequest(ApiModel):
         return text
 
 
+class ProjectArtifactProvenance(ApiModel):
+    """Privacy-safe origin information for a project artifact.
+
+    The history endpoint intentionally exposes only a summary.  In particular,
+    it never returns command payloads, student identifiers, or the raw metadata
+    object.  ``parent_name`` is reduced to a filename before it crosses the API
+    boundary so the UI can show a source chain without leaking local paths.
+    """
+
+    source: Literal[
+        "generated",
+        "manual_edit",
+        "rotation_edit",
+        "restored",
+        "unknown",
+    ]
+    parent_name: str | None = None
+    operation_count: int | None = Field(default=None, ge=0, le=100_000)
+
+
 class ProjectArtifactItem(ApiModel):
     """Metadata for one historical or generated project artifact."""
 
@@ -333,6 +353,7 @@ class ProjectArtifactItem(ApiModel):
     size_bytes: int = Field(ge=0)
     student_count: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=0)
+    provenance: ProjectArtifactProvenance | None = None
 
 
 class ProjectHistoryResponse(VersionedResponse):
