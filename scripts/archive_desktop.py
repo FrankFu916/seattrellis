@@ -45,7 +45,13 @@ def archive_bundle(
     destination.mkdir(parents=True, exist_ok=True)
     archive_path = destination / f"SeatTrellis-{safe_platform}-{safe_version}.zip"
 
-    files = sorted(bundle.rglob("*"))
+    # Sort by the POSIX archive path rather than ``Path`` ordering.  ``Path``
+    # comparisons use platform-specific rules, so the same bundle could have
+    # a different member order on Windows and Unix hosts.
+    files = sorted(
+        bundle.rglob("*"),
+        key=lambda path: path.relative_to(bundle).as_posix(),
+    )
     with ZipFile(archive_path, "w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
         for path in files:
             source = path
