@@ -9,6 +9,7 @@ import {
   listRecentProjects,
   loadProjectRotationPlan,
   downloadProjectGroupRegister,
+  previewProjectGroupRegister,
   downloadProjectBundle,
   previewProjectMigration,
   restoreProjectMigrationBackup,
@@ -32,6 +33,7 @@ vi.mock("../api/client", () => ({
   restoreProjectArtifact: vi.fn(),
   loadProjectRotationPlan: vi.fn(),
   downloadProjectGroupRegister: vi.fn(),
+  previewProjectGroupRegister: vi.fn(),
   saveProjectRotationPlan: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
   scanProjectPrivacy: vi.fn(),
@@ -562,5 +564,75 @@ describe("ProjectWorkspacePanel", () => {
     expect(screen.getByTestId("project-status")).toHaveTextContent(
       "Register downloaded: group-register.html",
     );
+  });
+
+  it("previews group membership changes without exposing student identifiers", async () => {
+    const user = userEvent.setup();
+    vi.mocked(previewProjectGroupRegister).mockResolvedValue({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      artifact_path: "/classes/outputs/rotation-plan.json",
+      plan_name: "Weekly rotation",
+      period_count: 2,
+      has_changes: true,
+      periods: [
+        {
+          period: 1,
+          label: "Monday",
+          compared_to_period: null,
+          groups: [
+            {
+              name: "Pair A",
+              member_count: 2,
+              seated_count: 1,
+              unseated_count: 1,
+              missing_count: 0,
+              added_count: 0,
+              removed_count: 0,
+              member_changes: [],
+            },
+          ],
+        },
+        {
+          period: 2,
+          label: "Friday",
+          compared_to_period: 1,
+          groups: [
+            {
+              name: "Pair A",
+              member_count: 2,
+              seated_count: 2,
+              unseated_count: 0,
+              missing_count: 0,
+              added_count: 1,
+              removed_count: 1,
+              member_changes: [
+                { student_ref: "student-1", change: "added" },
+                { student_ref: "student-2", change: "removed" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-group-register-preview-button")).toBeEnabled();
+    });
+    await user.click(screen.getByTestId("project-group-register-preview-button"));
+    await waitFor(() => {
+      expect(previewProjectGroupRegister).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        "/classes/outputs/rotation-plan.json",
+      );
+    });
+    expect(screen.getByTestId("project-group-register-preview")).toHaveTextContent(
+      "Membership changes",
+    );
+    expect(screen.getByTestId("project-group-register-preview")).toHaveTextContent(
+      "Added 1 · removed 1",
+    );
+    expect(screen.getByTestId("project-group-register-preview")).not.toHaveTextContent("Alice");
   });
 });

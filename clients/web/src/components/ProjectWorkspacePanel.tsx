@@ -8,6 +8,7 @@ import {
   listRecentProjects,
   loadProjectRotationPlan,
   downloadProjectGroupRegister,
+  previewProjectGroupRegister,
   previewProjectMigration,
   restoreProjectMigrationBackup,
   restoreProjectArtifact,
@@ -21,6 +22,7 @@ import type {
   ProjectArtifactCompareResponse,
   ProjectArtifactOperation,
   ProjectHistoryResponse,
+  ProjectGroupRegisterPreviewResponse,
   ProjectMigrationChange,
   ProjectMigrationReferenceCheck,
   ProjectMigrationResponse,
@@ -195,6 +197,8 @@ export function ProjectWorkspacePanel({
   const [restoreArtifactPath, setRestoreArtifactPath] = useState("");
   const [loadRotationPath, setLoadRotationPath] = useState("");
   const [groupRegisterFormat, setGroupRegisterFormat] = useState<"html" | "csv">("html");
+  const [groupRegisterPreview, setGroupRegisterPreview] =
+    useState<ProjectGroupRegisterPreviewResponse | null>(null);
   const [migrationArtifactPath, setMigrationArtifactPath] = useState("");
   const [migrationInPlace, setMigrationInPlace] = useState(false);
   const [migrationPreview, setMigrationPreview] = useState<ProjectMigrationResponse | null>(null);
@@ -211,6 +215,7 @@ export function ProjectWorkspacePanel({
     | "migration-restore"
     | "rotation-save"
     | "rotation-load"
+    | "group-register-preview"
     | "group-register"
     | null
   >(null);
@@ -235,6 +240,7 @@ export function ProjectWorkspacePanel({
       setCompareRightPath("");
       setRestoreArtifactPath("");
       setLoadRotationPath("");
+      setGroupRegisterPreview(null);
       setMigrationArtifactPath("");
       setMigrationPreview(null);
       return;
@@ -279,6 +285,7 @@ export function ProjectWorkspacePanel({
       setHistory(response);
       setComparison(null);
       setMigrationPreview(null);
+      setGroupRegisterPreview(null);
       setStatus(t("project.statusLoaded", { name: response.project_name }));
     } catch (caught) {
       setHistory(null);
@@ -534,6 +541,24 @@ export function ProjectWorkspacePanel({
     }
   }
 
+  async function handleGroupRegisterPreview(): Promise<void> {
+    if (!selectedPath || !loadRotationPath) {
+      return;
+    }
+    setBusy("group-register-preview");
+    setError("");
+    try {
+      setGroupRegisterPreview(
+        await previewProjectGroupRegister(selectedPath, loadRotationPath),
+      );
+      setStatus(t("project.statusGroupRegisterPreview"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section
       className="side-card project-workspace-card"
@@ -671,7 +696,10 @@ export function ProjectWorkspacePanel({
                           <select
                             data-testid="project-open-rotation-select"
                             value={loadRotationPath}
-                            onChange={(event) => setLoadRotationPath(event.target.value)}
+                            onChange={(event) => {
+                              setLoadRotationPath(event.target.value);
+                              setGroupRegisterPreview(null);
+                            }}
                           >
                             {rotationArtifacts.map((artifact) => (
                               <option key={`open-rotation-${artifact.path}`} value={artifact.path}>
@@ -709,6 +737,17 @@ export function ProjectWorkspacePanel({
                     <button
                       className="secondary-button"
                       type="button"
+                      data-testid="project-group-register-preview-button"
+                      onClick={() => void handleGroupRegisterPreview()}
+                      disabled={!loadRotationPath || busy !== null}
+                    >
+                      {busy === "group-register-preview"
+                        ? t("project.groupRegisterPreviewing")
+                        : t("project.groupRegisterPreviewAction")}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
                       data-testid="project-group-register-button"
                       onClick={() => void handleGroupRegister()}
                       disabled={!loadRotationPath || busy !== null}
@@ -717,6 +756,66 @@ export function ProjectWorkspacePanel({
                         ? t("project.groupRegistering")
                         : t("project.groupRegisterAction")}
                     </button>
+                    {groupRegisterPreview && (
+                      <div
+                        className="project-group-register-preview"
+                        data-testid="project-group-register-preview"
+                        role="status"
+                      >
+                        <strong>{t("project.groupRegisterPreviewTitle")}</strong>
+                        <small>
+                          {t("project.groupRegisterPreviewSummary", {
+                            periods: groupRegisterPreview.period_count,
+                            name: groupRegisterPreview.plan_name,
+                          })}
+                        </small>
+                        {groupRegisterPreview.periods.map((period) => (
+                          <details
+                            key={period.period}
+                            className="project-group-register-period"
+                            open={period.period === groupRegisterPreview.period_count}
+                          >
+                            <summary>
+                              {t("project.groupRegisterPeriod", {
+                                period: period.label,
+                              })}
+                              {period.compared_to_period !== null
+                                ? ` · ${t("project.groupRegisterCompared", {
+                                    period: period.compared_to_period,
+                                  })}`
+                                : ""}
+                            </summary>
+                            {period.groups.length === 0 ? (
+                              <span>{t("project.groupRegisterNoGroups")}</span>
+                            ) : (
+                              <ul>
+                                {period.groups.map((group) => (
+                                  <li key={`${period.period}-${group.name}`}>
+                                    <strong>{group.name}</strong>
+                                    <span>
+                                      {t("project.groupRegisterMemberSummary", {
+                                        members: group.member_count,
+                                        seated: group.seated_count,
+                                        unseated: group.unseated_count,
+                                        missing: group.missing_count,
+                                      })}
+                                    </span>
+                                    {(group.added_count > 0 || group.removed_count > 0) && (
+                                      <small>
+                                        {t("project.groupRegisterChangeSummary", {
+                                          added: group.added_count,
+                                          removed: group.removed_count,
+                                        })}
+                                      </small>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </details>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )}
                 <label className="project-field">

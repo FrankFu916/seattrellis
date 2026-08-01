@@ -2245,6 +2245,56 @@ input:focus-visible,
   font-size: 0.65rem;
 }
 
+.project-group-register-preview {
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.project-group-register-preview > strong {
+  color: var(--text-strong);
+  font-size: 0.7rem;
+}
+
+.project-group-register-preview > small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.project-group-register-period {
+  padding: 5px 7px;
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.project-group-register-period summary {
+  cursor: pointer;
+  color: var(--text-strong);
+  font-size: 0.66rem;
+}
+
+.project-group-register-period ul {
+  display: grid;
+  gap: 5px;
+  margin: 7px 0 0;
+  padding-left: 16px;
+}
+
+.project-group-register-period li {
+  display: grid;
+  gap: 2px;
+  font-size: 0.64rem;
+}
+
+.project-group-register-period li span,
+.project-group-register-period li small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .project-migration {
   display: grid;
   gap: 8px;

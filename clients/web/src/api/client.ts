@@ -15,6 +15,7 @@ import type {
   ProjectHistoryResponse,
   ProjectArtifactCompareResponse,
   ProjectArtifactRestoreResponse,
+  ProjectGroupRegisterPreviewResponse,
   ProjectMigrationResponse,
   ProjectMigrationRestoreResponse,
   ProjectRotationLoadResponse,
@@ -297,6 +298,24 @@ export async function downloadProjectGroupRegister(
     blob: await response.blob(),
     filename: match ? match[1] : `group-register.${format}`,
   };
+}
+
+export async function previewProjectGroupRegister(
+  projectPath: string,
+  artifactPath: string,
+): Promise<ProjectGroupRegisterPreviewResponse> {
+  return fetchJson<ProjectGroupRegisterPreviewResponse>(
+    "/projects/rotation/group-register/preview",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_path: projectPath,
+        artifact_path: artifactPath,
+      }),
+    },
+    30_000,
+  );
 }
 
 export async function scanProjectPrivacy(

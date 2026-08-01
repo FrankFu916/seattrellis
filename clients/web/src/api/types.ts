@@ -575,6 +575,39 @@ export type ProjectArtifactRestoreResponse = {
   restored_artifact: string;
 };
 
+export type ProjectGroupMemberChange = {
+  student_ref: string;
+  change: "added" | "removed";
+};
+
+export type ProjectGroupPreview = {
+  name: string;
+  member_count: number;
+  seated_count: number;
+  unseated_count: number;
+  missing_count: number;
+  added_count: number;
+  removed_count: number;
+  member_changes: ProjectGroupMemberChange[];
+};
+
+export type ProjectGroupRegisterPeriodPreview = {
+  period: number;
+  label: string;
+  compared_to_period: number | null;
+  groups: ProjectGroupPreview[];
+};
+
+export type ProjectGroupRegisterPreviewResponse = {
+  api_version: "1";
+  project_path: string;
+  artifact_path: string;
+  plan_name: string;
+  period_count: number;
+  periods: ProjectGroupRegisterPeriodPreview[];
+  has_changes: boolean;
+};
+
 export type ProjectMigrationResponse = {
   api_version: "1";
   project_path: string;
