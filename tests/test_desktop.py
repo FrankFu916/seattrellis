@@ -56,7 +56,7 @@ def test_standalone_desktop_parser_exposes_version(capsys) -> None:
         build_parser().parse_args(["--version"])
 
     assert exit_info.value.code == 0
-    assert capsys.readouterr().out.strip() == "seattrellis-desktop 1.8.3"
+    assert capsys.readouterr().out.strip() == "seattrellis-desktop 1.8.4"
 
 
 def test_desktop_session_serves_bootstrap_before_api_authentication(tmp_path) -> None:

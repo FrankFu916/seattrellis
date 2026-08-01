@@ -1,18 +1,8 @@
 # Changelog
 
-## 1.8.3
-
-### User-facing changes
-
-- Improved roster import review with localized, actionable messages. Changing
-  a mapping or import mode clears the old preview, and incomplete results cannot
-  be confirmed accidentally.
-- Added safe batch migration for local class projects with combined preflight
-  checks and rollback of files written during a failed run.
-- Added an unsaved-changes warning when closing the browser or desktop
-  workbench after editing seats.
-
 ## Unreleased
+
+## 1.8.4 - 2026-08-01
 
 ### User-facing changes
 
@@ -181,6 +171,18 @@
 - Refreshed the README and quick-start guides to distinguish the recommended
   React workbench from the Streamlit compatibility and advanced-configuration
   interface.
+
+## 1.8.3
+
+### User-facing changes
+
+- Improved roster import review with localized, actionable messages. Changing
+  a mapping or import mode clears the old preview, and incomplete results cannot
+  be confirmed accidentally.
+- Added safe batch migration for local class projects with combined preflight
+  checks and rollback of files written during a failed run.
+- Added an unsaved-changes warning when closing the browser or desktop
+  workbench after editing seats.
 
 ## 1.8.2 - 2026-07-31
 
