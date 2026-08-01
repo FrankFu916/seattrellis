@@ -181,6 +181,32 @@ def test_failed_multi_operation_command_rolls_back_all_changes() -> None:
     assert not next(item for item in unchanged.seats if item.seat_id == "A1").locked
 
 
+def test_reopened_draft_preserves_existing_edit_provenance() -> None:
+    source = _candidate_set()
+    candidate = source.candidates[0]
+    snapshot = candidate.snapshot.model_copy(
+        update={
+            "metadata": {
+                "manual_edit": {
+                    "source": "web_editor",
+                    "commands": [{"command_id": "previous-edit", "action": "apply"}],
+                }
+            }
+        }
+    )
+    reopened = source.model_copy(
+        update={
+            "candidates": [candidate.model_copy(update={"snapshot": snapshot})]
+        }
+    )
+
+    store = EditorDraftStore()
+    state = store.create(reopened)
+    output = store.snapshot(state.draft_id)
+    assert output.metadata["manual_edit"]["operation_count"] == 1
+    assert output.metadata["manual_edit"]["commands"][0]["command_id"] == "previous-edit"
+
+
 def test_stale_duplicate_and_wrong_draft_commands_are_rejected() -> None:
     store = EditorDraftStore()
     state = store.create(_candidate_set())

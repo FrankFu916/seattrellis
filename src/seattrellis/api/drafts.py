@@ -76,6 +76,7 @@ class EditorDraftStore:
         candidate_copy = _copy_candidate_set(candidate_set)
         candidate = candidate_copy.get_candidate("recommended")
         locks = lock_state_from_snapshot(candidate.snapshot)
+        command_log = _command_log_from_snapshot(candidate.snapshot)
         stored = _StoredDraft(
             candidate_set=candidate_copy,
             candidate_id=candidate.candidate_id,
@@ -85,6 +86,7 @@ class EditorDraftStore:
                 locked_seats=locks.locked_seats,
             ),
             draft_id=uuid4().hex,
+            command_log=command_log,
         )
         with self._lock:
             self._prune()
@@ -301,6 +303,22 @@ def _clean_session(session: EditingSession) -> EditingSession:
 
 def _copy_candidate_set(candidate_set: CandidateSet) -> CandidateSet:
     return candidate_set.model_copy(deep=True)
+
+
+def _command_log_from_snapshot(snapshot: SeatingSnapshot) -> list[dict[str, object]]:
+    """Carry forward bounded web-edit provenance when reopening an artifact."""
+
+    manual_edit = snapshot.metadata.get("manual_edit")
+    if not isinstance(manual_edit, dict):
+        return []
+    commands = manual_edit.get("commands")
+    if not isinstance(commands, list):
+        return []
+    return [
+        deepcopy(command)
+        for command in commands[:10_000]
+        if isinstance(command, dict)
+    ]
 
 
 def _clean_draft_id(value: str) -> str:
