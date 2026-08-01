@@ -342,6 +342,15 @@ class ProjectArtifactProvenance(ApiModel):
     operation_count: int | None = Field(default=None, ge=0, le=100_000)
 
 
+class ProjectArtifactOperation(ApiModel):
+    """One anonymous editing event shown in a project history timeline."""
+
+    sequence: int = Field(ge=1)
+    action: Literal["apply", "undo", "redo", "unknown"]
+    operation_count: int = Field(ge=0, le=100)
+    operation_kinds: list[str] = Field(default_factory=list, max_length=5)
+
+
 class ProjectArtifactItem(ApiModel):
     """Metadata for one historical or generated project artifact."""
 
@@ -354,6 +363,11 @@ class ProjectArtifactItem(ApiModel):
     student_count: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=0)
     provenance: ProjectArtifactProvenance | None = None
+    operation_history: list[ProjectArtifactOperation] = Field(
+        default_factory=list,
+        max_length=100,
+    )
+    operation_history_truncated: bool = False
 
 
 class ProjectHistoryResponse(VersionedResponse):

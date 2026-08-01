@@ -30,6 +30,7 @@ from seattrellis.api.models import (
     HealthResponse,
     InspectClassResponse,
     ProjectArtifactItem,
+    ProjectArtifactOperation,
     ProjectArtifactProvenance,
     ProjectArtifactCompareResponse,
     ProjectArtifactDiff,
@@ -1246,6 +1247,10 @@ def _artifact_items(
             students = first_snapshot.get("students")
         created_at = _parse_artifact_datetime(data.get("created_at"))
         provenance = _artifact_provenance(data, kind=kind)
+        operation_history, operation_history_truncated = _artifact_operation_history(
+            data,
+            kind=kind,
+        )
         items.append(
             ProjectArtifactItem(
                 name=path.name,
@@ -1257,6 +1262,8 @@ def _artifact_items(
                 student_count=len(students) if isinstance(students, list) else None,
                 period_count=len(periods) if isinstance(periods, list) else None,
                 provenance=provenance,
+                operation_history=operation_history,
+                operation_history_truncated=operation_history_truncated,
             )
         )
         # Candidate scores and student records are intentionally not returned
@@ -1264,24 +1271,115 @@ def _artifact_items(
     return items
 
 
-def _artifact_provenance(
+_SAFE_EDIT_OPERATION_KINDS = frozenset(
+    {
+        "swap_students",
+        "move_student",
+        "batch_move",
+        "seat_student",
+        "unseat_student",
+        "lock_student",
+        "unlock_student",
+        "lock_seat",
+        "unlock_seat",
+    }
+)
+
+
+def _artifact_operation_history(
     data: dict[str, object],
     *,
     kind: str,
-) -> ProjectArtifactProvenance | None:
-    """Summarize artifact origin without returning student-sensitive metadata.
+) -> tuple[list[ProjectArtifactOperation], bool]:
+    """Return a bounded, identifier-free summary of editing commands."""
 
-    Older history files do not carry provenance.  They remain visible with an
-    ``unknown`` source, while newer generated, edited, rotated, and restored
-    artifacts expose a small stable summary.  Nested period/candidate metadata
-    is inspected locally and reduced to counts only.
-    """
+    entries: list[ProjectArtifactOperation] = []
+    truncated = False
+    for metadata in _artifact_metadata_values(data, kind=kind):
+        manual_edit = metadata.get("manual_edit")
+        if not isinstance(manual_edit, dict):
+            manual_edit = metadata.get("source_manual_edit")
+        if not isinstance(manual_edit, dict):
+            continue
+        commands = manual_edit.get("commands")
+        if isinstance(commands, list):
+            for command in commands:
+                if not isinstance(command, dict):
+                    continue
+                if len(entries) >= 100:
+                    truncated = True
+                    break
+                action = command.get("action")
+                safe_action = action if action in {"apply", "undo", "redo"} else "unknown"
+                operations = command.get("operations")
+                kinds: list[str] = []
+                if isinstance(operations, list):
+                    for operation in operations:
+                        if not isinstance(operation, dict):
+                            continue
+                        operation_kind = operation.get("kind")
+                        safe_kind = (
+                            operation_kind
+                            if isinstance(operation_kind, str)
+                            and operation_kind in _SAFE_EDIT_OPERATION_KINDS
+                            else "other"
+                        )
+                        if safe_kind not in kinds and len(kinds) < 5:
+                            kinds.append(safe_kind)
+                entries.append(
+                    ProjectArtifactOperation(
+                        sequence=len(entries) + 1,
+                        action=safe_action,  # type: ignore[arg-type]
+                        operation_count=(
+                            min(len(operations), 100)
+                            if isinstance(operations, list)
+                            else 0
+                        ),
+                        operation_kinds=kinds,
+                    )
+                )
+            continue
+
+        operations = manual_edit.get("operations")
+        if isinstance(operations, list):
+            if len(entries) >= 100:
+                truncated = True
+                continue
+            kinds = []
+            for operation in operations:
+                if not isinstance(operation, dict):
+                    continue
+                operation_kind = operation.get("kind")
+                safe_kind = (
+                    operation_kind
+                    if isinstance(operation_kind, str)
+                    and operation_kind in _SAFE_EDIT_OPERATION_KINDS
+                    else "other"
+                )
+                if safe_kind not in kinds and len(kinds) < 5:
+                    kinds.append(safe_kind)
+            entries.append(
+                ProjectArtifactOperation(
+                    sequence=len(entries) + 1,
+                    action="apply",
+                    operation_count=min(len(operations), 100),
+                    operation_kinds=kinds,
+                )
+            )
+    return entries, truncated
+
+
+def _artifact_metadata_values(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> list[dict[str, object]]:
+    """Collect nested metadata locally for provenance and timeline summaries."""
 
     metadata_values: list[dict[str, object]] = []
     top_metadata = data.get("metadata")
     if isinstance(top_metadata, dict):
         metadata_values.append(top_metadata)
-
     if kind == "rotation_plan":
         periods = data.get("periods")
         if isinstance(periods, list):
@@ -1300,6 +1398,23 @@ def _artifact_provenance(
                 snapshot = candidate.get("snapshot")
                 if isinstance(snapshot, dict) and isinstance(snapshot.get("metadata"), dict):
                     metadata_values.append(snapshot["metadata"])
+    return metadata_values
+
+
+def _artifact_provenance(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> ProjectArtifactProvenance | None:
+    """Summarize artifact origin without returning student-sensitive metadata.
+
+    Older history files do not carry provenance.  They remain visible with an
+    ``unknown`` source, while newer generated, edited, rotated, and restored
+    artifacts expose a small stable summary.  Nested period/candidate metadata
+    is inspected locally and reduced to counts only.
+    """
+
+    metadata_values = _artifact_metadata_values(data, kind=kind)
 
     parent_name: str | None = None
     operation_count = 0

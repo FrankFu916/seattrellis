@@ -63,7 +63,20 @@ def test_project_history_exposes_safe_artifact_provenance(tmp_path) -> None:
         "restored_from": "../../private/previous.snapshot.json",
         "manual_edit": {
             "operation_count": 2,
-            "commands": [{"student_id": "SENSITIVE", "seat_id": "R1C1"}],
+            "commands": [
+                {
+                    "action": "apply",
+                    "operations": [
+                        {
+                            "kind": "swap_students",
+                            "payload": {
+                                "first_student": "SENSITIVE",
+                                "second_student": "SENSITIVE-2",
+                            },
+                        }
+                    ],
+                }
+            ],
         },
     }
     source.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -81,6 +94,14 @@ def test_project_history_exposes_safe_artifact_provenance(tmp_path) -> None:
         "parent_name": "previous.snapshot.json",
         "operation_count": 2,
     }
+    assert artifact["operation_history"] == [
+        {
+            "sequence": 1,
+            "action": "apply",
+            "operation_count": 1,
+            "operation_kinds": ["swap_students"],
+        }
+    ]
     assert "SENSITIVE" not in history.text
     assert "../" not in history.text
 
@@ -390,7 +411,17 @@ def test_project_rotation_save_persists_current_period_drafts(tmp_path) -> None:
         json={"project_path": str(paths["project"])},
     ).json()
     rotation_outputs = [item for item in listed["outputs"] if item["kind"] == "rotation_plan"]
-    assert any(item["path"] == str(output) and item["period_count"] == 2 for item in rotation_outputs)
+    saved_rotation = next(
+        item
+        for item in rotation_outputs
+        if item["path"] == str(output) and item["period_count"] == 2
+    )
+    assert saved_rotation["operation_history"][0] == {
+        "sequence": 1,
+        "action": "apply",
+        "operation_count": 1,
+        "operation_kinds": ["swap_students"],
+    }
 
     loaded = client.post(
         "/api/v1/projects/rotation/load",
