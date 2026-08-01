@@ -481,6 +481,21 @@ fn route(
         ("POST", ["api", "v1", "projects", "migration", "restore"]) => {
             migration_restore_response(&request.body)
         }
+        ("POST", ["api", "v1", "projects", "rotation", "save"]) => {
+            rotation_save_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "rotation", "load"]) => {
+            rotation_load_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "rotation", "group-register"]) => {
+            rotation_register_download_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "rotation", "group-register", "preview"]) => {
+            rotation_register_preview_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "rotation", "group-register", "save"]) => {
+            rotation_register_save_response(&request.body, request.content_type.as_deref())
+        }
         ("GET", []) | ("GET", ["index.html"]) => index_response(web_root),
         ("GET", _) if path.starts_with("/api/") => json_error(404, "not found"),
         ("GET", _) => static_response(web_root, path),
@@ -1614,6 +1629,201 @@ fn migration_error_response(message: &str) -> Response {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rotation routes
+// ---------------------------------------------------------------------------
+
+/// `POST /api/v1/projects/rotation/save`: persist a rotation plan into the
+/// project outputs (`{project_path, rotation_plan, draft_ids?, output_name?}`).
+/// `draft_ids` / `output_name` are accepted for workbench compatibility; the
+/// native module derives its artifact name from the outputs directory.
+fn rotation_save_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let Some(rotation_plan) = value.get("rotation_plan") else {
+        return json_error(400, "request body is missing a 'rotation_plan' field");
+    };
+    let project_path = resolve_request_path(&project_path);
+    let plan_json = rotation_plan.to_string();
+    match crate::rotation::rotation_save_json(&project_path, &plan_json) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => rotation_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/rotation/load`: read the saved rotation plan back
+/// (`{project_path, artifact_path?}`). `artifact_path` is accepted for
+/// workbench compatibility; the module locates `rotation-plan.json` in the
+/// project's outputs directory.
+fn rotation_load_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    match crate::rotation::rotation_load_json(&project_path) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => rotation_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/rotation/group-register`: render a printable HTML or
+/// tabular CSV register for one rotation period. The workbench sends
+/// `{project_path, artifact_path?, format, locale?}` and reads the bytes plus
+/// the `Content-Disposition` filename. `period_index` selects the period
+/// (default 1) because the native module renders one period at a time.
+fn rotation_register_download_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let period_index = match optional_i64(&value, "period_index") {
+        Ok(value) => value.unwrap_or(1),
+        Err(response) => return response,
+    };
+    let format_name = match optional_string(&value, "format") {
+        Ok(value) => value.unwrap_or_else(|| "html".to_string()),
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    if format_name.eq_ignore_ascii_case("csv") {
+        match crate::rotation::group_register_csv_json(&project_path, period_index) {
+            Ok(bytes) => Response {
+                status: 200,
+                content_type: Some("text/csv; charset=utf-8"),
+                content_disposition: Some("attachment; filename=\"group-register.csv\"".to_string()),
+                body: bytes,
+            },
+            Err(message) => rotation_error_response(&message),
+        }
+    } else if format_name.eq_ignore_ascii_case("html") {
+        match crate::rotation::group_register_html_json(&project_path, period_index) {
+            Ok(bytes) => Response {
+                status: 200,
+                content_type: Some("text/html; charset=utf-8"),
+                content_disposition: Some("attachment; filename=\"group-register.html\"".to_string()),
+                body: bytes,
+            },
+            Err(message) => rotation_error_response(&message),
+        }
+    } else {
+        json_error(400, "request field 'format' must be \"html\" or \"csv\"")
+    }
+}
+
+/// `POST /api/v1/projects/rotation/group-register/preview`: summarize one
+/// rotation period's membership grouped by seat row and column
+/// (`{project_path, artifact_path?, period_index?}`).
+fn rotation_register_preview_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let period_index = match optional_i64(&value, "period_index") {
+        Ok(value) => value.unwrap_or(1),
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    match crate::rotation::group_register_preview_json(&project_path, period_index) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => rotation_error_response(&message),
+    }
+}
+
+/// `POST /api/v1/projects/rotation/group-register/save`: persist a group
+/// register payload to the project outputs (`{project_path, groups}` or a
+/// multipart form with `project_path` + `groups` fields). The groups payload
+/// may be a JSON array or an object with a `groups` array.
+fn rotation_register_save_response(body: &[u8], content_type: Option<&str>) -> Response {
+    let is_multipart = content_type
+        .map(|value| {
+            value
+                .to_ascii_lowercase()
+                .starts_with("multipart/form-data")
+        })
+        .unwrap_or(false);
+    if is_multipart {
+        let Some(boundary) = content_type.and_then(multipart_boundary) else {
+            return json_error(400, "multipart/form-data boundary is missing");
+        };
+        let fields = match parse_multipart(body, &boundary) {
+            Ok(fields) => fields,
+            Err(message) => return json_error(422, &message),
+        };
+        let project_path = match fields.get("project_path") {
+            Some(bytes) => match std::str::from_utf8(bytes) {
+                Ok(path) => path.to_string(),
+                Err(_) => return json_error(400, "multipart 'project_path' is not valid UTF-8"),
+            },
+            None => return json_error(422, "upload is missing a 'project_path' field"),
+        };
+        let groups_json = match fields.get("groups") {
+            Some(bytes) => match std::str::from_utf8(bytes) {
+                Ok(json) => json.to_string(),
+                Err(_) => return json_error(400, "multipart 'groups' is not valid UTF-8"),
+            },
+            None => return json_error(422, "upload is missing a 'groups' field"),
+        };
+        let project_path = resolve_request_path(&project_path);
+        return match crate::rotation::group_register_save_json(&project_path, &groups_json) {
+            Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+            Err(message) => rotation_error_response(&message),
+        };
+    }
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let Some(groups) = value.get("groups").filter(|groups| !groups.is_null()) else {
+        return json_error(400, "request body is missing a 'groups' field");
+    };
+    let project_path = resolve_request_path(&project_path);
+    let groups_json = groups.to_string();
+    match crate::rotation::group_register_save_json(&project_path, &groups_json) {
+        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+        Err(message) => rotation_error_response(&message),
+    }
+}
+
+/// Map a rotation-domain error onto the matching HTTP status: 404 for a
+/// missing project file or rotation artifact (or an out-of-range period), 422
+/// for validation problems.
+fn rotation_error_response(message: &str) -> Response {
+    if message.contains("poisoned") {
+        json_error(500, message)
+    } else if message.contains("not found")
+        || message.contains("does not exist")
+        || message.contains("out of range")
+        || message.contains("No saved rotation plan")
+    {
+        json_error(404, message)
+    } else {
+        json_error(422, message)
+    }
+}
+
 /// Parse a JSON object request body, returning a 400 response on empty or
 /// invalid JSON.
 fn parse_body_json(body: &[u8]) -> Result<Value, Response> {
@@ -1647,6 +1857,31 @@ fn optional_bool(value: &Value, field: &str) -> Result<bool, Response> {
             400,
             &format!("request field '{field}' must be a boolean"),
         )),
+    }
+}
+
+/// Read an optional string field from a parsed JSON object body (`None` when
+/// absent).
+fn optional_string(value: &Value, field: &str) -> Result<Option<String>, Response> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        _ => Err(json_error(
+            400,
+            &format!("request field '{field}' must be a string"),
+        )),
+    }
+}
+
+/// Read an optional integer field from a parsed JSON object body (`None` when
+/// absent).
+fn optional_i64(value: &Value, field: &str) -> Result<Option<i64>, Response> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| json_error(400, &format!("request field '{field}' must be an integer"))),
     }
 }
 
@@ -3706,5 +3941,443 @@ mod tests {
             &root,
         );
         assert_eq!(response.status, 422);
+    }
+
+    /// A fresh temp project directory for the rotation routes.
+    fn rotation_project_dir() -> PathBuf {
+        let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis_rotation_server_test_{}_{}",
+            std::process::id(),
+            seq
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Write a minimal `seattrellis_project` file and return its path.
+    fn rotation_project_file(dir: &Path) -> String {
+        let project = json!({
+            "kind": "seattrellis_project",
+            "schema_version": 1,
+            "students": "students.csv",
+            "layout": "classroom.json",
+            "rules": "rules.json",
+            "outputs_dir": "outputs",
+        });
+        let project_file = dir.join("project.seattrellis.json");
+        fs::write(&project_file, serde_json::to_vec(&project).unwrap()).unwrap();
+        fs::write(dir.join("students.csv"), "student_id,name\n").unwrap();
+        fs::write(dir.join("classroom.json"), r#"{"seats":[]}"#).unwrap();
+        fs::write(dir.join("rules.json"), r#"{}"#).unwrap();
+        project_file.to_string_lossy().into_owned()
+    }
+
+    /// A two-period rotation plan matching the module's test fixture.
+    fn rotation_plan_value() -> Value {
+        json!({
+            "schema_version": "1.0",
+            "kind": "rotation_plan",
+            "name": "Weekly Rotation",
+            "periods": [
+                {
+                    "period": 1,
+                    "label": "Week 1",
+                    "snapshot": {
+                        "solver_status": "FEASIBLE",
+                        "assignments": [
+                            {"student_key": "STU001", "student_name": "Alice", "seat_id": "R1C1"},
+                            {"student_key": "STU002", "student_name": "Bob", "seat_id": "R1C3"}
+                        ],
+                        "students": [
+                            {"student_id": "STU001", "name": "Alice"},
+                            {"student_id": "STU002", "name": "Bob"}
+                        ],
+                        "layout": {"seats": [
+                            {"seat_id": "R1C1", "row": 1, "col": 1, "enabled": true},
+                            {"seat_id": "R1C3", "row": 1, "col": 3, "enabled": true}
+                        ]}
+                    }
+                },
+                {
+                    "period": 2,
+                    "label": "Week 2",
+                    "snapshot": {
+                        "solver_status": "FEASIBLE",
+                        "assignments": [
+                            {"student_key": "STU001", "student_name": "Alice", "seat_id": "R2C2"}
+                        ]
+                    }
+                }
+            ]
+        })
+    }
+
+    /// Save + load round trip, preview, and the HTML/CSV download magic bytes.
+    #[test]
+    fn rotation_routes_save_load_preview_download() {
+        let root = test_web_root();
+        let dir = rotation_project_dir();
+        let project_path = rotation_project_file(&dir);
+
+        // 1. Save accepts the workbench shape (extra fields ignored) and
+        //    returns the module's `ProjectRotationSaveResponse` envelope.
+        let save_body = json!({
+            "project_path": project_path,
+            "rotation_plan": rotation_plan_value(),
+            "draft_ids": ["draft-1", "draft-2"],
+        });
+        let save = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/save",
+                &serde_json::to_vec(&save_body).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            save.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&save.body)
+        );
+        let save_val = body_json(&save);
+        assert_eq!(save_val["api_version"], "1");
+        assert_eq!(save_val["period_count"], 2);
+        assert!(save_val["saved_at"].as_str().unwrap().ends_with("+00:00"));
+        let output_path = save_val["output_path"].as_str().unwrap().to_string();
+        assert!(output_path.ends_with("rotation-plan.json"));
+
+        // 2. Load returns the plan stored on disk.
+        let load = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/load",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "artifact_path": output_path,
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            load.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&load.body)
+        );
+        let load_val = body_json(&load);
+        assert_eq!(load_val["artifact_path"].as_str().unwrap(), output_path);
+        assert_eq!(load_val["project_path"].as_str().unwrap(), save_val["project_path"]);
+        assert_eq!(load_val["rotation_plan"]["name"], "Weekly Rotation");
+        assert_eq!(load_val["rotation_plan"]["periods"].as_array().unwrap().len(), 2);
+
+        // 3. Preview defaults to period 1 and groups by row and column.
+        let preview = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register/preview",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "artifact_path": output_path,
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            preview.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&preview.body)
+        );
+        let preview_val = body_json(&preview);
+        assert_eq!(preview_val["api_version"], "1");
+        assert_eq!(preview_val["period"], 1);
+        assert_eq!(preview_val["period_label"], "Week 1");
+        assert_eq!(preview_val["plan_name"], "Weekly Rotation");
+        assert_eq!(preview_val["period_count"], 2);
+        assert!(!preview_val["row_groups"].as_array().unwrap().is_empty());
+        assert!(!preview_val["column_groups"].as_array().unwrap().is_empty());
+
+        // An explicit period_index selects the other period.
+        let preview2 = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register/preview",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "period_index": 2,
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(preview2.status, 200);
+        assert_eq!(body_json(&preview2)["period"], 2);
+
+        // 4. HTML download: text/html, doctype magic, attachment filename.
+        let html = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "format": "html",
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            html.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&html.body)
+        );
+        assert_eq!(html.content_type, Some("text/html; charset=utf-8"));
+        assert!(html.body.starts_with(b"<!doctype html>"));
+        assert!(
+            html.content_disposition
+                .as_deref()
+                .unwrap()
+                .contains("filename=\"group-register.html\"")
+        );
+
+        // 5. CSV download: text/csv with a UTF-8 BOM magic prefix.
+        let csv = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "format": "csv",
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            csv.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&csv.body)
+        );
+        assert_eq!(csv.content_type, Some("text/csv; charset=utf-8"));
+        assert_eq!(&csv.body[..3], &[0xEF, 0xBB, 0xBF]);
+        assert!(
+            csv.content_disposition
+                .as_deref()
+                .unwrap()
+                .contains("filename=\"group-register.csv\"")
+        );
+
+        // 6. Persist a group register (JSON body) and read it back from disk.
+        let groups = json!({ "groups": [{ "name": "A", "students": ["STU001"] }] });
+        let saved_groups = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register/save",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "groups": groups,
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            saved_groups.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&saved_groups.body)
+        );
+        let saved_groups_val = body_json(&saved_groups);
+        assert_eq!(saved_groups_val["group_count"], 1);
+        assert!(saved_groups_val["output_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("group-register.json"));
+        let on_disk: Value =
+            serde_json::from_slice(&fs::read(dir.join("outputs").join("group-register.json")).unwrap())
+                .unwrap();
+        assert_eq!(on_disk["groups"][0]["name"], "A");
+
+        // 7. The same save endpoint accepts a multipart form.
+        let boundary = "rotation-multipart-boundary";
+        let mut multipart_body = Vec::new();
+        multipart_body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"project_path\"\r\n\r\n{project_path}\r\n"
+            )
+            .as_bytes(),
+        );
+        multipart_body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"groups\"\r\n\r\n{groups}\r\n"
+            )
+            .as_bytes(),
+        );
+        multipart_body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+        let multipart_save = route_one(
+            &request_with_content_type(
+                "POST",
+                "/api/v1/projects/rotation/group-register/save",
+                &multipart_body,
+                Some(&format!("multipart/form-data; boundary={boundary}")),
+            ),
+            &root,
+        );
+        assert_eq!(
+            multipart_save.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&multipart_save.body)
+        );
+        assert_eq!(body_json(&multipart_save)["group_count"], 1);
+    }
+
+    /// Missing artifacts and bad request shapes map to 400/404/422.
+    #[test]
+    fn rotation_routes_error_mapping() {
+        let root = test_web_root();
+        let dir = rotation_project_dir();
+        let project_path = rotation_project_file(&dir);
+
+        // No saved plan yet -> load is 404.
+        let load = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/load",
+                &serde_json::to_vec(&json!({ "project_path": project_path })).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(load.status, 404);
+
+        // Preview and register before any save are also 404.
+        let preview = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register/preview",
+                &serde_json::to_vec(&json!({ "project_path": project_path })).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(preview.status, 404);
+        let register = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register",
+                &serde_json::to_vec(&json!({ "project_path": project_path })).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(register.status, 404);
+
+        // Missing `rotation_plan` -> 400.
+        let bad_save = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/save",
+                &serde_json::to_vec(&json!({ "project_path": project_path })).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(bad_save.status, 400);
+
+        // Invalid JSON body -> 400.
+        let bad_json = route_one(
+            &request("POST", "/api/v1/projects/rotation/save", b"not json"),
+            &root,
+        );
+        assert_eq!(bad_json.status, 400);
+
+        // Invalid plan shape -> 422.
+        let bad_plan = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/save",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "rotation_plan": { "periods": [] },
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(bad_plan.status, 422);
+
+        // Save a valid plan so we can probe period/format errors.
+        route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/save",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "rotation_plan": rotation_plan_value(),
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+
+        // Out-of-range period -> 404.
+        let bad_period = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register/preview",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "period_index": 99,
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(bad_period.status, 404);
+
+        // Unknown download format -> 400.
+        let bad_format = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "format": "pdf",
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(bad_format.status, 400);
+
+        // Missing groups on the save endpoint -> 400.
+        let bad_groups = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register/save",
+                &serde_json::to_vec(&json!({ "project_path": project_path })).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(bad_groups.status, 400);
+
+        // Invalid groups payload -> 422.
+        let invalid_groups = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/group-register/save",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "groups": { "not_groups": true },
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(invalid_groups.status, 422);
     }
 }
