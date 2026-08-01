@@ -74,6 +74,8 @@
 - Migration previews now show privacy-safe field paths and type changes, before
   and after validation state, and whether the original or a backup can be used
   to roll back.
+- In-place migration backups can now be restored from the Project workspace;
+  the file changed by the restore is kept as a second safety backup.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.
