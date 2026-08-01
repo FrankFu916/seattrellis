@@ -12,9 +12,11 @@ use std::path::Path;
 use seattrellis_core::{solve_problem_json, CoreSolveRequest, CoreSolveResponse};
 
 use crate::render::SeatingGrid;
+use crate::style::Styler;
 use crate::{ExportArgs, ExportFormat, SolveArgs};
 
 pub fn run_solve(args: &SolveArgs) -> Result<(), String> {
+    let styler = Styler::stdout();
     let problem_text = read_text(&args.problem)?;
     let mut problem: serde_json::Value = serde_json::from_str(&problem_text)
         .map_err(|error| format!("'{}' is not valid JSON: {error}", args.problem.display()))?;
@@ -36,25 +38,52 @@ pub fn run_solve(args: &SolveArgs) -> Result<(), String> {
         .map_err(|error| format!("solver returned malformed JSON: {error}"))?;
 
     // Human-readable summary on stdout.
-    println!("feasible: {}", response.feasible);
-    println!("hard_constraints_satisfied: {}", response.hard_constraints_satisfied);
-    println!("attempts_used: {}", response.attempts_used);
+    let feasible_text = if response.feasible {
+        styler.green("true")
+    } else {
+        styler.red("false")
+    };
+    let hard_text = if response.hard_constraints_satisfied {
+        styler.green("true")
+    } else {
+        styler.yellow("false")
+    };
+    println!("{}: {}", styler.bold("feasible"), feasible_text);
+    println!(
+        "{}: {}",
+        styler.bold("hard_constraints_satisfied"),
+        hard_text
+    );
+    println!(
+        "{}: {}",
+        styler.bold("attempts_used"),
+        response.attempts_used
+    );
     match response.total_cost {
-        Some(cost) => println!("total_cost: {cost}"),
-        None => println!("total_cost: none"),
+        Some(cost) => println!("{}: {cost}", styler.bold("total_cost")),
+        None => println!("{}: none", styler.bold("total_cost")),
     }
-    println!("students seated: {}", response.assignment.len());
+    println!(
+        "{}: {}",
+        styler.bold("students seated"),
+        styler.cyan(&response.assignment.len().to_string())
+    );
 
     if let Some(output) = &args.output {
         let pretty = serde_json::to_string_pretty(&response)
             .map_err(|error| format!("could not encode the result: {error}"))?;
         write_text(output, &format!("{pretty}\n"))?;
-        println!("wrote result JSON to '{}'", output.display());
+        println!(
+            "{} result JSON to '{}'",
+            styler.green("wrote"),
+            output.display()
+        );
     }
     Ok(())
 }
 
 pub fn run_export(args: &ExportArgs) -> Result<(), String> {
+    let styler = Styler::stdout();
     let problem_text = read_text(&args.problem)?;
     let problem_value: serde_json::Value = serde_json::from_str(&problem_text)
         .map_err(|error| format!("'{}' is not valid JSON: {error}", args.problem.display()))?;
@@ -81,12 +110,13 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
     write_text(&args.output, &output_text)?;
 
     let format_name = match args.format {
-        ExportFormat::Svg => "SVG",
-        ExportFormat::Html => "HTML",
+        ExportFormat::Svg => styler.cyan("SVG"),
+        ExportFormat::Html => styler.cyan("HTML"),
     };
     println!(
-        "wrote {format_name} seating plan ({}/{} seats) to '{}'",
-        response.assignment.len(),
+        "{} {format_name} seating plan ({}/{} seats) to '{}'",
+        styler.green("wrote"),
+        styler.bold(&response.assignment.len().to_string()),
         request.seat_positions.len(),
         args.output.display()
     );

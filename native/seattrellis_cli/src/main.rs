@@ -6,47 +6,19 @@
 
 mod commands;
 mod render;
+mod style;
+mod usage;
 
 use std::env;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use crate::style::Styler;
+use crate::usage::render_usage;
+
 /// Version reported by `--version` (kept in sync with Cargo.toml).
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-const USAGE: &str = "\
-SeatTrellis CLI — standalone solve + export tool.
-
-USAGE:
-    seattrellis_cli <COMMAND> [OPTIONS]
-    seattrellis_cli --version
-
-COMMANDS:
-    solve    Solve a seating problem and print a summary of the result.
-    export   Render a solved seating plan as SVG or HTML.
-    help     Show this help.
-
-SOLVE:
-    seattrellis_cli solve --problem <problem.json> [--seed <n>] [--output <result.json>]
-
-      --problem <file>  Solve-request JSON (CoreSolveRequest). Required.
-      --seed <n>        Override the problem's solver seed.
-      --output <file>   Also write the full result JSON (CoreSolveResponse) to <file>.
-
-EXPORT:
-    seattrellis_cli export --problem <problem.json> --solution <result.json> \\
-                           --format <svg|html> --output <file>
-
-      --problem <file>   The same solve-request JSON used for solve (seat grid). Required.
-      --solution <file>  The solve result JSON (CoreSolveResponse). Required.
-      --format <f>       Output format: svg or html. Required.
-      --output <file>    Write the rendered plan to <file>. Required.
-
-EXIT STATUS:
-    0 on success; 1 on error (bad arguments or unreadable input files).
-    An infeasible solve is a valid result and still exits 0.
-";
 
 /// An option flag the hand-written parser knows about.
 struct Flag {
@@ -233,24 +205,32 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
 fn run_command(command: Command) -> ExitCode {
     match command {
         Command::Help => {
-            println!("{USAGE}");
+            let styler = Styler::stdout();
+            println!("{}", render_usage(&styler));
             ExitCode::SUCCESS
         }
         Command::Version => {
-            println!("seattrellis_cli {VERSION}");
+            let styler = Styler::stdout();
+            println!(
+                "{} {}",
+                styler.bold("seattrellis_cli"),
+                styler.cyan(VERSION)
+            );
             ExitCode::SUCCESS
         }
         Command::Solve(args) => match commands::run_solve(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
-                eprintln!("error: {message}");
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
                 ExitCode::FAILURE
             }
         },
         Command::Export(args) => match commands::run_export(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
-                eprintln!("error: {message}");
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
                 ExitCode::FAILURE
             }
         },
@@ -262,8 +242,9 @@ fn main() -> ExitCode {
     match parse_args(&args) {
         Ok(command) => run_command(command),
         Err(message) => {
-            eprintln!("error: {message}");
-            eprintln!("run 'seattrellis_cli --help' for usage");
+            let styler = Styler::stderr();
+            eprintln!("{}: {message}", styler.red("error"));
+            eprintln!("run '{} --help' for usage", styler.cyan("seattrellis_cli"));
             ExitCode::FAILURE
         }
     }
