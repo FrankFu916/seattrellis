@@ -103,15 +103,18 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
     })?;
 
     let grid = SeatingGrid::build(&request, &response)?;
-    let output_text = match args.format {
-        ExportFormat::Svg => crate::render::render_svg(&grid),
-        ExportFormat::Html => crate::render::render_html(&grid),
-    };
-    write_text(&args.output, &output_text)?;
+    match args.format {
+        ExportFormat::Svg => write_text(&args.output, &crate::render::render_svg(&grid))?,
+        ExportFormat::Html => write_text(&args.output, &crate::render::render_html(&grid))?,
+        ExportFormat::Png => write_bytes(&args.output, &crate::render::render_png(&grid)?)?,
+        ExportFormat::Pdf => write_text(&args.output, &crate::render::render_pdf(&grid))?,
+    }
 
     let format_name = match args.format {
         ExportFormat::Svg => styler.cyan("SVG"),
         ExportFormat::Html => styler.cyan("HTML"),
+        ExportFormat::Png => styler.cyan("PNG"),
+        ExportFormat::Pdf => styler.cyan("PDF"),
     };
     println!(
         "{} {format_name} seating plan ({}/{} seats) to '{}'",
@@ -130,5 +133,10 @@ fn read_text(path: &Path) -> Result<String, String> {
 
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
     std::fs::write(path, text)
+        .map_err(|error| format!("cannot write '{}': {error}", path.display()))
+}
+
+fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    std::fs::write(path, bytes)
         .map_err(|error| format!("cannot write '{}': {error}", path.display()))
 }

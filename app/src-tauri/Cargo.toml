@@ -1,0 +1,30 @@
+[package]
+name = "seattrellis_desktop"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+description = "SeatTrellis desktop shell (Tauri): WebView window over the loopback Rust backend."
+license = "Apache-2.0"
+
+[lib]
+name = "seattrellis_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The loopback backend core (serves web_static + native solve).
+seattrellis_app = { path = "../" }
+
+[features]
+# This feature is used for production builds (`cargo tauri build`) when no dev
+# server is running; keep it so the bundler can produce a standalone .app.
+custom-protocol = ["tauri/custom-protocol"]
+
+# Own workspace root so this shell crate is independent of the `app/` and
+# `native/` workspaces (it already depends on `app` by path).
+[workspace]

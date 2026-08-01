@@ -30,6 +30,8 @@ struct Flag {
 pub enum ExportFormat {
     Svg,
     Html,
+    Png,
+    Pdf,
 }
 
 impl ExportFormat {
@@ -37,7 +39,11 @@ impl ExportFormat {
         match raw.to_ascii_lowercase().as_str() {
             "svg" => Ok(ExportFormat::Svg),
             "html" => Ok(ExportFormat::Html),
-            other => Err(format!("unknown format '{other}' (expected svg or html)")),
+            "png" => Ok(ExportFormat::Png),
+            "pdf" => Ok(ExportFormat::Pdf),
+            other => Err(format!(
+                "unknown format '{other}' (expected svg, html, png or pdf)"
+            )),
         }
     }
 }
@@ -168,7 +174,8 @@ fn parse_export(tokens: &[String]) -> Result<Command, String> {
     let solution = flag_value(&parsed, "--solution")?
         .ok_or("export requires --solution <file>")?;
     let format = ExportFormat::parse(
-        flag_value(&parsed, "--format")?.ok_or("export requires --format <svg|html>")?,
+        flag_value(&parsed, "--format")?
+            .ok_or("export requires --format <svg|html|png|pdf>")?,
     )?;
     let output = flag_value(&parsed, "--output")?
         .ok_or("export requires --output <file>")?;
@@ -362,10 +369,31 @@ mod tests {
     #[test]
     fn rejects_bad_format() {
         let error = parse_args(&args_of(&[
-            "export", "--problem", "p", "--solution", "s", "--format", "png", "--output", "o",
+            "export", "--problem", "p", "--solution", "s", "--format", "bmp", "--output", "o",
         ]))
         .unwrap_err();
-        assert!(error.contains("unknown format 'png'"), "unexpected error: {error}");
+        assert!(error.contains("unknown format 'bmp'"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn parse_export_png_and_pdf_formats() {
+        let Command::Export(args) = parse_args(&args_of(&[
+            "export", "--problem=p", "--solution=s", "--format=png", "--output=o",
+        ]))
+        .unwrap()
+        else {
+            panic!("expected an export command");
+        };
+        assert_eq!(args.format, ExportFormat::Png);
+
+        let Command::Export(args) = parse_args(&args_of(&[
+            "export", "--problem=p", "--solution=s", "--format", "PDF", "--output", "o",
+        ]))
+        .unwrap()
+        else {
+            panic!("expected an export command");
+        };
+        assert_eq!(args.format, ExportFormat::Pdf, "format is case-insensitive");
     }
 
     #[test]

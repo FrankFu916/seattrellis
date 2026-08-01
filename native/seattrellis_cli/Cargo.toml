@@ -9,9 +9,12 @@ description = "Standalone solve + export CLI for SeatTrellis (Rust path delivera
 # Deliberately minimal: a single path dependency on the core solver plus
 # serde_json. No clap/structopt — argument parsing is hand-written to keep the
 # binary small. serde_json is already in the workspace lockfile via the core.
+# `png` (with its bundled flate2/miniz_oxide zlib) adds PNG export; PDF export
+# is hand-written straight into the binary (no extra crate) to stay small.
 [dependencies]
 seattrellis_core = { path = "../seattrellis_core" }
 serde_json = "1"
+png = "0.17"
 
 [[bin]]
 name = "seattrellis_cli"
