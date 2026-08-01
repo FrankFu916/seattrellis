@@ -2145,6 +2145,34 @@ input:focus-visible,
   color: var(--accent);
 }
 
+.project-artifact-history {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.63rem;
+}
+
+.project-artifact-history summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.project-artifact-history ol {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.project-artifact-history li {
+  display: grid;
+  gap: 1px;
+}
+
+.project-artifact-history li span,
+.project-artifact-history li small {
+  color: var(--muted);
+}
+
 .project-migration-references {
   display: grid;
   gap: 5px;

@@ -19,6 +19,7 @@ import {
 import type {
   ProjectArtifact,
   ProjectArtifactCompareResponse,
+  ProjectArtifactOperation,
   ProjectHistoryResponse,
   ProjectMigrationChange,
   ProjectMigrationReferenceCheck,
@@ -85,6 +86,47 @@ function artifactSourceLabel(
       return t("project.sourceUnknown");
     default:
       return null;
+  }
+}
+
+function operationActionLabel(
+  action: ProjectArtifactOperation["action"],
+  t: Translate,
+): string {
+  switch (action) {
+    case "apply":
+      return t("project.operationApply");
+    case "undo":
+      return t("project.operationUndo");
+    case "redo":
+      return t("project.operationRedo");
+    default:
+      return t("project.operationUnknown");
+  }
+}
+
+function operationKindLabel(kind: string, t: Translate): string {
+  switch (kind) {
+    case "swap_students":
+      return t("project.operation.swapStudents");
+    case "move_student":
+      return t("project.operation.moveStudent");
+    case "batch_move":
+      return t("project.operation.batchMove");
+    case "seat_student":
+      return t("project.operation.seatStudent");
+    case "unseat_student":
+      return t("project.operation.unseatStudent");
+    case "lock_student":
+      return t("project.operation.lockStudent");
+    case "unlock_student":
+      return t("project.operation.unlockStudent");
+    case "lock_seat":
+      return t("project.operation.lockSeat");
+    case "unlock_seat":
+      return t("project.operation.unlockSeat");
+    default:
+      return t("project.operationOther");
   }
 }
 
@@ -1029,6 +1071,7 @@ function ArtifactRow({
   t: Translate;
 }) {
   const sourceLabel = artifactSourceLabel(artifact, t);
+  const operationHistory = artifact.operation_history ?? [];
   return (
     <article className="project-artifact-row">
       <strong>{artifactKindLabel(artifact, t)}</strong>
@@ -1053,6 +1096,40 @@ function ArtifactRow({
               })}`
             : ""}
         </small>
+      )}
+      {operationHistory.length > 0 && (
+        <details
+          className="project-artifact-history"
+          data-testid="project-artifact-operation-history"
+        >
+          <summary>{t("project.operationHistory")}</summary>
+          <ol>
+            {operationHistory.map((operation) => {
+              const kinds = operation.operation_kinds
+                .map((kind) => operationKindLabel(kind, t))
+                .join(locale === "zh-CN" ? "、" : ", ");
+              return (
+                <li key={`${artifact.path}-${operation.sequence}`}>
+                  <strong>
+                    {t("project.operationStep", { sequence: operation.sequence })}
+                  </strong>
+                  <span>{operationActionLabel(operation.action, t)}</span>
+                  <small>
+                    {operation.operation_count > 0
+                      ? t("project.operationSummary", {
+                          count: operation.operation_count,
+                          kinds,
+                        })
+                      : t("project.operationNoChanges")}
+                  </small>
+                </li>
+              );
+            })}
+          </ol>
+          {artifact.operation_history_truncated && (
+            <small>{t("project.operationHistoryTruncated")}</small>
+          )}
+        </details>
       )}
     </article>
   );

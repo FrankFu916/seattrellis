@@ -48,6 +48,9 @@
   edited, rotated, or restored), its immediate source filename, and the number
   of recorded operations without exposing the underlying student data or command
   payloads.
+- Project history can now expand an anonymous operation timeline, showing each
+  apply, undo, or redo step and the kind of adjustment it contained without
+  exposing student or seat identifiers.
 - Project migration preview now checks every referenced roster, layout, rules,
   history, and output path and marks missing or wrong-type references before a
   migration is written.

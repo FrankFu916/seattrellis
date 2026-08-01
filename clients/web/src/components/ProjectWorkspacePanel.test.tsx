@@ -68,6 +68,15 @@ const historyResponse = {
         parent_name: "generated.snapshot.json",
         operation_count: 2,
       },
+      operation_history: [
+        {
+          sequence: 1,
+          action: "apply" as const,
+          operation_count: 1,
+          operation_kinds: ["swap_students"],
+        },
+      ],
+      operation_history_truncated: false,
     },
     {
       name: "week2.snapshot.json",
@@ -247,6 +256,9 @@ describe("ProjectWorkspacePanel", () => {
     expect(screen.getAllByText("week1.snapshot.json").length).toBeGreaterThan(0);
     expect(screen.getByTestId("project-artifact-provenance")).toHaveTextContent(
       "Manual edits · Source: generated.snapshot.json · 2 operations",
+    );
+    expect(screen.getByTestId("project-artifact-operation-history")).toHaveTextContent(
+      "Swap students",
     );
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });

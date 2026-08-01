@@ -486,6 +486,13 @@ export type ProjectArtifactProvenance = {
   operation_count: number | null;
 };
 
+export type ProjectArtifactOperation = {
+  sequence: number;
+  action: "apply" | "undo" | "redo" | "unknown";
+  operation_count: number;
+  operation_kinds: string[];
+};
+
 export type ProjectArtifact = {
   name: string;
   path: string;
@@ -496,6 +503,8 @@ export type ProjectArtifact = {
   student_count: number | null;
   period_count: number | null;
   provenance: ProjectArtifactProvenance | null;
+  operation_history?: ProjectArtifactOperation[];
+  operation_history_truncated?: boolean;
 };
 
 export type ProjectHistoryResponse = {
