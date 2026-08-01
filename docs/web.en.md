@@ -11,9 +11,11 @@ The React workbench is the default path for ordinary teachers. It covers roster
 import and mapping, inline student editing, room templates, custom rows and columns, aisles and
 unavailable seats, common seating goals, combined preferences, adjacency and
 fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo,
-export, and class-project backups. Its **Advanced settings** section is reserved for candidate count, seed,
-time limit, solver backend, and a complete rules JSON object; common classroom
-and seating requests stay in the ordinary flow.
+export, and class-project backups. Its **Advanced settings** section contains
+solver controls and complete rules JSON. The separate **Detailed seating rules**
+panel exposes the implemented history, neighbor, score, and peer-support rules
+with ordinary form controls; groups and cooling remain JSON-compatible but are
+not presented as active solver features.
 
 ## Streamlit compatibility and advanced tools
 
@@ -58,6 +60,17 @@ period has its own editing draft; select a period in the summary to load it
 into the normal editing and export flow, while the summary lists all periods
 and repeated-neighbor metrics.
 
+### Detailed seating rules
+
+Open **Detailed seating rules** on the Generate step when the common preference
+cards are not precise enough. The panel can configure historical position
+lookback, recent-neighbor relation types and distance, high-score front/back
+placement, row or group score distribution, and mentor/learner percentiles.
+Weights are soft objectives, so hard requests such as “keep these two students
+apart” still take priority. Group score balancing requires `group_id` on the
+layout seats. The raw rules JSON field remains available for compatibility, but
+the backend warns when a ruleset uses model-only `groups` or `cooling` fields.
+
 ### React workbench project panel
 
 `seattrellis workspace` also shows a Project panel beside the classroom flow.
@@ -75,7 +88,10 @@ output file and never overwrites the selected history artifact. The same
 path-safety and manifest checks used by the CLI apply to browser uploads. The
 classroom editor supports clicking cells to create seats, aisles, platforms,
 or empty space, changing the grid, moving or mirroring the layout, and saving
-the result for generation. Student and rules editors remain on the roadmap.
+the result for generation. Student editing is available in the roster step. The
+detailed rules panel covers the implemented soft rules; a complete visual
+RuleSet editor, including groups, cooling, and migration assistance, remains on
+the roadmap.
 
 ## Advanced tools
 

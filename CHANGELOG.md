@@ -37,6 +37,11 @@
   the number and names of upcoming periods, review repeat-neighbor metrics,
   switch between period-specific editing drafts, and continue editing or
   exporting the selected period through the same workflow.
+- Added a detailed rule panel to the React workbench. Teachers can tune history
+  lookback, recent-neighbor distance, score placement and distribution, and
+  peer-support pairing without writing JSON. Group and cooling compatibility
+  remains available through the raw rules file and is still reported as
+  model-only until its solver semantics are complete.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.
