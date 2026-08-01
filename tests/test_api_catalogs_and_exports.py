@@ -39,13 +39,30 @@ def test_export_draft_request_validates_identifier() -> None:
         ExportDraftRequest(draft_id="  ", format="svg")
 
 
-def _generate_draft(client: object) -> str:
+def test_export_draft_request_accepts_template_privacy_and_scale() -> None:
+    request = ExportDraftRequest(
+        draft_id="draft-1",
+        format="print-html",
+        template="teacher",
+        privacy={"hide_scores": True, "anonymize": True},
+        page_scale=1.25,
+    )
+
+    assert request.template == "teacher"
+    assert request.privacy is not None
+    assert request.privacy.hide_scores is True
+    assert request.privacy.anonymize is True
+    assert request.page_scale == 1.25
+
+
+def _generate_draft(client: object, students: list[dict[str, object]] | None = None) -> str:
     response = client.post(
         "/api/v1/classes/generate",
         json={
             "draft": {
                 "name": "Test Class",
-                "students": [
+                "students": students
+                or [
                     {"student_id": "S1", "name": "Alice"},
                     {"student_id": "S2", "name": "Bob"},
                     {"student_id": "S3", "name": "Cara"},
@@ -100,6 +117,111 @@ def test_export_svg_from_a_generated_draft() -> None:
     assert b"<svg" in export.content
     assert b"<script" not in export.content
     assert b"PRIVATE-SECRET" not in export.content
+
+
+def test_export_print_html_applies_template_privacy_and_scale() -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from seattrellis.api.http import create_app
+
+    with TestClient(create_app()) as client:
+        draft_id = _generate_draft(client)
+        export = client.post(
+            "/api/v1/exports",
+            json={
+                "draft_id": draft_id,
+                "format": "print-html",
+                "template": "teacher",
+                "privacy": {
+                    "hide_scores": True,
+                    "hide_notes": True,
+                    "hide_special_needs": True,
+                    "anonymize": True,
+                    "show_height": False,
+                    "show_vision": False,
+                },
+                "orientation": "portrait",
+                "page_scale": 1.2,
+            },
+            headers={"Host": "127.0.0.1"},
+        )
+
+    assert export.status_code == 200
+    assert export.headers["content-type"].startswith("text/html")
+    assert "学生 01" in export.text
+    assert "Alice" not in export.text
+
+
+def test_public_export_keeps_sensitive_fields_hidden() -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from seattrellis.api.http import create_app
+
+    with TestClient(create_app()) as client:
+        draft_id = _generate_draft(
+            client,
+            [
+                {
+                    "student_id": "S1",
+                    "name": "Alice",
+                    "score": 98,
+                    "height_cm": 178,
+                    "vision": "front",
+                    "needs": ["quiet"],
+                    "notes": "PRIVATE-SECRET",
+                },
+                {"student_id": "S2", "name": "Bob"},
+            ],
+        )
+        export = client.post(
+            "/api/v1/exports",
+            json={
+                "draft_id": draft_id,
+                "format": "print-html",
+                "template": "public",
+                "privacy": {
+                    "hide_scores": False,
+                    "hide_notes": False,
+                    "hide_special_needs": False,
+                    "anonymize": False,
+                    "show_height": True,
+                    "show_vision": True,
+                },
+            },
+            headers={"Host": "127.0.0.1"},
+        )
+
+    assert export.status_code == 200
+    assert "PRIVATE-SECRET" not in export.text
+    assert "178" not in export.text
+    assert "quiet" not in export.text
+
+
+def test_export_report_template_uses_the_draft_candidate() -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from seattrellis.api.http import create_app
+
+    with TestClient(create_app()) as client:
+        draft_id = _generate_draft(client)
+        export = client.post(
+            "/api/v1/exports",
+            json={
+                "draft_id": draft_id,
+                "format": "print-html",
+                "template": "report",
+            },
+            headers={"Host": "127.0.0.1"},
+        )
+
+    assert export.status_code == 200
+    assert "推荐理由" in export.text
 
 
 def test_export_missing_draft_returns_404() -> None:

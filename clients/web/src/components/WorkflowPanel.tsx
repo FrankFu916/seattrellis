@@ -8,6 +8,8 @@ import type {
   CommonPreferenceId,
   CustomRoomSettings,
   DetailedRuleSettings,
+  ExportPrivacyOptions,
+  ExportTemplate,
   RotationPlan,
   RotationSettings,
   RoomTemplate,
@@ -53,8 +55,10 @@ type WorkflowPanelProps = {
   selectedGoalId: string;
   exportFormats: CatalogOption[];
   selectedExportFormat: string;
+  exportTemplate: ExportTemplate;
+  exportPrivacy: ExportPrivacyOptions;
   orientation: "portrait" | "landscape";
-  showStudentIds: boolean;
+  pageScale: number;
   advancedSettings: AdvancedSolveSettings;
   detailedRules: DetailedRuleSettings;
   rotationSettings: RotationSettings;
@@ -73,8 +77,10 @@ type WorkflowPanelProps = {
   onRoomChange: (roomId: string) => void;
   onGoalChange: (goalId: string) => void;
   onExportFormatChange: (formatId: string) => void;
+  onExportTemplateChange: (template: ExportTemplate) => void;
+  onExportPrivacyChange: (changes: Partial<ExportPrivacyOptions>) => void;
   onOrientationChange: (orientation: "portrait" | "landscape") => void;
-  onShowStudentIdsChange: (show: boolean) => void;
+  onPageScaleChange: (scale: number) => void;
   onAdvancedSettingsChange: (
     changes: Partial<AdvancedSolveSettings>,
   ) => void;
@@ -131,8 +137,10 @@ export function WorkflowPanel({
   selectedGoalId,
   exportFormats,
   selectedExportFormat,
+  exportTemplate,
+  exportPrivacy,
   orientation,
-  showStudentIds,
+  pageScale,
   advancedSettings,
   detailedRules,
   rotationSettings,
@@ -151,8 +159,10 @@ export function WorkflowPanel({
   onRoomChange,
   onGoalChange,
   onExportFormatChange,
+  onExportTemplateChange,
+  onExportPrivacyChange,
   onOrientationChange,
-  onShowStudentIdsChange,
+  onPageScaleChange,
   onAdvancedSettingsChange,
   onRotationSettingsChange,
   onDetailedRulesChange,
@@ -873,46 +883,81 @@ export function WorkflowPanel({
           <div className="export-options">
             <fieldset>
               <legend>{t("export.use")}</legend>
-              <div className="segmented-options">
-                {exportFormats.map((format) => (
+              <div className="segmented-options export-template-options">
+                {([
+                  ["public", "export.templatePublic", "export.templatePublicHint"],
+                  ["teacher", "export.templateTeacher", "export.templateTeacherHint"],
+                  ["report", "export.templateReport", "export.templateReportHint"],
+                ] as const).map(([template, label, hint]) => (
                   <label
-                    data-selected={format.id === selectedExportFormat}
-                    key={format.id}
+                    data-selected={template === exportTemplate}
+                    key={template}
                   >
                     <input
                       type="radio"
-                      name="export-format"
-                      checked={format.id === selectedExportFormat}
-                      onChange={() => onExportFormatChange(format.id)}
+                      name="export-template"
+                      checked={template === exportTemplate}
+                      onChange={() => onExportTemplateChange(template)}
                     />
-                    <strong>{optionName(format, locale)}</strong>
-                    <small>{optionDescription(format, locale)}</small>
+                    <strong>{t(label)}</strong>
+                    <small>{t(hint)}</small>
                   </label>
                 ))}
               </div>
             </fieldset>
             <fieldset>
-              <legend>{t("export.privacy")}</legend>
-              <div className="compact-options">
+              <legend>{t("export.format")}</legend>
+              <div className="compact-options export-format-options">
                 <label>
-                  <input
-                    type="radio"
-                    name="details"
-                    checked={!showStudentIds}
-                    onChange={() => onShowStudentIdsChange(false)}
-                  />
-                  {t("export.namesOnly")}
+                  <span className="sr-only">{t("export.format")}</span>
+                  <select
+                    value={selectedExportFormat}
+                    onChange={(event) => onExportFormatChange(event.target.value)}
+                  >
+                    {exportFormats.map((format) => (
+                      <option key={format.id} value={format.id}>
+                        {optionName(format, locale)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="details"
-                    checked={showStudentIds}
-                    onChange={() => onShowStudentIdsChange(true)}
-                  />
-                  {t("export.studentIds")}
-                </label>
+                <small className="export-format-hint">
+                  {optionDescription(
+                    exportFormats.find((format) => format.id === selectedExportFormat) ??
+                      exportFormats[0] ??
+                      { description: { "zh-CN": "", en: "" } },
+                    locale,
+                  )}
+                </small>
               </div>
+            </fieldset>
+            <fieldset>
+              <legend>{t("export.privacy")}</legend>
+              <div className="privacy-options">
+                {([
+                  ["hide_scores", "export.hideScores"],
+                  ["hide_notes", "export.hideNotes"],
+                  ["hide_special_needs", "export.hideSpecialNeeds"],
+                  ["show_height", "export.showHeight"],
+                  ["show_vision", "export.showVision"],
+                  ["anonymize", "export.anonymize"],
+                ] as const).map(([key, label]) => (
+                  <label key={key}>
+                    <input
+                      type="checkbox"
+                      checked={exportPrivacy[key]}
+                      disabled={
+                        exportTemplate === "public" && key !== "anonymize"
+                      }
+                      onChange={(event) =>
+                        onExportPrivacyChange({ [key]: event.target.checked })
+                      }
+                    />
+                    {t(label)}
+                  </label>
+                ))}
+              </div>
+              <small className="export-privacy-hint">{t("export.privacyHint")}</small>
             </fieldset>
             <fieldset>
               <legend>{t("export.orientation")}</legend>
@@ -929,6 +974,26 @@ export function WorkflowPanel({
                   </label>
                 ))}
               </div>
+            </fieldset>
+            <fieldset>
+              <legend>{t("export.scale")}</legend>
+              <label className="range-field">
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2}
+                  step={0.1}
+                  value={pageScale}
+                  onChange={(event) => onPageScaleChange(Number(event.target.value))}
+                  disabled={selectedExportFormat === "svg" || selectedExportFormat === "pptx"}
+                />
+                <output>{pageScale.toFixed(1)}×</output>
+              </label>
+              <small className="export-scale-hint">
+                {selectedExportFormat === "svg" || selectedExportFormat === "pptx"
+                  ? t("export.scaleFixed")
+                  : t("export.scaleHint")}
+              </small>
             </fieldset>
           </div>
         ) : null}

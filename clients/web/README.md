@@ -8,7 +8,9 @@ The browser workbench keeps the ordinary teacher flow simple: roster import and
 inline student editing,
 custom or preset room selection, visual classroom editing, combined seating
 preferences and common constraints, generation, manual adjustment, project
-backup, and export. The
+backup, and export. Export uses the shared `public`, `teacher`, and `report`
+templates with field-level privacy controls, anonymization, A4 orientation and
+scaling. The
 Generate step has a collapsed **Advanced settings** section for candidate count,
 seed, time limit, backend selection, and complete custom rules JSON. When a
 complete RuleSet is needed, the same section also provides a structured editor

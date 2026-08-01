@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 
-import type { SeatAssignment } from "../api/types";
+import type {
+  ExportPrivacyOptions,
+  ExportTemplate,
+  SeatAssignment,
+} from "../api/types";
 import type { Translate } from "../i18n/messages";
 import { SeatingCanvas } from "./SeatingCanvas";
 
@@ -8,6 +12,8 @@ type ExportPreviewDialogProps = {
   assignments: SeatAssignment[];
   orientation: "portrait" | "landscape";
   format: string;
+  template: ExportTemplate;
+  privacy: ExportPrivacyOptions;
   open: boolean;
   isSaving: boolean;
   error: string | null;
@@ -20,6 +26,8 @@ export function ExportPreviewDialog({
   assignments,
   orientation,
   format,
+  template,
+  privacy,
   open,
   isSaving,
   error,
@@ -71,6 +79,28 @@ export function ExportPreviewDialog({
     return null;
   }
 
+  let anonymousIndex = 0;
+  const previewAssignments = assignments.map((assignment) => {
+    if (!assignment.student) {
+      return assignment;
+    }
+    anonymousIndex += 1;
+    return {
+      ...assignment,
+      student: {
+        ...assignment.student,
+        name: privacy.anonymize
+          ? t("export.anonymousStudent", { index: anonymousIndex })
+          : assignment.student.name,
+      },
+    };
+  });
+  const templateLabel = {
+    public: t("export.templatePublic"),
+    teacher: t("export.templateTeacher"),
+    report: t("export.templateReport"),
+  }[template];
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section
@@ -87,7 +117,9 @@ export function ExportPreviewDialog({
               {t("export.page", { orientation: t(`export.${orientation}`) })}
             </span>
             <h2 id="preview-dialog-title">{t("export.previewTitle")}</h2>
-            <p>{t("export.previewHint")}</p>
+            <p>
+              {templateLabel} · {t("export.previewHint")}
+            </p>
           </div>
           <button
             className="icon-button"
@@ -105,7 +137,7 @@ export function ExportPreviewDialog({
             <span>{t("canvas.front")}</span>
           </div>
           <SeatingCanvas
-            assignments={assignments}
+            assignments={previewAssignments}
             interactive={false}
             t={t}
           />

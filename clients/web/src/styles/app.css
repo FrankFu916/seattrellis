@@ -2078,6 +2078,67 @@ input:focus-visible,
   font-size: 0.65rem;
 }
 
+.export-template-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.export-format-options {
+  align-items: center;
+}
+
+.export-format-options select {
+  min-width: 180px;
+}
+
+.export-format-hint,
+.export-privacy-hint,
+.export-scale-hint {
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.privacy-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.privacy-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+  font-size: 0.68rem;
+}
+
+.privacy-options input {
+  accent-color: var(--accent);
+}
+
+.range-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.range-field input {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.range-field output {
+  min-width: 42px;
+  color: var(--text-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: right;
+}
+
 .compact-options {
   display: flex;
   flex-wrap: wrap;
@@ -3130,6 +3191,11 @@ input:focus-visible,
     width: calc(100% - 24px);
     margin: 12px;
     padding: 12px;
+  }
+
+  .export-template-options,
+  .privacy-options {
+    grid-template-columns: 1fr;
   }
 
   .ruleset-editor-metadata,

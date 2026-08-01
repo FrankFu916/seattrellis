@@ -23,6 +23,7 @@ from seattrellis.api.models import (
     CandidateSummary,
     CapabilitiesResponse,
     ExportDraftRequest,
+    ExportPrivacyOptions,
     GenerateClassRequest,
     GenerateClassResponse,
     GenerateRotationPlanRequest,
@@ -115,6 +116,7 @@ from seattrellis.service_types import (
     CANVAS_EXPORT_FORMATS,
     ExportRequest,
     PageOptions,
+    PrivacyOptions,
     export_extension,
     RotationInput,
 )
@@ -2287,14 +2289,24 @@ def export_draft(
             ),
         ) from exc
 
-    template = "teacher" if request.show_student_ids else "public"
+    # ``show_student_ids`` was the only privacy switch in the early React
+    # client.  Keep its meaning for old clients, but let current clients use
+    # the complete template/privacy contract.
+    template = request.template
+    if request.show_student_ids is True and template == "public":
+        template = "teacher"
+    privacy = _resolve_export_privacy(template, request.privacy)
     extension = export_extension(request.format)
     # Canvas formats (SVG, PPTX) render at a fixed 16:9 size and reject page
     # options, while the print-oriented formats honor the requested page.
     page = (
         PageOptions()
         if request.format in CANVAS_EXPORT_FORMATS
-        else PageOptions(orientation=request.orientation)
+        else PageOptions(
+            orientation=request.orientation,
+            scale=request.page_scale,
+            margin_mm=request.margin_mm,
+        )
     )
     descriptor, temporary_path = tempfile.mkstemp(suffix=f".{extension}")
     os.close(descriptor)
@@ -2302,12 +2314,26 @@ def export_draft(
         output_format=request.format,
         output_path=Path(temporary_path),
         template=template,
+        privacy=privacy,
         page=page,
         locale=request.locale,
     )
+    candidate = None
+    if template == "report":
+        try:
+            candidate = draft_store.candidate_for_export(request.draft_id)
+        except (EditorDraftNotFoundError, ValueError) as exc:
+            raise ApiProblem(
+                status_code=422,
+                code="report_export_unavailable",
+                message=(
+                    "The comparison details for this seating plan are no longer "
+                    "available. Generate the plan again before exporting a report."
+                ),
+            ) from exc
     try:
         try:
-            export_snapshot(snapshot, request=export_request)
+            export_snapshot(snapshot, request=export_request, candidate=candidate)
         except MissingOptionalDependencyError as exc:
             raise ApiProblem(
                 status_code=503,
@@ -2337,4 +2363,29 @@ def export_draft(
             request.format, "application/octet-stream"
         ),
         filename=f"seating.{extension}",
+    )
+
+
+def _resolve_export_privacy(
+    template: str,
+    requested: ExportPrivacyOptions | None,
+) -> PrivacyOptions:
+    """Resolve client choices without allowing a public copy to leak fields."""
+
+    defaults = PrivacyOptions.for_template(template)
+    if requested is None:
+        return defaults
+    # ``ExportPrivacyOptions`` is deliberately kept at the API boundary.  The
+    # handler only needs its serialized values and does not expose the model
+    # to the exporters.
+    values = requested.model_dump()
+    if template != "public":
+        return PrivacyOptions(**values)
+    return PrivacyOptions(
+        hide_scores=True,
+        hide_notes=True,
+        hide_special_needs=True,
+        anonymize=bool(values.get("anonymize", False)),
+        show_height=False,
+        show_vision=False,
     )

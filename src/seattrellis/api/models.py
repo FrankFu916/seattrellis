@@ -989,6 +989,23 @@ class RosterUpdatePreviewResponse(VersionedResponse):
     resulting_students: list[Student] | None = None
 
 
+class ExportPrivacyOptions(ApiModel):
+    """Field-level privacy choices for an editor export.
+
+    The browser and desktop clients send this small DTO instead of depending
+    on the internal dataclass used by the exporters.  Keeping the wire shape
+    explicit also makes it safe to add new privacy controls without silently
+    exposing a student field.
+    """
+
+    hide_scores: bool = False
+    hide_notes: bool = True
+    hide_special_needs: bool = True
+    anonymize: bool = False
+    show_height: bool = True
+    show_vision: bool = True
+
+
 class ExportDraftRequest(ApiModel):
     """Export one editing draft as a downloadable file.
 
@@ -1007,9 +1024,15 @@ class ExportDraftRequest(ApiModel):
         "docx",
         "excel",
     ]
+    template: Literal["public", "teacher", "report"] = "public"
+    privacy: ExportPrivacyOptions | None = None
     orientation: Literal["portrait", "landscape"] = "landscape"
+    page_scale: float = Field(default=1.0, ge=0.5, le=2.0)
+    margin_mm: float = Field(default=15.0, ge=5.0, le=30.0)
     locale: Literal["zh", "en"] = "zh"
-    show_student_ids: bool = False
+    # Kept for clients built against the v1.8.3 contract.  New clients
+    # should select ``template`` and ``privacy`` explicitly.
+    show_student_ids: bool | None = None
 
     @field_validator("draft_id", mode="before")
     def clean_draft_identifier(cls, value: object) -> str:

@@ -129,6 +129,31 @@ class EditorDraftStore:
                 current = current.model_copy(update={"metadata": metadata})
             return current.model_copy(deep=True)
 
+    def candidate_for_export(self, draft_id: str) -> CandidatePlan:
+        """Return the draft's source candidate with its current snapshot.
+
+        Report templates need score metadata in addition to the edited
+        snapshot.  The score is retained from generation while the snapshot
+        is replaced with the current editing state, so a report never shows a
+        stale seat map after a manual adjustment.
+        """
+
+        with self._lock:
+            stored = self._get(draft_id)
+            stored.touched_at = monotonic()
+            current = stored.session.current_snapshot()
+            if stored.command_log:
+                metadata = dict(current.metadata)
+                metadata["manual_edit"] = {
+                    "source": "web_editor",
+                    "draft_id": stored.draft_id,
+                    "operation_count": len(stored.command_log),
+                    "commands": deepcopy(stored.command_log),
+                }
+                current = current.model_copy(update={"metadata": metadata})
+            source = stored.candidate_set.get_candidate(stored.candidate_id)
+            return source.model_copy(update={"snapshot": current}, deep=True)
+
     def dispatch(
         self,
         draft_id: str,

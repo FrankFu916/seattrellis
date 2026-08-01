@@ -87,7 +87,7 @@ export const demoCatalogs: CatalogResponse = {
   ],
   exportFormats: [
     {
-      id: "print",
+      id: "print-html",
       name: { "zh-CN": "打印版", en: "Print sheet" },
       description: {
         "zh-CN": "适合 A4 打印和存为 PDF",
@@ -95,11 +95,19 @@ export const demoCatalogs: CatalogResponse = {
       },
     },
     {
-      id: "projector",
-      name: { "zh-CN": "投影版", en: "Projector view" },
+      id: "svg",
+      name: { "zh-CN": "SVG 矢量图", en: "SVG image" },
       description: {
-        "zh-CN": "大字号、少信息，适合教室展示",
-        en: "Large type and fewer details for classroom display",
+        "zh-CN": "适合继续编辑或投影",
+        en: "Easy to edit or project",
+      },
+    },
+    {
+      id: "pptx",
+      name: { "zh-CN": "PowerPoint", en: "PowerPoint" },
+      description: {
+        "zh-CN": "单页 16:9 可编辑幻灯片",
+        en: "An editable 16:9 slide",
       },
     },
   ],
@@ -129,4 +137,3 @@ export const demoBootstrap: BootstrapData = {
   catalogs: demoCatalogs,
   source: "demo",
 };
-

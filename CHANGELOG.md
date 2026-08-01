@@ -16,6 +16,10 @@
 
 ### User-facing changes
 
+- Expanded the React and desktop export panel with public, teacher, and plan
+  report templates. Each template now has localized field-level privacy
+  switches, optional name anonymization, A4 page scaling, and the same safe
+  defaults used by the Python exporters.
 - Improved roster import in the React and desktop workbench. Headerless CSV/Excel
   exports keep their first data row, common name/ID columns are suggested, and
   the review step now uses localized labels and an inline confirmation card.
