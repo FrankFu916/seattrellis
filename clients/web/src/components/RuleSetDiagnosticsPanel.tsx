@@ -30,6 +30,23 @@ const CODE_MESSAGES: Record<RuleDiagnosticCode, MessageKey> = {
   value_type: "generate.rulesDiagnosticValueType",
 };
 
+const FIX_MESSAGES: Record<RuleDiagnosticCode, MessageKey> = {
+  invalid_json: "generate.rulesSuggestionInvalidJson",
+  root_object: "generate.rulesSuggestionRootObject",
+  unknown_field: "generate.rulesSuggestionUnknownField",
+  object_required: "generate.rulesSuggestionObjectRequired",
+  array_required: "generate.rulesSuggestionArrayRequired",
+  pair_shape: "generate.rulesSuggestionPairShape",
+  fixed_seat_shape: "generate.rulesSuggestionFixedSeatShape",
+  distance_value: "generate.rulesSuggestionDistance",
+  group_shape: "generate.rulesSuggestionGroupShape",
+  group_members: "generate.rulesSuggestionGroupMembers",
+  group_mode: "generate.rulesSuggestionGroupMode",
+  unknown_student: "generate.rulesSuggestionUnknownStudent",
+  unknown_seat: "generate.rulesSuggestionUnknownSeat",
+  value_type: "generate.rulesSuggestionValueType",
+};
+
 function diagnosticText(diagnostic: RuleDiagnostic, t: Translate): string {
   return t(CODE_MESSAGES[diagnostic.code], { path: diagnostic.path });
 }
@@ -61,7 +78,10 @@ export function RuleSetDiagnosticsPanel({
           {diagnostics.map((diagnostic, index) => (
             <li key={`${diagnostic.path}-${diagnostic.code}-${index}`}>
               <code>{diagnostic.path}</code>
-              <span>{diagnosticText(diagnostic, t)}</span>
+              <span>
+                {diagnosticText(diagnostic, t)}
+                <small>{t(FIX_MESSAGES[diagnostic.code])}</small>
+              </span>
             </li>
           ))}
         </ul>
