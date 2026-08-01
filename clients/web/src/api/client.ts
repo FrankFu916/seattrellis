@@ -411,6 +411,33 @@ export async function uploadRosterDraft(
   );
 }
 
+export function hasDesktopBridge(): boolean {
+  return typeof window !== "undefined" && Boolean(window.pywebview?.api);
+}
+
+export async function openDesktopRosterFile(): Promise<DesktopRosterFile | null> {
+  const open = window.pywebview?.api?.open_roster_file;
+  return open ? open() : null;
+}
+
+export async function saveDesktopExport(
+  filename: string,
+  blob: Blob,
+): Promise<boolean> {
+  const save = window.pywebview?.api?.save_export_file;
+  if (!save) {
+    return false;
+  }
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  const result = await save(filename, btoa(binary));
+  return Boolean(result?.saved);
+}
+
 export async function fetchRosterDraft(
   draftId: string,
 ): Promise<RosterDraftResponse> {

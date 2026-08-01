@@ -2,11 +2,18 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { previewRosterUpdate, uploadRosterDraft } from "../api/client";
+import {
+  hasDesktopBridge,
+  openDesktopRosterFile,
+  previewRosterUpdate,
+  uploadRosterDraft,
+} from "../api/client";
 import { createTranslator } from "../i18n/messages";
 import { RosterImportPanel } from "./RosterImportPanel";
 
 vi.mock("../api/client", () => ({
+  hasDesktopBridge: vi.fn(() => false),
+  openDesktopRosterFile: vi.fn(),
   previewRosterUpdate: vi.fn(),
   uploadRosterDraft: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
@@ -15,6 +22,7 @@ vi.mock("../api/client", () => ({
 describe("RosterImportPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(hasDesktopBridge).mockReturnValue(false);
     vi.mocked(uploadRosterDraft).mockResolvedValue({
       draft_id: "roster-1",
       source_format: "csv",
@@ -85,6 +93,34 @@ describe("RosterImportPanel", () => {
         { id: "18513806423", name: "小周" },
       ]);
     });
+  });
+
+  it("uses the native file picker when the desktop bridge is ready", async () => {
+    const user = userEvent.setup();
+    vi.mocked(hasDesktopBridge).mockReturnValue(true);
+    vi.mocked(openDesktopRosterFile).mockResolvedValue({
+      name: "students.csv",
+      content_base64: btoa("student_id,name\nS01,Alice\n"),
+      content_type: "text/csv",
+    });
+    const { container } = render(
+      <RosterImportPanel
+        locale="zh-CN"
+        t={createTranslator("zh-CN")}
+        currentStudents={[]}
+        currentRevision={0}
+        onImportConfirmed={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开本机文件" }));
+
+    await waitFor(() => {
+      expect(uploadRosterDraft).toHaveBeenCalledWith(expect.any(File));
+    });
+    const uploaded = vi.mocked(uploadRosterDraft).mock.calls[0]?.[0];
+    expect(uploaded?.name).toBe("students.csv");
+    expect(container.querySelector(".roster-mapping-section")).toBeInTheDocument();
   });
 
   it("keeps the mapping form open when preview fails", async () => {

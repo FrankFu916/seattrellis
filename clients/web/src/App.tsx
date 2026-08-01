@@ -9,6 +9,7 @@ import {
   generateClass,
   generateRotationPlan,
   loadBootstrap,
+  saveDesktopExport,
 } from "./api/client";
 import {
   createSeatAssignments,
@@ -723,14 +724,17 @@ export function App() {
         page_scale: pageScale,
         locale: locale === "zh-CN" ? "zh" : "en",
       });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      const savedByDesktop = await saveDesktopExport(filename, blob);
+      if (!savedByDesktop) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
       setPreviewOpen(false);
       setIsDirty(false);
     } catch (err) {

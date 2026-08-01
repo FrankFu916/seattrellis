@@ -32,6 +32,9 @@
   preview, and an incomplete server response cannot be confirmed as an import.
 - The browser and desktop workbench now warn before closing a window with
   unsaved seat adjustments.
+- Desktop builds now use native open/save dialogs for roster files and exports,
+  while browser sessions keep the regular upload/download fallback. Recent
+  roster paths are stored locally without retaining file contents.
 - Added printable HTML and CSV group registers for saved rotation plans. Each
   period keeps empty groups, unseated students, and roster members that could
   not be found in the saved class data.

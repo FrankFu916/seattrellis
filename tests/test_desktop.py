@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import base64
+import sys
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from seattrellis.desktop_app import build_parser
 import pytest
 
-from seattrellis.desktop import DesktopOptions, DesktopSession
+from seattrellis.desktop import DesktopBridge, DesktopOptions, DesktopSession
+
+
+class _FakeWindow:
+    def __init__(self, *responses: object) -> None:
+        self.responses = list(responses)
+        self.calls: list[tuple[object, dict[str, object]]] = []
+
+    def create_file_dialog(self, dialog_type: object, **kwargs: object) -> object:
+        self.calls.append((dialog_type, kwargs))
+        return self.responses.pop(0)
 
 
 def test_desktop_options_allow_ephemeral_loopback_port() -> None:
@@ -79,3 +92,67 @@ def test_desktop_session_serves_bootstrap_before_api_authentication(tmp_path) ->
             assert '"status":"ok"' in response.read().decode("utf-8")
     finally:
         session.stop()
+
+
+def test_desktop_bridge_opens_roster_and_keeps_recent_metadata(tmp_path, monkeypatch) -> None:
+    roster = tmp_path / "班级名单.CSV"
+    roster.write_text("student_id,name\nS01,小林\n", encoding="utf-8")
+    fake_webview = SimpleNamespace(
+        FileDialog=SimpleNamespace(OPEN="open", SAVE="save", FOLDER="folder")
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake_webview)
+    window = _FakeWindow([str(roster)])
+    bridge = DesktopBridge(recent_file_path=tmp_path / "recent.json")
+    bridge.attach_window(window)
+
+    payload = bridge.open_roster_file()
+
+    assert payload is not None
+    assert payload["name"] == roster.name
+    assert base64.b64decode(payload["content_base64"]).startswith(b"student_id")
+    assert bridge.list_recent_files() == [{"name": roster.name, "path": str(roster.resolve())}]
+    assert window.calls[0][0] == "open"
+
+    reopened = bridge.open_recent_file(str(roster))
+    assert reopened is not None
+    assert bridge.open_recent_file(str(tmp_path / "other.csv")) is None
+
+
+def test_desktop_bridge_saves_export_atomically_and_sanitizes_filename(
+    tmp_path, monkeypatch
+) -> None:
+    fake_webview = SimpleNamespace(
+        FileDialog=SimpleNamespace(OPEN="open", SAVE="save", FOLDER="folder")
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake_webview)
+    destination = tmp_path / "saved.html"
+    window = _FakeWindow([str(destination)])
+    bridge = DesktopBridge(recent_file_path=tmp_path / "recent.json")
+    bridge.attach_window(window)
+
+    result = bridge.save_export_file(
+        "../../teacher-plan.html",
+        base64.b64encode(b"<html>ok</html>").decode("ascii"),
+    )
+
+    assert result == {"saved": True, "name": destination.name}
+    assert destination.read_bytes() == b"<html>ok</html>"
+    assert window.calls[0][0] == "save"
+    assert window.calls[0][1]["save_filename"] == "teacher-plan.html"
+
+
+def test_desktop_bridge_rejects_unsupported_roster_and_invalid_export(
+    tmp_path, monkeypatch
+) -> None:
+    fake_webview = SimpleNamespace(
+        FileDialog=SimpleNamespace(OPEN="open", SAVE="save", FOLDER="folder")
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake_webview)
+    window = _FakeWindow([str(tmp_path / "students.txt")])
+    bridge = DesktopBridge(recent_file_path=tmp_path / "recent.json")
+    bridge.attach_window(window)
+
+    with pytest.raises(ValueError, match="CSV or Excel"):
+        bridge.open_roster_file()
+    with pytest.raises(ValueError, match="base64"):
+        bridge.save_export_file("seating.html", "not-base64")

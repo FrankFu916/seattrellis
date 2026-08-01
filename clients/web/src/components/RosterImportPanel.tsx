@@ -1,6 +1,12 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { RosterApiError, previewRosterUpdate, uploadRosterDraft } from "../api/client";
+import {
+  hasDesktopBridge,
+  openDesktopRosterFile,
+  RosterApiError,
+  previewRosterUpdate,
+  uploadRosterDraft,
+} from "../api/client";
 import { demoStudents } from "../api/demo";
 import type {
   RosterDraftResponse,
@@ -97,7 +103,16 @@ export function RosterImportPanel({
   const [mode, setMode] = useState<RosterUpdateMode>("incremental");
   const [preview, setPreview] = useState<RosterUpdatePreviewResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [desktopReady, setDesktopReady] = useState(false);
+  const [desktopOpening, setDesktopOpening] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const updateDesktopReady = () => setDesktopReady(hasDesktopBridge());
+    updateDesktopReady();
+    window.addEventListener("pywebviewready", updateDesktopReady);
+    return () => window.removeEventListener("pywebviewready", updateDesktopReady);
+  }, []);
 
   const friendlyError = useCallback((err: unknown): string => {
     if (err instanceof RosterApiError) {
@@ -156,6 +171,31 @@ export function RosterImportPanel({
     const file = event.target.files?.[0];
     if (file) {
       await uploadFile(file);
+    }
+  }
+
+  function fileFromDesktop(payload: DesktopRosterFile): File {
+    const binary = atob(payload.content_base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new File([bytes], payload.name, { type: payload.content_type });
+  }
+
+  async function handleDesktopFile() {
+    setDesktopOpening(true);
+    setError(null);
+    try {
+      const payload = await openDesktopRosterFile();
+      if (payload) {
+        await uploadFile(fileFromDesktop(payload));
+      }
+    } catch (err) {
+      setError(friendlyError(err));
+      setPhase("error");
+    } finally {
+      setDesktopOpening(false);
     }
   }
 
@@ -302,7 +342,7 @@ export function RosterImportPanel({
         </ol>
       </div>
 
-      <label className="file-picker">
+      <div className="file-picker">
         <span className="file-picker-icon" aria-hidden="true">
           ↑
         </span>
@@ -312,14 +352,29 @@ export function RosterImportPanel({
             ? t("roster.selectedFile", { name: selectedFile })
             : t("roster.fileHint")}
         </small>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".csv,.xlsx,.xls"
-          onChange={handleFileChange}
-          disabled={phase === "uploading" || phase === "previewing"}
-        />
-      </label>
+        <div className="file-picker-actions">
+          {desktopReady ? (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleDesktopFile}
+              disabled={desktopOpening || phase === "uploading" || phase === "previewing"}
+            >
+              {desktopOpening ? t("roster.desktopOpening") : t("roster.desktopOpen")}
+            </button>
+          ) : null}
+          <label className="file-picker-browser-button">
+            <span>{desktopReady ? t("roster.browserOpen") : t("roster.replace")}</span>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={handleFileChange}
+              disabled={phase === "uploading" || phase === "previewing"}
+            />
+          </label>
+        </div>
+      </div>
 
       {phase === "uploading" ? (
         <p className="roster-status" aria-live="polite">
