@@ -40,6 +40,10 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
   方案摘要和结构变化数量；
 - `POST /api/v1/projects/artifacts/restore` 从一个历史或输出文件创建新的输出 snapshot，
   不覆盖原始文件；
+- `POST /api/v1/projects/migration/preview` 校验项目主文件或项目内 artifact，并返回当前
+  schema、默认迁移目标和是否会创建备份；
+- `POST /api/v1/projects/migration/apply` 写入迁移结果。默认创建新的 `.migrated.json` 文件，
+  只有显式传入 `in_place: true` 才会替换源文件，并先生成 `.bak` 备份；
 - `POST /api/v1/classes/rotation` 根据一个班级草稿生成多个未来 period，并返回每一期的
   独立编辑草稿；
 - `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；

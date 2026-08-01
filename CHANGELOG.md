@@ -49,6 +49,9 @@
 - Cooling periods now compile into the shared recent-neighbor objective used by
   fallback, OR-Tools, scoring, fairness summaries, and the optional native
   validator.
+- Added project schema migration controls to the React workbench. Teachers can
+  preview a migration, write a new migrated file by default, or explicitly
+  migrate in place with an automatic backup.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.
@@ -60,6 +63,9 @@
 
 - Added versioned `/api/v1/projects/*` endpoints for recent projects, artifact
   metadata, privacy scanning, bundle download, and safe bundle restore.
+- Added `/api/v1/projects/migration/preview` and `/api/v1/projects/migration/apply`
+  so browser and desktop clients share the same guarded schema-migration path as
+  the CLI.
 - Added API contract tests, React component tests, and a real-browser acceptance
   path covering project history, comparison, recovery, privacy, backup, and
   restore.

@@ -85,14 +85,16 @@ them, download a `.seattrellis.zip` backup, and restore an uploaded bundle to a
 local folder. Comparison returns counts plus an expandable list of anonymous
 student references and before/after seat IDs; student names and scores never
 enter the browser response. Recovery writes a new output file and never
-overwrites the selected history artifact. The same
-path-safety and manifest checks used by the CLI apply to browser uploads. The
-classroom editor supports clicking cells to create seats, aisles, platforms,
+overwrites the selected history artifact. The **Project format migration** area
+first validates the selected project or artifact against the current schema.
+Writing creates a sibling `*.migrated.json` file by default; an explicit
+in-place option replaces the source only after creating a `.bak` backup. The
+same path-safety and manifest checks used by the CLI apply to browser uploads.
+The classroom editor supports clicking cells to create seats, aisles, platforms,
 or empty space, changing the grid, moving or mirroring the layout, and saving
 the result for generation. Student editing is available in the roster step. The
-detailed rules panel covers the implemented soft rules; a complete visual
-RuleSet editor for all hard constraints, group membership and migration assistance
-remains on the roadmap.
+detailed rules panel covers the implemented soft rules. A full visual RuleSet
+editor for all hard constraints and group membership remains on the roadmap.
 
 ## Advanced tools
 
