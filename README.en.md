@@ -98,8 +98,8 @@ backup. Comparison can also expand an anonymous list of before/after seat
 changes. Common irregular rooms and seating requests can be entered directly in
 the ordinary flow. The **Detailed seating rules** panel only exposes rules that
 are connected to solving, validation, and scoring. `groups` can be configured
-in JSON for pairwise together/apart constraints; `cooling` is still reported as
-model-only. The optional **Advanced
+in JSON for pairwise together/apart constraints, and relationship cooling is
+available in the detailed panel. The optional **Advanced
 settings** section is for complete rules JSON, candidate count, seed, time limit,
 and solver backend details. The default path does not require any of these
 settings.

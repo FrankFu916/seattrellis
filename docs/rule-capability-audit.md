@@ -18,7 +18,7 @@
 | `fair_rotation` | 是 | 历史提示 | fallback / CP-SAT | 独立评分 | 已实现 |
 | `avoid_recent_neighbors` | 是 | 历史提示 | fallback / CP-SAT | 独立评分 | 已实现 |
 | `groups` | 是 | 是 | fallback / CP-SAT | hard constraint 复核 | 已实现（组内成对相邻/分离） |
-| `cooling` | 是 | warning | 否 | 否 | model-only |
+| `cooling` | 是 | 是 | fallback / CP-SAT / native 复核 | 复用近期邻座评分与公平性摘要 | 已实现 |
 
 ## 已知语义问题
 
@@ -36,8 +36,10 @@
 native 复核和人工调整使用同一语义。组内成员超过两人时，要求每对成员都满足相应
 条件；如果同时开启 `together` 和 `separate`，正常冲突检查会报告矛盾。
 
-`cooling` 仍在模型中保存，并由 `validate`/`solve` 输出 model-only warning；普通
-模式允许继续运行，`validate --strict` 会把 warning 视为失败。
+`cooling` 会编译为共享的近期邻座回避目标：在指定的历史期数内再次出现选定关系
+就增加惩罚。它不会放松任何 hard rule；没有历史记录时会像其他历史 soft rule 一样
+在公平性摘要中说明目标未生效。若同时启用 `avoid_recent_neighbors`，两者会合并为
+一个更严格的关系集合和历史窗口，权重相加。
 
 在真正实现验证、fallback、OR-Tools、结果复核和测试前，不得把它们计入对外
 功能数量。

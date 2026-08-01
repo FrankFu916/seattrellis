@@ -13,10 +13,9 @@ unavailable seats, common seating goals, combined preferences, adjacency and
 fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo,
 export, and class-project backups. Its **Advanced settings** section contains
 solver controls and complete rules JSON. The separate **Detailed seating rules**
-panel exposes the implemented history, neighbor, score, and peer-support rules
-with ordinary form controls. Group together/apart constraints remain available
-through JSON and are compiled as hard pair constraints; cooling remains
-JSON-compatible but is not an active solver feature.
+panel exposes the implemented history, neighbor, cooling, score, and peer-support
+rules with ordinary form controls. Group together/apart constraints remain
+available through JSON and are compiled as hard pair constraints.
 
 ## Streamlit compatibility and advanced tools
 
@@ -65,12 +64,12 @@ and repeated-neighbor metrics.
 
 Open **Detailed seating rules** on the Generate step when the common preference
 cards are not precise enough. The panel can configure historical position
-lookback, recent-neighbor relation types and distance, high-score front/back
+lookback, recent-neighbor and cooling relation types/distance, high-score front/back
 placement, row or group score distribution, and mentor/learner percentiles.
 Weights are soft objectives, so hard requests such as “keep these two students
 apart” still take priority. Group score balancing requires `group_id` on the
-layout seats. The raw rules JSON field remains available for compatibility, but
-the backend warns when a ruleset uses model-only `cooling` fields.
+layout seats. The raw rules JSON field remains available for compatibility, while
+the detailed panel covers the active cooling objective as well.
 
 ### React workbench project panel
 
@@ -92,8 +91,8 @@ classroom editor supports clicking cells to create seats, aisles, platforms,
 or empty space, changing the grid, moving or mirroring the layout, and saving
 the result for generation. Student editing is available in the roster step. The
 detailed rules panel covers the implemented soft rules; a complete visual
-RuleSet editor, including cooling and migration assistance, remains on the
-roadmap.
+RuleSet editor for all hard constraints, group membership and migration assistance
+remains on the roadmap.
 
 ## Advanced tools
 

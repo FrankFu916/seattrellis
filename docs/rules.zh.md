@@ -198,6 +198,37 @@ fallback solver 和 OR-Tools solver 都会把 fair rotation 转换为单个“�
 
 fallback solver 和 OR-Tools solver 都支持该规则。当前实现是启发式评分：它会倾向避免近期重复同桌/相邻，但不保证绝对最优。
 
+## cooling
+
+`cooling` 是更严格的近期关系回避目标。在 `cooling_period` 个历史 snapshot
+内再次出现所选关系时增加惩罚，相当于 `max_recent_count=0` 的
+`avoid_recent_neighbors`。它不会覆盖 fixed seats、相邻和最小距离等 hard rules；
+没有历史记录时目标会在公平性摘要中标记为未生效。若同时启用
+`avoid_recent_neighbors`，两者会合并为更严格的历史窗口和关系集合，权重相加。
+
+```json
+{
+  "soft": {
+    "cooling": {
+      "enabled": true,
+      "weight": 12,
+      "cooling_period": 3,
+      "relation_types": ["desk_mate", "adjacent_any"],
+      "within_distance": 2
+    }
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `cooling_period` | 需要避开的最近历史期数，必须为正整数 |
+| `relation_types` | `desk_mate`、`adjacent_any` 等关系类型 |
+| `within_distance` | `within_distance` 关系使用的 Chebyshev 距离阈值 |
+
+fallback 和 OR-Tools 会使用相同的 pair history 成本；结果评分、候选比较和公平性
+摘要也会复用同一规则，因此不会出现“求解时生效、报告时消失”的情况。
+
 ## 多方案生成与评分
 
 多方案模式不会新增或放宽规则。`solve --candidates N` 会先按正常流程应用全部 hard constraints 和 soft costs，再通过不同 seed 与“禁止完整重复上一候选 assignment”的约束继续求解。hard constraints 始终绝对优先；候选生成与推荐排序都是启发式，不保证找到全部可行方案或全局最优方案。
