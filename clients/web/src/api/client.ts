@@ -17,6 +17,7 @@ import type {
   ProjectArtifactRestoreResponse,
   ProjectGroupRegisterPreviewResponse,
   ProjectMigrationResponse,
+  ProjectMigrationBatchResponse,
   ProjectMigrationRestoreResponse,
   ProjectRotationLoadResponse,
   ProjectRotationSaveResponse,
@@ -204,6 +205,28 @@ export async function applyProjectMigration(
       ...(artifactPath ? { artifact_path: artifactPath } : {}),
       in_place: inPlace,
     }),
+  }, 30_000);
+}
+
+export async function previewProjectMigrationBatch(
+  projectPaths: string[],
+  inPlace = false,
+): Promise<ProjectMigrationBatchResponse> {
+  return fetchJson<ProjectMigrationBatchResponse>("/projects/migration/batch/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_paths: projectPaths, in_place: inPlace }),
+  }, 30_000);
+}
+
+export async function applyProjectMigrationBatch(
+  projectPaths: string[],
+  inPlace = false,
+): Promise<ProjectMigrationBatchResponse> {
+  return fetchJson<ProjectMigrationBatchResponse>("/projects/migration/batch/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_paths: projectPaths, in_place: inPlace }),
   }, 30_000);
 }
 

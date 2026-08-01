@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyProjectMigration,
+  applyProjectMigrationBatch,
   compareProjectArtifacts,
   fetchProjectHistory,
   listRecentProjects,
@@ -12,6 +13,7 @@ import {
   previewProjectGroupRegister,
   downloadProjectBundle,
   previewProjectMigration,
+  previewProjectMigrationBatch,
   restoreProjectMigrationBackup,
   restoreProjectBundle,
   restoreProjectArtifact,
@@ -23,11 +25,13 @@ import { ProjectWorkspacePanel } from "./ProjectWorkspacePanel";
 
 vi.mock("../api/client", () => ({
   applyProjectMigration: vi.fn(),
+  applyProjectMigrationBatch: vi.fn(),
   compareProjectArtifacts: vi.fn(),
   downloadProjectBundle: vi.fn(),
   fetchProjectHistory: vi.fn(),
   listRecentProjects: vi.fn(),
   previewProjectMigration: vi.fn(),
+  previewProjectMigrationBatch: vi.fn(),
   restoreProjectMigrationBackup: vi.fn(),
   restoreProjectBundle: vi.fn(),
   restoreProjectArtifact: vi.fn(),
@@ -416,6 +420,90 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getByTestId("project-status")).toHaveTextContent(
       "Migration written to: /classes/demo.seattrellis.migrated.json",
+    );
+  });
+
+  it("previews and writes a selected batch of project migrations", async () => {
+    const user = userEvent.setup();
+    const secondProject = {
+      name: "Science Class",
+      path: "/classes/science.seattrellis.json",
+      modified_at: "2026-08-01T00:00:00Z",
+    };
+    vi.mocked(listRecentProjects).mockResolvedValueOnce({
+      ...recentResponse,
+      projects: [...recentResponse.projects, secondProject],
+    });
+    const batchResponse = {
+      api_version: "1" as const,
+      ready: true,
+      projects: [
+        {
+          api_version: "1" as const,
+          project_path: "/classes/demo.seattrellis.json",
+          source_path: "/classes/demo.seattrellis.json",
+          artifact: "project",
+          schema_version: "1" as const,
+          output_path: "/classes/demo.seattrellis.migrated.json",
+          backup_path: null,
+          dry_run: false,
+          before_valid: true,
+          after_valid: true,
+          rollback_available: true,
+          change_count: 1,
+          changes: [],
+          reference_checks: [],
+        },
+        {
+          api_version: "1" as const,
+          project_path: secondProject.path,
+          source_path: secondProject.path,
+          artifact: "project",
+          schema_version: "1" as const,
+          output_path: "/classes/science.seattrellis.migrated.json",
+          backup_path: null,
+          dry_run: false,
+          before_valid: true,
+          after_valid: true,
+          rollback_available: true,
+          change_count: 1,
+          changes: [],
+          reference_checks: [],
+        },
+      ],
+      shared_references: [],
+    };
+    vi.mocked(previewProjectMigrationBatch).mockResolvedValue(batchResponse);
+    vi.mocked(applyProjectMigrationBatch).mockResolvedValue(batchResponse);
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-select")).toHaveValue(
+        "/classes/demo.seattrellis.json",
+      );
+    });
+    await user.click(screen.getByText("Migrate projects together"));
+    await user.click(screen.getByTestId("project-migration-project--classes-demo-seattrellis-json"));
+    await user.click(screen.getByTestId("project-migration-project--classes-science-seattrellis-json"));
+    await user.click(screen.getByTestId("project-migration-batch-preview"));
+    await waitFor(() => {
+      expect(previewProjectMigrationBatch).toHaveBeenCalledWith(
+        ["/classes/demo.seattrellis.json", secondProject.path],
+        false,
+      );
+    });
+    expect(screen.getByTestId("project-migration-batch-result")).toHaveTextContent(
+      "2 projects in this batch",
+    );
+    await user.click(screen.getByTestId("project-migration-batch-apply"));
+    await waitFor(() => {
+      expect(applyProjectMigrationBatch).toHaveBeenCalledWith(
+        ["/classes/demo.seattrellis.json", secondProject.path],
+        false,
+      );
+    });
+    expect(screen.getByTestId("project-status")).toHaveTextContent(
+      "Migrated 2 projects.",
     );
   });
 

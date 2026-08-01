@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   compareProjectArtifacts,
   applyProjectMigration,
+  applyProjectMigrationBatch,
   downloadProjectBundle,
   fetchProjectHistory,
   listRecentProjects,
@@ -10,6 +11,7 @@ import {
   downloadProjectGroupRegister,
   previewProjectGroupRegister,
   previewProjectMigration,
+  previewProjectMigrationBatch,
   restoreProjectMigrationBackup,
   restoreProjectArtifact,
   restoreProjectBundle,
@@ -24,6 +26,7 @@ import type {
   ProjectHistoryResponse,
   ProjectGroupRegisterPreviewResponse,
   ProjectMigrationChange,
+  ProjectMigrationBatchResponse,
   ProjectMigrationReferenceCheck,
   ProjectMigrationResponse,
   ProjectPrivacyResponse,
@@ -202,6 +205,10 @@ export function ProjectWorkspacePanel({
   const [migrationArtifactPath, setMigrationArtifactPath] = useState("");
   const [migrationInPlace, setMigrationInPlace] = useState(false);
   const [migrationPreview, setMigrationPreview] = useState<ProjectMigrationResponse | null>(null);
+  const [batchMigrationPaths, setBatchMigrationPaths] = useState<string[]>([]);
+  const [batchMigrationInPlace, setBatchMigrationInPlace] = useState(false);
+  const [batchMigrationPreview, setBatchMigrationPreview] =
+    useState<ProjectMigrationBatchResponse | null>(null);
   const [comparison, setComparison] = useState<ProjectArtifactCompareResponse | null>(null);
   const [busy, setBusy] = useState<
     "loading"
@@ -213,6 +220,8 @@ export function ProjectWorkspacePanel({
     | "migration-preview"
     | "migration-apply"
     | "migration-restore"
+    | "migration-batch-preview"
+    | "migration-batch-apply"
     | "rotation-save"
     | "rotation-load"
     | "group-register-preview"
@@ -256,6 +265,8 @@ export function ProjectWorkspacePanel({
       setGroupRegisterPreview(null);
       setMigrationArtifactPath("");
       setMigrationPreview(null);
+      setBatchMigrationPaths([]);
+      setBatchMigrationPreview(null);
       setOperationPeriodFilter("all");
       return;
     }
@@ -278,6 +289,9 @@ export function ProjectWorkspacePanel({
     setMigrationArtifactPath((current) =>
       allArtifacts.some((artifact) => artifact.path === current) ? current : "",
     );
+    setBatchMigrationPaths((current) =>
+      current.filter((path) => projects.some((project) => project.path === path)),
+    );
     setLoadRotationPath((current) =>
       rotationArtifacts.some((artifact) => artifact.path === current)
         ? current
@@ -286,7 +300,7 @@ export function ProjectWorkspacePanel({
     setOperationPeriodFilter((current) =>
       current === "all" || operationPeriods.includes(current) ? current : "all",
     );
-  }, [allArtifacts, operationPeriods, rotationArtifacts]);
+  }, [allArtifacts, operationPeriods, projects, rotationArtifacts]);
 
   async function openProject(path: string): Promise<void> {
     if (!path) {
@@ -302,6 +316,7 @@ export function ProjectWorkspacePanel({
       setHistory(response);
       setComparison(null);
       setMigrationPreview(null);
+      setBatchMigrationPreview(null);
       setGroupRegisterPreview(null);
       setStatus(t("project.statusLoaded", { name: response.project_name }));
     } catch (caught) {
@@ -487,6 +502,47 @@ export function ProjectWorkspacePanel({
       );
       await refreshProjects();
       setStatus(t("project.statusMigrationRestored", { path: result.source_path }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleBatchMigrationPreview(): Promise<void> {
+    if (batchMigrationPaths.length < 2) {
+      return;
+    }
+    setBusy("migration-batch-preview");
+    setError("");
+    try {
+      const result = await previewProjectMigrationBatch(
+        batchMigrationPaths,
+        batchMigrationInPlace,
+      );
+      setBatchMigrationPreview(result);
+      setStatus(t("project.statusMigrationBatchPreview"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleBatchMigrationApply(): Promise<void> {
+    if (batchMigrationPaths.length < 2 || !batchMigrationPreview?.ready) {
+      return;
+    }
+    setBusy("migration-batch-apply");
+    setError("");
+    try {
+      const result = await applyProjectMigrationBatch(
+        batchMigrationPaths,
+        batchMigrationInPlace,
+      );
+      setBatchMigrationPreview(result);
+      await refreshProjects();
+      setStatus(t("project.statusMigrationBatchApplied", { count: result.projects.length }));
     } catch (caught) {
       setError(t("project.error", { message: errorMessage(caught) }));
     } finally {
@@ -1101,6 +1157,108 @@ export function ProjectWorkspacePanel({
                 )}
               </div>
             )}
+            <details className="project-batch-migration" data-testid="project-batch-migration">
+              <summary>{t("project.migrationBatchTitle")}</summary>
+              <p className="muted">{t("project.migrationBatchHint")}</p>
+              <fieldset className="project-migration-projects">
+                <legend>{t("project.migrationBatchProjects")}</legend>
+                {projects.map((project) => (
+                  <label className="rule-toggle" key={project.path}>
+                    <input
+                      type="checkbox"
+                      data-testid={`project-migration-project-${project.path.replace(/[^a-zA-Z0-9]+/g, "-")}`}
+                      checked={batchMigrationPaths.includes(project.path)}
+                      onChange={(event) => {
+                        setBatchMigrationPreview(null);
+                        setBatchMigrationPaths((current) =>
+                          event.target.checked
+                            ? [...current, project.path]
+                            : current.filter((path) => path !== project.path),
+                        );
+                      }}
+                    />
+                    <span>
+                      {project.name}
+                      <small>{project.path}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <label className="rule-toggle">
+                <input
+                  type="checkbox"
+                  data-testid="project-migration-batch-in-place"
+                  checked={batchMigrationInPlace}
+                  onChange={(event) => {
+                    setBatchMigrationInPlace(event.target.checked);
+                    setBatchMigrationPreview(null);
+                  }}
+                />
+                <span>{t("project.migrationBatchInPlace")}</span>
+              </label>
+              <div className="project-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-migration-batch-preview"
+                  onClick={() => void handleBatchMigrationPreview()}
+                  disabled={batchMigrationPaths.length < 2 || busy !== null}
+                >
+                  {busy === "migration-batch-preview"
+                    ? t("project.migrationBatchPreviewing")
+                    : t("project.migrationBatchPreview")}
+                </button>
+                {batchMigrationPreview?.ready && (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    data-testid="project-migration-batch-apply"
+                    onClick={() => void handleBatchMigrationApply()}
+                    disabled={busy !== null}
+                  >
+                    {busy === "migration-batch-apply"
+                      ? t("project.migrationBatchApplying")
+                      : t("project.migrationBatchApply")}
+                  </button>
+                )}
+              </div>
+              {batchMigrationPreview && (
+                <div
+                  className="project-migration-result"
+                  data-testid="project-migration-batch-result"
+                  role="status"
+                >
+                  <strong>
+                    {batchMigrationPreview.ready
+                      ? t("project.migrationReady")
+                      : t("project.migrationBatchNotReady")}
+                  </strong>
+                  <span>
+                    {t("project.migrationBatchProjectsCount", {
+                      count: batchMigrationPreview.projects.length,
+                    })}
+                  </span>
+                  {batchMigrationPreview.shared_references.length > 0 && (
+                    <details className="project-migration-details" open>
+                      <summary>{t("project.migrationBatchShared")}</summary>
+                      <ul className="project-migration-references">
+                        {batchMigrationPreview.shared_references.map((reference) => (
+                          <li key={`${reference.path}-${reference.projects.join("|")}`}>
+                            <strong>{reference.path}</strong>
+                            <span>
+                              {t("project.migrationBatchSharedProjects", {
+                                count: reference.projects.length,
+                              })}
+                            </span>
+                            <small>{reference.fields.join(", ")}</small>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+            </details>
           </div>
         )}
 

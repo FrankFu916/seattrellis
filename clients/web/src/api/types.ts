@@ -627,6 +627,19 @@ export type ProjectMigrationResponse = {
   reference_checks?: ProjectMigrationReferenceCheck[];
 };
 
+export type ProjectMigrationSharedReference = {
+  path: string;
+  projects: string[];
+  fields: string[];
+};
+
+export type ProjectMigrationBatchResponse = {
+  api_version: "1";
+  projects: ProjectMigrationResponse[];
+  shared_references: ProjectMigrationSharedReference[];
+  ready: boolean;
+};
+
 export type ProjectMigrationReferenceCheck = {
   field: "students" | "layout" | "rules" | "history_dir" | "outputs_dir";
   path: string;
