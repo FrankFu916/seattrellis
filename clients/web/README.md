@@ -10,7 +10,9 @@ custom or preset room selection, visual classroom editing, combined seating
 preferences and common constraints, generation, manual adjustment, project
 backup, and export. The
 Generate step has a collapsed **Advanced settings** section for candidate count,
-seed, time limit, backend selection, and complete custom rules JSON. The
+seed, time limit, backend selection, and complete custom rules JSON. When a
+complete RuleSet is needed, the same section also provides a structured editor
+for hard rules, soft goals, named groups, schema version, and seed. The
 Streamlit page and CLI remain supported for file-level configuration and
 existing projects.
 

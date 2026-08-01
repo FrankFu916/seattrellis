@@ -22,6 +22,7 @@ import { BulkConstraintEditor } from "./BulkConstraintEditor";
 import { BulkGroupEditor } from "./BulkGroupEditor";
 import { RotationPlanSummary } from "./RotationPlanSummary";
 import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
+import { RuleSetEditorPanel } from "./RuleSetEditorPanel";
 
 const PREFERENCE_OPTIONS: Array<{
   id: CommonPreferenceId;
@@ -721,9 +722,10 @@ export function WorkflowPanel({
                     }
                   />
                 </label>
-                <label className="advanced-field advanced-field-wide">
-                  <span>{t("generate.customRules")}</span>
+                <div className="advanced-field advanced-field-wide">
+                  <span id="custom-rules-label">{t("generate.customRules")}</span>
                   <textarea
+                    aria-labelledby="custom-rules-label"
                     rows={5}
                     value={advancedSettings.customRulesJson}
                     placeholder={t("generate.customRulesPlaceholder")}
@@ -740,7 +742,16 @@ export function WorkflowPanel({
                     seatIds={seatIds}
                     t={t}
                   />
-                </label>
+                  <RuleSetEditorPanel
+                    source={advancedSettings.customRulesJson}
+                    students={students}
+                    seatIds={seatIds}
+                    t={t}
+                    onChange={(source) =>
+                      onAdvancedSettingsChange({ customRulesJson: source })
+                    }
+                  />
+                </div>
               </div>
             </details>
             <DetailedRulesPanel
