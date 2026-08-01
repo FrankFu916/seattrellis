@@ -44,6 +44,9 @@
 - Added field-level checks for custom RuleSet JSON. The workbench now identifies
   unsupported fields, malformed hard rules, unknown students or seats, and
   invalid group definitions before a solve is started.
+- Added a visual RuleSet editor inside Advanced settings. Teachers can create
+  and edit hard rules, soft goals, named groups, schema version, and seed while
+  keeping the raw JSON available for precise control.
 - Added ordinary teacher controls for irregular classrooms: custom rows and
   columns, aisle columns, unavailable seats, and an optional complete layout
   definition.
