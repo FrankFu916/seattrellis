@@ -724,8 +724,11 @@ export function App() {
         page_scale: pageScale,
         locale: locale === "zh-CN" ? "zh" : "en",
       });
-      const savedByDesktop = await saveDesktopExport(filename, blob);
-      if (!savedByDesktop) {
+      const desktopSave = await saveDesktopExport(filename, blob);
+      if (desktopSave === "cancelled") {
+        return;
+      }
+      if (desktopSave === "unavailable") {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;

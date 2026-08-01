@@ -56,7 +56,7 @@ describe("native desktop file bridge", () => {
     } as Blob;
     const saved = await saveDesktopExport("plan.html", blob);
 
-    expect(saved).toBe(true);
+    expect(saved).toBe("saved");
     expect(save).toHaveBeenCalledWith("plan.html", btoa("hello"));
   });
 
@@ -64,6 +64,20 @@ describe("native desktop file bridge", () => {
     const { saveDesktopExport, hasDesktopBridge } = await import("./client");
 
     expect(hasDesktopBridge()).toBe(false);
-    expect(await saveDesktopExport("plan.html", {} as Blob)).toBe(false);
+    expect(await saveDesktopExport("plan.html", {} as Blob)).toBe("unavailable");
+  });
+
+  it("keeps a cancelled native save distinct from missing desktop support", async () => {
+    window.pywebview = {
+      api: {
+        save_export_file: vi.fn().mockResolvedValue({ saved: false, name: "plan.html" }),
+      },
+    };
+
+    const { saveDesktopExport } = await import("./client");
+    const blob = {
+      arrayBuffer: async () => new TextEncoder().encode("hello").buffer,
+    } as Blob;
+    expect(await saveDesktopExport("plan.html", blob)).toBe("cancelled");
   });
 });

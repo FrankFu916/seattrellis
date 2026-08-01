@@ -423,10 +423,10 @@ export async function openDesktopRosterFile(): Promise<DesktopRosterFile | null>
 export async function saveDesktopExport(
   filename: string,
   blob: Blob,
-): Promise<boolean> {
+): Promise<"saved" | "cancelled" | "unavailable"> {
   const save = window.pywebview?.api?.save_export_file;
   if (!save) {
-    return false;
+    return "unavailable";
   }
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = "";
@@ -435,7 +435,7 @@ export async function saveDesktopExport(
     binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
   }
   const result = await save(filename, btoa(binary));
-  return Boolean(result?.saved);
+  return result?.saved ? "saved" : "cancelled";
 }
 
 export async function fetchRosterDraft(
