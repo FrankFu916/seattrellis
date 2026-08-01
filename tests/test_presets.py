@@ -247,11 +247,11 @@ def test_preset_cli_list_show_export_and_solve(tmp_path) -> None:
     assert solve_path.exists()
 
 
-def test_preset_commands_work_in_argparse_fallback(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["seattrellis", "presets", "show", "random"])
+def test_preset_show_command_via_typer() -> None:
+    from typer.testing import CliRunner
 
-    cli._run_argparse()
+    result = CliRunner().invoke(cli.app, ["presets", "show", "random"])
 
-    output = capsys.readouterr().out
-    assert "Preset: random" in output
-    assert "Rules JSON:" in output
+    assert result.exit_code == 0
+    assert "Preset: random" in result.output
+    assert "Rules JSON:" in result.output

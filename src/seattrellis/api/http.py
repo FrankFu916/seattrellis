@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from typing import Any
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from seattrellis.api.errors import ApiProblem, invalid_request_problem
 from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
@@ -202,7 +205,13 @@ def create_app(
         )
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_error(_request: Request, _error: Exception) -> Any:
+    async def handle_unexpected_error(request: Request, error: Exception) -> Any:
+        logger.exception(
+            "Unhandled error in the local Web API: %s %s",
+            request.method,
+            request.url.path,
+            exc_info=error,
+        )
         response = ErrorResponse(
             error={
                 "code": "internal_error",

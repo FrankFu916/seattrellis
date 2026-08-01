@@ -20,6 +20,10 @@ from seattrellis.io.project import load_project, resolve_project_paths
 BUNDLE_FORMAT_VERSION = 1
 MAX_BUNDLE_FILE_BYTES = 100 * 1024 * 1024
 MAX_BUNDLE_TOTAL_BYTES = 500 * 1024 * 1024
+# A manifest lists project file names; a real classroom project stays far below
+# this cap.  Bounding the uncompressed size before reading prevents a
+# high-compression manifest from expanding unboundedly in memory.
+MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 _SENSITIVE_KEYS = {
     "student_id",
     "student_key",
@@ -359,9 +363,13 @@ def _is_sensitive_key(value: object) -> bool:
 
 def _read_manifest(archive: ZipFile) -> dict[str, Any]:
     try:
-        data = json.loads(archive.read("manifest.json"))
+        info = archive.getinfo("manifest.json")
     except KeyError as exc:
         raise InputFileError("Project bundle is missing manifest.json.") from exc
+    if info.file_size > MAX_MANIFEST_BYTES:
+        raise InputFileError("Project bundle manifest is unexpectedly large.")
+    try:
+        data = json.loads(archive.read("manifest.json"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise InputFileError("Project bundle manifest is not valid UTF-8 JSON.") from exc
     if not isinstance(data, dict) or data.get("kind") != "seattrellis_project_bundle":

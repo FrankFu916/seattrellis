@@ -10,6 +10,8 @@ import pytest
 
 from seattrellis import cli
 from seattrellis.api import create_app
+from seattrellis.api.handlers import _rollback_single_migration_write
+from seattrellis.schema_migration import SchemaMigrationResult
 
 
 def _client():
@@ -240,6 +242,47 @@ def test_project_schema_migration_can_preview_and_write_a_new_file(tmp_path) -> 
     assert migrated.exists()
     assert migrated.parent == source.parent
     assert source.read_bytes() == original
+
+
+def test_single_migration_rollback_removes_an_orphan_output(tmp_path) -> None:
+    source = tmp_path / "project.seattrellis.json"
+    source.write_text('{"kind": "seattrellis_project", "schema_version": 1}')
+    output = tmp_path / "project.seattrellis.migrated.json"
+    output.write_text('{"kind": "seattrellis_project", "schema_version": 1}')
+
+    _rollback_single_migration_write(
+        SchemaMigrationResult(
+            artifact="project",
+            schema_version=1,
+            output_path=output,
+            backup_path=None,
+        ),
+        in_place=False,
+    )
+
+    assert source.exists()
+    assert not output.exists()
+
+
+def test_single_migration_rollback_restores_an_in_place_source(tmp_path) -> None:
+    source = tmp_path / "project.seattrellis.json"
+    backup = tmp_path / "project.seattrellis.json.bak"
+    original = '{"kind": "seattrellis_project", "schema_version": 1}'
+    overwritten = '{"kind": "seattrellis_project", "schema_version": 1, "extra": true}'
+    source.write_text(overwritten)
+    backup.write_text(original)
+
+    _rollback_single_migration_write(
+        SchemaMigrationResult(
+            artifact="project",
+            schema_version=1,
+            output_path=source,
+            backup_path=backup,
+        ),
+        in_place=True,
+    )
+
+    assert json.loads(source.read_text()) == json.loads(original)
 
 
 def test_project_schema_migration_in_place_keeps_a_backup(tmp_path) -> None:
