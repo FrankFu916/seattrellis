@@ -43,6 +43,9 @@
 - Added **Save current rotation** to the React Project panel. After selecting a
   class project, teachers can save all edited periods, locks, and web editing
   commands as a new rotation-plan output without replacing the original plan.
+- Added **Continue a rotation** to the Project panel. A saved rotation output
+  can be opened again with a fresh editor draft for every period, so teachers
+  can keep adjusting it instead of treating the file as read-only history.
 - Added a detailed rule panel to the React workbench. Teachers can tune history
   lookback, recent-neighbor distance, relationship cooling, score placement and
   distribution, and peer-support pairing without writing JSON. Common
@@ -76,6 +79,9 @@
   the CLI.
 - Added `/api/v1/projects/rotation/save`; the local service rebuilds a rotation
   artifact from server-owned editing drafts and keeps the source output intact.
+- Added `/api/v1/projects/rotation/load`; the local service validates a project
+  rotation artifact and recreates its period editing drafts without writing
+  student data to browser storage.
 - Added API contract tests, React component tests, and a real-browser acceptance
   path covering project history, comparison, recovery, privacy, backup, and
   restore.

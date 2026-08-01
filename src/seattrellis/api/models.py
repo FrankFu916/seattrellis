@@ -495,6 +495,31 @@ class ProjectRotationSaveResponse(VersionedResponse):
     saved_at: datetime
 
 
+class ProjectRotationLoadRequest(ProjectPathRequest):
+    """Select one saved rotation plan for continued local editing."""
+
+    artifact_path: str
+
+    @field_validator("artifact_path", mode="before")
+    def clean_rotation_artifact_path(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("artifact_path cannot be empty.")
+        return text
+
+
+class ProjectRotationLoadResponse(VersionedResponse):
+    """Rotation plan and fresh editing drafts restored from a project file."""
+
+    project_path: str
+    artifact_path: str
+    rotation_plan: RotationPlan
+    editor: EditorStateEnvelope
+    period_editors: list[EditorStateEnvelope] = Field(min_length=1)
+
+
 class PrivacyFindingItem(ApiModel):
     file: str
     fields: list[str] = Field(default_factory=list)

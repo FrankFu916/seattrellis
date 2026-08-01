@@ -101,7 +101,8 @@ relationships are already available in the ordinary goal step.
 When a rotation has been generated and a class project is selected, the panel
 also offers **Save current rotation**. It writes every period's current seats,
 locks, and editing commands as a new rotation-plan output without replacing the
-source artifact.
+source artifact. Existing rotation outputs can be opened with **Continue a
+rotation**, which recreates the period drafts so the plan can be adjusted again.
 
 ## Advanced tools
 

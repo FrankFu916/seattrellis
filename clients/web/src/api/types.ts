@@ -576,3 +576,12 @@ export type ProjectRotationSaveResponse = {
   period_count: number;
   saved_at: string;
 };
+
+export type ProjectRotationLoadResponse = {
+  api_version: "1";
+  project_path: string;
+  artifact_path: string;
+  rotation_plan: RotationPlan;
+  editor: EditorState;
+  period_editors: EditorState[];
+};

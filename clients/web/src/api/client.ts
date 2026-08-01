@@ -16,6 +16,7 @@ import type {
   ProjectArtifactCompareResponse,
   ProjectArtifactRestoreResponse,
   ProjectMigrationResponse,
+  ProjectRotationLoadResponse,
   ProjectRotationSaveResponse,
   ProjectListResponse,
   ProjectPrivacyResponse,
@@ -220,6 +221,24 @@ export async function saveProjectRotationPlan(
         rotation_plan: rotationPlan,
         draft_ids: draftIds,
         ...(outputName ? { output_name: outputName } : {}),
+      }),
+    },
+    30_000,
+  );
+}
+
+export async function loadProjectRotationPlan(
+  projectPath: string,
+  artifactPath: string,
+): Promise<ProjectRotationLoadResponse> {
+  return fetchJson<ProjectRotationLoadResponse>(
+    "/projects/rotation/load",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_path: projectPath,
+        artifact_path: artifactPath,
       }),
     },
     30_000,

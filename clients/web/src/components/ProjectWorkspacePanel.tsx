@@ -6,6 +6,7 @@ import {
   downloadProjectBundle,
   fetchProjectHistory,
   listRecentProjects,
+  loadProjectRotationPlan,
   previewProjectMigration,
   restoreProjectArtifact,
   restoreProjectBundle,
@@ -19,6 +20,7 @@ import type {
   ProjectHistoryResponse,
   ProjectMigrationResponse,
   ProjectPrivacyResponse,
+  ProjectRotationLoadResponse,
   RotationPlan,
   RecentProject,
 } from "../api/types";
@@ -29,6 +31,7 @@ type ProjectWorkspacePanelProps = {
   t: Translate;
   rotationPlan?: RotationPlan | null;
   rotationDraftIds?: string[];
+  onRotationLoad?: (result: ProjectRotationLoadResponse) => void;
 };
 
 function errorMessage(error: unknown): string {
@@ -77,6 +80,7 @@ export function ProjectWorkspacePanel({
   t,
   rotationPlan = null,
   rotationDraftIds = [],
+  onRotationLoad,
 }: ProjectWorkspacePanelProps) {
   const [root, setRoot] = useState(".");
   const [projects, setProjects] = useState<RecentProject[]>([]);
@@ -88,6 +92,7 @@ export function ProjectWorkspacePanel({
   const [compareLeftPath, setCompareLeftPath] = useState("");
   const [compareRightPath, setCompareRightPath] = useState("");
   const [restoreArtifactPath, setRestoreArtifactPath] = useState("");
+  const [loadRotationPath, setLoadRotationPath] = useState("");
   const [migrationArtifactPath, setMigrationArtifactPath] = useState("");
   const [migrationInPlace, setMigrationInPlace] = useState(false);
   const [migrationPreview, setMigrationPreview] = useState<ProjectMigrationResponse | null>(null);
@@ -102,6 +107,7 @@ export function ProjectWorkspacePanel({
     | "migration-preview"
     | "migration-apply"
     | "rotation-save"
+    | "rotation-load"
     | null
   >(null);
   const [status, setStatus] = useState("");
@@ -114,12 +120,17 @@ export function ProjectWorkspacePanel({
     ],
     [history],
   );
+  const rotationArtifacts = useMemo(
+    () => allArtifacts.filter((artifact) => artifact.kind === "rotation_plan"),
+    [allArtifacts],
+  );
 
   useEffect(() => {
     if (!allArtifacts.length) {
       setCompareLeftPath("");
       setCompareRightPath("");
       setRestoreArtifactPath("");
+      setLoadRotationPath("");
       setMigrationArtifactPath("");
       setMigrationPreview(null);
       return;
@@ -143,7 +154,12 @@ export function ProjectWorkspacePanel({
     setMigrationArtifactPath((current) =>
       allArtifacts.some((artifact) => artifact.path === current) ? current : "",
     );
-  }, [allArtifacts]);
+    setLoadRotationPath((current) =>
+      rotationArtifacts.some((artifact) => artifact.path === current)
+        ? current
+        : rotationArtifacts[0]?.path ?? "",
+    );
+  }, [allArtifacts, rotationArtifacts]);
 
   async function openProject(path: string): Promise<void> {
     if (!path) {
@@ -351,6 +367,23 @@ export function ProjectWorkspacePanel({
     }
   }
 
+  async function handleRotationLoad(): Promise<void> {
+    if (!selectedPath || !loadRotationPath || !onRotationLoad) {
+      return;
+    }
+    setBusy("rotation-load");
+    setError("");
+    try {
+      const result = await loadProjectRotationPlan(selectedPath, loadRotationPath);
+      onRotationLoad(result);
+      setStatus(t("project.statusRotationLoaded", { name: result.rotation_plan.name }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section
       className="side-card project-workspace-card"
@@ -479,6 +512,35 @@ export function ProjectWorkspacePanel({
                 >
                   {busy === "compare" ? t("project.comparing") : t("project.compareAction")}
                 </button>
+                {rotationArtifacts.length > 0 && onRotationLoad && (
+                  <>
+                    <label className="project-field">
+                      <span>{t("project.openRotation")}</span>
+                      <select
+                        data-testid="project-open-rotation-select"
+                        value={loadRotationPath}
+                        onChange={(event) => setLoadRotationPath(event.target.value)}
+                      >
+                        {rotationArtifacts.map((artifact) => (
+                          <option key={`open-rotation-${artifact.path}`} value={artifact.path}>
+                            {artifact.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      data-testid="project-open-rotation-button"
+                      onClick={() => void handleRotationLoad()}
+                      disabled={!loadRotationPath || busy !== null}
+                    >
+                      {busy === "rotation-load"
+                        ? t("project.openingRotation")
+                        : t("project.openRotationAction")}
+                    </button>
+                  </>
+                )}
                 <label className="project-field">
                   <span>{t("project.restoreArtifact")}</span>
                   <select

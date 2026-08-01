@@ -37,6 +37,8 @@ from seattrellis.api.models import (
     ProjectListResponse,
     ProjectMigrationRequest,
     ProjectMigrationResponse,
+    ProjectRotationLoadRequest,
+    ProjectRotationLoadResponse,
     ProjectRotationSaveRequest,
     ProjectRotationSaveResponse,
     ProjectPathRequest,
@@ -135,6 +137,7 @@ def capabilities() -> CapabilitiesResponse:
             "project-workspace",
             "project-migration",
             "project-rotation-save",
+            "project-rotation-load",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -455,6 +458,61 @@ def project_rotation_save(
         output_path=str(output_path),
         period_count=plan.period_count,
         saved_at=saved_at,
+    )
+
+
+def project_rotation_load(
+    request: ProjectRotationLoadRequest,
+    *,
+    draft_store: EditorDraftStore,
+) -> ProjectRotationLoadResponse:
+    """Recreate editable drafts from a saved rotation artifact."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        artifact_path = _resolve_project_artifact(paths, request.artifact_path)
+        plan = load_rotation_plan(artifact_path)
+        period_editors: list[EditorStateEnvelope] = []
+        for period in plan.periods:
+            period_score = score_snapshot(period.snapshot)
+            period_candidate = CandidatePlan(
+                candidate_id=f"period-{period.period}",
+                snapshot=period.snapshot,
+                score=period_score,
+                hard_constraints_satisfied=(
+                    period_score.breakdown.hard_constraint_summary.satisfied
+                ),
+                metadata={
+                    "source": "project_rotation_load",
+                    "rotation_plan": plan.name,
+                    "rotation_period": period.period,
+                },
+            )
+            period_editors.append(
+                draft_store.create(
+                    CandidateSet(
+                        candidates=[period_candidate],
+                        recommended_candidate_id=period_candidate.candidate_id,
+                        metadata={
+                            "source": "project_rotation_load",
+                            "artifact_path": str(artifact_path),
+                            "period_count": plan.period_count,
+                        },
+                    )
+                )
+            )
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_rotation_load_failed",
+            message="The saved rotation plan could not be opened for editing.",
+        ) from exc
+    return ProjectRotationLoadResponse(
+        project_path=str(paths.project_file),
+        artifact_path=str(artifact_path),
+        rotation_plan=plan,
+        editor=period_editors[0],
+        period_editors=period_editors,
     )
 
 

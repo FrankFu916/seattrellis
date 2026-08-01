@@ -25,6 +25,7 @@ import type {
   EditorCommand,
   EditorOperation,
   EditorState,
+  ProjectRotationLoadResponse,
   AdvancedSolveSettings,
   RotationPlan,
   RotationSettings,
@@ -566,6 +567,20 @@ export function App() {
     }
   }
 
+  function handleRotationLoad(result: ProjectRotationLoadResponse) {
+    const editors = result.period_editors.length
+      ? result.period_editors
+      : [result.editor];
+    applyEditorState(editors[0]);
+    setRotationEditors(editors);
+    setRotationPlan(result.rotation_plan);
+    setActiveRotationPeriod(1);
+    setHistory([]);
+    setSelectedSeatId(null);
+    setSaveError(null);
+    setStep("adjust");
+  }
+
   async function handleGenerate() {
     setIsGenerating(true);
     setSaveError(null);
@@ -833,6 +848,7 @@ export function App() {
               t={t}
               rotationPlan={rotationPlan}
               rotationDraftIds={rotationEditors.map((editor) => editor.draft_id)}
+              onRotationLoad={handleRotationLoad}
             />
           </aside>
         </main>

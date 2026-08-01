@@ -7,6 +7,7 @@ import {
   compareProjectArtifacts,
   fetchProjectHistory,
   listRecentProjects,
+  loadProjectRotationPlan,
   downloadProjectBundle,
   previewProjectMigration,
   restoreProjectBundle,
@@ -26,6 +27,7 @@ vi.mock("../api/client", () => ({
   previewProjectMigration: vi.fn(),
   restoreProjectBundle: vi.fn(),
   restoreProjectArtifact: vi.fn(),
+  loadProjectRotationPlan: vi.fn(),
   saveProjectRotationPlan: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
   scanProjectPrivacy: vi.fn(),
@@ -69,7 +71,18 @@ const historyResponse = {
       period_count: null,
     },
   ],
-  outputs: [],
+  outputs: [
+    {
+      name: "rotation-plan.json",
+      path: "/classes/outputs/rotation-plan.json",
+      kind: "rotation_plan" as const,
+      modified_at: "2026-08-03T00:00:00Z",
+      created_at: "2026-08-03T00:00:00Z",
+      size_bytes: 420,
+      student_count: 30,
+      period_count: 2,
+    },
+  ],
   warnings: [],
 };
 
@@ -356,6 +369,51 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getByTestId("project-status")).toHaveTextContent(
       "Rotation plan saved to: /classes/outputs/rotation-plan.json",
+    );
+  });
+
+  it("opens a saved rotation in the editing workflow", async () => {
+    const user = userEvent.setup();
+    const onRotationLoad = vi.fn();
+    vi.mocked(loadProjectRotationPlan).mockResolvedValue({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      artifact_path: "/classes/outputs/rotation-plan.json",
+      rotation_plan: {
+        kind: "rotation_plan",
+        name: "Weekly rotation",
+        periods: [],
+        base_history_count: 0,
+        fairness_summary: {},
+        pair_repeat_summary: {},
+        warnings: [],
+      },
+      editor: {} as never,
+      period_editors: [{} as never],
+    });
+    render(
+      <ProjectWorkspacePanel
+        locale="en"
+        t={createTranslator("en")}
+        onRotationLoad={onRotationLoad}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-open-rotation-select")).toHaveValue(
+        "/classes/outputs/rotation-plan.json",
+      );
+    });
+    await user.click(screen.getByTestId("project-open-rotation-button"));
+    await waitFor(() => {
+      expect(loadProjectRotationPlan).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        "/classes/outputs/rotation-plan.json",
+      );
+      expect(onRotationLoad).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByTestId("project-status")).toHaveTextContent(
+      "Rotation loaded: Weekly rotation",
     );
   });
 });

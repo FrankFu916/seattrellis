@@ -288,3 +288,20 @@ def test_project_rotation_save_persists_current_period_drafts(tmp_path) -> None:
     ).json()
     rotation_outputs = [item for item in listed["outputs"] if item["kind"] == "rotation_plan"]
     assert any(item["path"] == str(output) and item["period_count"] == 2 for item in rotation_outputs)
+
+    loaded = client.post(
+        "/api/v1/projects/rotation/load",
+        json={
+            "project_path": str(paths["project"]),
+            "artifact_path": str(output),
+        },
+    )
+    assert loaded.status_code == 200, loaded.text
+    loaded_payload = loaded.json()
+    assert loaded_payload["artifact_path"] == str(output)
+    assert loaded_payload["rotation_plan"]["name"] == generated_payload["rotation_plan"]["name"]
+    assert len(loaded_payload["period_editors"]) == 2
+    assert loaded_payload["period_editors"][0]["students"][0]["display_name"] in {
+        "Alice",
+        "Bob",
+    }

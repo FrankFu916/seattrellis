@@ -25,6 +25,7 @@ from seattrellis.api.handlers import (
     project_artifact_restore,
     project_migration_apply,
     project_migration_preview,
+    project_rotation_load,
     project_rotation_save,
     project_privacy,
     restore_project_bundle_file,
@@ -64,6 +65,8 @@ from seattrellis.api.models import (
     ProjectMigrationResponse,
     ProjectPathRequest,
     ProjectPrivacyResponse,
+    ProjectRotationLoadRequest,
+    ProjectRotationLoadResponse,
     ProjectRestoreResponse,
     ProjectRotationSaveRequest,
     ProjectRotationSaveResponse,
@@ -211,6 +214,9 @@ def create_app(
 
     def save_rotation(request: ProjectRotationSaveRequest) -> ProjectRotationSaveResponse:
         return project_rotation_save(request, draft_store=resolved_store)
+
+    def load_rotation(request: ProjectRotationLoadRequest) -> ProjectRotationLoadResponse:
+        return project_rotation_load(request, draft_store=resolved_store)
 
     def get_editor_state(draft_id: str) -> EditorStateEnvelope:
         try:
@@ -611,6 +617,14 @@ def create_app(
         methods=["POST"],
         response_model=None,
         responses={409: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/rotation/load",
+        load_rotation,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
         tags=["projects"],
     )
     app.add_api_route(
