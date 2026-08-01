@@ -32,6 +32,10 @@ import { ExportPreviewDialog } from "./components/ExportPreviewDialog";
 import { ProjectWorkspacePanel } from "./components/ProjectWorkspacePanel";
 import { RosterImportPanel } from "./components/RosterImportPanel";
 import { SeatingCanvas } from "./components/SeatingCanvas";
+import {
+  rosterIsValid,
+  StudentRosterEditor,
+} from "./components/StudentRosterEditor";
 import { StepNavigation } from "./components/StepNavigation";
 import { UnseatedTray } from "./components/UnseatedTray";
 import { WorkflowPanel } from "./components/WorkflowPanel";
@@ -39,6 +43,7 @@ import {
   deriveDiagnostics,
   getAdjacentStep,
   getUnseatedStudents,
+  reconcileStudentAssignments,
   seatRemainingStudents,
   swapStudents,
   toggleSeatLock,
@@ -531,6 +536,19 @@ export function App() {
     setStep("room");
   }
 
+  function handleStudentsEdited(editedStudents: Student[]) {
+    setStudents(editedStudents);
+    setRevision((prev) => prev + 1);
+    setAssignments((current) =>
+      reconcileStudentAssignments(current, editedStudents),
+    );
+    setHistory([]);
+    setSelectedSeatId(null);
+    setEditorDraftId(null);
+    setEditorRevision(0);
+    setEditorUndoDepth(0);
+  }
+
   return (
     <>
       <a className="skip-link" href="#main-workspace">
@@ -557,6 +575,7 @@ export function App() {
             locale={locale}
             t={t}
             studentCount={students.length}
+            rosterValid={rosterIsValid(students)}
             students={students}
             seatIds={assignments.map((seat) => seat.seatId)}
             selectedFileName={selectedFileName}
@@ -579,13 +598,20 @@ export function App() {
             }
             isGenerating={isGenerating}
             rosterSlot={
-              <RosterImportPanel
-                locale={locale}
-                t={t}
-                currentStudents={students}
-                currentRevision={revision}
-                onImportConfirmed={handleRosterImported}
-              />
+              <div className="roster-workspace-stack">
+                <RosterImportPanel
+                  locale={locale}
+                  t={t}
+                  currentStudents={students}
+                  currentRevision={revision}
+                  onImportConfirmed={handleRosterImported}
+                />
+                <StudentRosterEditor
+                  students={students}
+                  t={t}
+                  onChange={handleStudentsEdited}
+                />
+              </div>
             }
             onFileSelected={setSelectedFileName}
             onRoomChange={handleRoomChange}

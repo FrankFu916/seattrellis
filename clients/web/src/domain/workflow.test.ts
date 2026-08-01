@@ -2,6 +2,7 @@ import { createSeatAssignments, demoStudents } from "../api/demo";
 import {
   deriveDiagnostics,
   getUnseatedStudents,
+  reconcileStudentAssignments,
   seatRemainingStudents,
   swapStudents,
   toggleSeatLock,
@@ -37,5 +38,26 @@ describe("seating adjustments", () => {
       { id: "ready", tone: "good", message: "diagnostic.ready" },
     ]);
   });
-});
 
+  it("reconciles roster edits without resetting geometry or locked seats", () => {
+    const original = createSeatAssignments(1, 3, demoStudents.slice(0, 3), 3).map(
+      (seat, index) => (index === 0 ? { ...seat, locked: true } : seat),
+    );
+    const edited = [
+      { ...demoStudents[0], name: "Alice updated" },
+      { id: "S04", name: "Dora" },
+    ];
+
+    const reconciled = reconcileStudentAssignments(original, edited);
+
+    expect(reconciled.map((seat) => seat.seatId)).toEqual(
+      original.map((seat) => seat.seatId),
+    );
+    expect(reconciled[0]).toMatchObject({
+      locked: true,
+      student: { id: "S01", name: "Alice updated" },
+    });
+    expect(reconciled[1].student).toMatchObject({ id: "S04", name: "Dora" });
+    expect(reconciled[2].student).toBeUndefined();
+  });
+});

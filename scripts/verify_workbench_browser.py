@@ -57,15 +57,25 @@ async def main() -> int:
                 """() => document.querySelector('.app-header')?.textContent?.includes('3 名学生')""",
                 timeout=30_000,
             )
-        print("2. CSV roster imported with metadata")
+        # Import moves the workflow to the room step. Return to the roster
+        # step to verify that the imported records remain editable there.
+        await page.locator(".step-navigation button").filter(has_text="名单").click()
+        await page.wait_for_selector(".student-editor-row", timeout=10_000)
+        # Make one in-place correction after import so the browser check also
+        # covers the ordinary roster editor, not only file parsing.
+        first_student_row = page.locator(".student-editor-row").nth(1)
+        await first_student_row.locator("input").nth(1).fill("Alice Updated")
+        await first_student_row.locator("input").nth(2).fill("93")
+        print("3. CSV roster imported and student details edited")
 
         # Exercise the ordinary custom-room controls as well as the importer.
+        await page.locator(".step-navigation button").filter(has_text="教室").click()
         await page.locator("[data-testid='custom-room-toggle']").check()
         custom_room = page.locator(".custom-room-fields")
         await custom_room.locator("input[type='number']").nth(0).fill("2")
         await custom_room.locator("input[type='number']").nth(1).fill("3")
         await custom_room.locator("input").nth(3).fill("2-3")
-        print("3. custom classroom dimensions applied")
+        print("4. custom classroom dimensions applied")
 
         # Use the visual editor once as well. This verifies that an irregular
         # room can be created without asking a teacher to write layout JSON.
@@ -75,7 +85,7 @@ async def main() -> int:
         await page.locator(".layout-kind-button.kind-aisle").click()
         await page.locator("[data-testid='layout-editor-save']").click()
         await page.wait_for_selector(".layout-editor-status", timeout=30_000)
-        print("4. visual classroom layout edited and saved")
+        print("5. visual classroom layout edited and saved")
 
         # Importing a roster advances the workflow to the room step.
         # Continue room -> goal -> generate.
@@ -83,7 +93,7 @@ async def main() -> int:
         await page.wait_for_selector("#panel-title-goal", timeout=10_000)
         await page.locator(".preference-list input[type='checkbox']").first.check()
         await page.locator(".constraints-card .secondary-button").click()
-        print("5. common preference and hard constraint added")
+        print("6. common preference and hard constraint added")
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-generate", timeout=10_000)
 
@@ -95,12 +105,12 @@ async def main() -> int:
         await advanced.locator("input[type='number']").nth(1).fill("5")
         await page.locator("details.advanced-settings select").select_option("fallback")
         await advanced.locator("input[type='number']").nth(2).fill("17")
-        print("6. advanced generation settings applied")
+        print("7. advanced generation settings applied")
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-adjust", timeout=60_000)
         await page.wait_for_selector(".seat-occupied", timeout=15_000)
         occupied = await page.locator(".seat-occupied").count()
-        print(f"7. generated plan rendered {occupied} occupied seats")
+        print(f"8. generated plan rendered {occupied} occupied seats")
         if occupied == 0:
             await browser.close()
             return 1
@@ -110,12 +120,12 @@ async def main() -> int:
         await page.wait_for_selector(".export-options", timeout=15_000)
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector(".preview-dialog", timeout=15_000)
-        print("8. export preview opened")
+        print("9. export preview opened")
 
         async with page.expect_download(timeout=30_000) as download_info:
             await page.locator(".preview-dialog button.primary-button").click()
         download = await download_info.value
-        print(f"9. downloaded export: {download.suggested_filename}")
+        print(f"10. downloaded export: {download.suggested_filename}")
 
         # The project panel is available alongside the main teacher flow. Use
         # the repository's example project so this check exercises the real
@@ -130,14 +140,14 @@ async def main() -> int:
         )
         await page.wait_for_selector("[data-testid='project-history']", timeout=30_000)
         history_rows = await page.locator("[data-testid='project-history'] .project-artifact-row").count()
-        print(f"10. project history rendered {history_rows} artifacts")
+        print(f"11. project history rendered {history_rows} artifacts")
         if history_rows == 0:
             await browser.close()
             return 1
 
         await page.click("[data-testid='project-privacy-button']")
         await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
-        print("11. project privacy scan rendered")
+        print("12. project privacy scan rendered")
 
         async with page.expect_download(timeout=30_000) as bundle_info:
             await page.click("[data-testid='project-backup-button']")
@@ -145,7 +155,7 @@ async def main() -> int:
         if not bundle.suggested_filename.endswith(".seattrellis.zip"):
             await browser.close()
             return 1
-        print(f"12. downloaded project bundle: {bundle.suggested_filename}")
+        print(f"13. downloaded project bundle: {bundle.suggested_filename}")
 
         with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as directory:
             bundle_path = Path(directory) / bundle.suggested_filename
@@ -164,7 +174,7 @@ async def main() -> int:
             if not (restore_target / "project.seattrellis.json").exists():
                 await browser.close()
                 return 1
-        print("13. project bundle restored successfully")
+        print("14. project bundle restored successfully")
 
         await browser.close()
         return 0

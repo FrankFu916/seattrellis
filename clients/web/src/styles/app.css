@@ -403,6 +403,108 @@ input:focus-visible,
   gap: 14px;
 }
 
+.roster-workspace-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.student-editor-card {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface-soft);
+}
+
+.student-editor-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.student-editor-heading h3 {
+  color: var(--text-strong);
+  font-size: 0.78rem;
+}
+
+.student-editor-heading p,
+.student-editor-error {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.student-editor-table {
+  overflow-x: auto;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.student-editor-row {
+  display: grid;
+  grid-template-columns: 86px minmax(120px, 1.25fr) 70px 88px 86px minmax(120px, 1.25fr) minmax(130px, 1.4fr) 30px;
+  gap: 6px;
+  align-items: center;
+  min-width: 850px;
+  padding: 6px 7px;
+  border-bottom: var(--line-width) solid var(--border);
+}
+
+.student-editor-row:last-child {
+  border-bottom: 0;
+}
+
+.student-editor-row.is-invalid {
+  background: var(--danger-soft, #fff1f0);
+}
+
+.student-editor-header {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 750;
+}
+
+.student-editor-row label {
+  min-width: 0;
+}
+
+.student-editor-row input {
+  width: 100%;
+  min-height: 31px;
+  padding: 5px 6px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.64rem;
+}
+
+.student-editor-row input:focus {
+  border-color: var(--accent);
+  outline: 3px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  outline-offset: 1px;
+}
+
+.student-editor-remove {
+  min-height: 30px;
+  padding: 4px;
+  color: var(--muted);
+}
+
+.student-editor-remove:hover {
+  background: var(--danger-soft, #fee8e7);
+  color: var(--danger, #a33a36);
+}
+
+.student-editor-error {
+  color: var(--danger, #a33a36);
+}
+
 .current-roster {
   position: relative;
   display: grid;

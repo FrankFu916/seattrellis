@@ -33,6 +33,7 @@ type WorkflowPanelProps = {
   locale: Locale;
   t: Translate;
   studentCount: number;
+  rosterValid: boolean;
   students: Student[];
   seatIds: string[];
   selectedFileName: string | null;
@@ -97,6 +98,7 @@ export function WorkflowPanel({
   locale,
   t,
   studentCount,
+  rosterValid,
   students,
   seatIds,
   selectedFileName,
@@ -491,6 +493,11 @@ export function WorkflowPanel({
               <span aria-hidden="true">✓</span>
               {t("generate.note")}
             </p>
+            {!rosterValid ? (
+              <p className="inline-error" role="alert">
+                {t("generate.rosterInvalid")}
+              </p>
+            ) : null}
             <details className="advanced-settings">
               <summary>{t("generate.advanced")}</summary>
               <p className="advanced-settings-hint">
@@ -711,7 +718,7 @@ export function WorkflowPanel({
             className="primary-button"
             type="button"
             onClick={onGenerate}
-            disabled={isGenerating}
+            disabled={isGenerating || !rosterValid}
           >
             {isGenerating ? t("action.generating") : t("action.generate")}
             <span aria-hidden="true">→</span>
