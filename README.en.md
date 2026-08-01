@@ -80,7 +80,8 @@ React workbench keeps the ordinary teacher flow focused:
 1. Upload a CSV or Excel roster, confirm auto-detected field mappings, preview
    incremental or overwrite import impact, then apply;
 2. Choose a classroom template, or set your own rows, columns, aisles, and
-   unavailable seats;
+   unavailable seats. For irregular rooms, open the visual editor to turn
+   cells into seats, aisles, platforms, or empty space;
 3. Choose a seating goal, then combine common preferences and requests such as
    keeping students apart, keeping them together, or fixing a seat;
 4. Generate a plan, inspect score dimensions, and manually adjust seats with

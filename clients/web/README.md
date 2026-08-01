@@ -5,8 +5,9 @@ separate from the current Streamlit application so both experiences can coexist
 during migration.
 
 The browser workbench keeps the ordinary teacher flow simple: roster import,
-custom or preset room selection, combined seating preferences and common
-constraints, generation, manual adjustment, project backup, and export. The
+custom or preset room selection, visual classroom editing, combined seating
+preferences and common constraints, generation, manual adjustment, project
+backup, and export. The
 Generate step has a collapsed **Advanced settings** section for candidate count,
 seed, time limit, backend selection, and complete custom rules JSON. The
 Streamlit page and CLI remain supported for file-level configuration and

@@ -2,6 +2,8 @@ import { demoBootstrap } from "./demo";
 import type {
   BootstrapData,
   CatalogResponse,
+  CompiledLayoutResponse,
+  CreateLayoutDraftRequest,
   EditorCommand,
   EditorState,
   ExportDraftRequest,
@@ -12,6 +14,8 @@ import type {
   ProjectListResponse,
   ProjectPrivacyResponse,
   ProjectRestoreResponse,
+  LayoutCommand,
+  LayoutStateResponse,
   RosterDraftResponse,
   RosterUpdatePreviewRequest,
   RosterUpdatePreviewResponse,
@@ -223,6 +227,44 @@ export async function previewRosterUpdate(
 
 export async function deleteRosterDraft(draftId: string): Promise<void> {
   await fetchJson<void>(`/rosters/drafts/${draftId}`, { method: "DELETE" });
+}
+
+export async function createLayoutDraft(
+  request: CreateLayoutDraftRequest,
+): Promise<LayoutStateResponse> {
+  return fetchJson<LayoutStateResponse>("/layouts/drafts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}
+
+export async function dispatchLayoutCommand(
+  draftId: string,
+  command: LayoutCommand,
+): Promise<LayoutStateResponse> {
+  return fetchJson<LayoutStateResponse>(
+    `/layouts/drafts/${encodeURIComponent(draftId)}/commands`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+    },
+  );
+}
+
+export async function compileLayoutDraft(
+  draftId: string,
+): Promise<CompiledLayoutResponse> {
+  return fetchJson<CompiledLayoutResponse>(
+    `/layouts/drafts/${encodeURIComponent(draftId)}/compiled`,
+  );
+}
+
+export async function deleteLayoutDraft(draftId: string): Promise<void> {
+  await fetchJson<void>(`/layouts/drafts/${encodeURIComponent(draftId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function generateClass(

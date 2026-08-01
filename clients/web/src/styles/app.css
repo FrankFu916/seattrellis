@@ -678,6 +678,148 @@ input:focus-visible,
   border-top: var(--line-width) solid var(--border);
 }
 
+.layout-editor-card {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: var(--line-width) solid var(--border);
+}
+
+.layout-editor-heading,
+.layout-editor-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.layout-editor-heading h3 {
+  color: var(--text-strong);
+  font-size: 0.75rem;
+}
+
+.layout-editor-heading p,
+.layout-editor-empty,
+.layout-editor-status,
+.layout-editor-error,
+.layout-editor-footer small {
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.layout-editor-heading p {
+  margin-top: 3px;
+}
+
+.layout-editor-toolbar,
+.layout-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.layout-kind-button {
+  min-height: 31px;
+  padding: 5px 8px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.layout-kind-button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.layout-kind-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.layout-editor-grid {
+  display: grid;
+  gap: 3px;
+  overflow: auto;
+  max-width: 100%;
+  padding: 8px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.layout-cell {
+  display: grid;
+  min-width: 24px;
+  min-height: 28px;
+  place-items: center;
+  overflow: hidden;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.49rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout-cell.kind-seat {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.layout-cell.kind-aisle {
+  background: repeating-linear-gradient(135deg, var(--surface-soft), var(--surface-soft) 4px, var(--border) 4px, var(--border) 5px);
+}
+
+.layout-cell.kind-platform {
+  background: var(--text-strong);
+  color: var(--surface);
+}
+
+.layout-cell.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.layout-editor-actions .text-button {
+  min-height: 28px;
+  padding: 4px 7px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  font-size: 0.62rem;
+}
+
+.layout-editor-actions .layout-move-button {
+  min-width: 28px;
+  padding-inline: 4px;
+  font-size: 0.82rem;
+}
+
+.layout-editor-actions .text-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.layout-editor-footer {
+  align-items: center;
+}
+
+.layout-editor-status {
+  color: var(--success);
+}
+
+.layout-editor-error {
+  color: var(--danger, #a33a36);
+}
+
 .preference-list {
   display: grid;
   gap: 9px;

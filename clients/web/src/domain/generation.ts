@@ -75,7 +75,7 @@ function parseDisabledSeats(source: string, rows: number, columns: number): Set<
   return result;
 }
 
-function buildGridLayout(settings: CustomRoomSettings): Record<string, unknown> {
+export function buildGridLayout(settings: CustomRoomSettings): Record<string, unknown> {
   if (!Number.isInteger(settings.rows) || settings.rows < 1 || settings.rows > 30) {
     throw new InvalidAdvancedSettingError("layout");
   }

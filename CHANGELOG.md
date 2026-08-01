@@ -16,6 +16,10 @@
 - Added ordinary teacher controls for irregular classrooms: custom rows and
   columns, aisle columns, unavailable seats, and an optional complete layout
   definition.
+- Added a visual classroom editor to the ordinary room setup. Teachers can
+  turn cells into seats, aisles, platforms, or empty space, add or remove rows
+  and columns, move or mirror the whole layout, undo changes, and save the
+  result without writing layout JSON.
 - Added combinable seating preferences and repeatable hard requests for keeping
   students apart, keeping them together, or fixing a student to a seat.
 - Fixed roster import in the React workbench: full replacement now uses the
