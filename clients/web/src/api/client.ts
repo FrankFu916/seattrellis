@@ -16,6 +16,7 @@ import type {
   ProjectArtifactCompareResponse,
   ProjectArtifactRestoreResponse,
   ProjectMigrationResponse,
+  ProjectMigrationRestoreResponse,
   ProjectRotationLoadResponse,
   ProjectRotationSaveResponse,
   ProjectListResponse,
@@ -203,6 +204,26 @@ export async function applyProjectMigration(
       in_place: inPlace,
     }),
   }, 30_000);
+}
+
+export async function restoreProjectMigrationBackup(
+  projectPath: string,
+  sourcePath: string,
+  backupPath: string,
+): Promise<ProjectMigrationRestoreResponse> {
+  return fetchJson<ProjectMigrationRestoreResponse>(
+    "/projects/migration/restore",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_path: projectPath,
+        source_path: sourcePath,
+        backup_path: backupPath,
+      }),
+    },
+    30_000,
+  );
 }
 
 export async function saveProjectRotationPlan(

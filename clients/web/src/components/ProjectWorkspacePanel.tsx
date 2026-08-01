@@ -9,6 +9,7 @@ import {
   loadProjectRotationPlan,
   downloadProjectGroupRegister,
   previewProjectMigration,
+  restoreProjectMigrationBackup,
   restoreProjectArtifact,
   restoreProjectBundle,
   RosterApiError,
@@ -123,6 +124,7 @@ export function ProjectWorkspacePanel({
     | "restore-artifact"
     | "migration-preview"
     | "migration-apply"
+    | "migration-restore"
     | "rotation-save"
     | "rotation-load"
     | "group-register"
@@ -353,6 +355,27 @@ export function ProjectWorkspacePanel({
       setMigrationPreview(result);
       await refreshProjects();
       setStatus(t("project.statusMigrationApplied", { path: result.output_path ?? result.source_path }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleMigrationRestore(): Promise<void> {
+    if (!selectedPath || !migrationPreview?.backup_path) {
+      return;
+    }
+    setBusy("migration-restore");
+    setError("");
+    try {
+      const result = await restoreProjectMigrationBackup(
+        selectedPath,
+        migrationPreview.source_path,
+        migrationPreview.backup_path,
+      );
+      await refreshProjects();
+      setStatus(t("project.statusMigrationRestored", { path: result.source_path }));
     } catch (caught) {
       setError(t("project.error", { message: errorMessage(caught) }));
     } finally {
@@ -762,6 +785,19 @@ export function ProjectWorkspacePanel({
                   {busy === "migration-apply"
                     ? t("project.migrationApplying")
                     : t("project.migrationApply")}
+                </button>
+              )}
+              {migrationPreview?.backup_path && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-migration-restore"
+                  onClick={() => void handleMigrationRestore()}
+                  disabled={busy !== null}
+                >
+                  {busy === "migration-restore"
+                    ? t("project.migrationRestoring")
+                    : t("project.migrationRestore")}
                 </button>
               )}
             </div>

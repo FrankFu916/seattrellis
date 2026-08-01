@@ -575,6 +575,17 @@ export type ProjectMigrationResponse = {
   changes: ProjectMigrationChange[];
 };
 
+export type ProjectMigrationRestoreResponse = {
+  api_version: "1";
+  project_path: string;
+  source_path: string;
+  backup_path: string;
+  safety_backup_path: string | null;
+  artifact: string;
+  schema_version: string | number;
+  restored_valid: boolean;
+};
+
 export type ProjectMigrationChange = {
   path: string;
   change: "added" | "removed" | "changed";

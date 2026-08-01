@@ -11,6 +11,7 @@ import {
   downloadProjectGroupRegister,
   downloadProjectBundle,
   previewProjectMigration,
+  restoreProjectMigrationBackup,
   restoreProjectBundle,
   restoreProjectArtifact,
   saveProjectRotationPlan,
@@ -26,6 +27,7 @@ vi.mock("../api/client", () => ({
   fetchProjectHistory: vi.fn(),
   listRecentProjects: vi.fn(),
   previewProjectMigration: vi.fn(),
+  restoreProjectMigrationBackup: vi.fn(),
   restoreProjectBundle: vi.fn(),
   restoreProjectArtifact: vi.fn(),
   loadProjectRotationPlan: vi.fn(),
@@ -345,6 +347,54 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getByTestId("project-status")).toHaveTextContent(
       "Migration written to: /classes/demo.seattrellis.migrated.json",
+    );
+  });
+
+  it("restores an in-place migration backup from the project panel", async () => {
+    const user = userEvent.setup();
+    vi.mocked(previewProjectMigration).mockResolvedValueOnce({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      source_path: "/classes/demo.seattrellis.json",
+      artifact: "project",
+      schema_version: "1",
+      output_path: "/classes/demo.seattrellis.json",
+      backup_path: "/classes/demo.seattrellis.json.bak",
+      dry_run: false,
+      before_valid: true,
+      after_valid: true,
+      rollback_available: true,
+      change_count: 1,
+      changes: [],
+    });
+    vi.mocked(restoreProjectMigrationBackup).mockResolvedValueOnce({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      source_path: "/classes/demo.seattrellis.json",
+      backup_path: "/classes/demo.seattrellis.json.bak",
+      safety_backup_path: "/classes/demo.seattrellis.json.pre-restore.bak",
+      artifact: "project",
+      schema_version: "1",
+      restored_valid: true,
+    });
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-select")).toHaveValue(
+        "/classes/demo.seattrellis.json",
+      );
+    });
+    await user.click(screen.getByTestId("project-migration-preview"));
+    await user.click(await screen.findByTestId("project-migration-restore"));
+    await waitFor(() => {
+      expect(restoreProjectMigrationBackup).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        "/classes/demo.seattrellis.json",
+        "/classes/demo.seattrellis.json.bak",
+      );
+    });
+    expect(screen.getByTestId("project-status")).toHaveTextContent(
+      "Restored the pre-migration version: /classes/demo.seattrellis.json",
     );
   });
 
