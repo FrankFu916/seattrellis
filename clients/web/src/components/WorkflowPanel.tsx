@@ -416,6 +416,7 @@ export function WorkflowPanel({
                       <label className="file-input-button">
                         <span>{t("room.layoutFileImport")}</span>
                         <input
+                          data-testid="layout-json-file"
                           type="file"
                           accept=".json,application/json"
                           onChange={(event) => {
@@ -836,6 +837,7 @@ export function WorkflowPanel({
                     <label className="file-input-button">
                       <span>{t("generate.rulesFileImport")}</span>
                       <input
+                        data-testid="rules-json-file"
                         type="file"
                         accept=".json,application/json"
                         onChange={(event) => {
@@ -885,6 +887,7 @@ export function WorkflowPanel({
                     <label className="file-input-button">
                       <span>{t("generate.historyChoose")}</span>
                       <input
+                        data-testid="history-json-files"
                         type="file"
                         accept=".json,application/json"
                         multiple
