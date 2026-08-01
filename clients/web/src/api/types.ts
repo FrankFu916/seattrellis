@@ -257,6 +257,65 @@ export type CustomRoomSettings = {
   layoutJson: string;
 };
 
+export type LayoutCellKind = "seat" | "aisle" | "platform" | "empty";
+
+export type LayoutCellState = {
+  row: number;
+  column: number;
+  kind: LayoutCellKind;
+  seat_id: string | null;
+};
+
+export type LayoutStateResponse = {
+  kind: "seattrellis_layout_state";
+  api_version: "1";
+  draft_id: string;
+  revision: number;
+  name: string;
+  rows: number;
+  columns: number;
+  cells: LayoutCellState[];
+  undo_depth: number;
+  redo_depth: number;
+  usable_seat_count: number;
+};
+
+export type CreateLayoutDraftRequest = {
+  name?: string;
+  template_id?: string;
+  layout?: Record<string, unknown>;
+  rows?: number;
+  columns?: number;
+};
+
+export type LayoutOperation = {
+  kind:
+    | "set_cell"
+    | "insert_row"
+    | "delete_row"
+    | "insert_column"
+    | "delete_column"
+    | "translate"
+    | "mirror_horizontal"
+    | "flip_vertical";
+  payload?: Record<string, string | number | null>;
+};
+
+export type LayoutCommand = {
+  command_id: string;
+  draft_id: string;
+  base_revision: number;
+  action: "apply" | "undo" | "redo";
+  operation?: LayoutOperation;
+};
+
+export type CompiledLayoutResponse = {
+  api_version: "1";
+  draft_id: string;
+  revision: number;
+  layout: Record<string, unknown>;
+};
+
 export type AdvancedSolveSettings = {
   candidateCount: number;
   seed: string;

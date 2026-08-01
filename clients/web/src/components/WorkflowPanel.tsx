@@ -12,6 +12,7 @@ import type {
 } from "../api/types";
 import type { WorkflowStep } from "../domain/workflow";
 import type { Locale, MessageKey, Translate } from "../i18n/messages";
+import { LayoutEditorPanel } from "./LayoutEditorPanel";
 
 const PREFERENCE_OPTIONS: Array<{
   id: CommonPreferenceId;
@@ -308,6 +309,11 @@ export function WorkflowPanel({
                     />
                     <small>{t("room.layoutJsonHint")}</small>
                   </label>
+                  <LayoutEditorPanel
+                    roomSettings={roomSettings}
+                    t={t}
+                    onRoomSettingsChange={onRoomSettingsChange}
+                  />
                 </div>
               ) : null}
             </section>
