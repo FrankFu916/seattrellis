@@ -33,6 +33,9 @@
   Teachers can compare two saved plans without exposing student records in the
   browser, then create a new current-plan snapshot from a selected history or
   output file without overwriting the original.
+- Added an expandable anonymous assignment diff to project comparison. It shows
+  which seat references moved, were newly occupied, or became empty without
+  sending student names or IDs to the browser.
 - Added future rotation controls to the React workbench. Teachers can choose
   the number and names of upcoming periods, review repeat-neighbor metrics,
   switch between period-specific editing drafts, and continue editing or

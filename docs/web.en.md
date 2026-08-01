@@ -82,9 +82,10 @@ of this view.
 The panel can scan the selected project for sensitive fields, compare two
 history or output artifacts, create a new current-plan snapshot from one of
 them, download a `.seattrellis.zip` backup, and restore an uploaded bundle to a
-local folder. Comparison returns counts and structural changes only; student
-names and scores never enter the browser response. Recovery writes a new
-output file and never overwrites the selected history artifact. The same
+local folder. Comparison returns counts plus an expandable list of anonymous
+student references and before/after seat IDs; student names and scores never
+enter the browser response. Recovery writes a new output file and never
+overwrites the selected history artifact. The same
 path-safety and manifest checks used by the CLI apply to browser uploads. The
 classroom editor supports clicking cells to create seats, aisles, platforms,
 or empty space, changing the grid, moving or mirroring the layout, and saving
