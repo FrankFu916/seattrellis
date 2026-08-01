@@ -2145,6 +2145,33 @@ input:focus-visible,
   color: var(--accent);
 }
 
+.project-migration-references {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding-left: 16px;
+}
+
+.project-migration-references li {
+  display: grid;
+  gap: 1px;
+}
+
+.project-migration-references span,
+.project-migration-references small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.project-migration-references .migration-reference-ok {
+  color: var(--success, #1f8a70);
+}
+
+.project-migration-references .migration-reference-missing,
+.project-migration-references .migration-reference-wrong_type {
+  color: var(--danger, #b42318);
+}
+
 .project-history-tools {
   display: grid;
   gap: 8px;

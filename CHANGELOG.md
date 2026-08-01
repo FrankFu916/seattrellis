@@ -48,6 +48,9 @@
   edited, rotated, or restored), its immediate source filename, and the number
   of recorded operations without exposing the underlying student data or command
   payloads.
+- Project migration preview now checks every referenced roster, layout, rules,
+  history, and output path and marks missing or wrong-type references before a
+  migration is written.
 - Added future rotation controls to the React workbench. Teachers can choose
   the number and names of upcoming periods, review repeat-neighbor metrics,
   switch between period-specific editing drafts, and continue editing or

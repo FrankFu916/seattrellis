@@ -186,6 +186,20 @@ describe("ProjectWorkspacePanel", () => {
           after_type: "string",
         },
       ],
+      reference_checks: [
+        {
+          field: "students" as const,
+          path: "students.csv",
+          expected: "file" as const,
+          status: "ok" as const,
+        },
+        {
+          field: "rules" as const,
+          path: "rules.json",
+          expected: "file" as const,
+          status: "missing" as const,
+        },
+      ],
     });
     vi.mocked(applyProjectMigration).mockResolvedValue({
       api_version: "1",
@@ -347,6 +361,9 @@ describe("ProjectWorkspacePanel", () => {
     expect(screen.getByTestId("project-migration-details")).toHaveTextContent(
       "schema_version",
     );
+    expect(screen.getByText("Project reference checks")).toBeInTheDocument();
+    expect(screen.getByText("Seating rules")).toBeInTheDocument();
+    expect(screen.getByText("Not found")).toBeInTheDocument();
     await user.click(screen.getByTestId("project-migration-apply"));
     await waitFor(() => {
       expect(applyProjectMigration).toHaveBeenCalledWith(

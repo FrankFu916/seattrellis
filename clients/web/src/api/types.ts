@@ -580,6 +580,14 @@ export type ProjectMigrationResponse = {
   rollback_available: boolean;
   change_count: number;
   changes: ProjectMigrationChange[];
+  reference_checks?: ProjectMigrationReferenceCheck[];
+};
+
+export type ProjectMigrationReferenceCheck = {
+  field: "students" | "layout" | "rules" | "history_dir" | "outputs_dir";
+  path: string;
+  expected: "file" | "directory";
+  status: "ok" | "missing" | "wrong_type";
 };
 
 export type ProjectMigrationRestoreResponse = {

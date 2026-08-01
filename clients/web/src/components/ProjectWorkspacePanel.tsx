@@ -21,6 +21,7 @@ import type {
   ProjectArtifactCompareResponse,
   ProjectHistoryResponse,
   ProjectMigrationChange,
+  ProjectMigrationReferenceCheck,
   ProjectMigrationResponse,
   ProjectPrivacyResponse,
   ProjectRotationLoadResponse,
@@ -98,6 +99,27 @@ function migrationChangeLabel(
       return t("project.migrationRemoved");
     default:
       return t("project.migrationChanged");
+  }
+}
+
+function migrationReferenceFieldLabel(
+  field: ProjectMigrationReferenceCheck["field"],
+  t: Translate,
+): string {
+  return t(`project.migrationReference.${field}` as Parameters<Translate>[0]);
+}
+
+function migrationReferenceStatusLabel(
+  status: ProjectMigrationReferenceCheck["status"],
+  t: Translate,
+): string {
+  switch (status) {
+    case "ok":
+      return t("project.migrationReferenceOk");
+    case "missing":
+      return t("project.migrationReferenceMissing");
+    default:
+      return t("project.migrationReferenceWrongType");
   }
 }
 
@@ -864,6 +886,22 @@ export function ProjectWorkspacePanel({
                           <span>{migrationChangeLabel(change.change, t)}</span>
                           <small>
                             {change.before_type ?? "—"} → {change.after_type ?? "—"}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {migrationPreview.reference_checks && migrationPreview.reference_checks.length > 0 && (
+                  <details className="project-migration-details" open>
+                    <summary>{t("project.migrationReferenceTitle")}</summary>
+                    <ul className="project-migration-references">
+                      {migrationPreview.reference_checks.map((reference) => (
+                        <li key={reference.field}>
+                          <strong>{migrationReferenceFieldLabel(reference.field, t)}</strong>
+                          <span>{reference.path}</span>
+                          <small className={`migration-reference-${reference.status}`}>
+                            {migrationReferenceStatusLabel(reference.status, t)}
                           </small>
                         </li>
                       ))}
