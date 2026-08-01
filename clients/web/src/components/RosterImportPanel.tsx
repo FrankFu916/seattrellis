@@ -52,6 +52,9 @@ function mappingIssueMessage(issue: RosterMappingIssueItem, t: Translate): strin
         field: fieldLabel(issue.field, t),
       });
     default:
+      // Older local services returned a human-readable English message but
+      // did not include the stable issue code. Never expose that transport
+      // text in the teacher-facing panel.
       return t("roster.mappingIssueGeneric");
   }
 }
@@ -125,11 +128,7 @@ export function RosterImportPanel({
     return t("roster.errorGeneric");
   }, [t]);
 
-  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
+  async function uploadFile(file: File) {
     setSelectedFile(file.name);
     setPhase("uploading");
     setError(null);
@@ -150,6 +149,13 @@ export function RosterImportPanel({
     } catch (err) {
       setError(friendlyError(err));
       setPhase("error");
+    }
+  }
+
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) {
+      await uploadFile(file);
     }
   }
 
@@ -262,13 +268,45 @@ export function RosterImportPanel({
     preview?.can_apply && preview.resulting_students && !hasConflicts,
   );
 
+  const currentStep = preview
+    ? 3
+    : phase === "mapping" || phase === "previewing"
+      ? 2
+      : 1;
+
   return (
     <div className="roster-import-panel">
+      <div className="roster-import-heading">
+        <div>
+          <span className="eyebrow">{t("roster.importEyebrow")}</span>
+          <h3>{t("roster.importTitle")}</h3>
+          <p>{t("roster.importHint")}</p>
+        </div>
+        <ol className="roster-import-steps" aria-label={t("roster.importSteps")}>
+          {["roster.stepChoose", "roster.stepMap", "roster.stepConfirm"].map(
+            (key, index) => {
+              const step = index + 1;
+              const complete = step < currentStep;
+              const active = step === currentStep;
+              return (
+                <li
+                  key={key}
+                  className={active ? "active" : complete ? "complete" : ""}
+                >
+                  <span>{complete ? "✓" : step}</span>
+                  {t(key as Parameters<Translate>[0])}
+                </li>
+              );
+            },
+          )}
+        </ol>
+      </div>
+
       <label className="file-picker">
         <span className="file-picker-icon" aria-hidden="true">
           ↑
         </span>
-        <strong>{t("roster.replace")}</strong>
+        <strong>{selectedFile ? t("roster.changeFile") : t("roster.replace")}</strong>
         <small>
           {selectedFile
             ? t("roster.selectedFile", { name: selectedFile })
@@ -407,7 +445,7 @@ export function RosterImportPanel({
 
           <button
             type="button"
-            className="secondary-button"
+            className="primary-button roster-preview-button"
             onClick={handlePreview}
             disabled={isPreviewing}
           >
@@ -466,27 +504,30 @@ export function RosterImportPanel({
                 <p className="muted">{t("roster.noConflicts")}</p>
               )}
 
-              <p className="preview-confirm-hint">{t("roster.confirmHint")}</p>
-
-              <div className="preview-actions">
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={reset}
-                >
-                  {t("roster.cancel")}
-                </button>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={handleConfirm}
-                  disabled={!canConfirm}
-                >
-                  {t("roster.confirm")}
-                </button>
-              </div>
             </div>
           ) : null}
+
+          <div className="roster-confirm-card">
+            <div>
+              <strong>{t("roster.confirmTitle")}</strong>
+              <p className="preview-confirm-hint">
+                {canConfirm ? t("roster.confirmHint") : t("roster.confirmPendingHint")}
+              </p>
+            </div>
+            <div className="preview-actions">
+              <button type="button" className="text-button" onClick={reset}>
+                {t("roster.cancel")}
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleConfirm}
+                disabled={!canConfirm}
+              >
+                {t("roster.confirm")}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

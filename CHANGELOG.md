@@ -25,6 +25,9 @@
   the review step now uses localized labels and an inline confirmation card.
 - Preview failures now stay in the import review screen with a clear retry
   message; internal HTTP and parser details are no longer shown to teachers.
+- Import review now presents a clear three-step flow. The confirmation action
+  stays visible while disabled until the import preview has been checked, so
+  it is no longer confused with the export preview.
 - Changing a roster column mapping or import mode now clears the previous
   preview, and an incomplete server response cannot be confirmed as an import.
 - The browser and desktop workbench now warn before closing a window with

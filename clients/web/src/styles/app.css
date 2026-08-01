@@ -417,6 +417,68 @@ input:focus-visible,
   background: var(--surface-soft);
 }
 
+.roster-import-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 2px 2px 4px;
+}
+
+.roster-import-heading h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 0.92rem;
+}
+
+.roster-import-heading p {
+  max-width: 40ch;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.roster-import-steps {
+  display: grid;
+  gap: 5px;
+  min-width: 104px;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.roster-import-steps li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.roster-import-steps li > span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: var(--line-width) solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: 0.58rem;
+  font-weight: 750;
+}
+
+.roster-import-steps li.active {
+  color: var(--text-strong);
+  font-weight: 750;
+}
+
+.roster-import-steps li.active > span,
+.roster-import-steps li.complete > span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .roster-import-panel > .file-picker {
   padding: 16px 14px;
   background: var(--surface);
@@ -444,6 +506,10 @@ input:focus-visible,
   display: grid;
   gap: 11px;
   padding-top: 2px;
+}
+
+.roster-preview-button {
+  width: 100%;
 }
 
 .roster-mapping-section h3 {
@@ -657,6 +723,26 @@ input:focus-visible,
   justify-content: flex-end;
   gap: 8px;
   align-items: center;
+}
+
+.roster-confirm-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-medium);
+  background: var(--surface-tint);
+}
+
+.roster-confirm-card strong {
+  color: var(--text-strong);
+  font-size: 0.73rem;
+}
+
+.roster-confirm-card .preview-actions {
+  flex-shrink: 0;
 }
 
 .student-editor-card {
@@ -3257,6 +3343,31 @@ input:focus-visible,
 
   .custom-room-fields {
     grid-template-columns: 1fr;
+  }
+
+  .roster-import-heading,
+  .roster-confirm-card {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .roster-import-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .roster-import-steps li {
+    grid-template-columns: 20px 1fr;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .roster-confirm-card .preview-actions {
+    justify-content: stretch;
+  }
+
+  .roster-confirm-card .preview-actions button {
+    flex: 1;
   }
 
   .constraint-row {

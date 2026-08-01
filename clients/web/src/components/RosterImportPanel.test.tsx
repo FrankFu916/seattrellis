@@ -71,6 +71,7 @@ describe("RosterImportPanel", () => {
     expect(await screen.findByText("没有检测到表头")).toBeInTheDocument();
     expect(screen.getAllByRole("option", { name: "姓名" })).toHaveLength(2);
     expect(screen.queryByText("name")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认导入" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "检查导入变化" }));
     expect(await screen.findByText("可以安全导入")).toBeInTheDocument();
@@ -130,7 +131,7 @@ describe("RosterImportPanel", () => {
     expect(screen.getByRole("button", { name: "确认导入" })).toBeInTheDocument();
 
     await user.selectOptions(screen.getAllByRole("combobox")[0], "student_id");
-    expect(screen.queryByRole("button", { name: "确认导入" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认导入" })).toBeDisabled();
     expect(onImportConfirmed).not.toHaveBeenCalled();
   });
 
