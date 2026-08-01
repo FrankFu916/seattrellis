@@ -8,10 +8,11 @@ form, which is produced only after every reference is known and usable.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import combinations
 from typing import Literal, Sequence
 
 from seattrellis.models.layout import ClassroomLayout
-from seattrellis.models.rules import FixedSeatRule, MinDistanceRule, PairRule, RuleSet
+from seattrellis.models.rules import FixedSeatRule, GroupRule, MinDistanceRule, PairRule, RuleSet
 from seattrellis.models.student import Student
 from seattrellis.solver.errors import SeatTrellisSolveError
 from seattrellis.solver.precompute import CompiledTopology, precompute_topology
@@ -167,17 +168,18 @@ def resolve_hard_rules(
         )
         for index, rule in enumerate(rules.hard.fixed_seats, start=1)
     )
+    group_must_be_adjacent, group_cannot_be_adjacent = _expand_group_rules(rules.groups)
     return ResolvedHardRules(
         topology=topology,
         student_references=student_references,
         fixed_seats=fixed_seats,
         must_be_adjacent=_resolve_pair_rules(
-            rules.hard.must_be_adjacent,
+            [*rules.hard.must_be_adjacent, *group_must_be_adjacent],
             "hard.must_be_adjacent",
             student_references,
         ),
         cannot_be_adjacent=_resolve_pair_rules(
-            rules.hard.cannot_be_adjacent,
+            [*rules.hard.cannot_be_adjacent, *group_cannot_be_adjacent],
             "hard.cannot_be_adjacent",
             student_references,
         ),
@@ -187,6 +189,27 @@ def resolve_hard_rules(
             student_references,
         ),
     )
+
+
+def _expand_group_rules(groups: Sequence[GroupRule]) -> tuple[list[PairRule], list[PairRule]]:
+    """Translate named group separation/togetherness into hard pair rules.
+
+    A group with ``together`` requires every member pair to be adjacent; a
+    group with ``separate`` requires every member pair not to be adjacent. This
+    deliberately reuses the normal pair-rule compiler so validation, fallback,
+    OR-Tools, native validation, and manual editing all share one definition.
+    """
+
+    must_be_adjacent: list[PairRule] = []
+    cannot_be_adjacent: list[PairRule] = []
+    for group in groups:
+        members = tuple(dict.fromkeys(group.students))
+        pairs = [PairRule(students=pair) for pair in combinations(members, 2)]
+        if group.together:
+            must_be_adjacent.extend(pairs)
+        if group.separate:
+            cannot_be_adjacent.extend(pairs)
+    return must_be_adjacent, cannot_be_adjacent
 
 
 def compile_hard_rules(resolved: ResolvedHardRules) -> CompiledRules:

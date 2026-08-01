@@ -261,11 +261,17 @@ def validate_capacity(students: list[Student], layout: ClassroomLayout) -> None:
 
 
 def count_hard_constraints(rules: RuleSet) -> int:
+    group_pairs = sum(
+        len(set(group.students)) * (len(set(group.students)) - 1) // 2
+        for group in rules.groups
+        if group.separate or group.together
+    )
     return (
         len(rules.hard.fixed_seats)
         + len(rules.hard.must_be_adjacent)
         + len(rules.hard.cannot_be_adjacent)
         + len(rules.hard.min_distance)
+        + group_pairs
     )
 
 
@@ -274,11 +280,6 @@ def _add_rule_capability_warnings(
     rules: RuleSet,
     layout: ClassroomLayout,
 ) -> None:
-    if rules.groups:
-        report.add_warning(
-            "rules.groups is currently model-only: group definitions are parsed and preserved, "
-            "but they do not affect validation, solving, or scoring yet."
-        )
     if rules.soft.cooling.enabled:
         report.add_warning(
             "rules.soft.cooling is currently model-only: use soft.avoid_recent_neighbors for "

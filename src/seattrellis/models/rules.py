@@ -142,7 +142,12 @@ class AvoidRecentNeighborsRule(WeightedRule):
 
 
 class GroupRule(BaseModel):
-    """Defines a named group of students for separation or togetherness rules."""
+    """Defines a named hard group rule for separation or togetherness.
+
+    Group membership is expanded into pair constraints by the shared rule
+    compiler. ``together`` therefore requires every member pair to be adjacent,
+    while ``separate`` keeps every member pair apart.
+    """
 
     name: str
     students: list[str] = Field(default_factory=list)
