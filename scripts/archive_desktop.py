@@ -76,7 +76,14 @@ def archive_bundle(
             info.date_time = (1980, 1, 1, 0, 0, 0)
             info.compress_type = ZIP_DEFLATED
             info.create_system = 3
-            info.external_attr = (source.stat().st_mode & 0xFFFF) << 16
+            mode = source.stat().st_mode & 0o777
+            # Windows does not expose POSIX execute bits through ``stat``.
+            # PyInstaller's launcher is the bundle root executable, so retain
+            # the executable bit for that well-known entry when the host API
+            # reports no execute permissions.
+            if not mode & 0o111 and _is_bundle_launcher(path, bundle):
+                mode = 0o755
+            info.external_attr = mode << 16
             archive.writestr(info, source.read_bytes())
     return archive_path
 
@@ -95,6 +102,14 @@ def _safe_part(value: str, label: str) -> str:
     if not _SAFE_PART.fullmatch(value):
         raise ValueError(f"{label} must contain only letters, numbers, '.', '_' or '-'.")
     return value
+
+
+def _is_bundle_launcher(path: Path, bundle: Path) -> bool:
+    """Return whether ``path`` is the top-level PyInstaller launcher."""
+
+    return path.parent == bundle and (
+        path.name == bundle.name or path.suffix.lower() == ".exe"
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
