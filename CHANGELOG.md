@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.3
+
+### User-facing changes
+
+- Improved roster import review with localized, actionable messages. Changing
+  a mapping or import mode clears the old preview, and incomplete results cannot
+  be confirmed accidentally.
+- Added safe batch migration for local class projects with combined preflight
+  checks and rollback of files written during a failed run.
+- Added an unsaved-changes warning when closing the browser or desktop
+  workbench after editing seats.
+
 ## Unreleased
 
 ### User-facing changes

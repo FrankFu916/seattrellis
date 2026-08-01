@@ -16,7 +16,7 @@ SeatTrellis 的求解、验证、历史公平性和导出能力已经具备稳�
 | [v1.7.0](https://github.com/FrankFu916/seattrellis/milestone/5) | 班级与轮换 | 多班级、历史版本、项目包、新规则和未来多期轮换 |
 | [v1.8.0](https://github.com/FrankFu916/seattrellis/milestone/6) | 桌面与正式分发 | 独立安装包、原生文件对话框、SVG/PPTX 和导出预览 |
 
-## v1.8.2 之后的待完成事项
+## v1.8.3 之后的待完成事项
 
 下面是当前仍未完成、并且会影响正式关闭路线图 Issue 的事项。已经合并的基础能力
 不再重复列为待办；例如关系冷却、项目 schema 迁移、历史比较、分期编辑、小组的
