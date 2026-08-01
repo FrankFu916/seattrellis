@@ -296,6 +296,18 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
 - 桌面安装包可以固定一个经过完整验证的内置 Python 版本，源码包的兼容范围不受
   该选择影响。
 
+### Rust 重写进展（2026-08 起）
+
+为达到"解压后 5-20MB 的小体积桌面工具"，核心向 Rust 迁移，React 前端不变：
+
+- **`native/seattrellis_core`**：成本排序贪心求解器（镜像 Python fallback），成本函数与软目标
+  （成绩位置/均衡/师徒结对，含匈牙利算法）与 Python 逐值对拍一致；JSON 契约 `solve_problem_json`；
+- **CLI 版**（`native/seattrellis_cli`）：单文件二进制 **1.6MB**，`solve` + SVG/HTML/PNG/PDF 导出，
+  彩色输出，零重量依赖；
+- **App 版**（`app/`）：loopback 纯 Rust 服务器（**975KB**，serve React 工作台 + solve 端点）+ Tauri 2 壳
+  （**9.0MB**，内嵌后端 + 原生窗口）。均已在 5-20MB 目标内；
+- Python 版继续作为兼容/库入口，Rust 覆盖全部域能力（编辑/名单/迁移/轮换）后再降级为可选库。
+
 ### Pydantic 迁移与 Starlette 升级（已完成）
 
 - v1.8.1 把约 20 个共享模型从 pydantic v1 兼容 API 迁移到原生 v2 API，并升级
