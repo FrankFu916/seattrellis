@@ -43,6 +43,7 @@ from seattrellis.api.models import (
     ProjectMigrationRestoreRequest,
     ProjectMigrationRestoreResponse,
     ProjectMigrationChange,
+    ProjectMigrationReferenceCheck,
     ProjectMigrationResponse,
     ProjectGroupRegisterRequest,
     ProjectRotationLoadRequest,
@@ -111,6 +112,7 @@ from seattrellis.service_types import (
 from seattrellis.service import compute_rotation_plan
 from seattrellis.models.candidate import CandidatePlan, CandidateSet
 from seattrellis.models.rotation import RotationPlan
+from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.scoring import score_snapshot
 from seattrellis.solver.errors import SeatTrellisSolveError
@@ -856,6 +858,11 @@ def _migrate_project_artifact(
             if result.dry_run
             else _validate_migration_output(result.output_path)
         )
+        reference_checks = (
+            _project_reference_checks(source_model, source_path)
+            if isinstance(source_model, SeatTrellisProject)
+            else []
+        )
     except (InputFileError, OSError, ValueError) as exc:
         raise ApiProblem(
             status_code=422,
@@ -877,7 +884,46 @@ def _migrate_project_artifact(
         ),
         change_count=change_count,
         changes=changes,
+        reference_checks=reference_checks,
     )
+
+
+def _project_reference_checks(
+    project: object,
+    project_path: Path,
+) -> list[ProjectMigrationReferenceCheck]:
+    """Check project references without reading their contents into the API."""
+
+    checks: list[ProjectMigrationReferenceCheck] = []
+    for field, expected in (
+        ("students", "file"),
+        ("layout", "file"),
+        ("rules", "file"),
+        ("history_dir", "directory"),
+        ("outputs_dir", "directory"),
+    ):
+        configured = getattr(project, field, None)
+        if configured is None:
+            continue
+        configured_path = str(configured)
+        resolved = (project_path.parent / configured_path).resolve()
+        if not resolved.exists():
+            status = "missing"
+        elif expected == "file" and not resolved.is_file():
+            status = "wrong_type"
+        elif expected == "directory" and not resolved.is_dir():
+            status = "wrong_type"
+        else:
+            status = "ok"
+        checks.append(
+            ProjectMigrationReferenceCheck(
+                field=field,  # type: ignore[arg-type]
+                path=configured_path,
+                expected=expected,  # type: ignore[arg-type]
+                status=status,  # type: ignore[arg-type]
+            )
+        )
+    return checks
 
 
 def _migration_output_path(

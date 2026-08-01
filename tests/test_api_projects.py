@@ -240,6 +240,34 @@ def test_project_schema_migration_in_place_keeps_a_backup(tmp_path) -> None:
     assert source.exists()
 
 
+def test_project_schema_migration_checks_referenced_files(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    project_path = paths["project"]
+    (project_path.parent / "outputs").mkdir(parents=True, exist_ok=True)
+    project_data = json.loads(project_path.read_text(encoding="utf-8"))
+    project_data["students"] = "missing-roster.csv"
+    project_path.write_text(
+        json.dumps(project_data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    response = _client().post(
+        "/api/v1/projects/migration/preview",
+        json={"project_path": str(project_path)},
+    )
+    assert response.status_code == 200, response.text
+    checks = {item["field"]: item for item in response.json()["reference_checks"]}
+    assert checks["students"] == {
+        "field": "students",
+        "path": "missing-roster.csv",
+        "expected": "file",
+        "status": "missing",
+    }
+    assert checks["layout"]["status"] == "ok"
+    assert checks["rules"]["status"] == "ok"
+    assert checks["outputs_dir"]["status"] == "ok"
+
+
 def test_project_schema_migration_backup_can_be_restored_safely(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
     client = _client()

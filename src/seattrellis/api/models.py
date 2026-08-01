@@ -457,6 +457,15 @@ class ProjectMigrationChange(ApiModel):
     after_type: str | None = None
 
 
+class ProjectMigrationReferenceCheck(ApiModel):
+    """Status of one file or directory referenced by a project file."""
+
+    field: Literal["students", "layout", "rules", "history_dir", "outputs_dir"]
+    path: str
+    expected: Literal["file", "directory"]
+    status: Literal["ok", "missing", "wrong_type"]
+
+
 class ProjectMigrationResponse(VersionedResponse):
     """Preview or result of one schema migration without exposing file data."""
 
@@ -472,6 +481,7 @@ class ProjectMigrationResponse(VersionedResponse):
     rollback_available: bool = False
     change_count: int = Field(default=0, ge=0)
     changes: list[ProjectMigrationChange] = Field(default_factory=list)
+    reference_checks: list[ProjectMigrationReferenceCheck] = Field(default_factory=list)
 
 
 class ProjectMigrationRestoreRequest(ProjectPathRequest):
