@@ -1,0 +1,1361 @@
+:root {
+  color-scheme: light;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ink: #17181c;
+  --muted: #687080;
+  --line: rgba(20, 24, 32, 0.12);
+  --page: #f5f6f8;
+  --paper: #fff;
+  --accent: #2563eb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  background: var(--page);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page {
+  width: min(1480px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.preview-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.preview-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preview-links a,
+.back-link {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.preview-links a:hover,
+.back-link:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.index-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: end;
+  margin: 42px 0 24px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 920px;
+  margin: 10px 0 0;
+  font-size: clamp(34px, 5vw, 76px);
+  line-height: 0.96;
+  letter-spacing: -0.07em;
+}
+
+.lead {
+  max-width: 760px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.note-card {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 20px;
+  background: var(--paper);
+  box-shadow: 0 18px 50px rgba(20, 24, 32, 0.07);
+}
+
+.note-card strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.note-card span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.theme-card {
+  min-height: 330px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  padding: 20px;
+  background: var(--paper);
+  box-shadow: 0 18px 50px rgba(20, 24, 32, 0.07);
+}
+
+.theme-card h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.theme-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.palette {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.swatch {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.theme-card ul {
+  margin: 0 0 20px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  color: #fff;
+  background: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.apple-card { --accent: #0071e3; }
+.linear-card { --accent: #5e6ad2; }
+.muji-card { --accent: #9b3f2f; }
+.fluent-card { --accent: #2563eb; }
+.material-card { --accent: #6750a4; }
+.gnome-card { --accent: #3584e4; }
+.kde-card { --accent: #1d99f3; }
+.swiss-card { --accent: #d2001f; }
+.terminal-card { --accent: #00ff66; color: #d6ffd6; background: #061106; }
+.terminal-card p,
+.terminal-card ul { color: #9dffae; }
+.calm-card { --accent: #2f6f5e; }
+
+/* Linear/Notion: SaaS workspace, document database, command-first. */
+.linear-body {
+  --page: #f7f7f8;
+  --accent: #5e6ad2;
+  font-family: Inter, ui-sans-serif, "PingFang SC", sans-serif;
+  background: #f7f7f8;
+}
+
+.linear-app {
+  border-radius: 18px;
+  background: #fff;
+}
+
+.linear-layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  min-height: 860px;
+}
+
+.linear-sidebar {
+  padding: 14px;
+  border-right: 1px solid #e6e6e7;
+  background: #fbfbfb;
+}
+
+.linear-workspace-name {
+  margin-bottom: 18px;
+  padding: 10px;
+  font-weight: 850;
+}
+
+.linear-sidebar a {
+  display: flex;
+  justify-content: space-between;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #686871;
+  font-size: 13px;
+}
+
+.linear-sidebar .active {
+  color: #111113;
+  background: #f0f1ff;
+  font-weight: 800;
+}
+
+.linear-main {
+  padding: 22px 30px;
+}
+
+.linear-command {
+  width: 100%;
+  border: 1px solid #e6e6e7;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #707078;
+  background: #fafafa;
+  font-size: 13px;
+}
+
+.linear-main h1 {
+  margin-top: 34px;
+  font-size: 44px;
+}
+
+.linear-doc-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.linear-panel {
+  border: 1px solid #e6e6e7;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.linear-panel h2 {
+  margin: 0;
+  padding: 16px;
+  border-bottom: 1px solid #e6e6e7;
+  font-size: 15px;
+}
+
+.linear-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 90px 78px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f1;
+  color: #686871;
+  font-size: 13px;
+}
+
+.linear-row strong {
+  color: #111113;
+}
+
+.linear-note {
+  padding: 16px;
+  color: #55565d;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.linear-tag {
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #4f46e5;
+  background: #eef0ff;
+  font-size: 12px;
+}
+
+/* Muji: warm paper, catalog-like, quiet, object-first. */
+.muji-body {
+  --page: #ebe4d7;
+  --accent: #9b3f2f;
+  font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+  background: #ebe4d7;
+}
+
+.muji-app {
+  border-radius: 6px;
+  background: #fffbf0;
+  box-shadow: 0 18px 55px rgba(89, 67, 38, 0.14);
+}
+
+.muji-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  padding: 32px;
+  border-bottom: 1px solid rgba(88, 68, 43, 0.18);
+}
+
+.muji-header h1 {
+  max-width: 720px;
+  font-size: 56px;
+  letter-spacing: -0.055em;
+}
+
+.muji-stamp {
+  align-self: start;
+  border: 2px solid #9b3f2f;
+  padding: 12px 14px;
+  color: #9b3f2f;
+  font-weight: 900;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.2em;
+}
+
+.muji-content {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  padding: 32px;
+}
+
+.muji-board {
+  border: 1px solid rgba(88, 68, 43, 0.22);
+  background: #fff8e8;
+}
+
+.muji-board-title {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(88, 68, 43, 0.22);
+  color: #6d6255;
+  font-size: 13px;
+}
+
+.muji-board .seats-compact {
+  gap: 0;
+}
+
+.muji-board .seat {
+  border: 0;
+  border-right: 1px solid rgba(88, 68, 43, 0.18);
+  border-bottom: 1px solid rgba(88, 68, 43, 0.18);
+  background: transparent;
+}
+
+.muji-side {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.muji-card-box {
+  border: 1px solid rgba(88, 68, 43, 0.2);
+  padding: 16px;
+  background: #fffdf6;
+}
+
+.muji-card-box strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.muji-card-box p {
+  margin: 0;
+  color: #766d60;
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+.app-preview {
+  min-height: 860px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 22px 70px rgba(20, 24, 32, 0.1);
+}
+
+.seats-compact {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(64px, 1fr));
+  gap: 8px;
+}
+
+.seat {
+  min-height: 60px;
+  border: 1px solid var(--line);
+  padding: 8px;
+  font-size: 12px;
+}
+
+.seat strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.seat small {
+  color: var(--muted);
+}
+
+/* Apple: content-first, large title, translucent inspector, soft depth. */
+.apple-body {
+  --page: radial-gradient(circle at 20% 0%, rgba(0, 113, 227, 0.16), transparent 34rem), #f5f5f7;
+  --accent: #0071e3;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  background: var(--page);
+}
+
+.apple-app {
+  border-radius: 34px;
+  background: rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(26px);
+}
+
+.apple-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 26px;
+}
+
+.apple-brand {
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.apple-segment {
+  display: flex;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(120, 120, 128, 0.14);
+}
+
+.apple-segment span {
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: #6e6e73;
+  font-size: 13px;
+}
+
+.apple-segment .active {
+  color: #111;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.09);
+}
+
+.apple-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  padding: 34px;
+}
+
+.apple-hero h1 {
+  font-size: clamp(44px, 6vw, 92px);
+  letter-spacing: -0.08em;
+}
+
+.apple-hero p {
+  max-width: 680px;
+  color: #6e6e73;
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+.apple-board {
+  margin-top: 26px;
+  border-radius: 30px;
+  padding: 22px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 22px 70px rgba(40, 46, 60, 0.1);
+}
+
+.apple-board .seat {
+  border-radius: 18px;
+  background: #f7f8fb;
+}
+
+.apple-board .seat:nth-child(1),
+.apple-board .seat:nth-child(9) {
+  border-color: rgba(0, 113, 227, 0.35);
+  background: rgba(0, 113, 227, 0.08);
+}
+
+.apple-inspector {
+  align-self: start;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 28px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(20px);
+}
+
+.apple-inspector h2 {
+  margin: 0 0 16px;
+  letter-spacing: -0.04em;
+}
+
+.apple-metric {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 13px 0;
+  color: #6e6e73;
+}
+
+.apple-metric strong { color: #111; }
+
+/* Fluent/Windows: titlebar, command bar, navigation pane, tiles. */
+.fluent-body {
+  --page: linear-gradient(135deg, #dfe9ff, #f8fbff 42%, #eef3ff);
+  --accent: #2563eb;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--page);
+}
+
+.fluent-window {
+  border-radius: 14px;
+  background: rgba(248, 250, 255, 0.82);
+  backdrop-filter: blur(24px);
+}
+
+.win-titlebar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  height: 42px;
+  padding: 0 0 0 14px;
+  color: #2b3445;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.win-controls {
+  display: flex;
+  height: 42px;
+}
+
+.win-controls span {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  font-size: 13px;
+}
+
+.fluent-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.command-left {
+  display: flex;
+  gap: 8px;
+}
+
+.fluent-btn {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+.fluent-primary {
+  color: #fff;
+  border-color: #2563eb;
+  background: #2563eb;
+}
+
+.fluent-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 776px;
+}
+
+.fluent-nav {
+  padding: 14px;
+  background: rgba(245, 248, 255, 0.72);
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.fluent-nav a {
+  display: block;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #475569;
+  font-size: 14px;
+}
+
+.fluent-nav .active {
+  color: #0f172a;
+  background: #fff;
+  border-left: 3px solid #2563eb;
+  box-shadow: 0 4px 18px rgba(31, 41, 55, 0.08);
+}
+
+.fluent-content {
+  padding: 24px;
+}
+
+.fluent-content h1 {
+  font-size: 40px;
+  letter-spacing: -0.045em;
+}
+
+.fluent-tiles {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.fluent-card {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08);
+}
+
+.fluent-card .seat {
+  border-radius: 6px;
+  background: #f8fbff;
+}
+
+/* Material/Android: mobile-first, tonal color, chips, FAB. */
+.material-body {
+  --page: #fffbff;
+  --accent: #6750a4;
+  font-family: "Roboto", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  background: #fef7ff;
+}
+
+.phone-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 900px;
+}
+
+.android-phone {
+  position: relative;
+  width: min(430px, 100%);
+  min-height: 860px;
+  border: 10px solid #1d1b20;
+  border-radius: 46px;
+  overflow: hidden;
+  background: #fffbff;
+  box-shadow: 0 35px 90px rgba(0, 0, 0, 0.25);
+}
+
+.material-top {
+  padding: 28px 22px 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #6750a4, #7d5260);
+}
+
+.material-topbar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  opacity: 0.92;
+}
+
+.material-top h1 {
+  margin: 42px 0 8px;
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow: hidden;
+  padding: 14px 0 0;
+}
+
+.chip {
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #21005d;
+  background: #eaddff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.material-content {
+  padding: 18px;
+}
+
+.material-card {
+  border-radius: 28px;
+  padding: 18px;
+  margin-bottom: 14px;
+  background: #f3edf7;
+}
+
+.material-card h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.material-seats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.material-seat {
+  min-height: 76px;
+  border-radius: 20px;
+  padding: 10px;
+  color: #1d1b20;
+  background: #fffbff;
+  box-shadow: inset 0 0 0 1px rgba(103, 80, 164, 0.08);
+  font-size: 12px;
+}
+
+.material-seat strong {
+  display: block;
+  margin-top: 8px;
+}
+
+.fab {
+  position: absolute;
+  right: 22px;
+  bottom: 28px;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  color: #21005d;
+  background: #eaddff;
+  box-shadow: 0 8px 22px rgba(103, 80, 164, 0.28);
+  font-size: 28px;
+}
+
+/* GNOME/Adwaita: headerbar, split view, calm native app cards. */
+.gnome-body {
+  --page: #f6f5f4;
+  --accent: #3584e4;
+  font-family: Cantarell, "Inter", "PingFang SC", sans-serif;
+  background: #e9e9e7;
+}
+
+.gnome-window {
+  border-radius: 18px;
+  background: #fafafa;
+}
+
+.gnome-headerbar {
+  display: grid;
+  grid-template-columns: 160px 1fr 160px;
+  align-items: center;
+  height: 56px;
+  padding: 0 12px;
+  background: #ebebeb;
+  border-bottom: 1px solid #d6d6d6;
+}
+
+.gnome-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.gnome-controls span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #deddda;
+  box-shadow: inset 0 0 0 1px #c0bfbc;
+}
+
+.gnome-title {
+  justify-self: center;
+  font-weight: 800;
+}
+
+.gnome-suggested {
+  justify-self: end;
+  border-radius: 8px;
+  padding: 8px 13px;
+  color: #fff;
+  background: #3584e4;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gnome-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 804px;
+}
+
+.gnome-sidebar {
+  padding: 14px;
+  background: #f0f0ef;
+  border-right: 1px solid #deddda;
+}
+
+.gnome-sidebar a {
+  display: block;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #5e5c64;
+}
+
+.gnome-sidebar .active {
+  color: #1c1c1c;
+  background: #fff;
+  font-weight: 800;
+}
+
+.gnome-content {
+  padding: 28px;
+}
+
+.gnome-content h1 {
+  font-size: 36px;
+}
+
+.adwaita-card {
+  border-radius: 16px;
+  margin-top: 18px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #deddda;
+}
+
+.adwaita-card .seat {
+  border-radius: 12px;
+  background: #f6f5f4;
+}
+
+/* KDE/Breeze: toolbars, status bar, configurable desktop app feeling. */
+.kde-body {
+  --page: linear-gradient(135deg, #122d46, #1d5c88);
+  --accent: #1d99f3;
+  font-family: "Noto Sans", "Segoe UI", "PingFang SC", sans-serif;
+  background: var(--page);
+}
+
+.kde-window {
+  border-radius: 8px;
+  background: #eff6fd;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+}
+
+.kde-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 38px;
+  padding: 0 12px;
+  color: #102a43;
+  background: linear-gradient(#f9fcff, #dfedf8);
+  border-bottom: 1px solid #b9d2e8;
+}
+
+.kde-menu {
+  display: flex;
+  gap: 18px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #c8dced;
+  background: #f5fbff;
+  font-size: 13px;
+}
+
+.kde-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #c8dced;
+  background: #eaf5fd;
+}
+
+.kde-tool {
+  border: 1px solid #a8cce7;
+  border-radius: 4px;
+  padding: 7px 10px;
+  background: linear-gradient(#fff, #dfeefa);
+  font-size: 13px;
+}
+
+.kde-content {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 14px;
+  min-height: 720px;
+  padding: 14px;
+}
+
+.kde-pane {
+  border: 1px solid #b7d3e8;
+  border-radius: 6px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.kde-pane h1 {
+  font-size: 32px;
+}
+
+.kde-pane .seat {
+  border-radius: 4px;
+  border-color: #b7d3e8;
+  background: #f8fcff;
+}
+
+.kde-status {
+  padding: 7px 12px;
+  border-top: 1px solid #b7d3e8;
+  color: #335c75;
+  background: #e7f2fb;
+  font-size: 12px;
+}
+
+/* Swiss/print: poster-like, grid, no chrome, black/red typography. */
+.swiss-body {
+  --page: #f2f0e8;
+  --accent: #d2001f;
+  font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+  background: #e9e4d8;
+}
+
+.swiss-sheet {
+  min-height: 920px;
+  border-radius: 0;
+  padding: 36px;
+  background: #fffdf3;
+}
+
+.swiss-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 30px;
+}
+
+.swiss-label {
+  color: #d2001f;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.swiss-sheet h1 {
+  margin-top: 18px;
+  font-size: clamp(62px, 8vw, 124px);
+  line-height: 0.86;
+  letter-spacing: -0.08em;
+}
+
+.swiss-meta {
+  border-top: 6px solid #111;
+  margin-top: 28px;
+  padding-top: 18px;
+  color: #333;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.swiss-board {
+  border-top: 6px solid #d2001f;
+  padding-top: 20px;
+}
+
+.swiss-board .seats-compact {
+  gap: 0;
+}
+
+.swiss-board .seat {
+  min-height: 82px;
+  border: 2px solid #111;
+  border-right: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.swiss-board .seat:nth-child(6n) { border-right: 2px solid #111; }
+.swiss-board .seat:nth-child(n+7) { border-bottom: 2px solid #111; }
+
+.swiss-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.swiss-action {
+  border-top: 3px solid #111;
+  padding-top: 10px;
+  font-weight: 900;
+}
+
+/* Terminal/DOS: text UI, keyboard-first, intentionally retro. */
+.terminal-body {
+  --page: #050505;
+  --ink: #c8ffc8;
+  --muted: #7dff91;
+  --line: #00aa44;
+  --accent: #00ff66;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  background: #050505;
+}
+
+.terminal-screen {
+  min-height: 900px;
+  border: 2px solid #00aa44;
+  border-radius: 0;
+  padding: 18px;
+  color: #c8ffc8;
+  background:
+    linear-gradient(rgba(0, 255, 102, 0.05), rgba(0, 255, 102, 0.02)),
+    #061106;
+  box-shadow: inset 0 0 80px rgba(0, 255, 102, 0.08);
+}
+
+.terminal-bar {
+  display: flex;
+  justify-content: space-between;
+  border: 1px solid #00aa44;
+  padding: 8px 10px;
+  color: #061106;
+  background: #00ff66;
+  font-weight: 900;
+}
+
+.terminal-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.terminal-box {
+  border: 1px solid #00aa44;
+  padding: 14px;
+}
+
+.terminal-box h1 {
+  margin: 0 0 14px;
+  color: #00ff66;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.ascii-map {
+  margin: 18px 0 0;
+  white-space: pre;
+  color: #c8ffc8;
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+.terminal-menu {
+  display: grid;
+  gap: 8px;
+}
+
+.terminal-menu div {
+  border: 1px solid #00aa44;
+  padding: 9px;
+}
+
+.terminal-menu .active {
+  color: #061106;
+  background: #00ff66;
+  font-weight: 900;
+}
+
+/* Carbon/enterprise: dense, data-first, high contrast, table grid. */
+.carbon-body {
+  --page: #161616;
+  --ink: #f4f4f4;
+  --muted: #c6c6c6;
+  --line: #393939;
+  --paper: #262626;
+  --accent: #0f62fe;
+  font-family: "IBM Plex Sans", "Inter", "Microsoft YaHei", sans-serif;
+  background: #161616;
+}
+
+.carbon-app {
+  border-radius: 0;
+  color: #f4f4f4;
+  background: #262626;
+}
+
+.carbon-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid #393939;
+  background: #161616;
+}
+
+.carbon-layout {
+  display: grid;
+  grid-template-columns: 256px minmax(0, 1fr);
+  min-height: 812px;
+}
+
+.carbon-nav {
+  border-right: 1px solid #393939;
+  background: #161616;
+}
+
+.carbon-nav a {
+  display: block;
+  padding: 14px 16px;
+  color: #c6c6c6;
+  border-bottom: 1px solid #262626;
+}
+
+.carbon-nav .active {
+  color: #fff;
+  border-left: 4px solid #0f62fe;
+  background: #262626;
+}
+
+.carbon-main {
+  padding: 24px;
+}
+
+.carbon-main h1 {
+  font-size: 42px;
+  letter-spacing: -0.04em;
+}
+
+.carbon-table {
+  width: 100%;
+  margin-top: 24px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.carbon-table th,
+.carbon-table td {
+  border-bottom: 1px solid #393939;
+  padding: 12px;
+  text-align: left;
+}
+
+.carbon-table th {
+  color: #c6c6c6;
+  background: #393939;
+}
+
+.carbon-panels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin-top: 20px;
+  background: #393939;
+}
+
+.carbon-panel {
+  padding: 16px;
+  background: #262626;
+}
+
+.carbon-value {
+  color: #78a9ff;
+  font-size: 30px;
+  font-weight: 400;
+}
+
+/* Custom SeatTrellis Calm: distinct product language, canvas + inspector. */
+.calm-body {
+  --page: radial-gradient(circle at 0% 0%, rgba(47, 111, 94, 0.16), transparent 32rem), #f3f6f2;
+  --accent: #2f6f5e;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  background: var(--page);
+}
+
+.calm-app {
+  border-radius: 28px;
+  background: #ffffff;
+}
+
+.calm-top {
+  display: grid;
+  grid-template-columns: 260px 1fr 290px;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(47, 111, 94, 0.13);
+}
+
+.calm-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 900;
+}
+
+.calm-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #2f6f5e, #84a778);
+}
+
+.calm-search {
+  border: 1px solid rgba(47, 111, 94, 0.14);
+  border-radius: 18px;
+  padding: 12px 16px;
+  color: #6a756f;
+  background: #f7faf6;
+}
+
+.calm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.calm-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 340px;
+  min-height: 788px;
+}
+
+.calm-nav {
+  padding: 18px 12px;
+  background: #f2f6f0;
+  border-right: 1px solid rgba(47, 111, 94, 0.13);
+}
+
+.calm-nav a {
+  display: block;
+  border-radius: 14px;
+  padding: 11px 12px;
+  color: #68756f;
+}
+
+.calm-nav .active {
+  color: #16201d;
+  background: #e6f0e9;
+  font-weight: 850;
+}
+
+.calm-canvas {
+  padding: 26px;
+  background: #fbfcfa;
+}
+
+.calm-canvas h1 {
+  font-size: 48px;
+}
+
+.calm-workspace {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.calm-card {
+  border: 1px solid rgba(47, 111, 94, 0.13);
+  border-radius: 24px;
+  padding: 18px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(47, 111, 94, 0.07);
+}
+
+.calm-card .seat {
+  border-radius: 16px;
+  background: #f7faf6;
+}
+
+.calm-inspector {
+  padding: 22px;
+  background: #f7faf6;
+  border-left: 1px solid rgba(47, 111, 94, 0.13);
+}
+
+.calm-inspector-card {
+  border-radius: 22px;
+  padding: 16px;
+  margin-bottom: 14px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(47, 111, 94, 0.1);
+}
+
+@media (max-width: 1180px) {
+  .theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .apple-main,
+  .fluent-tiles,
+  .kde-content,
+  .swiss-grid,
+  .terminal-layout,
+  .linear-doc-grid,
+  .muji-content,
+  .calm-layout,
+  .calm-workspace {
+    grid-template-columns: 1fr;
+  }
+  .calm-inspector { display: none; }
+}
+
+@media (max-width: 760px) {
+  .page { padding: 14px; }
+  .preview-nav,
+  .index-hero,
+  .gnome-layout,
+  .fluent-layout,
+  .carbon-layout,
+  .linear-layout,
+  .muji-header,
+  .calm-top {
+    display: block;
+  }
+  .theme-grid { grid-template-columns: 1fr; }
+  .seats-compact { grid-template-columns: repeat(3, minmax(64px, 1fr)); }
+  .fluent-nav,
+  .gnome-sidebar,
+  .carbon-nav,
+  .calm-nav { display: none; }
+}
