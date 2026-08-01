@@ -1651,6 +1651,82 @@ input:focus-visible,
   line-height: 1.45;
 }
 
+.history-input-card {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 11px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.history-input-card legend {
+  padding-inline: 4px;
+  color: var(--text-strong);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.history-input-card .advanced-settings-hint {
+  padding: 0;
+  margin: 0;
+}
+
+.history-input-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.json-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.file-input-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: var(--line-width) solid var(--border-strong);
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.file-input-button:hover {
+  border-color: var(--accent);
+  background: var(--surface-tint);
+}
+
+.file-input-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.history-loaded {
+  margin: 0;
+  color: var(--success);
+  font-size: 0.66rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .advanced-field small {
   color: var(--muted);
   font-size: 0.61rem;

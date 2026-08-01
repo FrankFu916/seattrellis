@@ -199,6 +199,7 @@ export type GenerateClassRequest = {
       template_id?: string;
       layout?: Record<string, unknown>;
     };
+    history_snapshots?: Record<string, unknown>[];
     goal: {
       goal_id: string;
       custom_rules?: Record<string, unknown>;
@@ -213,6 +214,9 @@ export type GenerateClassRequest = {
     backend?: string;
   };
 };
+
+/** A validated-enough JSON snapshot kept in memory until the next solve. */
+export type HistorySnapshotPayload = Record<string, unknown>;
 
 export type SolverBackend = "auto" | "fallback" | "ortools" | "native";
 

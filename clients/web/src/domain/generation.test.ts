@@ -5,6 +5,7 @@ import type {
   CommonConstraint,
   CustomRoomSettings,
   DetailedRuleSettings,
+  HistorySnapshotPayload,
   RotationSettings,
   Student,
 } from "../api/types";
@@ -37,6 +38,16 @@ const defaultRoom: CustomRoomSettings = {
 };
 
 const noConstraints: CommonConstraint[] = [];
+
+const historySnapshot: HistorySnapshotPayload = {
+  schema_version: "1.0",
+  created_at: "2026-07-01T00:00:00Z",
+  students: [],
+  layout: { layout_id: "history-room", seats: [] },
+  rules: { schema_version: 1, hard: {}, soft: {} },
+  assignments: [],
+  solver_status: "feasible",
+};
 
 const defaultRotation: RotationSettings = {
   enabled: true,
@@ -189,6 +200,22 @@ describe("buildGenerateClassRequest", () => {
         },
       ],
     });
+  });
+
+  it("passes selected history snapshots to the shared application API", () => {
+    const request = buildGenerateClassRequest({
+      className: "History class",
+      students,
+      selectedRoomId: "compact",
+      selectedGoalId: "fair-shuffle",
+      settings: defaults,
+      roomSettings: defaultRoom,
+      constraints: noConstraints,
+      preferences: ["fair_rotation"],
+      historySnapshots: [historySnapshot],
+    });
+
+    expect(request.draft.history_snapshots).toEqual([historySnapshot]);
   });
 
   it("builds an irregular classroom from the common room controls", () => {

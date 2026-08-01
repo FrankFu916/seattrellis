@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type {
   AdvancedSolveSettings,
@@ -60,6 +60,9 @@ type WorkflowPanelProps = {
   orientation: "portrait" | "landscape";
   pageScale: number;
   advancedSettings: AdvancedSolveSettings;
+  historyFileNames: string[];
+  historySnapshotCount: number;
+  historyError: string | null;
   detailedRules: DetailedRuleSettings;
   rotationSettings: RotationSettings;
   rotationPlan: RotationPlan | null;
@@ -86,6 +89,8 @@ type WorkflowPanelProps = {
   ) => void;
   onRotationSettingsChange: (changes: Partial<RotationSettings>) => void;
   onDetailedRulesChange: (changes: Partial<DetailedRuleSettings>) => void;
+  onHistoryFilesChange: (files: File[]) => void;
+  onHistoryClear: () => void;
   onRotationPeriodSelect: (period: number) => void;
   onRoomSettingsChange: (changes: Partial<CustomRoomSettings>) => void;
   onConstraintAdd: () => void;
@@ -122,6 +127,18 @@ function optionDescription(
   return option.description[locale];
 }
 
+function downloadJson(filename: string, source: string): void {
+  const blob = new Blob([source], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function WorkflowPanel({
   step,
   locale,
@@ -142,6 +159,9 @@ export function WorkflowPanel({
   orientation,
   pageScale,
   advancedSettings,
+  historyFileNames,
+  historySnapshotCount,
+  historyError,
   detailedRules,
   rotationSettings,
   rotationPlan,
@@ -166,6 +186,8 @@ export function WorkflowPanel({
   onAdvancedSettingsChange,
   onRotationSettingsChange,
   onDetailedRulesChange,
+  onHistoryFilesChange,
+  onHistoryClear,
   onRotationPeriodSelect,
   onRoomSettingsChange,
   onConstraintAdd,
@@ -184,10 +206,44 @@ export function WorkflowPanel({
   onToggleLock,
   onPreview,
 }: WorkflowPanelProps) {
+  const [rulesFileError, setRulesFileError] = useState<string | null>(null);
+  const [layoutFileError, setLayoutFileError] = useState<string | null>(null);
   const selectedRoom =
     rooms.find((room) => room.id === selectedRoomId) ?? rooms[0];
   const selectedGoal =
     goals.find((goal) => goal.id === selectedGoalId) ?? goals[0];
+
+  async function importJsonFile(
+    file: File,
+    kind: "rules" | "layout",
+  ): Promise<void> {
+    const setError = kind === "rules" ? setRulesFileError : setLayoutFileError;
+    try {
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error("too_large");
+      }
+      const parsed: unknown = JSON.parse(await file.text());
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("invalid");
+      }
+      const source = `${JSON.stringify(parsed, null, 2)}\n`;
+      if (kind === "rules") {
+        onAdvancedSettingsChange({ customRulesJson: source });
+      } else {
+        onRoomSettingsChange({ layoutJson: source, enabled: true });
+      }
+      setError(null);
+    } catch (error) {
+      console.error(`Could not import ${kind} JSON`, error);
+      setError(
+        error instanceof Error && error.message === "too_large"
+          ? t("generate.jsonFileTooLarge")
+          : kind === "rules"
+            ? t("generate.rulesFileInvalid")
+            : t("room.layoutFileInvalid"),
+      );
+    }
+  }
 
   return (
     <section className="control-panel" aria-labelledby={`panel-title-${step}`}>
@@ -356,6 +412,36 @@ export function WorkflowPanel({
                       }
                     />
                     <small>{t("room.layoutJsonHint")}</small>
+                    <div className="json-file-actions">
+                      <label className="file-input-button">
+                        <span>{t("room.layoutFileImport")}</span>
+                        <input
+                          type="file"
+                          accept=".json,application/json"
+                          onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = "";
+                            if (file) {
+                              void importJsonFile(file, "layout");
+                            }
+                          }}
+                        />
+                      </label>
+                      {roomSettings.layoutJson.trim() ? (
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => downloadJson("classroom.layout.json", roomSettings.layoutJson)}
+                        >
+                          {t("room.layoutFileDownload")}
+                        </button>
+                      ) : null}
+                    </div>
+                    {layoutFileError ? (
+                      <span className="inline-error" role="alert">
+                        {layoutFileError}
+                      </span>
+                    ) : null}
                   </label>
                   <LayoutEditorPanel
                     roomSettings={roomSettings}
@@ -746,6 +832,36 @@ export function WorkflowPanel({
                     }
                   />
                   <small>{t("generate.customRulesHint")}</small>
+                  <div className="json-file-actions">
+                    <label className="file-input-button">
+                      <span>{t("generate.rulesFileImport")}</span>
+                      <input
+                        type="file"
+                        accept=".json,application/json"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          event.currentTarget.value = "";
+                          if (file) {
+                            void importJsonFile(file, "rules");
+                          }
+                        }}
+                      />
+                    </label>
+                    {advancedSettings.customRulesJson.trim() ? (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => downloadJson("seattrellis.rules.json", advancedSettings.customRulesJson)}
+                      >
+                        {t("generate.rulesFileDownload")}
+                      </button>
+                    ) : null}
+                  </div>
+                  {rulesFileError ? (
+                    <span className="inline-error" role="alert">
+                      {rulesFileError}
+                    </span>
+                  ) : null}
                   <RuleSetDiagnosticsPanel
                     source={advancedSettings.customRulesJson}
                     students={students}
@@ -762,6 +878,49 @@ export function WorkflowPanel({
                     }
                   />
                 </div>
+                <fieldset className="advanced-field advanced-field-wide history-input-card">
+                  <legend>{t("generate.historyTitle")}</legend>
+                  <p className="advanced-settings-hint">{t("generate.historyHint")}</p>
+                  <div className="history-input-actions">
+                    <label className="file-input-button">
+                      <span>{t("generate.historyChoose")}</span>
+                      <input
+                        type="file"
+                        accept=".json,application/json"
+                        multiple
+                        onChange={(event) => {
+                          const files = Array.from(event.currentTarget.files ?? []);
+                          event.currentTarget.value = "";
+                          onHistoryFilesChange(files);
+                        }}
+                      />
+                    </label>
+                    {historySnapshotCount > 0 ? (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={onHistoryClear}
+                      >
+                        {t("generate.historyClear")}
+                      </button>
+                    ) : null}
+                  </div>
+                  {historySnapshotCount > 0 ? (
+                    <p className="history-loaded" role="status">
+                      {t("generate.historyLoaded", {
+                        count: historySnapshotCount,
+                        files: historyFileNames.join(", "),
+                      })}
+                    </p>
+                  ) : (
+                    <small>{t("generate.historyEmpty")}</small>
+                  )}
+                  {historyError ? (
+                    <p className="inline-error" role="alert">
+                      {historyError}
+                    </p>
+                  ) : null}
+                </fieldset>
               </div>
             </details>
             <DetailedRulesPanel

@@ -9,6 +9,7 @@ import type {
   GenerateRotationPlanRequest,
   RotationSettings,
   HardRulesPayload,
+  HistorySnapshotPayload,
   Student,
 } from "../api/types";
 
@@ -331,6 +332,7 @@ export function buildGenerateClassRequest({
   groups,
   preferences,
   detailedRules,
+  historySnapshots,
 }: {
   className: string;
   students: Student[];
@@ -342,6 +344,7 @@ export function buildGenerateClassRequest({
   groups?: CommonGroupRule[];
   preferences: CommonPreferenceId[];
   detailedRules?: DetailedRuleSettings;
+  historySnapshots?: HistorySnapshotPayload[];
 }): GenerateClassRequest {
   const customRules = parseJsonObject(settings.customRulesJson, "rules");
   const customLayout = roomSettings.enabled
@@ -378,6 +381,7 @@ export function buildGenerateClassRequest({
       room: customLayout
         ? { layout: customLayout }
         : { template_id: selectedRoomId },
+      ...(historySnapshots?.length ? { history_snapshots: historySnapshots } : {}),
       goal: {
         ...(customRules
           ? { goal_id: "custom", custom_rules: customRules }
@@ -406,6 +410,7 @@ export function buildGenerateRotationPlanRequest({
   groups,
   preferences,
   detailedRules,
+  historySnapshots,
   rotation,
 }: {
   className: string;
@@ -418,6 +423,7 @@ export function buildGenerateRotationPlanRequest({
   groups?: CommonGroupRule[];
   preferences: CommonPreferenceId[];
   detailedRules?: DetailedRuleSettings;
+  historySnapshots?: HistorySnapshotPayload[];
   rotation: RotationSettings;
 }): GenerateRotationPlanRequest {
   const base = buildGenerateClassRequest({
@@ -431,6 +437,7 @@ export function buildGenerateRotationPlanRequest({
     groups,
     preferences,
     detailedRules,
+    historySnapshots,
   });
   const periodLabels = rotation.periodLabels
     .split(/[\n,，]+/u)
