@@ -67,6 +67,10 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 - `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；
 - `POST /api/v1/projects/bundle` 下载 `.seattrellis.zip`；
 - `POST /api/v1/projects/restore` 接收本地 bundle 路径或 multipart 上传并恢复到指定目录。
+- `POST /api/v1/exports` 从当前编辑草稿生成下载文件。请求中的 `template` 可以是
+  `public`、`teacher` 或 `report`，`privacy` 支持隐藏成绩/备注/特殊需求、匿名化、
+  身高和视力字段，`orientation` 与 `page_scale` 控制 A4 页面。`public` 模板始终强制
+  隐藏敏感字段，即使客户端提交了相反选项也不会放宽安全边界。
 
 这些接口只绑定本机服务。上传恢复仍受项目包总大小、manifest、路径遍历和符号链接
 校验限制；错误响应不会包含学生数据。

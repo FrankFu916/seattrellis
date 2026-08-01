@@ -448,9 +448,23 @@ export type GenerateRotationPlanResponse = {
 export type ExportDraftRequest = {
   draft_id: string;
   format: string;
+  template: "public" | "teacher" | "report";
+  privacy: ExportPrivacyOptions;
   orientation: "portrait" | "landscape";
+  page_scale: number;
   locale?: "zh" | "en";
   show_student_ids?: boolean;
+};
+
+export type ExportTemplate = "public" | "teacher" | "report";
+
+export type ExportPrivacyOptions = {
+  hide_scores: boolean;
+  hide_notes: boolean;
+  hide_special_needs: boolean;
+  anonymize: boolean;
+  show_height: boolean;
+  show_vision: boolean;
 };
 
 export type EditorOperation = {

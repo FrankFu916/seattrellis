@@ -47,7 +47,8 @@ The default workspace keeps the ordinary path focused on classroom tasks:
    and add keep-apart, keep-together, fixed-seat, minimum-distance, or named
    group requests.
 4. Review the recommended map, then swap, move, lock, undo, or redo as needed.
-5. Prepare and download either a public print or a teacher print.
+5. Choose a public handout, teacher copy, or plan report, review the privacy
+   fields and A4 scale, then preview and download the result.
 
 Visiting Advanced tools and returning restores the parsed roster, room, goal,
 and generated plan without retaining the original upload bytes. **Start over

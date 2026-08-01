@@ -31,6 +31,8 @@ import type {
   RotationSettings,
   SeatAssignment,
   Student,
+  ExportPrivacyOptions,
+  ExportTemplate,
 } from "./api/types";
 import { AppHeader } from "./components/AppHeader";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
@@ -93,6 +95,33 @@ const DEFAULT_ROTATION_SETTINGS: RotationSettings = {
   enabled: false,
   periodCount: 4,
   periodLabels: "",
+};
+
+const DEFAULT_EXPORT_PRIVACY: Record<ExportTemplate, ExportPrivacyOptions> = {
+  public: {
+    hide_scores: true,
+    hide_notes: true,
+    hide_special_needs: true,
+    anonymize: false,
+    show_height: false,
+    show_vision: false,
+  },
+  teacher: {
+    hide_scores: false,
+    hide_notes: false,
+    hide_special_needs: false,
+    anonymize: false,
+    show_height: true,
+    show_vision: true,
+  },
+  report: {
+    hide_scores: false,
+    hide_notes: true,
+    hide_special_needs: true,
+    anonymize: false,
+    show_height: false,
+    show_vision: false,
+  },
 };
 
 const DEFAULT_DETAILED_RULE_SETTINGS: DetailedRuleSettings = {
@@ -212,7 +241,12 @@ export function App() {
   const [orientation, setOrientation] = useState<
     "portrait" | "landscape"
   >("landscape");
-  const [showStudentIds, setShowStudentIds] = useState(false);
+  const [exportTemplate, setExportTemplate] =
+    useState<ExportTemplate>("public");
+  const [exportPrivacy, setExportPrivacy] = useState<ExportPrivacyOptions>(
+    DEFAULT_EXPORT_PRIVACY.public,
+  );
+  const [pageScale, setPageScale] = useState(1);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSolveSettings>(DEFAULT_ADVANCED_SETTINGS);
   const [rotationSettings, setRotationSettings] = useState<RotationSettings>(
@@ -683,9 +717,11 @@ export function App() {
       const { blob, filename } = await exportDraft({
         draft_id: editorDraftId,
         format,
+        template: exportTemplate,
+        privacy: exportPrivacy,
         orientation,
+        page_scale: pageScale,
         locale: locale === "zh-CN" ? "zh" : "en",
-        show_student_ids: showStudentIds,
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -784,8 +820,10 @@ export function App() {
             selectedGoalId={selectedGoalId}
             exportFormats={catalogs.exportFormats}
             selectedExportFormat={selectedExportFormat}
+            exportTemplate={exportTemplate}
+            exportPrivacy={exportPrivacy}
             orientation={orientation}
-            showStudentIds={showStudentIds}
+            pageScale={pageScale}
             advancedSettings={advancedSettings}
             rotationSettings={rotationSettings}
             detailedRules={detailedRules}
@@ -821,8 +859,15 @@ export function App() {
             onRoomChange={handleRoomChange}
             onGoalChange={setSelectedGoalId}
             onExportFormatChange={setSelectedExportFormat}
+            onExportTemplateChange={(template) => {
+              setExportTemplate(template);
+              setExportPrivacy({ ...DEFAULT_EXPORT_PRIVACY[template] });
+            }}
+            onExportPrivacyChange={(changes) =>
+              setExportPrivacy((current) => ({ ...current, ...changes }))
+            }
             onOrientationChange={setOrientation}
-            onShowStudentIdsChange={setShowStudentIds}
+            onPageScaleChange={setPageScale}
             onAdvancedSettingsChange={(changes) =>
               setAdvancedSettings((current) => ({ ...current, ...changes }))
             }
@@ -888,6 +933,8 @@ export function App() {
         assignments={assignments}
         orientation={orientation}
         format={selectedExportFormat}
+        template={exportTemplate}
+        privacy={exportPrivacy}
         open={previewOpen}
         isSaving={isSaving}
         error={saveError}
