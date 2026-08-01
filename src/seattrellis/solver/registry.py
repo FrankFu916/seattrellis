@@ -12,7 +12,6 @@ from seattrellis.solver.backend import (
 )
 from seattrellis.solver.fallback_backend import solve_with_fallback
 from seattrellis.solver.native_backend import solve_with_native
-from seattrellis.solver.ortools_backend import solve_with_ortools
 from seattrellis.solver.protocol import (
     BackendCapabilities,
     BackendStrategy,
@@ -63,6 +62,19 @@ def _capabilities(
     )
 
 
+def _solve_with_ortools(*args: object, **kwargs: object) -> object:
+    """Run the OR-Tools backend, importing it only on first use.
+
+    The import is deferred so that importing the solver registry never loads
+    OR-Tools (and its pandas dependency), which keeps startup light and lets
+    desktop bundles exclude OR-Tools entirely.
+    """
+
+    from seattrellis.solver.ortools_backend import solve_with_ortools
+
+    return solve_with_ortools(*args, **kwargs)
+
+
 _BACKENDS: Mapping[ConcreteSolverBackend, SolverBackendProtocol] = MappingProxyType(
     {
         "fallback": FunctionSolverBackend(
@@ -79,7 +91,7 @@ _BACKENDS: Mapping[ConcreteSolverBackend, SolverBackendProtocol] = MappingProxyT
                 "constraint-programming",
                 requires_optional_dependency=True,
             ),
-            solve_function=solve_with_ortools,
+            solve_function=_solve_with_ortools,
         ),
         "native": FunctionSolverBackend(
             name="native",
