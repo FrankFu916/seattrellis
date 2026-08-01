@@ -264,16 +264,15 @@ def test_project_export_uses_latest_default_output_and_handles_snapshot(tmp_path
     assert html_path.exists()
 
 
-def test_project_info_argparse_fallback(monkeypatch, capsys, tmp_path) -> None:
+def test_project_info_command_via_typer(tmp_path) -> None:
+    from typer.testing import CliRunner
+
     paths = cli.init_demo(output_dir=tmp_path, overwrite=True)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["seattrellis", "project-info", "--project", str(paths["project"])],
+    result = CliRunner().invoke(
+        cli.app,
+        ["project-info", "--project", str(paths["project"])],
     )
 
-    cli._run_argparse()
-
-    output = capsys.readouterr().out
-    assert "Project: Demo Class" in output
-    assert "students.csv" in output
+    assert result.exit_code == 0
+    assert "Project: Demo Class" in result.output
+    assert "students.csv" in result.output
