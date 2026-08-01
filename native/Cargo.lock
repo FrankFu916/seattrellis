@@ -114,6 +114,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "seattrellis_cli"
+version = "0.1.0"
+dependencies = [
+ "seattrellis_core",
+ "serde_json",
+]
+
+[[package]]
 name = "seattrellis_core"
 version = "0.1.0"
 dependencies = [

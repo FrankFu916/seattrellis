@@ -1,0 +1,1462 @@
+{
+  "format": "seattrellis-parity-reference",
+  "format_version": 1,
+  "seattrellis_version": "1.8.4",
+  "solver_backend": "fallback",
+  "case": {
+    "size": 40,
+    "profile": "parity",
+    "template_id": "standard-48",
+    "seed": 42,
+    "time_limit_seconds": 300.0
+  },
+  "problem": {
+    "api_version": 2,
+    "student_count": 40,
+    "seat_positions": [
+      [
+        1.0,
+        1.0
+      ],
+      [
+        2.0,
+        1.0
+      ],
+      [
+        3.0,
+        1.0
+      ],
+      [
+        4.0,
+        1.0
+      ],
+      [
+        6.0,
+        1.0
+      ],
+      [
+        7.0,
+        1.0
+      ],
+      [
+        8.0,
+        1.0
+      ],
+      [
+        9.0,
+        1.0
+      ],
+      [
+        1.0,
+        2.0
+      ],
+      [
+        2.0,
+        2.0
+      ],
+      [
+        3.0,
+        2.0
+      ],
+      [
+        4.0,
+        2.0
+      ],
+      [
+        6.0,
+        2.0
+      ],
+      [
+        7.0,
+        2.0
+      ],
+      [
+        8.0,
+        2.0
+      ],
+      [
+        9.0,
+        2.0
+      ],
+      [
+        1.0,
+        3.0
+      ],
+      [
+        2.0,
+        3.0
+      ],
+      [
+        3.0,
+        3.0
+      ],
+      [
+        4.0,
+        3.0
+      ],
+      [
+        6.0,
+        3.0
+      ],
+      [
+        7.0,
+        3.0
+      ],
+      [
+        8.0,
+        3.0
+      ],
+      [
+        9.0,
+        3.0
+      ],
+      [
+        1.0,
+        4.0
+      ],
+      [
+        2.0,
+        4.0
+      ],
+      [
+        3.0,
+        4.0
+      ],
+      [
+        4.0,
+        4.0
+      ],
+      [
+        6.0,
+        4.0
+      ],
+      [
+        7.0,
+        4.0
+      ],
+      [
+        8.0,
+        4.0
+      ],
+      [
+        9.0,
+        4.0
+      ],
+      [
+        1.0,
+        5.0
+      ],
+      [
+        2.0,
+        5.0
+      ],
+      [
+        3.0,
+        5.0
+      ],
+      [
+        4.0,
+        5.0
+      ],
+      [
+        6.0,
+        5.0
+      ],
+      [
+        7.0,
+        5.0
+      ],
+      [
+        8.0,
+        5.0
+      ],
+      [
+        9.0,
+        5.0
+      ],
+      [
+        1.0,
+        6.0
+      ],
+      [
+        2.0,
+        6.0
+      ],
+      [
+        3.0,
+        6.0
+      ],
+      [
+        4.0,
+        6.0
+      ],
+      [
+        6.0,
+        6.0
+      ],
+      [
+        7.0,
+        6.0
+      ],
+      [
+        8.0,
+        6.0
+      ],
+      [
+        9.0,
+        6.0
+      ]
+    ],
+    "edges": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        4,
+        5
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        8,
+        9
+      ],
+      [
+        9,
+        10
+      ],
+      [
+        10,
+        11
+      ],
+      [
+        12,
+        13
+      ],
+      [
+        13,
+        14
+      ],
+      [
+        14,
+        15
+      ],
+      [
+        16,
+        17
+      ],
+      [
+        17,
+        18
+      ],
+      [
+        18,
+        19
+      ],
+      [
+        20,
+        21
+      ],
+      [
+        21,
+        22
+      ],
+      [
+        22,
+        23
+      ],
+      [
+        24,
+        25
+      ],
+      [
+        25,
+        26
+      ],
+      [
+        26,
+        27
+      ],
+      [
+        28,
+        29
+      ],
+      [
+        29,
+        30
+      ],
+      [
+        30,
+        31
+      ],
+      [
+        32,
+        33
+      ],
+      [
+        33,
+        34
+      ],
+      [
+        34,
+        35
+      ],
+      [
+        36,
+        37
+      ],
+      [
+        37,
+        38
+      ],
+      [
+        38,
+        39
+      ],
+      [
+        40,
+        41
+      ],
+      [
+        41,
+        42
+      ],
+      [
+        42,
+        43
+      ],
+      [
+        44,
+        45
+      ],
+      [
+        45,
+        46
+      ],
+      [
+        46,
+        47
+      ]
+    ],
+    "fixed_seats": [
+      [
+        0,
+        0
+      ],
+      [
+        39,
+        39
+      ]
+    ],
+    "must_be_adjacent": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ]
+    ],
+    "cannot_be_adjacent": [
+      [
+        5,
+        38
+      ],
+      [
+        6,
+        37
+      ],
+      [
+        7,
+        36
+      ],
+      [
+        8,
+        35
+      ],
+      [
+        9,
+        34
+      ],
+      [
+        10,
+        33
+      ],
+      [
+        11,
+        32
+      ],
+      [
+        12,
+        31
+      ],
+      [
+        13,
+        30
+      ],
+      [
+        14,
+        29
+      ]
+    ],
+    "min_distance": [
+      {
+        "students": [
+          15,
+          28
+        ],
+        "distance": 2.0,
+        "metric": "graph"
+      },
+      {
+        "students": [
+          16,
+          27
+        ],
+        "distance": 2.0,
+        "metric": "graph"
+      },
+      {
+        "students": [
+          17,
+          26
+        ],
+        "distance": 2.0,
+        "metric": "graph"
+      },
+      {
+        "students": [
+          18,
+          25
+        ],
+        "distance": 2.0,
+        "metric": "graph"
+      }
+    ],
+    "seed": 42
+  },
+  "problem_meta": {
+    "students": [
+      {
+        "student_id": "STU001",
+        "name": "Student001",
+        "gender": "F",
+        "height_cm": 152.0,
+        "score": 66.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU002",
+        "name": "Student002",
+        "gender": "M",
+        "height_cm": 159.0,
+        "score": 77.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU003",
+        "name": "Student003",
+        "gender": "F",
+        "height_cm": 166.0,
+        "score": 88.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU004",
+        "name": "Student004",
+        "gender": "M",
+        "height_cm": 173.0,
+        "score": 99.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU005",
+        "name": "Student005",
+        "gender": "F",
+        "height_cm": 180.0,
+        "score": 65.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU006",
+        "name": "Student006",
+        "gender": "M",
+        "height_cm": 145.0,
+        "score": 76.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU007",
+        "name": "Student007",
+        "gender": "F",
+        "height_cm": 152.0,
+        "score": 87.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU008",
+        "name": "Student008",
+        "gender": "M",
+        "height_cm": 159.0,
+        "score": 98.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU009",
+        "name": "Student009",
+        "gender": "F",
+        "height_cm": 166.0,
+        "score": 64.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU010",
+        "name": "Student010",
+        "gender": "M",
+        "height_cm": 173.0,
+        "score": 75.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU011",
+        "name": "Student011",
+        "gender": "F",
+        "height_cm": 180.0,
+        "score": 86.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU012",
+        "name": "Student012",
+        "gender": "M",
+        "height_cm": 145.0,
+        "score": 97.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU013",
+        "name": "Student013",
+        "gender": "F",
+        "height_cm": 152.0,
+        "score": 63.0,
+        "vision": "poor",
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU014",
+        "name": "Student014",
+        "gender": "M",
+        "height_cm": 159.0,
+        "score": 74.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU015",
+        "name": "Student015",
+        "gender": "F",
+        "height_cm": 166.0,
+        "score": 85.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU016",
+        "name": "Student016",
+        "gender": "M",
+        "height_cm": 173.0,
+        "score": 96.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU017",
+        "name": "Student017",
+        "gender": "F",
+        "height_cm": 180.0,
+        "score": 62.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [
+          "leader"
+        ],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU018",
+        "name": "Student018",
+        "gender": "M",
+        "height_cm": 145.0,
+        "score": 73.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU019",
+        "name": "Student019",
+        "gender": "F",
+        "height_cm": 152.0,
+        "score": 84.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [
+          "vision_front"
+        ],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU020",
+        "name": "Student020",
+        "gender": "M",
+        "height_cm": 159.0,
+        "score": 95.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU021",
+        "name": "Student021",
+        "gender": "F",
+        "height_cm": 166.0,
+        "score": 61.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU022",
+        "name": "Student022",
+        "gender": "M",
+        "height_cm": 173.0,
+        "score": 72.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU023",
+        "name": "Student023",
+        "gender": "F",
+        "height_cm": 180.0,
+        "score": 83.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU024",
+        "name": "Student024",
+        "gender": "M",
+        "height_cm": 145.0,
+        "score": 94.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU025",
+        "name": "Student025",
+        "gender": "F",
+        "height_cm": 152.0,
+        "score": 60.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU026",
+        "name": "Student026",
+        "gender": "M",
+        "height_cm": 159.0,
+        "score": 71.0,
+        "vision": "poor",
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU027",
+        "name": "Student027",
+        "gender": "F",
+        "height_cm": 166.0,
+        "score": 82.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU028",
+        "name": "Student028",
+        "gender": "M",
+        "height_cm": 173.0,
+        "score": 93.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU029",
+        "name": "Student029",
+        "gender": "F",
+        "height_cm": 180.0,
+        "score": 59.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU030",
+        "name": "Student030",
+        "gender": "M",
+        "height_cm": 145.0,
+        "score": 70.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU031",
+        "name": "Student031",
+        "gender": "F",
+        "height_cm": 152.0,
+        "score": 81.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU032",
+        "name": "Student032",
+        "gender": "M",
+        "height_cm": 159.0,
+        "score": 92.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU033",
+        "name": "Student033",
+        "gender": "F",
+        "height_cm": 166.0,
+        "score": 58.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU034",
+        "name": "Student034",
+        "gender": "M",
+        "height_cm": 173.0,
+        "score": 69.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [
+          "leader"
+        ],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU035",
+        "name": "Student035",
+        "gender": "F",
+        "height_cm": 180.0,
+        "score": 80.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU036",
+        "name": "Student036",
+        "gender": "M",
+        "height_cm": 145.0,
+        "score": 91.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU037",
+        "name": "Student037",
+        "gender": "F",
+        "height_cm": 152.0,
+        "score": 57.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU038",
+        "name": "Student038",
+        "gender": "M",
+        "height_cm": 159.0,
+        "score": 68.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [
+          "vision_front"
+        ],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU039",
+        "name": "Student039",
+        "gender": "F",
+        "height_cm": 166.0,
+        "score": 79.0,
+        "vision": "poor",
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      },
+      {
+        "student_id": "STU040",
+        "name": "Student040",
+        "gender": "M",
+        "height_cm": 173.0,
+        "score": 90.0,
+        "vision": null,
+        "notes": "fictional parity-benchmark student",
+        "tags": [],
+        "needs": [],
+        "attributes": {}
+      }
+    ],
+    "student_keys": [
+      "STU001",
+      "STU002",
+      "STU003",
+      "STU004",
+      "STU005",
+      "STU006",
+      "STU007",
+      "STU008",
+      "STU009",
+      "STU010",
+      "STU011",
+      "STU012",
+      "STU013",
+      "STU014",
+      "STU015",
+      "STU016",
+      "STU017",
+      "STU018",
+      "STU019",
+      "STU020",
+      "STU021",
+      "STU022",
+      "STU023",
+      "STU024",
+      "STU025",
+      "STU026",
+      "STU027",
+      "STU028",
+      "STU029",
+      "STU030",
+      "STU031",
+      "STU032",
+      "STU033",
+      "STU034",
+      "STU035",
+      "STU036",
+      "STU037",
+      "STU038",
+      "STU039",
+      "STU040"
+    ],
+    "layout": {
+      "template_id": "standard-48",
+      "capacity": 48,
+      "rows": 6,
+      "seats_per_row": 8,
+      "aisles_after": [
+        4
+      ],
+      "enabled_seat_count": 48,
+      "seat_ids": [
+        "R1C1",
+        "R1C2",
+        "R1C3",
+        "R1C4",
+        "R1C6",
+        "R1C7",
+        "R1C8",
+        "R1C9",
+        "R2C1",
+        "R2C2",
+        "R2C3",
+        "R2C4",
+        "R2C6",
+        "R2C7",
+        "R2C8",
+        "R2C9",
+        "R3C1",
+        "R3C2",
+        "R3C3",
+        "R3C4",
+        "R3C6",
+        "R3C7",
+        "R3C8",
+        "R3C9",
+        "R4C1",
+        "R4C2",
+        "R4C3",
+        "R4C4",
+        "R4C6",
+        "R4C7",
+        "R4C8",
+        "R4C9",
+        "R5C1",
+        "R5C2",
+        "R5C3",
+        "R5C4",
+        "R5C6",
+        "R5C7",
+        "R5C8",
+        "R5C9",
+        "R6C1",
+        "R6C2",
+        "R6C3",
+        "R6C4",
+        "R6C6",
+        "R6C7",
+        "R6C8",
+        "R6C9"
+      ]
+    },
+    "rules": {
+      "schema_version": 1,
+      "seed": 42,
+      "hard": {
+        "fixed_seats": [
+          {
+            "student": "STU001",
+            "seat_id": "R1C1"
+          },
+          {
+            "student": "STU040",
+            "seat_id": "R5C9"
+          }
+        ],
+        "must_be_adjacent": [
+          {
+            "students": [
+              "STU002",
+              "STU003"
+            ]
+          },
+          {
+            "students": [
+              "STU004",
+              "STU005"
+            ]
+          }
+        ],
+        "cannot_be_adjacent": [
+          {
+            "students": [
+              "STU006",
+              "STU039"
+            ]
+          },
+          {
+            "students": [
+              "STU007",
+              "STU038"
+            ]
+          },
+          {
+            "students": [
+              "STU008",
+              "STU037"
+            ]
+          },
+          {
+            "students": [
+              "STU009",
+              "STU036"
+            ]
+          },
+          {
+            "students": [
+              "STU010",
+              "STU035"
+            ]
+          },
+          {
+            "students": [
+              "STU011",
+              "STU034"
+            ]
+          },
+          {
+            "students": [
+              "STU012",
+              "STU033"
+            ]
+          },
+          {
+            "students": [
+              "STU013",
+              "STU032"
+            ]
+          },
+          {
+            "students": [
+              "STU014",
+              "STU031"
+            ]
+          },
+          {
+            "students": [
+              "STU015",
+              "STU030"
+            ]
+          }
+        ],
+        "min_distance": [
+          {
+            "students": [
+              "STU016",
+              "STU029"
+            ],
+            "distance": 2.0,
+            "metric": "graph"
+          },
+          {
+            "students": [
+              "STU017",
+              "STU028"
+            ],
+            "distance": 2.0,
+            "metric": "graph"
+          },
+          {
+            "students": [
+              "STU018",
+              "STU027"
+            ],
+            "distance": 2.0,
+            "metric": "graph"
+          },
+          {
+            "students": [
+              "STU019",
+              "STU026"
+            ],
+            "distance": 2.0,
+            "metric": "graph"
+          }
+        ]
+      },
+      "soft": {
+        "vision_front": {
+          "enabled": true,
+          "weight": 20
+        },
+        "height_back": {
+          "enabled": true,
+          "weight": 4
+        },
+        "randomize": {
+          "enabled": true,
+          "weight": 3
+        },
+        "score_balance": {
+          "enabled": true,
+          "weight": 4
+        },
+        "score_position": {
+          "enabled": false,
+          "weight": 1,
+          "direction": "high_front"
+        },
+        "score_distribution": {
+          "enabled": false,
+          "weight": 1,
+          "scope": "row"
+        },
+        "mentor_pairing": {
+          "enabled": true,
+          "weight": 12,
+          "mentor_percentile": 0.75,
+          "learner_percentile": 0.25,
+          "relation": "desk_mate",
+          "avoid_recent_repeats": true,
+          "history_lookback": 4
+        },
+        "fair_rotation": {
+          "enabled": true,
+          "weight": 12,
+          "avoid_repeating_categories": [
+            "front",
+            "back",
+            "side",
+            "corner",
+            "near_window",
+            "near_door",
+            "near_ac"
+          ],
+          "lookback": 4
+        },
+        "avoid_recent_neighbors": {
+          "enabled": true,
+          "weight": 12,
+          "relation_types": [
+            "desk_mate",
+            "adjacent_any"
+          ],
+          "lookback": 4,
+          "max_recent_count": 1,
+          "within_distance": 2
+        },
+        "cooling": {
+          "enabled": false,
+          "weight": 5,
+          "cooling_period": 3,
+          "relation_types": [
+            "desk_mate",
+            "adjacent_any"
+          ],
+          "within_distance": 2
+        }
+      },
+      "groups": []
+    }
+  },
+  "python_reference": {
+    "feasible": true,
+    "solver_status": "FEASIBLE",
+    "total_cost": 59975.0,
+    "assignment": {
+      "STU001": "R1C1",
+      "STU002": "R6C7",
+      "STU003": "R6C8",
+      "STU004": "R6C1",
+      "STU005": "R6C2",
+      "STU006": "R6C3",
+      "STU007": "R6C4",
+      "STU008": "R6C6",
+      "STU009": "R6C9",
+      "STU010": "R5C6",
+      "STU011": "R5C1",
+      "STU012": "R5C2",
+      "STU013": "R1C6",
+      "STU014": "R5C7",
+      "STU015": "R4C6",
+      "STU016": "R4C2",
+      "STU017": "R4C3",
+      "STU018": "R4C1",
+      "STU019": "R1C3",
+      "STU020": "R4C4",
+      "STU021": "R4C8",
+      "STU022": "R3C9",
+      "STU023": "R3C2",
+      "STU024": "R3C6",
+      "STU025": "R3C8",
+      "STU026": "R1C7",
+      "STU027": "R3C7",
+      "STU028": "R3C1",
+      "STU029": "R5C3",
+      "STU030": "R3C4",
+      "STU031": "R2C7",
+      "STU032": "R4C9",
+      "STU033": "R4C7",
+      "STU034": "R5C4",
+      "STU035": "R5C8",
+      "STU036": "R2C8",
+      "STU037": "R3C3",
+      "STU038": "R1C2",
+      "STU039": "R1C8",
+      "STU040": "R5C9"
+    },
+    "assignment_by_index": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        45
+      ],
+      [
+        2,
+        46
+      ],
+      [
+        3,
+        40
+      ],
+      [
+        4,
+        41
+      ],
+      [
+        5,
+        42
+      ],
+      [
+        6,
+        43
+      ],
+      [
+        7,
+        44
+      ],
+      [
+        8,
+        47
+      ],
+      [
+        9,
+        36
+      ],
+      [
+        10,
+        32
+      ],
+      [
+        11,
+        33
+      ],
+      [
+        12,
+        4
+      ],
+      [
+        13,
+        37
+      ],
+      [
+        14,
+        28
+      ],
+      [
+        15,
+        25
+      ],
+      [
+        16,
+        26
+      ],
+      [
+        17,
+        24
+      ],
+      [
+        18,
+        2
+      ],
+      [
+        19,
+        27
+      ],
+      [
+        20,
+        30
+      ],
+      [
+        21,
+        23
+      ],
+      [
+        22,
+        17
+      ],
+      [
+        23,
+        20
+      ],
+      [
+        24,
+        22
+      ],
+      [
+        25,
+        5
+      ],
+      [
+        26,
+        21
+      ],
+      [
+        27,
+        16
+      ],
+      [
+        28,
+        34
+      ],
+      [
+        29,
+        19
+      ],
+      [
+        30,
+        13
+      ],
+      [
+        31,
+        31
+      ],
+      [
+        32,
+        29
+      ],
+      [
+        33,
+        35
+      ],
+      [
+        34,
+        38
+      ],
+      [
+        35,
+        14
+      ],
+      [
+        36,
+        18
+      ],
+      [
+        37,
+        1
+      ],
+      [
+        38,
+        6
+      ],
+      [
+        39,
+        39
+      ]
+    ],
+    "solve_time_seconds": 20.8401,
+    "solver_backend": "fallback",
+    "attempts": 439,
+    "attempt_limit": 480,
+    "stopped_by_time_limit": false,
+    "diagnostics": []
+  }
+}
