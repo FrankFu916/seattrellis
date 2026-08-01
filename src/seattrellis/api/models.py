@@ -284,6 +284,10 @@ class GenerateRotationPlanResponse(VersionedResponse):
     goal: ResolvedGoalSummary
     warnings: list[str] = Field(default_factory=list)
     rotation_plan: RotationPlan
+    # The first period is exposed through the same editing protocol as a
+    # regular solve.  The remaining periods stay immutable until the teacher
+    # explicitly selects one for a future editing session.
+    editor: EditorStateEnvelope
 
 
 class RecentProjectItem(ApiModel):

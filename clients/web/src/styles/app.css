@@ -1106,6 +1106,49 @@ input:focus-visible,
   border-bottom: var(--line-width) solid var(--border);
 }
 
+.rotation-settings {
+  margin-top: 10px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface-soft);
+}
+
+.rotation-settings summary {
+  padding: 11px 12px;
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.rotation-settings[open] summary {
+  border-bottom: var(--line-width) solid var(--border);
+}
+
+.rotation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px 12px;
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.rotation-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.rotation-fields {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.65fr) minmax(0, 1.35fr);
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
 .advanced-settings-hint {
   padding: 11px 12px 0;
   color: var(--muted);
@@ -1173,6 +1216,88 @@ input:focus-visible,
 .adjust-tools {
   display: grid;
   gap: 14px;
+}
+
+.rotation-plan-summary {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface-soft);
+}
+
+.rotation-plan-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rotation-plan-heading h2 {
+  margin-top: 3px;
+  color: var(--text-strong);
+  font-size: 0.86rem;
+}
+
+.rotation-period-count {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.64rem;
+  font-weight: 750;
+}
+
+.rotation-plan-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.rotation-plan-metrics span {
+  padding: 5px 7px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: 0.63rem;
+}
+
+.rotation-period-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rotation-period-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.rotation-period-list strong {
+  color: var(--text-strong);
+  font-size: 0.68rem;
+}
+
+.rotation-period-list small,
+.rotation-plan-summary > .muted,
+.rotation-plan-warning {
+  color: var(--muted);
+  font-size: 0.63rem;
+  line-height: 1.45;
+}
+
+.rotation-plan-warning {
+  margin: 0;
+  color: var(--warning, #8a6418);
 }
 
 .selection-status {

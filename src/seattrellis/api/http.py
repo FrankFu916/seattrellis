@@ -200,7 +200,7 @@ def create_app(
         return generate_class(request, draft_store=resolved_store)
 
     def generate_rotation(request: GenerateRotationPlanRequest) -> GenerateRotationPlanResponse:
-        return generate_rotation_plan(request)
+        return generate_rotation_plan(request, draft_store=resolved_store)
 
     def get_editor_state(draft_id: str) -> EditorStateEnvelope:
         try:

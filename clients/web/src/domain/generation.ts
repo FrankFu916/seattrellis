@@ -4,11 +4,13 @@ import type {
   CommonPreferenceId,
   CustomRoomSettings,
   GenerateClassRequest,
+  GenerateRotationPlanRequest,
+  RotationSettings,
   HardRulesPayload,
   Student,
 } from "../api/types";
 
-export type AdvancedSettingErrorKind = "rules" | "layout" | "seed";
+export type AdvancedSettingErrorKind = "rules" | "layout" | "seed" | "rotation";
 
 export class InvalidAdvancedSettingError extends Error {
   readonly kind: AdvancedSettingErrorKind;
@@ -263,5 +265,56 @@ export function buildGenerateClassRequest({
       time_limit_seconds: settings.timeLimitSeconds,
       backend: settings.backend,
     },
+  };
+}
+
+export function buildGenerateRotationPlanRequest({
+  className,
+  students,
+  selectedRoomId,
+  selectedGoalId,
+  settings,
+  roomSettings,
+  constraints,
+  preferences,
+  rotation,
+}: {
+  className: string;
+  students: Student[];
+  selectedRoomId: string;
+  selectedGoalId: string;
+  settings: AdvancedSolveSettings;
+  roomSettings: CustomRoomSettings;
+  constraints: CommonConstraint[];
+  preferences: CommonPreferenceId[];
+  rotation: RotationSettings;
+}): GenerateRotationPlanRequest {
+  const base = buildGenerateClassRequest({
+    className,
+    students,
+    selectedRoomId,
+    selectedGoalId,
+    settings,
+    roomSettings,
+    constraints,
+    preferences,
+  });
+  const periodLabels = rotation.periodLabels
+    .split(/[\n,，]+/u)
+    .map((label) => label.trim())
+    .filter(Boolean);
+  if (
+    !Number.isInteger(rotation.periodCount) ||
+    rotation.periodCount < 1 ||
+    rotation.periodCount > 20 ||
+    (periodLabels.length > 0 && periodLabels.length !== rotation.periodCount)
+  ) {
+    throw new InvalidAdvancedSettingError("rotation");
+  }
+  return {
+    draft: base.draft,
+    period_count: rotation.periodCount,
+    ...(periodLabels.length ? { period_labels: periodLabels } : {}),
+    options: base.options,
   };
 }

@@ -88,7 +88,9 @@ from seattrellis.service_types import (
     RotationInput,
 )
 from seattrellis.service import compute_rotation_plan
+from seattrellis.models.candidate import CandidatePlan, CandidateSet
 from seattrellis.models.snapshot import SeatingSnapshot
+from seattrellis.scoring import score_snapshot
 from seattrellis.solver.errors import SeatTrellisSolveError
 from seattrellis.solver.registry import registered_solver_backends
 
@@ -674,6 +676,8 @@ def generate_class(
 
 def generate_rotation_plan(
     request: GenerateRotationPlanRequest,
+    *,
+    draft_store: EditorDraftStore | None = None,
 ) -> GenerateRotationPlanResponse:
     """Generate future periods through the shared class workflow boundary."""
 
@@ -715,11 +719,35 @@ def generate_rotation_plan(
             code="plan_not_found",
             message="No rotation plan was found with the current room and rules.",
         ) from exc
+    first_snapshot = output.plan.periods[0].snapshot
+    first_score = score_snapshot(first_snapshot)
+    first_candidate = CandidatePlan(
+        candidate_id="period-1",
+        snapshot=first_snapshot,
+        score=first_score,
+        hard_constraints_satisfied=(
+            first_score.breakdown.hard_constraint_summary.satisfied
+        ),
+        metadata={
+            "rotation_plan": output.plan.name,
+            "rotation_period": 1,
+        },
+    )
+    editor_store = draft_store or EditorDraftStore()
+    editor_candidate_set = CandidateSet(
+        candidates=[first_candidate],
+        recommended_candidate_id=first_candidate.candidate_id,
+        metadata={
+            "source": "rotation_plan",
+            "period_count": output.plan.period_count,
+        },
+    )
     return GenerateRotationPlanResponse(
         class_name=draft.name,
         goal=_goal_summary(readiness.resolved_goal),
         warnings=list(dict.fromkeys((*readiness.warnings, *output.plan.warnings))),
         rotation_plan=output.plan,
+        editor=editor_store.create(editor_candidate_set),
     )
 
 

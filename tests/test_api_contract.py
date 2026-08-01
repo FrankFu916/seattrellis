@@ -158,6 +158,8 @@ def test_generate_rotation_plan_returns_versioned_periods() -> None:
         "Monday",
         "Friday",
     ]
+    assert response.editor.candidate_id == "period-1"
+    assert response.editor.students[0].student_key == "PRIVATE-001"
 
 
 def test_generation_error_is_structured_without_echoing_student_data() -> None:

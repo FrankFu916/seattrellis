@@ -7,6 +7,7 @@ import {
   exportDraft,
   fetchEditorState,
   generateClass,
+  generateRotationPlan,
   loadBootstrap,
 } from "./api/client";
 import {
@@ -23,6 +24,8 @@ import type {
   EditorOperation,
   EditorState,
   AdvancedSolveSettings,
+  RotationPlan,
+  RotationSettings,
   SeatAssignment,
   Student,
 } from "./api/types";
@@ -51,6 +54,7 @@ import {
 } from "./domain/workflow";
 import {
   buildGenerateClassRequest,
+  buildGenerateRotationPlanRequest,
   InvalidAdvancedSettingError,
 } from "./domain/generation";
 import {
@@ -80,6 +84,12 @@ const DEFAULT_ROOM_SETTINGS: CustomRoomSettings = {
   aisleColumns: "",
   disabledSeats: "",
   layoutJson: "",
+};
+
+const DEFAULT_ROTATION_SETTINGS: RotationSettings = {
+  enabled: false,
+  periodCount: 4,
+  periodLabels: "",
 };
 
 function getInitialLocale(): Locale {
@@ -159,6 +169,10 @@ export function App() {
   const [showStudentIds, setShowStudentIds] = useState(false);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSolveSettings>(DEFAULT_ADVANCED_SETTINGS);
+  const [rotationSettings, setRotationSettings] = useState<RotationSettings>(
+    DEFAULT_ROTATION_SETTINGS,
+  );
+  const [rotationPlan, setRotationPlan] = useState<RotationPlan | null>(null);
   const [roomSettings, setRoomSettings] =
     useState<CustomRoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [preferences, setPreferences] = useState<CommonPreferenceId[]>([]);
@@ -258,6 +272,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+    setRotationPlan(null);
   }
 
   function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
@@ -266,6 +281,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+    setRotationPlan(null);
   }
 
   function handleConstraintAdd() {
@@ -451,18 +467,24 @@ export function App() {
         ? "我的班级"
         : "My class";
     try {
-      const response = await generateClass(
-        buildGenerateClassRequest({
-          className,
-          students,
-          selectedRoomId,
-          selectedGoalId,
-          settings: advancedSettings,
-          roomSettings,
-          constraints,
-          preferences,
-        }),
-      );
+      const requestArgs = {
+        className,
+        students,
+        selectedRoomId,
+        selectedGoalId,
+        settings: advancedSettings,
+        roomSettings,
+        constraints,
+        preferences,
+      };
+      const response = rotationSettings.enabled
+        ? await generateRotationPlan(
+            buildGenerateRotationPlanRequest({
+              ...requestArgs,
+              rotation: rotationSettings,
+            }),
+          )
+        : await generateClass(buildGenerateClassRequest(requestArgs));
       const editor = await fetchEditorState(response.editor.draft_id);
       const plan = editorToPlan(editor);
       setStudents(plan.students);
@@ -470,6 +492,9 @@ export function App() {
       setEditorDraftId(editor.draft_id);
       setEditorRevision(editor.revision);
       setEditorUndoDepth(editor.undo_depth);
+      setRotationPlan(
+        "rotation_plan" in response ? response.rotation_plan : null,
+      );
       setHistory([]);
       setSelectedSeatId(null);
       setStep("adjust");
@@ -478,12 +503,14 @@ export function App() {
         setSaveError(
           err.kind === "seed"
             ? t("generate.seedInvalid")
-            : t("generate.jsonInvalid", {
+            : err.kind === "rotation"
+              ? t("rotation.labelsInvalid")
+              : t("generate.jsonInvalid", {
                   field:
                     err.kind === "rules"
                       ? t("generate.customRules")
-                    : t("room.invalid"),
-              }),
+                      : t("room.invalid"),
+                }),
         );
       } else {
         setSaveError(friendlyError(err));
@@ -535,6 +562,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+    setRotationPlan(null);
     setStep("room");
   }
 
@@ -549,6 +577,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+    setRotationPlan(null);
   }
 
   return (
@@ -590,6 +619,8 @@ export function App() {
             orientation={orientation}
             showStudentIds={showStudentIds}
             advancedSettings={advancedSettings}
+            rotationSettings={rotationSettings}
+            rotationPlan={rotationPlan}
             roomSettings={roomSettings}
             constraints={constraints}
             preferences={preferences}
@@ -623,6 +654,9 @@ export function App() {
             onShowStudentIdsChange={setShowStudentIds}
             onAdvancedSettingsChange={(changes) =>
               setAdvancedSettings((current) => ({ ...current, ...changes }))
+            }
+            onRotationSettingsChange={(changes) =>
+              setRotationSettings((current) => ({ ...current, ...changes }))
             }
             onRoomSettingsChange={handleRoomSettingsChange}
             onConstraintAdd={handleConstraintAdd}

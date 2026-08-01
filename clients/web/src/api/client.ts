@@ -9,6 +9,8 @@ import type {
   ExportDraftRequest,
   GenerateClassRequest,
   GenerateClassResponse,
+  GenerateRotationPlanRequest,
+  GenerateRotationPlanResponse,
   HealthResponse,
   ProjectHistoryResponse,
   ProjectArtifactCompareResponse,
@@ -304,6 +306,20 @@ export async function generateClass(
 ): Promise<GenerateClassResponse> {
   return fetchJson<GenerateClassResponse>(
     "/classes/generate",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    GENERATE_TIMEOUT_MS,
+  );
+}
+
+export async function generateRotationPlan(
+  request: GenerateRotationPlanRequest,
+): Promise<GenerateRotationPlanResponse> {
+  return fetchJson<GenerateRotationPlanResponse>(
+    "/classes/rotation",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

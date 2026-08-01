@@ -6,6 +6,8 @@ import type {
   CommonConstraint,
   CommonPreferenceId,
   CustomRoomSettings,
+  RotationPlan,
+  RotationSettings,
   RoomTemplate,
   SeatAssignment,
   Student,
@@ -13,6 +15,7 @@ import type {
 import type { WorkflowStep } from "../domain/workflow";
 import type { Locale, MessageKey, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
+import { RotationPlanSummary } from "./RotationPlanSummary";
 
 const PREFERENCE_OPTIONS: Array<{
   id: CommonPreferenceId;
@@ -46,6 +49,8 @@ type WorkflowPanelProps = {
   orientation: "portrait" | "landscape";
   showStudentIds: boolean;
   advancedSettings: AdvancedSolveSettings;
+  rotationSettings: RotationSettings;
+  rotationPlan: RotationPlan | null;
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
   preferences: CommonPreferenceId[];
@@ -63,6 +68,7 @@ type WorkflowPanelProps = {
   onAdvancedSettingsChange: (
     changes: Partial<AdvancedSolveSettings>,
   ) => void;
+  onRotationSettingsChange: (changes: Partial<RotationSettings>) => void;
   onRoomSettingsChange: (changes: Partial<CustomRoomSettings>) => void;
   onConstraintAdd: () => void;
   onConstraintChange: (
@@ -111,6 +117,8 @@ export function WorkflowPanel({
   orientation,
   showStudentIds,
   advancedSettings,
+  rotationSettings,
+  rotationPlan,
   roomSettings,
   constraints,
   preferences,
@@ -126,6 +134,7 @@ export function WorkflowPanel({
   onOrientationChange,
   onShowStudentIdsChange,
   onAdvancedSettingsChange,
+  onRotationSettingsChange,
   onRoomSettingsChange,
   onConstraintAdd,
   onConstraintChange,
@@ -621,6 +630,58 @@ export function WorkflowPanel({
                 </label>
               </div>
             </details>
+            <details className="rotation-settings" open={rotationSettings.enabled}>
+              <summary>{t("rotation.title")}</summary>
+              <p className="advanced-settings-hint">{t("rotation.hint")}</p>
+              <label className="rotation-toggle">
+                <input
+                  data-testid="rotation-toggle"
+                  type="checkbox"
+                  checked={rotationSettings.enabled}
+                  onChange={(event) =>
+                    onRotationSettingsChange({ enabled: event.target.checked })
+                  }
+                />
+                <span>{t("rotation.enabled")}</span>
+              </label>
+              {rotationSettings.enabled ? (
+                <div className="rotation-fields">
+                  <label className="advanced-field">
+                    <span>{t("rotation.periodCount")}</span>
+                    <input
+                      data-testid="rotation-period-count"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={rotationSettings.periodCount}
+                      onChange={(event) =>
+                        onRotationSettingsChange({
+                          periodCount: Math.min(
+                            20,
+                            Math.max(1, Number(event.target.value) || 1),
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="advanced-field advanced-field-wide">
+                    <span>{t("rotation.periodLabels")}</span>
+                    <input
+                      data-testid="rotation-period-labels"
+                      type="text"
+                      value={rotationSettings.periodLabels}
+                      placeholder={t("rotation.periodLabelsPlaceholder")}
+                      onChange={(event) =>
+                        onRotationSettingsChange({
+                          periodLabels: event.target.value,
+                        })
+                      }
+                    />
+                    <small>{t("rotation.periodLabelsHint")}</small>
+                  </label>
+                </div>
+              ) : null}
+            </details>
             {error ? (
               <p className="inline-error" role="alert">
                 {error}
@@ -631,6 +692,7 @@ export function WorkflowPanel({
 
         {step === "adjust" ? (
           <div className="adjust-tools">
+            {rotationPlan ? <RotationPlanSummary plan={rotationPlan} t={t} /> : null}
             <div className="selection-status" aria-live="polite">
               <span
                 className={selectedSeat ? "selection-dot active" : "selection-dot"}

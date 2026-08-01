@@ -4,10 +4,12 @@ import type {
   AdvancedSolveSettings,
   CommonConstraint,
   CustomRoomSettings,
+  RotationSettings,
   Student,
 } from "../api/types";
 import {
   buildGenerateClassRequest,
+  buildGenerateRotationPlanRequest,
   InvalidAdvancedSettingError,
 } from "./generation";
 
@@ -34,6 +36,12 @@ const defaultRoom: CustomRoomSettings = {
 };
 
 const noConstraints: CommonConstraint[] = [];
+
+const defaultRotation: RotationSettings = {
+  enabled: true,
+  periodCount: 3,
+  periodLabels: "Week 1,\nWeek 2, Week 3",
+};
 
 describe("buildGenerateClassRequest", () => {
   it("keeps the ordinary flow on a room template and built-in goal", () => {
@@ -182,6 +190,46 @@ describe("buildGenerateClassRequest", () => {
       cannot_be_adjacent: [],
       min_distance: [{ students: ["S1", "S2"], distance: 2, metric: "graph" }],
     });
+  });
+
+  it("reuses the class request when building a labelled rotation plan", () => {
+    const request = buildGenerateRotationPlanRequest({
+      className: "Rotation class",
+      students,
+      selectedRoomId: "compact",
+      selectedGoalId: "daily-rotation",
+      settings: defaults,
+      roomSettings: defaultRoom,
+      constraints: noConstraints,
+      preferences: ["fair_rotation"],
+      rotation: defaultRotation,
+    });
+
+    expect(request).toMatchObject({
+      period_count: 3,
+      period_labels: ["Week 1", "Week 2", "Week 3"],
+      draft: {
+        name: "Rotation class",
+        room: { template_id: "compact" },
+        goal: { goal_id: "daily-rotation" },
+      },
+    });
+  });
+
+  it("rejects a rotation label count that does not match the period count", () => {
+    expect(() =>
+      buildGenerateRotationPlanRequest({
+        className: "Rotation class",
+        students,
+        selectedRoomId: "compact",
+        selectedGoalId: "daily-rotation",
+        settings: defaults,
+        roomSettings: defaultRoom,
+        constraints: noConstraints,
+        preferences: [],
+        rotation: { ...defaultRotation, periodLabels: "Week 1, Week 2" },
+      }),
+    ).toThrowError(new InvalidAdvancedSettingError("rotation"));
   });
 
   it.each([

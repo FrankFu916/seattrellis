@@ -327,6 +327,12 @@ export type AdvancedSolveSettings = {
   customRulesJson: string;
 };
 
+export type RotationSettings = {
+  enabled: boolean;
+  periodCount: number;
+  periodLabels: string;
+};
+
 export type GenerateClassResponse = {
   class_name: string;
   recommended_candidate_id: string;
@@ -336,6 +342,43 @@ export type GenerateClassResponse = {
     total_score: number;
   }>;
   warnings: string[];
+  editor: EditorState;
+};
+
+export type RotationPeriod = {
+  period: number;
+  label: string;
+  snapshot: {
+    assignments: Array<{
+      student_key: string;
+      student_name: string;
+      seat_id: string;
+    }>;
+    solver_status: string;
+  };
+};
+
+export type RotationPlan = {
+  kind: "rotation_plan";
+  name: string;
+  periods: RotationPeriod[];
+  base_history_count: number;
+  fairness_summary: Record<string, unknown>;
+  pair_repeat_summary: Record<string, unknown>;
+  warnings: string[];
+};
+
+export type GenerateRotationPlanRequest = {
+  draft: GenerateClassRequest["draft"];
+  period_count: number;
+  period_labels?: string[];
+  options?: GenerateClassRequest["options"];
+};
+
+export type GenerateRotationPlanResponse = {
+  class_name: string;
+  warnings: string[];
+  rotation_plan: RotationPlan;
   editor: EditorState;
 };
 
