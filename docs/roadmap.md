@@ -304,9 +304,13 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
   （成绩位置/均衡/师徒结对，含匈牙利算法）与 Python 逐值对拍一致；JSON 契约 `solve_problem_json`；
 - **CLI 版**（`native/seattrellis_cli`）：单文件二进制 **1.6MB**，`solve` + SVG/HTML/PNG/PDF 导出，
   彩色输出，零重量依赖；
-- **App 版**（`app/`）：loopback 纯 Rust 服务器（**975KB**，serve React 工作台 + solve 端点）+ Tauri 2 壳
-  （**9.0MB**，内嵌后端 + 原生窗口）。均已在 5-20MB 目标内；
-- Python 版继续作为兼容/库入口，Rust 覆盖全部域能力（编辑/名单/迁移/轮换）后再降级为可选库。
+- **App 版**（`app/`）：loopback 纯 Rust 服务器（**~2MB**，serve 完整工作台：名单/生成/调整/导出/
+  布局/项目/迁移/轮换/分组）+ Tauri 2 壳（**9.0MB**，内嵌后端 + 原生窗口）。均已在 5-20MB 目标内；
+- **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app 在 3 OS 测试 + clippy、core MSRV
+  1.83、release 时构建并附加 CLI/App 二进制到 GitHub Release；
+- **crates.io 分发**（准备就绪，需 token 后 `cargo publish`）：`seattrellis_core` 可打包（124.8KiB），
+  先发布 core 再发布 `seattrellis_cli`（version 依赖）；
+- Python 版继续作为兼容/库入口（PyPI 1.8.x），Rust 为主分发路径。
 
 ### Pydantic 迁移与 Starlette 升级（已完成）
 
