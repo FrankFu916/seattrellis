@@ -1,0 +1,34 @@
+[package]
+name = "seattrellis_app"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+license = "Apache-2.0"
+description = "SeatTrellis desktop backend core: loopback HTTP server + native solve, no Python/Node."
+
+[dependencies]
+# Native cost-ranked greedy solver (JSON in/out).
+seattrellis_core = { path = "../native/seattrellis_core" }
+serde_json = "1"
+# serde derive for the export domain request types (ExportDraftRequest shape).
+serde = { version = "1", features = ["derive"] }
+# PNG export (matches the CLI's render module, which app/src/render.rs mirrors).
+png = "0.17"
+
+[lib]
+name = "seattrellis_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "seattrellis_app"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+# Make this crate its own workspace root so the path dependency into
+# native/seattrellis_core (a member of the native/ workspace) resolves cleanly.
+[workspace]

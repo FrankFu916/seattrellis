@@ -1,17 +1,15 @@
 //! Rendering of a solved seating plan to SVG, HTML, PNG, or PDF.
 //!
-//! The seat grid is recovered from the problem: each `seat_positions` entry
-//! becomes a grid cell at `(row = round(y), col = round(x))` — or, when the
-//! problem carries a `layout`, its authoritative `row`/`col`/`enabled` are
-//! used instead. The solve response's `assignment` fills each occupied seat
-//! with a student label.
+//! This module is a copy of `native/seattrellis_cli/src/render.rs` (kept
+//! byte-consistent with the CLI's `render_svg`/`render_html`/`render_png`/
+//! `render_pdf` so both entry points produce identical output and a future
+//! extraction into a shared crate is a mechanical move). See the CLI source for
+//! the design notes.
 //!
-//! All four renderers share the same geometry constants and a single palette.
-//! SVG and HTML are fully self-contained (no `<script>`, no external
-//! references, no embedded fonts — a generic `sans-serif` family lets Chinese
-//! names render with whatever the system has). PNG is drawn with the `png`
-//! crate plus a tiny hand-rolled raster; PDF is written by hand (see the
-//! section notes for the text trade-offs).
+//! App extension: [`render_pdf_with`] adds an optional [`PdfLayout`] so the
+//! export domain module can honour `orientation` (swap A4 portrait/landscape)
+//! and `page_scale` (extra fit-to-page multiplier) without changing the default
+//! [`render_pdf`] behaviour.
 
 use std::collections::HashMap;
 
@@ -136,7 +134,7 @@ fn student_label(request: &CoreSolveRequest, index: usize) -> String {
             let name = student
                 .display_name
                 .as_deref()
-                .or_else(|| Some(student.key.as_str()))
+                .or(Some(student.key.as_str()))
                 .filter(|candidate| !candidate.is_empty());
             if let Some(name) = name {
                 return name.to_string();
@@ -501,6 +499,55 @@ const PDF_MARGIN: f64 = 36.0;
 /// Vertical space reserved for the title, subtitle, and front-of-room label.
 const PDF_HEADER_SPACE: f64 = 100.0;
 
+/// Page geometry for the hand-written PDF renderer (app extension).
+///
+/// Defaults to A4 portrait at the natural fit-to-page scale. The export domain
+/// module swaps in [`PdfLayout::landscape`] for `orientation: "landscape"` and
+/// applies the frontend `page_scale` via [`PdfLayout::with_scale`] so the
+/// `orientation`/`page_scale` fields of `ExportDraftRequest` map without
+/// changing the default [`render_pdf`] behaviour.
+#[derive(Debug, Clone, Copy)]
+pub struct PdfLayout {
+    /// Page width in points.
+    pub page_w: f64,
+    /// Page height in points.
+    pub page_h: f64,
+    /// Extra multiplier on top of the automatic fit-to-page scale.
+    pub scale_multiplier: f64,
+}
+
+impl Default for PdfLayout {
+    fn default() -> Self {
+        PdfLayout {
+            page_w: PAGE_W,
+            page_h: PAGE_H,
+            scale_multiplier: 1.0,
+        }
+    }
+}
+
+impl PdfLayout {
+    /// A4 portrait, the renderer's default.
+    pub fn portrait() -> Self {
+        Self::default()
+    }
+
+    /// A4 landscape (width/height swapped).
+    pub fn landscape() -> Self {
+        PdfLayout {
+            page_w: PAGE_H,
+            page_h: PAGE_W,
+            ..Self::default()
+        }
+    }
+
+    /// Clamp a user `page_scale` into a sane range and apply it.
+    pub fn with_scale(mut self, multiplier: f64) -> Self {
+        self.scale_multiplier = multiplier.clamp(0.5, 2.0);
+        self
+    }
+}
+
 /// Render the plan as a single-page, hand-written PDF.
 ///
 /// The document is generated directly (catalog -> pages -> page -> content
@@ -510,14 +557,21 @@ const PDF_HEADER_SPACE: f64 = 100.0;
 /// non-ASCII label (e.g. a CJK name) falls back to a plain placeholder because
 /// encoding it would require embedding a CID font, which is not worth the size.
 pub fn render_pdf(grid: &SeatingGrid) -> String {
-    let content = build_pdf_content(grid);
+    render_pdf_with(grid, PdfLayout::default())
+}
+
+/// [`render_pdf`] with an explicit page geometry (orientation + scale).
+pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
+    let content = build_pdf_content(grid, layout);
 
     let mut bodies: Vec<String> = Vec::new();
     bodies.push("<< /Type /Catalog /Pages 2 0 R >>".to_string()); // obj 1
     bodies.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string()); // obj 2
     bodies.push(format!( // obj 3
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] \
-         /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w} {page_h}] \
+         /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        page_w = layout.page_w,
+        page_h = layout.page_h
     ));
     bodies.push(format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len())); // obj 4
     bodies.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string()); // obj 5
@@ -544,33 +598,37 @@ pub fn render_pdf(grid: &SeatingGrid) -> String {
 
 /// The page content stream: white background, header text, front-of-room
 /// label, and one colored rectangle (+ label) per seat.
-fn build_pdf_content(grid: &SeatingGrid) -> String {
+fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
     let cols = grid_cols(grid) as f64;
     let rows = grid_rows(grid) as f64;
     let grid_w = cols * CELL_W;
     let grid_h = rows * CELL_H;
 
-    // Scale the SVG geometry down (or up) to fit the printable area.
-    let avail_w = PAGE_W - PDF_MARGIN * 2.0;
-    let avail_h = PAGE_H - PDF_HEADER_SPACE - PDF_MARGIN;
-    let scale = (avail_w / grid_w).min(avail_h / grid_h).clamp(0.1, 2.0);
+    // Scale the SVG geometry down (or up) to fit the printable area, then apply
+    // the user page_scale multiplier on top.
+    let avail_w = layout.page_w - PDF_MARGIN * 2.0;
+    let avail_h = layout.page_h - PDF_HEADER_SPACE - PDF_MARGIN;
+    let base_scale = (avail_w / grid_w).min(avail_h / grid_h).clamp(0.1, 2.0);
+    let scale = (base_scale * layout.scale_multiplier).clamp(0.1, 2.0);
 
     let grid_x = PDF_MARGIN;
-    let grid_top = PAGE_H - PDF_HEADER_SPACE + 10.0;
+    let grid_top = layout.page_h - PDF_HEADER_SPACE + 10.0;
 
     let mut ops = String::with_capacity(4096 + grid.cells.len() * 140);
 
     // White page background.
     ops.push_str(&format!(
-        "q\n{} rg\n0 0 {PAGE_W} {PAGE_H} re f\nQ\n",
-        pdf_rgb(WHITE)
+        "q\n{} rg\n0 0 {} {} re f\nQ\n",
+        pdf_rgb(WHITE),
+        layout.page_w,
+        layout.page_h
     ));
 
     // Title + subtitle (fall back to ASCII placeholders for non-Latin text).
     let title = pdf_text(&grid.title).unwrap_or("Seating Plan");
-    ops.push_str(&text_op_centered(title, 16.0, PAGE_W / 2.0, PAGE_H - 48.0));
+    ops.push_str(&text_op_centered(title, 16.0, layout.page_w / 2.0, layout.page_h - 48.0));
     let subtitle = pdf_text(&grid.subtitle).unwrap_or("");
-    ops.push_str(&text_op_centered(subtitle, 11.0, PAGE_W / 2.0, PAGE_H - 66.0));
+    ops.push_str(&text_op_centered(subtitle, 11.0, layout.page_w / 2.0, layout.page_h - 66.0));
 
     // Front-of-room divider line and label above the grid.
     let front_y = grid_top - 8.0;
@@ -961,5 +1019,22 @@ mod tests {
             let head = format!("{obj_num} 0 obj");
             assert_eq!(&pdf[offset..offset + head.len()], head, "offset for object {obj_num}");
         }
+    }
+
+    #[test]
+    fn pdf_layout_honours_orientation_and_scale() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+
+        let portrait = render_pdf_with(&grid, PdfLayout::portrait());
+        assert!(portrait.contains("/MediaBox [0 0 595 842]"));
+        assert!(!portrait.contains("/MediaBox [0 0 842 595]"));
+
+        let landscape = render_pdf_with(&grid, PdfLayout::landscape());
+        assert!(landscape.contains("/MediaBox [0 0 842 595]"));
+
+        // A larger page_scale must still produce a structurally valid PDF.
+        let scaled = render_pdf_with(&grid, PdfLayout::portrait().with_scale(1.5));
+        assert!(scaled.starts_with("%PDF-1.4"));
+        assert!(scaled.ends_with("%%EOF\n"));
     }
 }
