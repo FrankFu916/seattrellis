@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use seattrellis_core::{
     assignment_is_unique as core_assignment_is_unique,
     evaluate_problem_json as core_evaluate_problem_json, seat_distance as core_seat_distance,
-    NATIVE_API_VERSION,
+    solve_problem_json as core_solve_problem_json, NATIVE_API_VERSION,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -36,6 +36,11 @@ fn evaluate_problem(request_json: String) -> PyResult<String> {
     core_evaluate_problem_json(&request_json).map_err(PyValueError::new_err)
 }
 
+#[pyfunction]
+fn solve_problem(request_json: String) -> PyResult<String> {
+    core_solve_problem_json(&request_json).map_err(PyValueError::new_err)
+}
+
 #[pymodule]
 fn seattrellis_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("__version__", VERSION)?;
@@ -43,5 +48,6 @@ fn seattrellis_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(assignment_is_unique, module)?)?;
     module.add_function(wrap_pyfunction!(seat_distance, module)?)?;
     module.add_function(wrap_pyfunction!(evaluate_problem, module)?)?;
+    module.add_function(wrap_pyfunction!(solve_problem, module)?)?;
     Ok(())
 }
