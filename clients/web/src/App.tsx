@@ -370,6 +370,10 @@ export function App() {
     setConstraints((current) => current.filter((constraint) => constraint.id !== id));
   }
 
+  function handleConstraintBatchAdd(next: CommonConstraint[]) {
+    setConstraints((current) => [...current, ...next]);
+  }
+
   function handleGroupAdd() {
     setGroups((current) => [
       ...current,
@@ -808,6 +812,7 @@ export function App() {
             }}
             onRoomSettingsChange={handleRoomSettingsChange}
             onConstraintAdd={handleConstraintAdd}
+            onConstraintBatchAdd={handleConstraintBatchAdd}
             onConstraintChange={handleConstraintChange}
             onConstraintRemove={handleConstraintRemove}
             onGroupAdd={handleGroupAdd}

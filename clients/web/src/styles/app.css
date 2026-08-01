@@ -1260,6 +1260,64 @@ input:focus-visible,
   line-height: 1.45;
 }
 
+.bulk-constraint-editor {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.bulk-constraint-editor summary {
+  cursor: pointer;
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.bulk-constraint-fields,
+.bulk-constraint-options {
+  display: grid;
+  gap: 8px;
+}
+
+.bulk-constraint-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bulk-constraint-preview {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.bulk-constraint-preview > strong {
+  color: var(--text-strong);
+  font-size: 0.7rem;
+}
+
+.bulk-constraint-issues,
+.bulk-constraint-valid {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 17px;
+  font-size: 0.63rem;
+  line-height: 1.45;
+}
+
+.bulk-constraint-issues {
+  color: var(--danger);
+}
+
+.bulk-constraint-valid {
+  color: var(--success);
+}
+
 .goal-choice {
   grid-template-columns: 44px 1fr 24px;
 }

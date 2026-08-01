@@ -18,6 +18,7 @@ import type { WorkflowStep } from "../domain/workflow";
 import type { Locale, MessageKey, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
 import { DetailedRulesPanel } from "./DetailedRulesPanel";
+import { BulkConstraintEditor } from "./BulkConstraintEditor";
 import { RotationPlanSummary } from "./RotationPlanSummary";
 import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
 
@@ -80,6 +81,7 @@ type WorkflowPanelProps = {
   onRotationPeriodSelect: (period: number) => void;
   onRoomSettingsChange: (changes: Partial<CustomRoomSettings>) => void;
   onConstraintAdd: () => void;
+  onConstraintBatchAdd: (constraints: CommonConstraint[]) => void;
   onConstraintChange: (
     id: string,
     changes: Partial<CommonConstraint>,
@@ -154,6 +156,7 @@ export function WorkflowPanel({
   onRotationPeriodSelect,
   onRoomSettingsChange,
   onConstraintAdd,
+  onConstraintBatchAdd,
   onConstraintChange,
   onConstraintRemove,
   onGroupAdd,
@@ -517,6 +520,13 @@ export function WorkflowPanel({
               <datalist id="available-seat-ids">
                 {seatIds.map((seatId) => <option key={seatId} value={seatId} />)}
               </datalist>
+              <BulkConstraintEditor
+                students={students}
+                seatIds={seatIds}
+                existingConstraints={constraints}
+                t={t}
+                onAdd={onConstraintBatchAdd}
+              />
             </section>
             <section className="constraints-card" aria-labelledby="groups-title">
               <div className="constraints-heading">
