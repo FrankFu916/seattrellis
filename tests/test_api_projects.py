@@ -326,6 +326,73 @@ def test_project_schema_batch_preview_reports_shared_references(tmp_path) -> Non
     assert "Bob" not in response.text
 
 
+def test_project_schema_batch_apply_writes_each_migration_without_replacing_sources(tmp_path) -> None:
+    demo = cli.init_demo(output_dir=tmp_path / "demo", overwrite=True)
+    project_root = tmp_path / "projects"
+    project_root.mkdir()
+    for key in ("students_csv", "layout", "rules"):
+        shutil.copy2(demo[key], project_root / demo[key].name)
+    (project_root / "outputs").mkdir()
+    first = cli.project_init(
+        project_path=project_root / "first.seattrellis.project.json",
+        name="First class",
+        force=True,
+    )
+    second = cli.project_init(
+        project_path=project_root / "second.seattrellis.project.json",
+        name="Second class",
+        force=True,
+    )
+    originals = {path: path.read_bytes() for path in (first, second)}
+
+    response = _client().post(
+        "/api/v1/projects/migration/batch/apply",
+        json={"project_paths": [str(first), str(second)]},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ready"] is True
+    assert len(payload["projects"]) == 2
+    for project in payload["projects"]:
+        source = Path(project["source_path"])
+        output = Path(project["output_path"])
+        assert source.read_bytes() == originals[source]
+        assert output.is_file()
+        assert project["dry_run"] is False
+        assert project["after_valid"] is True
+    assert "Alice" not in response.text
+    assert "Bob" not in response.text
+
+
+def test_project_schema_batch_apply_requires_all_references_to_be_ready(tmp_path) -> None:
+    demo = cli.init_demo(output_dir=tmp_path / "demo", overwrite=True)
+    project_root = tmp_path / "projects"
+    project_root.mkdir()
+    for key in ("students_csv", "layout", "rules"):
+        shutil.copy2(demo[key], project_root / demo[key].name)
+    (project_root / "outputs").mkdir()
+    first = cli.project_init(
+        project_path=project_root / "first.seattrellis.project.json",
+        name="First class",
+        force=True,
+    )
+    second = cli.project_init(
+        project_path=project_root / "second.seattrellis.project.json",
+        name="Second class",
+        force=True,
+    )
+    second_payload = json.loads(second.read_text(encoding="utf-8"))
+    second_payload["students"] = "missing-roster.csv"
+    second.write_text(json.dumps(second_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    response = _client().post(
+        "/api/v1/projects/migration/batch/apply",
+        json={"project_paths": [str(first), str(second)]},
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "project_migration_batch_not_ready"
+
+
 def test_project_schema_migration_backup_can_be_restored_safely(tmp_path) -> None:
     paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
     client = _client()

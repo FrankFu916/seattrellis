@@ -163,6 +163,7 @@ def capabilities() -> CapabilitiesResponse:
             "project-migration",
             "project-migration-restore",
             "project-migration-batch",
+            "project-migration-batch-apply",
             "project-rotation-save",
             "project-rotation-load",
             "project-group-register",
@@ -465,6 +466,80 @@ def project_migration_batch_preview(
         shared_references=shared_references,
         ready=ready,
     )
+
+
+def project_migration_batch_apply(
+    request: ProjectMigrationBatchRequest,
+) -> ProjectMigrationBatchResponse:
+    """Write several migrations only after every selected project passes preflight.
+
+    A normal migration writes a new sibling artifact and leaves the source
+    untouched.  In-place batches are also guarded by a rollback pass: if a
+    later project fails, already migrated sources are restored from the backup
+    created for that migration.  Backup files are deliberately retained so a
+    teacher can inspect or recover them after an interrupted run.
+    """
+
+    preview = project_migration_batch_preview(request)
+    if not preview.ready:
+        raise ApiProblem(
+            status_code=409,
+            code="project_migration_batch_not_ready",
+            message="Review the migration reference checks before writing this batch.",
+        )
+
+    applied: list[ProjectMigrationResponse] = []
+    try:
+        for project_path in request.project_paths:
+            applied.append(
+                _migrate_project_artifact(
+                    ProjectMigrationRequest(
+                        project_path=project_path,
+                        in_place=request.in_place,
+                    ),
+                    dry_run=False,
+                )
+            )
+    except Exception as exc:
+        _rollback_migration_batch(applied, in_place=request.in_place)
+        # Do not forward a path or parser detail from one project.  The batch
+        # endpoint exposes one stable, actionable error contract.
+        raise ApiProblem(
+            status_code=422,
+            code="project_migration_batch_failed",
+            message="The migration batch was not completed; earlier changes were rolled back.",
+        ) from exc
+
+    return ProjectMigrationBatchResponse(
+        projects=applied,
+        shared_references=preview.shared_references,
+        ready=True,
+    )
+
+
+def _rollback_migration_batch(
+    applied: list[ProjectMigrationResponse],
+    *,
+    in_place: bool,
+) -> None:
+    """Best-effort rollback of artifacts written before a batch failure."""
+
+    for result in reversed(applied):
+        try:
+            if in_place and result.backup_path:
+                restore_json_backup(
+                    result.backup_path,
+                    result.source_path,
+                    create_safety_backup=False,
+                )
+            elif not in_place and result.output_path:
+                output = Path(result.output_path).resolve()
+                if output.is_file():
+                    output.unlink()
+        except (InputFileError, OSError, ValueError):
+            # The primary failure is more useful than a secondary rollback
+            # detail.  Backups remain available for explicit recovery.
+            continue
 
 
 def project_migration_restore(
