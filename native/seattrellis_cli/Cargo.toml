@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.83"
 license = "Apache-2.0"
-description = "Standalone solve + export CLI for SeatTrellis (Rust path deliverable)."
+description = "Single-file solve + export CLI for SeatTrellis classroom seating."
+repository = "https://github.com/FrankFu916/seattrellis"
+homepage = "https://github.com/FrankFu916/seattrellis"
+readme = "README.md"
+keywords = ["seating", "classroom", "cli", "solver", "education"]
+categories = ["command-line-utilities", "mathematics"]
 
 # Deliberately minimal: a single path dependency on the core solver plus
 # serde_json. No clap/structopt — argument parsing is hand-written to keep the
@@ -12,7 +17,7 @@ description = "Standalone solve + export CLI for SeatTrellis (Rust path delivera
 # `png` (with its bundled flate2/miniz_oxide zlib) adds PNG export; PDF export
 # is hand-written straight into the binary (no extra crate) to stay small.
 [dependencies]
-seattrellis_core = { path = "../seattrellis_core" }
+seattrellis_core = { path = "../seattrellis_core", version = "0.1" }
 serde_json = "1"
 png = "0.17"
 

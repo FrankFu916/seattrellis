@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.83"
 license = "Apache-2.0"
-description = "Experimental pure Rust core helpers for SeatTrellis."
+description = "Cost-ranked classroom seating solver core for SeatTrellis."
+repository = "https://github.com/FrankFu916/seattrellis"
+homepage = "https://github.com/FrankFu916/seattrellis"
+readme = "README.md"
+keywords = ["seating", "classroom", "solver", "optimization", "education"]
+categories = ["algorithms", "mathematics"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
