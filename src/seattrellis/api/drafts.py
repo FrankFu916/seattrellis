@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from threading import RLock
 from time import monotonic
 from uuid import uuid4
@@ -146,7 +147,12 @@ class EditorDraftStore:
                 self._redo(stored)
             stored.revision += 1
             stored.applied_command_ids.add(command.command_id)
-            stored.command_log.append(command.model_dump(mode="json", exclude_none=True))
+            command_record = command.model_dump(mode="json", exclude_none=True)
+            # Persist an audit timestamp with the anonymous command summary.
+            # The timestamp is deliberately server-side and contains no
+            # student or seat identifiers.
+            command_record["recorded_at"] = datetime.now(timezone.utc).isoformat()
+            stored.command_log.append(command_record)
             stored.touched_at = monotonic()
             return _build_state(stored)
 

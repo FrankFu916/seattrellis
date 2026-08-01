@@ -1478,7 +1478,7 @@ def _artifact_operation_history(
 
     entries: list[ProjectArtifactOperation] = []
     truncated = False
-    for metadata in _artifact_metadata_values(data, kind=kind):
+    for metadata, period in _artifact_metadata_entries(data, kind=kind):
         manual_edit = metadata.get("manual_edit")
         if not isinstance(manual_edit, dict):
             manual_edit = metadata.get("source_manual_edit")
@@ -1519,6 +1519,8 @@ def _artifact_operation_history(
                             else 0
                         ),
                         operation_kinds=kinds,
+                        period=period,
+                        recorded_at=_parse_artifact_datetime(command.get("recorded_at")),
                     )
                 )
             continue
@@ -1547,6 +1549,8 @@ def _artifact_operation_history(
                     action="apply",
                     operation_count=min(len(operations), 100),
                     operation_kinds=kinds,
+                    period=period,
+                    recorded_at=_parse_artifact_datetime(manual_edit.get("recorded_at")),
                 )
             )
     return entries, truncated
@@ -1559,19 +1563,33 @@ def _artifact_metadata_values(
 ) -> list[dict[str, object]]:
     """Collect nested metadata locally for provenance and timeline summaries."""
 
-    metadata_values: list[dict[str, object]] = []
+    return [metadata for metadata, _period in _artifact_metadata_entries(data, kind=kind)]
+
+
+def _artifact_metadata_entries(
+    data: dict[str, object],
+    *,
+    kind: str,
+) -> list[tuple[dict[str, object], int | None]]:
+    """Collect metadata together with a safe rotation-period context."""
+
+    metadata_values: list[tuple[dict[str, object], int | None]] = []
     top_metadata = data.get("metadata")
     if isinstance(top_metadata, dict):
-        metadata_values.append(top_metadata)
+        metadata_values.append((top_metadata, _metadata_period(top_metadata)))
     if kind == "rotation_plan":
         periods = data.get("periods")
         if isinstance(periods, list):
             for period in periods:
                 if not isinstance(period, dict):
                     continue
+                period_number = _safe_period(period.get("period"))
                 snapshot = period.get("snapshot")
                 if isinstance(snapshot, dict) and isinstance(snapshot.get("metadata"), dict):
-                    metadata_values.append(snapshot["metadata"])
+                    metadata = snapshot["metadata"]
+                    metadata_values.append(
+                        (metadata, _metadata_period(metadata) or period_number)
+                    )
     elif kind == "candidate_set":
         candidates = data.get("candidates")
         if isinstance(candidates, list):
@@ -1580,8 +1598,25 @@ def _artifact_metadata_values(
                     continue
                 snapshot = candidate.get("snapshot")
                 if isinstance(snapshot, dict) and isinstance(snapshot.get("metadata"), dict):
-                    metadata_values.append(snapshot["metadata"])
+                    metadata = snapshot["metadata"]
+                    metadata_values.append((metadata, _metadata_period(metadata)))
     return metadata_values
+
+
+def _metadata_period(metadata: dict[str, object]) -> int | None:
+    """Read a persisted rotation period without exposing arbitrary metadata."""
+
+    persistence = metadata.get("project_persistence")
+    candidate = persistence.get("period") if isinstance(persistence, dict) else None
+    return _safe_period(candidate) or _safe_period(metadata.get("rotation_period"))
+
+
+def _safe_period(value: object) -> int | None:
+    """Return a positive period number, ignoring booleans and malformed values."""
+
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        return value
+    return None
 
 
 def _artifact_provenance(

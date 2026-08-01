@@ -349,6 +349,14 @@ class ProjectArtifactOperation(ApiModel):
     action: Literal["apply", "undo", "redo", "unknown"]
     operation_count: int = Field(ge=0, le=100)
     operation_kinds: list[str] = Field(default_factory=list, max_length=5)
+    # Rotation plans contain one editing timeline per period.  These fields
+    # are optional so older artifacts remain wire-compatible and continue to
+    # render without inventing a period or timestamp.
+    period: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+    recorded_at: datetime | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
 
 
 class ProjectArtifactItem(ApiModel):

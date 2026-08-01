@@ -453,12 +453,13 @@ def test_project_rotation_save_persists_current_period_drafts(tmp_path) -> None:
         for item in rotation_outputs
         if item["path"] == str(output) and item["period_count"] == 2
     )
-    assert saved_rotation["operation_history"][0] == {
-        "sequence": 1,
-        "action": "apply",
-        "operation_count": 1,
-        "operation_kinds": ["swap_students"],
-    }
+    operation = saved_rotation["operation_history"][0]
+    assert operation["sequence"] == 1
+    assert operation["action"] == "apply"
+    assert operation["operation_count"] == 1
+    assert operation["operation_kinds"] == ["swap_students"]
+    assert operation["period"] == 1
+    assert operation["recorded_at"].endswith("Z")
 
     loaded = client.post(
         "/api/v1/projects/rotation/load",
