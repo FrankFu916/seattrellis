@@ -469,7 +469,36 @@ def test_project_rotation_save_persists_current_period_drafts(tmp_path) -> None:
                 for assignment in period["snapshot"]["assignments"]
                 if assignment["student_key"] != "S2"
             ]
+        else:
+            period["snapshot"]["rules"]["groups"][0]["students"] = ["S2", "S3"]
     grouped_output.write_text(json.dumps(grouped_data), encoding="utf-8")
+    preview = client.post(
+        "/api/v1/projects/rotation/group-register/preview",
+        json={
+            "project_path": str(paths["project"]),
+            "artifact_path": str(grouped_output),
+        },
+    )
+    assert preview.status_code == 200, preview.text
+    preview_payload = preview.json()
+    assert preview_payload["period_count"] == 2
+    assert preview_payload["periods"][0]["compared_to_period"] is None
+    first_pair = next(
+        group for group in preview_payload["periods"][0]["groups"] if group["name"] == "Pair A"
+    )
+    assert first_pair["member_count"] == 2
+    assert first_pair["seated_count"] == 1
+    assert first_pair["unseated_count"] == 1
+    second_pair = next(
+        group for group in preview_payload["periods"][1]["groups"] if group["name"] == "Pair A"
+    )
+    assert second_pair["added_count"] == 1
+    assert second_pair["removed_count"] == 1
+    assert second_pair["member_changes"][0]["student_ref"].startswith("student-")
+    assert "S1" not in preview.text
+    assert "S2" not in preview.text
+    assert preview_payload["has_changes"] is True
+
     register = client.post(
         "/api/v1/projects/rotation/group-register",
         json={

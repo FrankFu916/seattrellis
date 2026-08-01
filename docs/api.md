@@ -58,6 +58,8 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 - `POST /api/v1/projects/rotation/group-register` 从已保存的 `rotation_plan` 生成小组登记表，
   支持可打印 HTML 和带 UTF-8 BOM 的 CSV；每一期都会保留空组、名单中不存在的成员和未入座学生，
   不会改写原始项目文件；
+- `POST /api/v1/projects/rotation/group-register/preview` 在下载前按期次汇总小组人数、已入座、
+  未入座和名单缺失情况，并比较相邻期次的新增/移出人数。响应只含匿名引用和统计，不返回姓名或学号；
 - `POST /api/v1/classes/rotation` 根据一个班级草稿生成多个未来 period，并返回每一期的
   独立编辑草稿；
 - `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；

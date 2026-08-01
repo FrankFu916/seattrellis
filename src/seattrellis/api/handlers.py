@@ -46,7 +46,12 @@ from seattrellis.api.models import (
     ProjectMigrationChange,
     ProjectMigrationReferenceCheck,
     ProjectMigrationResponse,
+    ProjectGroupMemberChange,
+    ProjectGroupPreview,
     ProjectGroupRegisterRequest,
+    ProjectGroupRegisterPreviewRequest,
+    ProjectGroupRegisterPeriodPreview,
+    ProjectGroupRegisterPreviewResponse,
     ProjectRotationLoadRequest,
     ProjectRotationLoadResponse,
     ProjectRotationSaveRequest,
@@ -157,6 +162,7 @@ def capabilities() -> CapabilitiesResponse:
             "project-rotation-save",
             "project-rotation-load",
             "project-group-register",
+            "project-group-register-preview",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -612,6 +618,131 @@ def project_group_register(request: ProjectGroupRegisterRequest) -> ProjectDownl
         filename=f"group-register.{suffix}",
         content_type=content_type,
     )
+
+
+def project_group_register_preview(
+    request: ProjectGroupRegisterPreviewRequest,
+) -> ProjectGroupRegisterPreviewResponse:
+    """Summarize membership changes before a register is downloaded.
+
+    This endpoint intentionally reuses the register request contract so the
+    selected project and rotation artifact are validated in exactly the same
+    way as the download action.  Only counts and deterministic anonymous
+    references cross the API boundary; names and student IDs stay in the
+    locally rendered register.
+    """
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        artifact_path = _resolve_project_artifact(paths, request.artifact_path)
+        plan = load_rotation_plan(artifact_path)
+        periods = _group_register_period_previews(plan)
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_group_register_preview_failed",
+            message="The selected rotation plan could not be previewed.",
+        ) from exc
+    return ProjectGroupRegisterPreviewResponse(
+        project_path=str(paths.project_file),
+        artifact_path=str(artifact_path),
+        plan_name=plan.name,
+        period_count=plan.period_count,
+        periods=periods,
+        has_changes=any(
+            group.added_count > 0 or group.removed_count > 0
+            for period in periods
+            for group in period.groups
+        ),
+    )
+
+
+def _group_register_period_previews(
+    plan: RotationPlan,
+) -> list[ProjectGroupRegisterPeriodPreview]:
+    """Build one privacy-safe group summary for every rotation period."""
+
+    group_names = sorted(
+        {
+            group.name
+            for period in plan.periods
+            for group in period.snapshot.rules.groups
+        }
+    )
+    all_members = sorted(
+        {
+            student_key
+            for period in plan.periods
+            for group in period.snapshot.rules.groups
+            for student_key in group.students
+            if student_key
+        }
+    )
+    anonymous_refs = {
+        student_key: f"student-{index}"
+        for index, student_key in enumerate(all_members, start=1)
+    }
+    previous_members: dict[str, set[str]] | None = None
+    previews: list[ProjectGroupRegisterPeriodPreview] = []
+    for period in plan.periods:
+        groups_by_name = {group.name: group for group in period.snapshot.rules.groups}
+        roster_keys = {student.key for student in period.snapshot.students}
+        assigned_keys = {
+            assignment.student_key for assignment in period.snapshot.assignments
+        }
+        current_members: dict[str, set[str]] = {}
+        for name in group_names:
+            group = groups_by_name.get(name)
+            current_members[name] = {
+                student_key for student_key in (group.students if group else []) if student_key
+            }
+        group_previews: list[ProjectGroupPreview] = []
+        for name in group_names:
+            members = current_members[name]
+            previous = (
+                previous_members.get(name, set())
+                if previous_members is not None
+                else set()
+            )
+            added = members - previous if previous_members is not None else set()
+            removed = previous - members if previous_members is not None else set()
+            member_changes = [
+                ProjectGroupMemberChange(
+                    student_ref=anonymous_refs[student_key],
+                    change="added",
+                )
+                for student_key in sorted(added)
+            ] + [
+                ProjectGroupMemberChange(
+                    student_ref=anonymous_refs[student_key],
+                    change="removed",
+                )
+                for student_key in sorted(removed)
+            ]
+            group_previews.append(
+                ProjectGroupPreview(
+                    name=name,
+                    member_count=len(members),
+                    seated_count=len(members & roster_keys & assigned_keys),
+                    unseated_count=len(members & roster_keys - assigned_keys),
+                    missing_count=len(members - roster_keys),
+                    added_count=len(added),
+                    removed_count=len(removed),
+                    member_changes=member_changes[:50],
+                )
+            )
+        previews.append(
+            ProjectGroupRegisterPeriodPreview(
+                period=period.period,
+                label=period.label,
+                compared_to_period=(
+                    period.period - 1 if previous_members is not None else None
+                ),
+                groups=group_previews,
+            )
+        )
+        previous_members = current_members
+    return previews
 
 
 def _group_register_rows(

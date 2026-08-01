@@ -27,6 +27,7 @@ from seattrellis.api.handlers import (
     project_migration_preview,
     project_migration_restore,
     project_group_register,
+    project_group_register_preview,
     project_rotation_load,
     project_rotation_save,
     project_privacy,
@@ -653,6 +654,14 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/projects/rotation/group-register",
         download_group_register,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/rotation/group-register/preview",
+        project_group_register_preview,
         methods=["POST"],
         response_model=None,
         responses={422: {"model": ErrorResponse}},

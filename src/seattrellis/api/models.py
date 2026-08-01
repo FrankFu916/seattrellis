@@ -624,6 +624,70 @@ class ProjectGroupRegisterRequest(ProjectPathRequest):
         return text
 
 
+class ProjectGroupRegisterPreviewRequest(ProjectPathRequest):
+    """Select a saved rotation plan for a privacy-safe membership preview."""
+
+    artifact_path: str
+
+    @field_validator("artifact_path", mode="before")
+    def clean_preview_artifact_path(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError("artifact_path cannot be empty.")
+        return text
+
+
+class ProjectGroupMemberChange(ApiModel):
+    """One anonymous membership change between two rotation periods."""
+
+    student_ref: str
+    change: Literal["added", "removed"]
+
+
+class ProjectGroupPreview(ApiModel):
+    """Privacy-safe summary of one named group in one period.
+
+    The API deliberately returns anonymous references instead of student IDs or
+    names.  Teachers can use the counts to spot changes before downloading the
+    full register, while project history and preview responses do not add a
+    second path for student records to leave the local service.
+    """
+
+    name: str
+    member_count: int = Field(ge=0)
+    seated_count: int = Field(ge=0)
+    unseated_count: int = Field(ge=0)
+    missing_count: int = Field(ge=0)
+    added_count: int = Field(ge=0)
+    removed_count: int = Field(ge=0)
+    member_changes: list[ProjectGroupMemberChange] = Field(
+        default_factory=list,
+        max_length=50,
+    )
+
+
+class ProjectGroupRegisterPeriodPreview(ApiModel):
+    """Group summaries for one period and its comparison baseline."""
+
+    period: int = Field(ge=1)
+    label: str
+    compared_to_period: int | None = Field(default=None, ge=1)
+    groups: list[ProjectGroupPreview] = Field(default_factory=list)
+
+
+class ProjectGroupRegisterPreviewResponse(VersionedResponse):
+    """Preview group membership changes without returning student records."""
+
+    project_path: str
+    artifact_path: str
+    plan_name: str
+    period_count: int = Field(ge=1)
+    periods: list[ProjectGroupRegisterPeriodPreview] = Field(min_length=1)
+    has_changes: bool = False
+
+
 class PrivacyFindingItem(ApiModel):
     file: str
     fields: list[str] = Field(default_factory=list)
