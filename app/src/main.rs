@@ -76,7 +76,7 @@ fn main() -> ExitCode {
         }
     }
 
-    if let Some(raw) = std::env::var("SEATTRELLIS_PORT").ok() {
+    if let Ok(raw) = std::env::var("SEATTRELLIS_PORT") {
         match raw.parse::<u16>() {
             Ok(value) if value != 0 => port = value,
             _ => {
