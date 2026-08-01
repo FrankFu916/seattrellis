@@ -221,6 +221,7 @@ export function ProjectWorkspacePanel({
   >(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [operationPeriodFilter, setOperationPeriodFilter] = useState<"all" | number>("all");
 
   const allArtifacts = useMemo(
     () => [
@@ -233,7 +234,19 @@ export function ProjectWorkspacePanel({
     () => allArtifacts.filter((artifact) => artifact.kind === "rotation_plan"),
     [allArtifacts],
   );
-
+  const operationPeriods = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          allArtifacts.flatMap((artifact) =>
+            (artifact.operation_history ?? [])
+              .map((operation) => operation.period)
+              .filter((period): period is number => typeof period === "number"),
+          ),
+        ),
+      ).sort((left, right) => left - right),
+    [allArtifacts],
+  );
   useEffect(() => {
     if (!allArtifacts.length) {
       setCompareLeftPath("");
@@ -243,6 +256,7 @@ export function ProjectWorkspacePanel({
       setGroupRegisterPreview(null);
       setMigrationArtifactPath("");
       setMigrationPreview(null);
+      setOperationPeriodFilter("all");
       return;
     }
     setCompareLeftPath((current) =>
@@ -269,7 +283,10 @@ export function ProjectWorkspacePanel({
         ? current
         : rotationArtifacts[0]?.path ?? "",
     );
-  }, [allArtifacts, rotationArtifacts]);
+    setOperationPeriodFilter((current) =>
+      current === "all" || operationPeriods.includes(current) ? current : "all",
+    );
+  }, [allArtifacts, operationPeriods, rotationArtifacts]);
 
   async function openProject(path: string): Promise<void> {
     if (!path) {
@@ -624,14 +641,26 @@ export function ProjectWorkspacePanel({
                 <h3>{t("project.history")}</h3>
                 {!history.history.length && <p className="project-empty">{t("project.noArtifacts")}</p>}
                 {history.history.map((artifact) => (
-                  <ArtifactRow key={artifact.path} artifact={artifact} t={t} locale={locale} />
+                  <ArtifactRow
+                    key={artifact.path}
+                    artifact={artifact}
+                    t={t}
+                    locale={locale}
+                    operationPeriodFilter={operationPeriodFilter}
+                  />
                 ))}
               </div>
               <div className="project-artifact-group" data-testid="project-outputs">
                 <h3>{t("project.outputs")}</h3>
                 {!history.outputs.length && <p className="project-empty">{t("project.noArtifacts")}</p>}
                 {history.outputs.map((artifact) => (
-                  <ArtifactRow key={artifact.path} artifact={artifact} t={t} locale={locale} />
+                  <ArtifactRow
+                    key={artifact.path}
+                    artifact={artifact}
+                    t={t}
+                    locale={locale}
+                    operationPeriodFilter={operationPeriodFilter}
+                  />
                 ))}
               </div>
             </div>
@@ -643,6 +672,27 @@ export function ProjectWorkspacePanel({
             {allArtifacts.length > 0 && (
               <div className="project-history-tools" data-testid="project-history-tools">
                 <h3>{t("project.compareTitle")}</h3>
+                {operationPeriods.length > 0 && (
+                  <label className="project-field project-history-filter" htmlFor="project-operation-period-filter">
+                    <span>{t("project.operationPeriodFilter")}</span>
+                    <select
+                      id="project-operation-period-filter"
+                      data-testid="project-operation-period-filter"
+                      value={operationPeriodFilter}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setOperationPeriodFilter(value === "all" ? "all" : Number(value));
+                      }}
+                    >
+                      <option value="all">{t("project.operationPeriodAll")}</option>
+                      {operationPeriods.map((period) => (
+                        <option key={period} value={period}>
+                          {t("project.operationPeriod", { period })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <div className="project-compare-fields">
                   <label className="project-field">
                     <span>{t("project.compareLeft")}</span>
@@ -1164,13 +1214,19 @@ function ArtifactRow({
   artifact,
   locale,
   t,
+  operationPeriodFilter,
 }: {
   artifact: ProjectArtifact;
   locale: Locale;
   t: Translate;
+  operationPeriodFilter: "all" | number;
 }) {
   const sourceLabel = artifactSourceLabel(artifact, t);
   const operationHistory = artifact.operation_history ?? [];
+  const visibleOperationHistory =
+    operationPeriodFilter === "all"
+      ? operationHistory
+      : operationHistory.filter((operation) => operation.period === operationPeriodFilter);
   return (
     <article className="project-artifact-row">
       <strong>{artifactKindLabel(artifact, t)}</strong>
@@ -1196,14 +1252,14 @@ function ArtifactRow({
             : ""}
         </small>
       )}
-      {operationHistory.length > 0 && (
+      {visibleOperationHistory.length > 0 && (
         <details
           className="project-artifact-history"
           data-testid="project-artifact-operation-history"
         >
           <summary>{t("project.operationHistory")}</summary>
           <ol>
-            {operationHistory.map((operation) => {
+            {visibleOperationHistory.map((operation) => {
               const kinds = operation.operation_kinds
                 .map((kind) => operationKindLabel(kind, t))
                 .join(locale === "zh-CN" ? "、" : ", ");
@@ -1221,6 +1277,19 @@ function ArtifactRow({
                         })
                       : t("project.operationNoChanges")}
                   </small>
+                  {(operation.period != null || operation.recorded_at) && (
+                    <small className="project-operation-context">
+                      {operation.period != null
+                        ? t("project.operationPeriod", { period: operation.period })
+                        : ""}
+                      {operation.period != null && operation.recorded_at ? " · " : ""}
+                      {operation.recorded_at
+                        ? t("project.operationRecordedAt", {
+                            date: formatDate(operation.recorded_at, locale),
+                          })
+                        : ""}
+                    </small>
+                  )}
                 </li>
               );
             })}

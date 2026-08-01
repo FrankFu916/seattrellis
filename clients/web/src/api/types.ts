@@ -491,6 +491,8 @@ export type ProjectArtifactOperation = {
   action: "apply" | "undo" | "redo" | "unknown";
   operation_count: number;
   operation_kinds: string[];
+  period?: number | null;
+  recorded_at?: string | null;
 };
 
 export type ProjectArtifact = {

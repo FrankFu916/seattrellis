@@ -2280,6 +2280,10 @@ input:focus-visible,
   font-size: 0.62rem;
 }
 
+.project-history-filter {
+  max-width: 220px;
+}
+
 .project-history-tools select {
   min-height: 32px;
   padding: 5px 7px;
@@ -2295,6 +2299,10 @@ input:focus-visible,
   min-height: 32px;
   padding: 6px 9px;
   font-size: 0.65rem;
+}
+
+.project-operation-context {
+  font-variant-numeric: tabular-nums;
 }
 
 .project-group-register-preview {

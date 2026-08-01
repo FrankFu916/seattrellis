@@ -58,6 +58,9 @@
 - Project history can now expand an anonymous operation timeline, showing each
   apply, undo, or redo step and the kind of adjustment it contained without
   exposing student or seat identifiers.
+- Rotation history now keeps the period and UTC time for each editing event.
+  The Project workspace can filter the anonymous timeline by rotation period,
+  making multi-period changes easier to review without exposing student data.
 - Project migration preview now checks every referenced roster, layout, rules,
   history, and output path and marks missing or wrong-type references before a
   migration is written.

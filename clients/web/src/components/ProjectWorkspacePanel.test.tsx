@@ -76,6 +76,16 @@ const historyResponse = {
           action: "apply" as const,
           operation_count: 1,
           operation_kinds: ["swap_students"],
+          period: 1,
+          recorded_at: "2026-08-01T00:05:00Z",
+        },
+        {
+          sequence: 2,
+          action: "apply" as const,
+          operation_count: 1,
+          operation_kinds: ["move_student"],
+          period: 2,
+          recorded_at: "2026-08-02T00:05:00Z",
         },
       ],
       operation_history_truncated: false,
@@ -262,7 +272,25 @@ describe("ProjectWorkspacePanel", () => {
     expect(screen.getByTestId("project-artifact-operation-history")).toHaveTextContent(
       "Swap students",
     );
+    expect(screen.getByTestId("project-artifact-operation-history")).toHaveTextContent(
+      "Recorded Aug 1, 2026",
+    );
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+  });
+
+  it("filters anonymous operation history by rotation period", async () => {
+    const user = userEvent.setup();
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-operation-period-filter")).toHaveValue("all");
+    });
+    await user.selectOptions(screen.getByTestId("project-operation-period-filter"), "2");
+
+    const history = screen.getByTestId("project-artifact-operation-history");
+    expect(history).toHaveTextContent("Move student");
+    expect(history).not.toHaveTextContent("Swap students");
+    expect(history).toHaveTextContent("Period 2");
   });
 
   it("downloads a selected project backup", async () => {
