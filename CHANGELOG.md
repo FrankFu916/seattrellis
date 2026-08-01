@@ -61,6 +61,9 @@
 - Project migration preview now checks every referenced roster, layout, rules,
   history, and output path and marks missing or wrong-type references before a
   migration is written.
+- Added a batch migration preview for class projects. It checks several project
+  files together and highlights shared roster, layout, rules, or output paths
+  before any migration is written.
 - Added future rotation controls to the React workbench. Teachers can choose
   the number and names of upcoming periods, review repeat-neighbor metrics,
   switch between period-specific editing drafts, and continue editing or

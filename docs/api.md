@@ -50,6 +50,8 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 - `POST /api/v1/projects/migration/apply` 写入迁移结果。默认创建新的 `.migrated.json` 文件，
   只有显式传入 `in_place: true` 才会替换源文件，并先生成 `.bak` 备份；写入后会再次
   校验输出文件，并返回备份路径和字段变化摘要；
+- `POST /api/v1/projects/migration/batch/preview` 一次检查多个项目主文件，返回每个项目的
+  独立迁移摘要，并标出多个项目共同引用的名单、布局、规则或目录；该接口只预览，不会写入文件；
 - `POST /api/v1/projects/rotation/save` 根据当前每一期的服务端编辑草稿写入新的
   `rotation-plan.json` 输出；保存会校验名单和布局与生成时一致，不覆盖已有文件，并把
   Web 编辑命令写入每一期 snapshot 的 `metadata.manual_edit`；
