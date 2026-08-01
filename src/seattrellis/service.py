@@ -57,6 +57,7 @@ from seattrellis.models.candidate import CandidatePlan, CandidateSet, MultiSolve
 from seattrellis.models.history import FairnessReport, PairHistoryReport
 from seattrellis.models.project import SeatTrellisProject
 from seattrellis.models.rotation import RotationPeriod, RotationPlan
+from seattrellis.models.rules import effective_neighbor_rule
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.presets import (
@@ -124,7 +125,7 @@ def compute_solve(input: SolveInput) -> SolveOutput:
     runtime_warnings = _dedupe_warnings([*validation.warnings, *preset_warnings])
 
     seat_history = build_seat_history(input.students, input.layout, snapshots)
-    pair_rule = input.rules.soft.avoid_recent_neighbors
+    pair_rule = effective_neighbor_rule(input.rules)
     pair_history = build_pair_history(
         input.students,
         input.layout,
@@ -228,7 +229,7 @@ def compute_rotation_plan(input: RotationInput) -> RotationOutput:
             input.students,
             input.layout,
             generated,
-            within_distance=input.rules.soft.avoid_recent_neighbors.within_distance,
+            within_distance=effective_neighbor_rule(input.rules).within_distance,
         ),
         top=10,
     )
@@ -360,7 +361,7 @@ def compute_repair(input: RepairInput) -> RepairOutput:
         input.snapshot.layout,
         history_snapshots,
     )
-    pair_rule = input.snapshot.rules.soft.avoid_recent_neighbors
+    pair_rule = effective_neighbor_rule(input.snapshot.rules)
     pair_history = build_pair_history(
         input.snapshot.students,
         input.snapshot.layout,

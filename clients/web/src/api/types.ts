@@ -251,7 +251,13 @@ export type CommonPreferenceId =
   | "score_distribution"
   | "mentor_pairing";
 
-export type RuleRelation = "desk_mate" | "adjacent_any";
+export type RuleRelation =
+  | "desk_mate"
+  | "horizontal"
+  | "vertical"
+  | "diagonal"
+  | "adjacent_any"
+  | "within_distance";
 
 export type DetailedRuleSettings = {
   enabled: boolean;
@@ -265,6 +271,13 @@ export type DetailedRuleSettings = {
     weight: number;
     lookback: number;
     maxRecentCount: number;
+    withinDistance: number;
+    relationTypes: RuleRelation[];
+  };
+  cooling: {
+    enabled: boolean;
+    weight: number;
+    coolingPeriod: number;
     withinDistance: number;
     relationTypes: RuleRelation[];
   };

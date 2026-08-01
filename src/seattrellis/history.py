@@ -18,7 +18,12 @@ from seattrellis.models.history import (
     StudentSeatHistory,
 )
 from seattrellis.models.layout import ClassroomLayout, SeatNode
-from seattrellis.models.rules import AvoidRecentNeighborsRule, FairRotationRule, RuleSet
+from seattrellis.models.rules import (
+    AvoidRecentNeighborsRule,
+    FairRotationRule,
+    RuleSet,
+    effective_neighbor_rule,
+)
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
 from seattrellis.io.json_files import InputFileError, load_snapshot
@@ -484,7 +489,7 @@ def assignment_fairness_summary(
     pair_history: PairHistory | None = None,
 ) -> dict[str, object]:
     fair_rule = rules.soft.fair_rotation
-    neighbor_rule = rules.soft.avoid_recent_neighbors
+    neighbor_rule = effective_neighbor_rule(rules)
     pair_history = pair_history or (history.pair_history if history is not None else None)
     history_count = history.history_count if history is not None else 0
     pair_history_count = pair_history.history_count if pair_history is not None else 0
@@ -496,7 +501,16 @@ def assignment_fairness_summary(
         "enabled_rules": enabled_rules,
         "fair_rotation_enabled": fair_rule.enabled,
         "avoid_recent_neighbors_enabled": neighbor_rule.enabled,
+        "cooling_enabled": rules.soft.cooling.enabled and rules.soft.cooling.weight > 0,
     }
+    if rules.soft.cooling.enabled and rules.soft.cooling.weight > 0:
+        summary.update(
+            {
+                "cooling_period": rules.soft.cooling.cooling_period,
+                "cooling_relation_types": list(rules.soft.cooling.relation_types),
+                "cooling_within_distance": rules.soft.cooling.within_distance,
+            }
+        )
 
     student_by_key = {student.key: student for student in students}
     seat_by_id = {seat.seat_id: seat for seat in layout.enabled_seats}
@@ -575,7 +589,7 @@ def fairness_metadata(
     pair_history: PairHistory | None = None,
 ) -> dict[str, object]:
     fair_rule = rules.soft.fair_rotation
-    neighbor_rule = rules.soft.avoid_recent_neighbors
+    neighbor_rule = effective_neighbor_rule(rules)
     pair_history = pair_history or (history.pair_history if history is not None else None)
     history_count = history.history_count if history is not None else 0
     pair_history_count = pair_history.history_count if pair_history is not None else 0
@@ -595,6 +609,10 @@ def fairness_metadata(
         "enabled_rules": enabled_rules,
         "fair_rotation_enabled": fair_rule.enabled,
         "avoid_recent_neighbors_enabled": neighbor_rule.enabled,
+        "cooling_enabled": rules.soft.cooling.enabled and rules.soft.cooling.weight > 0,
+        "cooling_period": rules.soft.cooling.cooling_period,
+        "cooling_relation_types": list(rules.soft.cooling.relation_types),
+        "cooling_within_distance": rules.soft.cooling.within_distance,
         "warnings": warnings,
     }
 

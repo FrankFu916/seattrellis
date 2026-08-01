@@ -55,6 +55,13 @@ const detailedRules: DetailedRuleSettings = {
     withinDistance: 2,
     relationTypes: ["desk_mate"],
   },
+  cooling: {
+    enabled: true,
+    weight: 12,
+    coolingPeriod: 3,
+    withinDistance: 2,
+    relationTypes: ["desk_mate"],
+  },
   scorePosition: { enabled: true, weight: 18, direction: "high_back" },
   scoreDistribution: { enabled: true, weight: 20, scope: "row" },
   mentorPairing: {
@@ -238,6 +245,13 @@ describe("buildGenerateClassRequest", () => {
           weight: 14,
           lookback: 3,
           max_recent_count: 1,
+          within_distance: 2,
+          relation_types: ["desk_mate"],
+        },
+        cooling: {
+          enabled: true,
+          weight: 12,
+          cooling_period: 3,
           within_distance: 2,
           relation_types: ["desk_mate"],
         },

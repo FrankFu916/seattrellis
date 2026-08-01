@@ -187,6 +187,9 @@ function validateDetailedRules(settings: DetailedRuleSettings): void {
     settings.avoidRecentNeighbors.weight,
     settings.avoidRecentNeighbors.lookback,
     settings.avoidRecentNeighbors.maxRecentCount,
+    settings.cooling.weight,
+    settings.cooling.coolingPeriod,
+    settings.cooling.withinDistance,
     settings.scorePosition.weight,
     settings.scoreDistribution.weight,
     settings.mentorPairing.weight,
@@ -195,13 +198,29 @@ function validateDetailedRules(settings: DetailedRuleSettings): void {
   if (nonNegativeIntegers.some((value) => !Number.isSafeInteger(value) || value < 0)) {
     throw new InvalidAdvancedSettingError("rules");
   }
+  const supportedRelations = new Set([
+    "desk_mate",
+    "horizontal",
+    "vertical",
+    "diagonal",
+    "adjacent_any",
+    "within_distance",
+  ]);
   if (
     !Number.isSafeInteger(settings.avoidRecentNeighbors.withinDistance) ||
     settings.avoidRecentNeighbors.withinDistance < 1 ||
     settings.avoidRecentNeighbors.relationTypes.length === 0 ||
-    settings.avoidRecentNeighbors.relationTypes.some(
-      (relation) => relation !== "desk_mate" && relation !== "adjacent_any",
-    )
+    settings.avoidRecentNeighbors.relationTypes.some((relation) => !supportedRelations.has(relation))
+  ) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
+  if (
+    !Number.isSafeInteger(settings.cooling.coolingPeriod) ||
+    settings.cooling.coolingPeriod < 1 ||
+    !Number.isSafeInteger(settings.cooling.withinDistance) ||
+    settings.cooling.withinDistance < 1 ||
+    settings.cooling.relationTypes.length === 0 ||
+    settings.cooling.relationTypes.some((relation) => !supportedRelations.has(relation))
   ) {
     throw new InvalidAdvancedSettingError("rules");
   }
@@ -254,6 +273,13 @@ function buildRulesOverlay(
       max_recent_count: detailedRules.avoidRecentNeighbors.maxRecentCount,
       within_distance: detailedRules.avoidRecentNeighbors.withinDistance,
       relation_types: detailedRules.avoidRecentNeighbors.relationTypes,
+    };
+    soft.cooling = {
+      enabled: detailedRules.cooling.enabled,
+      weight: detailedRules.cooling.weight,
+      cooling_period: detailedRules.cooling.coolingPeriod,
+      within_distance: detailedRules.cooling.withinDistance,
+      relation_types: detailedRules.cooling.relationTypes,
     };
     soft.score_position = {
       enabled: detailedRules.scorePosition.enabled,

@@ -15,6 +15,7 @@ from seattrellis.models.rules import (
     ScorePositionRule,
     SoftRules,
     WeightedRule,
+    effective_neighbor_rule,
 )
 from seattrellis.models.student import Student
 
@@ -338,7 +339,7 @@ def _requirement_enabled(requirement: PresetRequirement, rules: RuleSet) -> bool
     if requirement == "history":
         history_rules = (
             rules.soft.fair_rotation,
-            rules.soft.avoid_recent_neighbors,
+            effective_neighbor_rule(rules),
         )
         return any(rule.enabled and rule.weight > 0 for rule in history_rules)
     if requirement == "score":

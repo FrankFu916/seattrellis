@@ -280,12 +280,6 @@ def _add_rule_capability_warnings(
     rules: RuleSet,
     layout: ClassroomLayout,
 ) -> None:
-    if rules.soft.cooling.enabled:
-        report.add_warning(
-            "rules.soft.cooling is currently model-only: use soft.avoid_recent_neighbors for "
-            "active recent-neighbor penalties. Cooling settings are parsed and preserved, but "
-            "do not affect solving or scoring yet."
-        )
     distribution = rules.soft.score_distribution
     if distribution.enabled and distribution.scope == "group":
         missing = [seat.seat_id for seat in layout.enabled_seats if not seat.group_id]

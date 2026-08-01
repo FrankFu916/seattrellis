@@ -10,7 +10,16 @@ from seattrellis.io.json_files import InputFileError, load_snapshot, write_json_
 from seattrellis.io.students import students_from_records
 from seattrellis.io.validation import validate_loaded_inputs
 from seattrellis.models import ClassroomLayout, SeatNode, Student
-from seattrellis.models.rules import FixedSeatRule, GroupRule, HardRules, PairRule, RuleSet, SoftRules, WeightedRule
+from seattrellis.models.rules import (
+    CoolingRule,
+    FixedSeatRule,
+    GroupRule,
+    HardRules,
+    PairRule,
+    RuleSet,
+    SoftRules,
+    WeightedRule,
+)
 from seattrellis.service import compute_solve
 from seattrellis.service_types import SolveInput
 from seattrellis.solver import SeatTrellisSolveError, solve_seating
@@ -242,10 +251,15 @@ def test_validate_reports_unknown_rule_field(tmp_path) -> None:
     assert "Extra inputs are not permitted" in message
 
 
-def test_validate_warns_only_for_model_only_cooling() -> None:
+def test_validate_accepts_active_cooling_without_model_only_warning() -> None:
     rules = _quiet_rules()
     rules.groups = [GroupRule(name="Team A", students=["S1", "S2"], separate=True)]
-    rules.soft.cooling.enabled = True
+    rules.soft.cooling = CoolingRule(
+        enabled=True,
+        weight=8,
+        cooling_period=2,
+        relation_types=["desk_mate"],
+    )
 
     report = validate_loaded_inputs(
         [Student(student_id="S1"), Student(student_id="S2")],
@@ -253,9 +267,8 @@ def test_validate_warns_only_for_model_only_cooling() -> None:
         rules,
     )
 
-    assert any("rules.soft.cooling is currently model-only" in warning for warning in report.warnings)
-    with pytest.raises(InputFileError, match="Warnings treated as errors"):
-        report.raise_for_errors(strict=True)
+    assert not any("rules.soft.cooling" in warning for warning in report.warnings)
+    report.raise_for_errors(strict=True)
 
 
 def test_missing_student_id_warning_reports_only_an_aggregate_count() -> None:

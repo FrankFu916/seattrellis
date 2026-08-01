@@ -173,15 +173,44 @@ class GroupRule(BaseModel):
 
 
 class CoolingRule(WeightedRule):
-    """Cooling period between repeated desk-mate / neighbor assignments."""
+    """Cooling period between repeated desk-mate / neighbor assignments.
+
+    A cooling rule is the strict form of recent-neighbor avoidance: a selected
+    relationship is penalized whenever it occurred in the previous
+    ``cooling_period`` snapshots.  ``within_distance`` uses the same Chebyshev
+    distance metric as :class:`AvoidRecentNeighborsRule`.
+    """
 
     cooling_period: int = 3
     relation_types: list[str] = Field(default_factory=lambda: ["desk_mate", "adjacent_any"])
+    within_distance: int = 2
 
     @field_validator("cooling_period")
     def positive_cooling(cls, value: int) -> int:
         if value < 1:
             raise ValueError("cooling_period must be positive.")
+        return value
+
+    @field_validator("relation_types")
+    def known_neighbor_relation_types(cls, value: list[str]) -> list[str]:
+        allowed = {relation.value for relation in NEIGHBOR_RELATION_TYPES}
+        normalized: list[str] = []
+        for relation in value:
+            text = relation.value if isinstance(relation, NeighborRelationType) else str(relation).strip()
+            if not text:
+                continue
+            if text not in allowed:
+                raise ValueError(f"Unsupported neighbor relation types: {text}")
+            if text not in normalized:
+                normalized.append(text)
+        if not normalized:
+            raise ValueError("relation_types must contain at least one neighbor relation.")
+        return normalized
+
+    @field_validator("within_distance")
+    def positive_within_distance(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("within_distance must be positive.")
         return value
 
     model_config = ConfigDict(extra="forbid")
@@ -274,3 +303,44 @@ class RuleSet(BaseModel):
         )
 
     model_config = ConfigDict(extra="forbid")
+
+
+def effective_neighbor_rule(rules: RuleSet) -> AvoidRecentNeighborsRule:
+    """Return the pair-avoidance rule used by every solver and report.
+
+    ``cooling`` is intentionally compiled into the existing recent-neighbor
+    objective instead of creating a second, subtly different implementation.
+    When both settings are enabled, the effective rule uses the union of their
+    relation types, the longer history window, the stricter repeat threshold,
+    and the sum of their weights.  This makes enabling cooling deterministic
+    and conservative while keeping old ``avoid_recent_neighbors`` files
+    compatible.
+    """
+
+    base = rules.soft.avoid_recent_neighbors
+    cooling = rules.soft.cooling
+    if not cooling.enabled or cooling.weight == 0:
+        return base
+
+    cooling_rule = AvoidRecentNeighborsRule(
+        enabled=True,
+        weight=cooling.weight,
+        relation_types=[NeighborRelationType(relation) for relation in cooling.relation_types],
+        lookback=cooling.cooling_period,
+        max_recent_count=0,
+        within_distance=cooling.within_distance,
+    )
+    if not base.enabled or base.weight == 0:
+        return cooling_rule
+
+    relation_types = list(dict.fromkeys([*base.relation_types, *cooling_rule.relation_types]))
+    return base.model_copy(
+        update={
+            "enabled": True,
+            "weight": base.weight + cooling_rule.weight,
+            "relation_types": relation_types,
+            "lookback": max(base.lookback, cooling_rule.lookback),
+            "max_recent_count": min(base.max_recent_count, cooling_rule.max_recent_count),
+            "within_distance": max(base.within_distance, cooling_rule.within_distance),
+        }
+    )

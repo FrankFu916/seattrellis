@@ -9,7 +9,7 @@ from seattrellis.history import avoid_recent_neighbors_cost
 from seattrellis.io.validation import format_infeasible_diagnostic
 from seattrellis.models.history import PairHistory, SeatHistory
 from seattrellis.models.layout import ClassroomLayout, SeatNode
-from seattrellis.models.rules import RuleSet
+from seattrellis.models.rules import RuleSet, effective_neighbor_rule
 from seattrellis.models.student import Student
 from seattrellis.solver.backend_common import individual_cost, solution_from_assignment
 from seattrellis.solver.errors import SeatTrellisSolveError
@@ -277,7 +277,7 @@ def _fallback_candidate_cost(
     layout = problem.layout
     rules = problem.rules
     cost = _fallback_individual_cost(students[student_index], seats[seat_index], layout, rules, history)
-    rule = rules.soft.avoid_recent_neighbors
+    rule = effective_neighbor_rule(rules)
     if rule.enabled and rule.weight:
         for assigned_student_index, assigned_seat_index in assignment.items():
             cost += avoid_recent_neighbors_cost(
@@ -339,7 +339,7 @@ def _fallback_total_cost(
                 if seat_indexes_adjacent(problem, first_seat_index, second_seat_index):
                     cost -= rules.soft.score_balance.weight * abs(float(first_score) - float(second_score))
 
-    rule = rules.soft.avoid_recent_neighbors
+    rule = effective_neighbor_rule(rules)
     if rule.enabled and rule.weight:
         for first_index, first_seat_index in assignment.items():
             _raise_if_deadline_reached(deadline)

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
@@ -15,6 +15,13 @@ const initialSettings: DetailedRuleSettings = {
     weight: 10,
     lookback: 4,
     maxRecentCount: 1,
+    withinDistance: 2,
+    relationTypes: ["desk_mate", "adjacent_any"],
+  },
+  cooling: {
+    enabled: false,
+    weight: 12,
+    coolingPeriod: 3,
     withinDistance: 2,
     relationTypes: ["desk_mate", "adjacent_any"],
   },
@@ -56,9 +63,23 @@ describe("DetailedRulesPanel", () => {
     await user.selectOptions(direction, "high_back");
     expect(direction).toHaveValue("high_back");
 
-    const relation = screen.getByRole("checkbox", { name: "Desk mate" });
+    const recentNeighbors = screen.getByRole("group", {
+      name: "Avoid recent neighbors",
+    });
+    const relation = within(recentNeighbors).getByRole("checkbox", {
+      name: "Desk mate",
+    });
     await user.click(relation);
     expect(relation).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Any adjacent seat" })).toBeChecked();
+    expect(
+      within(recentNeighbors).getByRole("checkbox", { name: "Any adjacent seat" }),
+    ).toBeChecked();
+
+    const coolingToggle = screen.getAllByRole("checkbox", {
+      name: "Enable this rule",
+    })[2];
+    expect(coolingToggle).not.toBeChecked();
+    await user.click(coolingToggle);
+    expect(coolingToggle).toBeChecked();
   });
 });

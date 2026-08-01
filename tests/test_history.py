@@ -23,6 +23,7 @@ from seattrellis.models.history import NeighborRelationType, SeatPositionCategor
 from seattrellis.models.layout import AdjacencyConfig, ClassroomLayout, SeatNode
 from seattrellis.models.rules import (
     AvoidRecentNeighborsRule,
+    CoolingRule,
     FairRotationRule,
     FixedSeatRule,
     HardRules,
@@ -30,6 +31,7 @@ from seattrellis.models.rules import (
     RuleSet,
     SoftRules,
     WeightedRule,
+    effective_neighbor_rule,
 )
 from seattrellis.models.snapshot import SeatAssignment, SeatingSnapshot
 from seattrellis.models.student import Student
@@ -388,6 +390,54 @@ def test_avoid_recent_neighbors_changes_fallback_scoring_with_history() -> None:
     assert solution.metrics["fairness"]["enabled_rules"] == ["avoid_recent_neighbors"]
 
 
+def test_cooling_compiles_to_strict_recent_neighbor_avoidance() -> None:
+    rules = _quiet_rules()
+    rules.soft.cooling = CoolingRule(
+        enabled=True,
+        weight=12,
+        cooling_period=3,
+        relation_types=["desk_mate"],
+        within_distance=1,
+    )
+
+    effective = effective_neighbor_rule(rules)
+
+    assert effective.enabled is True
+    assert effective.weight == 12
+    assert effective.lookback == 3
+    assert effective.max_recent_count == 0
+    assert effective.within_distance == 1
+    assert effective.relation_types == [NeighborRelationType.DESK_MATE]
+
+
+def test_cooling_avoids_a_recent_desk_mate() -> None:
+    students = _students(2)
+    layout = _line_layout(3)
+    rules = _quiet_rules()
+    rules.soft.cooling = CoolingRule(
+        enabled=True,
+        weight=10,
+        cooling_period=1,
+        relation_types=["desk_mate"],
+        within_distance=1,
+    )
+    pair_history = build_pair_history(
+        students,
+        layout,
+        [_snapshot({"S1": "A1", "S2": "A2"}, students=students)],
+        lookback=1,
+        within_distance=1,
+    )
+
+    solution = solve_seating(students, layout, rules, pair_history=pair_history)
+
+    assert solution.assignment_map == {"S1": "A1", "S2": "A3"}
+    fairness = solution.metrics["fairness"]
+    assert fairness["cooling_enabled"] is True
+    assert fairness["cooling_period"] == 1
+    assert fairness["enabled_rules"] == ["avoid_recent_neighbors"]
+
+
 def test_fixed_seat_is_not_overridden_by_fair_rotation() -> None:
     students = _students(2)
     layout = _two_seat_layout()
@@ -503,6 +553,35 @@ def test_ortools_solver_uses_avoid_recent_neighbors_when_available(monkeypatch) 
     pair_history = build_pair_history(students, layout, [_snapshot({"S1": "A1", "S2": "A2"}, students=students)])
 
     solution = solve_seating(students, layout, _avoid_rules(), pair_history=pair_history)
+
+    assert solution.metrics["solver"] == "ortools-cp-sat"
+    assert normalize_edge(solution.assignment_map["S1"], solution.assignment_map["S2"]) not in build_adjacency_edges(layout)
+
+
+def test_ortools_solver_uses_cooling_when_available(monkeypatch) -> None:
+    pytest.importorskip("ortools.sat.python.cp_model")
+    monkeypatch.setenv("SEATTRELLIS_USE_ORTOOLS", "1")
+    monkeypatch.setattr(ortools_backend, "cp_model", None)
+    monkeypatch.setattr(ortools_backend, "_cp_model_unavailable", False)
+    students = _students(2)
+    layout = _line_layout(3)
+    rules = _quiet_rules()
+    rules.soft.cooling = CoolingRule(
+        enabled=True,
+        weight=10,
+        cooling_period=1,
+        relation_types=["desk_mate"],
+        within_distance=1,
+    )
+    pair_history = build_pair_history(
+        students,
+        layout,
+        [_snapshot({"S1": "A1", "S2": "A2"}, students=students)],
+        lookback=1,
+        within_distance=1,
+    )
+
+    solution = solve_seating(students, layout, rules, pair_history=pair_history)
 
     assert solution.metrics["solver"] == "ortools-cp-sat"
     assert normalize_edge(solution.assignment_map["S1"], solution.assignment_map["S2"]) not in build_adjacency_edges(layout)

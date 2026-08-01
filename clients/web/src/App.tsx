@@ -108,6 +108,13 @@ const DEFAULT_DETAILED_RULE_SETTINGS: DetailedRuleSettings = {
     withinDistance: 2,
     relationTypes: ["desk_mate", "adjacent_any"],
   },
+  cooling: {
+    enabled: false,
+    weight: 12,
+    coolingPeriod: 3,
+    withinDistance: 2,
+    relationTypes: ["desk_mate", "adjacent_any"],
+  },
   scorePosition: {
     enabled: true,
     weight: 18,

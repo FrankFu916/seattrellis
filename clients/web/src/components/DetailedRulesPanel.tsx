@@ -1,5 +1,5 @@
 import type { DetailedRuleSettings, RuleRelation } from "../api/types";
-import type { Translate } from "../i18n/messages";
+import type { MessageKey, Translate } from "../i18n/messages";
 
 type DetailedRulesPanelProps = {
   settings: DetailedRuleSettings;
@@ -7,7 +7,14 @@ type DetailedRulesPanelProps = {
   onChange: (changes: Partial<DetailedRuleSettings>) => void;
 };
 
-const RELATIONS: RuleRelation[] = ["desk_mate", "adjacent_any"];
+const RELATIONS: RuleRelation[] = [
+  "desk_mate",
+  "horizontal",
+  "vertical",
+  "diagonal",
+  "adjacent_any",
+  "within_distance",
+];
 type RuleSection = Exclude<keyof DetailedRuleSettings, "enabled">;
 
 function boundedInteger(value: string, minimum: number, maximum: number): number {
@@ -24,6 +31,18 @@ function boundedPercentile(value: string): number {
     return 0;
   }
   return Math.min(1, Math.max(0, parsed));
+}
+
+function relationLabelKey(relation: RuleRelation): MessageKey {
+  const keys: Record<RuleRelation, MessageKey> = {
+    desk_mate: "detailedRules.deskMate",
+    horizontal: "detailedRules.horizontal",
+    vertical: "detailedRules.vertical",
+    diagonal: "detailedRules.diagonal",
+    adjacent_any: "detailedRules.adjacentAny",
+    within_distance: "detailedRules.withinDistanceRelation",
+  };
+  return keys[relation];
 }
 
 export function DetailedRulesPanel({
@@ -43,20 +62,23 @@ export function DetailedRulesPanel({
     } as Partial<DetailedRuleSettings>);
   };
 
-  const toggleRelation = (relation: RuleRelation) => {
-    const current = settings.avoidRecentNeighbors.relationTypes;
+  const toggleRelation = (
+    section: "avoidRecentNeighbors" | "cooling",
+    relation: RuleRelation,
+  ) => {
+    const current = settings[section].relationTypes;
     if (current.includes(relation)) {
       // The backend needs at least one relation to inspect. Keep the last
       // selected relation instead of silently creating an inactive rule.
       if (current.length === 1) {
         return;
       }
-      updateSection("avoidRecentNeighbors", {
+      updateSection(section, {
         relationTypes: current.filter((item) => item !== relation),
       });
       return;
     }
-    updateSection("avoidRecentNeighbors", {
+    updateSection(section, {
       relationTypes: [...current, relation],
     });
   };
@@ -204,13 +226,81 @@ export function DetailedRulesPanel({
                   <input
                     type="checkbox"
                     checked={settings.avoidRecentNeighbors.relationTypes.includes(relation)}
-                    onChange={() => toggleRelation(relation)}
+                  onChange={() => toggleRelation("avoidRecentNeighbors", relation)}
                   />
-                  {t(
-                    relation === "desk_mate"
-                      ? "detailedRules.deskMate"
-                      : "detailedRules.adjacentAny",
-                  )}
+                  {t(relationLabelKey(relation))}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="detailed-rule-card">
+            <legend>{t("detailedRules.cooling")}</legend>
+            <p className="rule-help">{t("detailedRules.coolingHint")}</p>
+            <label className="rule-toggle">
+              <input
+                type="checkbox"
+                checked={settings.cooling.enabled}
+                onChange={(event) =>
+                  updateSection("cooling", { enabled: event.target.checked })
+                }
+              />
+              <span>{t("detailedRules.enabledLabel")}</span>
+            </label>
+            <div className="rule-input-grid">
+              <label className="advanced-field">
+                <span>{t("detailedRules.weight")}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={settings.cooling.weight}
+                  onChange={(event) =>
+                    updateSection("cooling", {
+                      weight: boundedInteger(event.target.value, 0, 100),
+                    })
+                  }
+                />
+              </label>
+              <label className="advanced-field">
+                <span>{t("detailedRules.coolingPeriod")}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={settings.cooling.coolingPeriod}
+                  onChange={(event) =>
+                    updateSection("cooling", {
+                      coolingPeriod: boundedInteger(event.target.value, 1, 100),
+                    })
+                  }
+                />
+              </label>
+              <label className="advanced-field">
+                <span>{t("detailedRules.withinDistance")}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={settings.cooling.withinDistance}
+                  onChange={(event) =>
+                    updateSection("cooling", {
+                      withinDistance: boundedInteger(event.target.value, 1, 20),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <div className="rule-relations">
+              <span className="rule-field-label">{t("detailedRules.relations")}</span>
+              {RELATIONS.map((relation) => (
+                <label key={relation}>
+                  <input
+                    type="checkbox"
+                    checked={settings.cooling.relationTypes.includes(relation)}
+                    onChange={() => toggleRelation("cooling", relation)}
+                  />
+                  {t(relationLabelKey(relation))}
                 </label>
               ))}
             </div>

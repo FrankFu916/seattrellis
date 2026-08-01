@@ -71,7 +71,7 @@
     },
     "CoolingRule": {
       "additionalProperties": false,
-      "description": "Cooling period between repeated desk-mate / neighbor assignments.",
+      "description": "Cooling period between repeated desk-mate / neighbor assignments.\n\nA cooling rule is the strict form of recent-neighbor avoidance: a selected\nrelationship is penalized whenever it occurred in the previous\n``cooling_period`` snapshots.  ``within_distance`` uses the same Chebyshev\ndistance metric as :class:`AvoidRecentNeighborsRule`.",
       "properties": {
         "enabled": {
           "default": false,
@@ -94,6 +94,11 @@
           },
           "title": "Relation Types",
           "type": "array"
+        },
+        "within_distance": {
+          "default": 2,
+          "title": "Within Distance",
+          "type": "integer"
         }
       },
       "title": "CoolingRule",
