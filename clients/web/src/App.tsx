@@ -236,6 +236,7 @@ export function App() {
   const [history, setHistory] = useState<SeatAssignment[][]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [editorDraftId, setEditorDraftId] = useState<string | null>(null);
@@ -251,6 +252,19 @@ export function App() {
     document.documentElement.lang = locale;
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
   }, [locale]);
+
+  useEffect(() => {
+    function warnBeforeUnload(event: BeforeUnloadEvent): void {
+      if (!isDirty) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = t("app.unsavedChanges");
+    }
+
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty, t]);
 
   useEffect(() => {
     let current = true;
@@ -435,6 +449,7 @@ export function App() {
       setHistory((previous) => [...previous, assignments]);
       setAssignments(updated);
       setSelectedSeatId(null);
+      setIsDirty(true);
     } else {
       setSelectedSeatId(seatId);
     }
@@ -498,6 +513,7 @@ export function App() {
       setEditorRevision(editor.revision);
       setEditorUndoDepth(editor.undo_depth);
       setSelectedSeatId(null);
+      setIsDirty(true);
     } catch (err) {
       setSaveError(friendlyError(err));
       setSelectedSeatId(null);
@@ -516,6 +532,7 @@ export function App() {
       }
       setAssignments(latest);
       setSelectedSeatId(null);
+      setIsDirty(true);
       return previous.slice(0, -1);
     });
   }
@@ -542,6 +559,7 @@ export function App() {
     }
     setHistory((previous) => [...previous, assignments]);
     setAssignments((current) => toggleSeatLock(current, selectedSeatId));
+    setIsDirty(true);
   }
 
   function applyEditorState(editor: EditorState) {
@@ -552,6 +570,7 @@ export function App() {
     setEditorRevision(editor.revision);
     setEditorUndoDepth(editor.undo_depth);
     setSelectedSeatId(null);
+    setIsDirty(false);
   }
 
   async function handleRotationPeriodSelect(period: number) {
@@ -630,6 +649,7 @@ export function App() {
       setRotationPlan(isRotation ? response.rotation_plan : null);
       setHistory([]);
       setSelectedSeatId(null);
+      setIsDirty(false);
       setStep("adjust");
     } catch (err) {
       if (err instanceof InvalidAdvancedSettingError) {
@@ -676,6 +696,7 @@ export function App() {
       link.remove();
       URL.revokeObjectURL(url);
       setPreviewOpen(false);
+      setIsDirty(false);
     } catch (err) {
       setSaveError(friendlyError(err));
     } finally {

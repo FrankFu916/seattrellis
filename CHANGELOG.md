@@ -11,6 +11,8 @@
   message; internal HTTP and parser details are no longer shown to teachers.
 - Changing a roster column mapping or import mode now clears the previous
   preview, and an incomplete server response cannot be confirmed as an import.
+- The browser and desktop workbench now warn before closing a window with
+  unsaved seat adjustments.
 - Added printable HTML and CSV group registers for saved rotation plans. Each
   period keeps empty groups, unseated students, and roster members that could
   not be found in the saved class data.
