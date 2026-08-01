@@ -4,7 +4,9 @@ import { RosterApiError, previewRosterUpdate, uploadRosterDraft } from "../api/c
 import { demoStudents } from "../api/demo";
 import type {
   RosterDraftResponse,
+  RosterConflictItem,
   RosterFieldName,
+  RosterMappingIssueItem,
   RosterMappingItem,
   RosterUpdateMode,
   RosterUpdatePreviewResponse,
@@ -34,6 +36,49 @@ type RosterImportPanelProps = {
   onImportConfirmed: (students: Student[]) => void;
 };
 
+function fieldLabel(field: RosterFieldName | null, t: Translate): string {
+  if (!field) {
+    return t("roster.identityField");
+  }
+  return t(`roster.field.${field}` as Parameters<Translate>[0]);
+}
+
+function mappingIssueMessage(issue: RosterMappingIssueItem, t: Translate): string {
+  switch (issue.code) {
+    case "missing_identity":
+      return t("roster.mappingIssueMissingIdentity");
+    case "ambiguous_header":
+      return t("roster.mappingIssueAmbiguous", {
+        field: fieldLabel(issue.field, t),
+      });
+    default:
+      return t("roster.mappingIssueGeneric");
+  }
+}
+
+function conflictMessage(conflict: RosterConflictItem, t: Translate): string {
+  switch (conflict.code) {
+    case "duplicate_existing_student_id":
+      return t("roster.conflictDuplicateExistingId");
+    case "duplicate_incoming_student_id":
+      return t("roster.conflictDuplicateIncomingId");
+    case "duplicate_incoming_name":
+      return t("roster.conflictDuplicateIncomingName");
+    case "existing_student_matched_twice":
+      return t("roster.conflictMatchedTwice");
+    case "duplicate_resulting_identifier":
+      return t("roster.conflictDuplicateResult");
+    case "ambiguous_student_id":
+      return t("roster.conflictAmbiguousId");
+    case "ambiguous_name":
+      return t("roster.conflictAmbiguousName");
+    case "student_id_name_mismatch":
+      return t("roster.conflictIdNameMismatch");
+    default:
+      return t("roster.conflictGeneric");
+  }
+}
+
 export function RosterImportPanel({
   locale,
   t,
@@ -53,13 +98,28 @@ export function RosterImportPanel({
 
   const friendlyError = useCallback((err: unknown): string => {
     if (err instanceof RosterApiError) {
-      return err.message;
+      switch (err.code) {
+        case "roster_file_required":
+          return t("roster.errorFileRequired");
+        case "roster_file_too_large":
+          return t("roster.errorFileTooLarge");
+        case "invalid_roster_file":
+          return t("roster.errorInvalidFile");
+        case "roster_mapping_rejected":
+          return t("roster.errorMappingRejected");
+        case "feature_unavailable":
+          return t("roster.errorUnavailable");
+        case "roster_draft_not_found":
+          return t("roster.errorExpired");
+        default:
+          return t("roster.errorGeneric");
+      }
     }
     if (err instanceof Error) {
       return err.message;
     }
     return String(err);
-  }, []);
+  }, [t]);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -95,6 +155,13 @@ export function RosterImportPanel({
 
   async function handlePreview() {
     if (!draft) {
+      return;
+    }
+    const hasIdentityMapping = Object.values(mapping).some(
+      (field) => field === "name" || field === "student_id",
+    );
+    if (!hasIdentityMapping) {
+      setError(t("roster.mappingIssueMissingIdentity"));
       return;
     }
     setPhase("previewing");
@@ -223,6 +290,13 @@ export function RosterImportPanel({
           <h3>{t("roster.previewTitle")}</h3>
           <p className="muted">{t("roster.previewHint")}</p>
 
+          {draft.headerless ? (
+            <div className="roster-import-note" role="status">
+              <strong>{t("roster.headerlessTitle")}</strong>
+              <span>{t("roster.headerlessHint")}</span>
+            </div>
+          ) : null}
+
           <div className="roster-preview-table" role="table">
             <div className="roster-preview-head" role="row">
               {draft.columns.map((col) => (
@@ -244,6 +318,7 @@ export function RosterImportPanel({
 
           <fieldset className="mapping-fieldset">
             <legend>{t("roster.mapping")}</legend>
+            <p className="mapping-help">{t("roster.mappingHint")}</p>
             {draft.columns.map((col) => (
               <label key={col.index} className="mapping-row">
                 <span>{columnLabel(col.index, col.header)}</span>
@@ -259,7 +334,7 @@ export function RosterImportPanel({
                   <option value="">{t("roster.notMapped")}</option>
                   {FIELD_OPTIONS.map((field) => (
                     <option key={field} value={field}>
-                      {field}
+                      {fieldLabel(field, t)}
                     </option>
                   ))}
                 </select>
@@ -270,7 +345,16 @@ export function RosterImportPanel({
           {draft.mapping_issues.length > 0 ? (
             <ul className="mapping-issues" role="alert">
               {draft.mapping_issues.map((issue, idx) => (
-                <li key={idx}>{issue.message}</li>
+                <li key={idx}>
+                  {mappingIssueMessage(issue, t)}
+                  {issue.column_indices.length > 0 ? (
+                    <small>
+                      {t("roster.columnsToCheck", {
+                        columns: issue.column_indices.map((index) => index + 1).join(", "),
+                      })}
+                    </small>
+                  ) : null}
+                </li>
               ))}
             </ul>
           ) : null}
@@ -309,7 +393,7 @@ export function RosterImportPanel({
             onClick={handlePreview}
             disabled={isPreviewing}
           >
-            {isPreviewing ? t("roster.previewing") : t("action.preview")}
+            {isPreviewing ? t("roster.previewing") : t("roster.previewAction")}
           </button>
 
           {isPreviewing ? (
@@ -343,13 +427,24 @@ export function RosterImportPanel({
                   <summary>{t("roster.conflicts")}</summary>
                   <ul>
                     {preview.conflicts.map((conflict, idx) => (
-                      <li key={idx}>{conflict.message}</li>
+                      <li key={idx}>
+                        {conflictMessage(conflict, t)}
+                        {conflict.incoming_index !== null ? (
+                          <small>
+                            {t("roster.rowToCheck", {
+                              row: conflict.incoming_index + 2,
+                            })}
+                          </small>
+                        ) : null}
+                      </li>
                     ))}
                   </ul>
                 </details>
               ) : (
                 <p className="muted">{t("roster.noConflicts")}</p>
               )}
+
+              <p className="preview-confirm-hint">{t("roster.confirmHint")}</p>
 
               <div className="preview-actions">
                 <button

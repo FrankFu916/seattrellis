@@ -92,7 +92,7 @@ async def main() -> int:
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-goal", timeout=10_000)
         await page.locator(".preference-list input[type='checkbox']").first.check()
-        await page.locator(".constraints-card .secondary-button").click()
+        await page.locator(".constraints-card .secondary-button").first.click()
         print("6. common preference and hard constraint added")
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-generate", timeout=10_000)

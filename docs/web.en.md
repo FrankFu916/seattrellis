@@ -37,9 +37,10 @@ and English. It does not clear loaded data, the current step, or solve results.
 
 The default workspace keeps the ordinary path focused on classroom tasks:
 
-1. Enter a class name and import a CSV, XLSX, or XLSM roster. A name column is
-   enough to begin; you can also add or correct student records directly in
-   the roster editor.
+1. Enter a class name and import a CSV, XLSX, or XLSM roster. Common headerless
+   exports keep their first data row and ask you to confirm the name or ID column.
+   A name column is enough to begin; you can also add or correct student records
+   directly in the roster editor.
 2. Accept the recommended 30-, 48-, or 60-seat room, or set custom rows, seats
    per row, aisle positions, and unavailable seats.
 3. Choose Daily rotation, Quick shuffle, or Peer support, combine preferences,

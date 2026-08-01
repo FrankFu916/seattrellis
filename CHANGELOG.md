@@ -4,6 +4,9 @@
 
 ### User-facing changes
 
+- Improved roster import in the React and desktop workbench. Headerless CSV/Excel
+  exports keep their first data row, common name/ID columns are suggested, and
+  the review step now uses localized labels and an inline confirmation card.
 - Added printable HTML and CSV group registers for saved rotation plans. Each
   period keeps empty groups, unseated students, and roster members that could
   not be found in the saved class data.
