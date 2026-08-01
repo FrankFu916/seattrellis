@@ -48,6 +48,9 @@
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.
+- Hardened the desktop session handoff for embedded WebViews that do not expose
+  `sessionStorage`; the one-time token is retained in memory for the first API
+  requests instead of showing a `session_required` page.
 
 ### Engineering and maintenance
 
