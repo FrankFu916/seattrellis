@@ -41,8 +41,9 @@ seattrellis workspace
 `workspace` 会启动本地 API 并打开 React 工作台。它适合普通教师完成名单导入、
 教室选择、排座、人工调整、撤销/重做和导出。普通流程就能设置自定义排数、列数、
 走廊、不可用座位，以及多人同时适用的偏好和相邻/固定座位要求。生成页的复杂参数
-默认隐藏；需要控制候选数量、seed、时间限制、backend 或完整 rules JSON 时，再展开
-“高级设置”。
+默认隐藏；需要控制候选数量、seed、时间限制、backend、历史 snapshot、完整 rules JSON
+或异形 layout JSON 时，再展开“高级设置”。规则和 layout 文件都可以导入、检查并下载，
+不会因为改用 React 而失去旧版文件工作流。
 
 ### Streamlit 网页端（兼容与高级配置）
 

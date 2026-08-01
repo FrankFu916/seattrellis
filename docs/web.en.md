@@ -12,7 +12,8 @@ import and mapping, inline student editing, room templates, custom rows and colu
 unavailable seats, common seating goals, combined preferences, adjacency and
 fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo,
 export, and class-project backups. Its **Advanced settings** section contains
-solver controls and complete rules JSON. The separate **Detailed seating rules**
+solver controls plus import/download actions for complete rules/layout JSON and
+historical snapshot files. The separate **Detailed seating rules**
 panel exposes the implemented history, neighbor, cooling, score, and peer-support
 rules with ordinary form controls. Common named groups can be configured directly
 as together/apart requests; the JSON field remains available for more complex
@@ -99,9 +100,11 @@ or empty space, changing the grid, moving or mirroring the layout, and saving
 the result for generation. Student editing is available in the roster step. The
 detailed rules panel covers the implemented soft rules, and custom RuleSet JSON
 now reports field-level errors before generation, including unknown fields,
-malformed hard rules, and roster or seat references that do not exist. A full
-visual editor for every complex rule and batch management remains on the roadmap;
-common group relationships are already available in the ordinary goal step.
+malformed hard rules, and roster or seat references that do not exist. The visual
+RuleSet editor covers the four hard-rule lists, active soft rules, and named groups,
+while preserving the raw JSON compatibility field. Multiple historical snapshot
+files can be loaded for the next solve; common group relationships are already
+available in the ordinary goal step.
 When a rotation has been generated and a class project is selected, the panel
 also offers **Save current rotation**. It writes every period's current seats,
 locks, and editing commands as a new rotation-plan output without replacing the
