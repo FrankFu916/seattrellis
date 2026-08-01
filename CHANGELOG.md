@@ -44,6 +44,10 @@
 - Added an expandable anonymous assignment diff to project comparison. It shows
   which seat references moved, were newly occupied, or became empty without
   sending student names or IDs to the browser.
+- Project history now shows where each saved plan came from (generated, manually
+  edited, rotated, or restored), its immediate source filename, and the number
+  of recorded operations without exposing the underlying student data or command
+  payloads.
 - Added future rotation controls to the React workbench. Teachers can choose
   the number and names of upcoming periods, review repeat-neighbor metrics,
   switch between period-specific editing drafts, and continue editing or

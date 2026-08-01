@@ -63,6 +63,11 @@ const historyResponse = {
       size_bytes: 100,
       student_count: 30,
       period_count: null,
+      provenance: {
+        source: "manual_edit" as const,
+        parent_name: "generated.snapshot.json",
+        operation_count: 2,
+      },
     },
     {
       name: "week2.snapshot.json",
@@ -73,6 +78,7 @@ const historyResponse = {
       size_bytes: 110,
       student_count: 30,
       period_count: null,
+      provenance: null,
     },
   ],
   outputs: [
@@ -85,6 +91,7 @@ const historyResponse = {
       size_bytes: 420,
       student_count: 30,
       period_count: 2,
+      provenance: null,
     },
   ],
   warnings: [],
@@ -224,6 +231,9 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getAllByText("Seating plan")).toHaveLength(2);
     expect(screen.getAllByText("week1.snapshot.json").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("project-artifact-provenance")).toHaveTextContent(
+      "Manual edits · Source: generated.snapshot.json · 2 operations",
+    );
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
 

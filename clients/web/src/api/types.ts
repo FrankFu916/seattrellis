@@ -480,6 +480,12 @@ export type ProjectListResponse = {
   projects: RecentProject[];
 };
 
+export type ProjectArtifactProvenance = {
+  source: "generated" | "manual_edit" | "rotation_edit" | "restored" | "unknown";
+  parent_name: string | null;
+  operation_count: number | null;
+};
+
 export type ProjectArtifact = {
   name: string;
   path: string;
@@ -489,6 +495,7 @@ export type ProjectArtifact = {
   size_bytes: number;
   student_count: number | null;
   period_count: number | null;
+  provenance: ProjectArtifactProvenance | null;
 };
 
 export type ProjectHistoryResponse = {

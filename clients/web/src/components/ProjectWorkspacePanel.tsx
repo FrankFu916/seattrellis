@@ -67,6 +67,26 @@ function artifactKindLabel(
   }
 }
 
+function artifactSourceLabel(
+  artifact: ProjectArtifact,
+  t: Translate,
+): string | null {
+  switch (artifact.provenance?.source) {
+    case "generated":
+      return t("project.sourceGenerated");
+    case "manual_edit":
+      return t("project.sourceManualEdit");
+    case "rotation_edit":
+      return t("project.sourceRotationEdit");
+    case "restored":
+      return t("project.sourceRestored");
+    case "unknown":
+      return t("project.sourceUnknown");
+    default:
+      return null;
+  }
+}
+
 function migrationChangeLabel(
   change: ProjectMigrationChange["change"],
   t: Translate,
@@ -970,6 +990,7 @@ function ArtifactRow({
   locale: Locale;
   t: Translate;
 }) {
+  const sourceLabel = artifactSourceLabel(artifact, t);
   return (
     <article className="project-artifact-row">
       <strong>{artifactKindLabel(artifact, t)}</strong>
@@ -980,6 +1001,21 @@ function ArtifactRow({
           ? ` · ${artifact.period_count} ${t("project.periods")}`
           : ""}
       </small>
+      {sourceLabel && (
+        <small className="project-artifact-provenance" data-testid="project-artifact-provenance">
+          {sourceLabel}
+          {artifact.provenance?.parent_name
+            ? ` · ${t("project.sourceParent", {
+                name: artifact.provenance.parent_name,
+              })}`
+            : ""}
+          {artifact.provenance?.operation_count != null
+            ? ` · ${t("project.sourceOperations", {
+                count: artifact.provenance.operation_count,
+              })}`
+            : ""}
+        </small>
+      )}
     </article>
   );
 }

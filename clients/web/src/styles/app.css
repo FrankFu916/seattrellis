@@ -2141,6 +2141,10 @@ input:focus-visible,
   line-height: 1.45;
 }
 
+.project-artifact-provenance {
+  color: var(--accent);
+}
+
 .project-history-tools {
   display: grid;
   gap: 8px;

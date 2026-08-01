@@ -35,7 +35,9 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 本地 React 工作台使用同一套项目服务：
 
 - `GET /api/v1/projects/recent?root=...&limit=...` 返回最近项目的名称、路径和修改时间；
-- `POST /api/v1/projects/history` 返回历史/生成文件的元数据，不返回学生记录；
+- `POST /api/v1/projects/history` 返回历史/生成文件的元数据，不返回学生记录；每个文件还
+  可带有隐私安全的 `provenance` 摘要（来源类型、上一级文件名和操作次数），不会在
+  摘要中返回原始操作命令或上一级文件的本机路径；
 - `POST /api/v1/projects/artifacts/compare` 比较两个历史或输出文件，只返回隐私安全的
   方案摘要和结构变化数量；
 - `POST /api/v1/projects/artifacts/restore` 从一个历史或输出文件创建新的输出 snapshot，
