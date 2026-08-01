@@ -79,16 +79,19 @@ React workbench keeps the ordinary teacher flow focused:
 
 1. Upload a CSV or Excel roster, confirm auto-detected field mappings, preview
    incremental or overwrite import impact, then apply;
-2. Choose a classroom template and seating goal;
-3. Generate a plan, inspect score dimensions, and manually adjust seats with
+2. Choose a classroom template, or set your own rows, columns, aisles, and
+   unavailable seats;
+3. Choose a seating goal, then combine common preferences and requests such as
+   keeping students apart, keeping them together, or fixing a seat;
+4. Generate a plan, inspect score dimensions, and manually adjust seats with
    undo and redo;
-4. Export as HTML, Excel, PNG, PDF, Word, SVG, or PPTX.
+5. Export as HTML, Excel, PNG, PDF, Word, SVG, or PPTX.
 
 The Project panel beside the workflow can browse recent local project history,
 scan a project before sharing, and download or restore a `.seattrellis.zip`
-backup. Full visual student, rules, and layout editors remain on the roadmap.
-The **Advanced settings** section on the Generate step is optional and exposes
-candidate count, seed, time limit, solver backend, and custom rules/layout JSON.
+backup. Common irregular rooms and seating requests can be entered directly in
+the ordinary flow. The optional **Advanced settings** section is for complete
+rules JSON, candidate count, seed, time limit, and solver backend details.
 The default path does not require any of these settings.
 
 Use `--no-open-browser` to suppress auto-opening, or `--host` and `--port` to
@@ -105,9 +108,10 @@ streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
 The Streamlit web UI is retained as a compatibility and advanced-configuration
 interface. It still exposes preset and rules overlays, history directories,
 candidate count, seed, time limit, backend selection, and detailed export
-privacy controls. Existing JSON and CLI workflows remain supported; nothing
-needs to be migrated just because the React workbench is now the recommended
-entry point. New users should use `seattrellis workspace` instead.
+privacy controls. Existing JSON and CLI workflows remain supported. The
+ordinary room and constraint controls in React are translated into the same
+layout and rules models. New users should use `seattrellis workspace`
+instead.
 
 ### Desktop development shell
 

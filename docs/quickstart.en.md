@@ -41,9 +41,11 @@ seattrellis workspace
 
 `workspace` starts the local API and opens the React workbench. It is the
 short path for roster import, room selection, solving, manual adjustment,
-undo/redo, and export. Complex settings stay collapsed by default; expand
+undo/redo, and export. The ordinary flow also accepts custom rows, columns,
+aisles, unavailable seats, combined preferences, and common adjacency or fixed
+seat requests. Complex solver settings stay collapsed by default; expand
 **Advanced settings** when you need candidate count, seed, time limit, backend,
-or custom rules/layout JSON.
+or a complete rules JSON object.
 
 ### Streamlit web UI (compatibility and advanced configuration)
 

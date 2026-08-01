@@ -9,6 +9,22 @@
   privacy check without exposing student records in the browser response.
 - Added one-click `.seattrellis.zip` backup and restore from the workbench,
   so a class can be moved to another local folder without using the CLI.
+- Added a collapsed **Advanced settings** section to the React workbench. Users
+  who need more control can set candidate count, seed, time limit, solver
+  backend, and complete custom rules JSON without making those fields part of
+  the everyday teacher flow.
+- Added ordinary teacher controls for irregular classrooms: custom rows and
+  columns, aisle columns, unavailable seats, and an optional complete layout
+  definition.
+- Added combinable seating preferences and repeatable hard requests for keeping
+  students apart, keeping them together, or fixing a student to a seat.
+- Fixed roster import in the React workbench: full replacement now uses the
+  current API contract, authenticated desktop requests keep their bearer
+  header, imported student metadata is retained, and the same file can be
+  selected again after cancelling.
+- Fixed the desktop preview startup path so its bundled React page can load
+  before the local API bearer session is attached. The API remains protected
+  after the page bootstrap.
 
 ### Engineering and maintenance
 
@@ -23,6 +39,9 @@
 - Added deterministic ZIP archives and SHA-256 release attachments for future
   desktop bundles. These assets are uploaded only after all three platform
   bundle jobs finish successfully.
+- Refreshed the README and quick-start guides to distinguish the recommended
+  React workbench from the Streamlit compatibility and advanced-configuration
+  interface.
 
 ## 1.8.2 - 2026-07-31
 
