@@ -99,7 +99,7 @@ entire matrix after every small change.
 - [ ] Publish the GitHub Release and confirm every `Publish distributions` job
       succeeds, including PyPI upload and clean Python 3.11/3.14 installation.
 - [ ] Confirm the Release contains the wheel, source distribution and
-      `SHA256SUMS`.
+      `PYTHON-SHA256SUMS`；桌面包使用 `DESKTOP-SHA256SUMS`。
 - [ ] Install `seattrellis==<version>` from PyPI in a clean environment and run
       `seattrellis --version`, `seattrellis --help` and one solve/export smoke
       workflow.

@@ -64,9 +64,9 @@ jobs:
           merge-multiple: true
       - name: Generate SHA-256 checksums
         working-directory: release
-        run: sha256sum *.zip > SHA256SUMS
+        run: sha256sum *.zip > DESKTOP-SHA256SUMS
       - name: Upload desktop assets to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$RELEASE_TAG" release/*.zip release/SHA256SUMS --clobber
+        run: gh release upload "$RELEASE_TAG" release/*.zip release/DESKTOP-SHA256SUMS --clobber
