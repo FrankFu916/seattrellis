@@ -29,6 +29,7 @@ const API_ROOT = "/api/v1";
 const REQUEST_TIMEOUT_MS = 1800;
 const ROSTER_TIMEOUT_MS = 30_000;
 const GENERATE_TIMEOUT_MS = 30_000;
+let cachedDesktopSessionToken: string | null | undefined;
 
 export const EDITOR_PROTOCOL_VERSION = "1.0";
 
@@ -375,18 +376,36 @@ function readDesktopSessionToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  try {
-    const query = new URLSearchParams(window.location.search);
-    const fromUrl = query.get("session");
-    if (fromUrl) {
+  if (cachedDesktopSessionToken !== undefined) {
+    return cachedDesktopSessionToken;
+  }
+
+  const fromUrl = new URLSearchParams(window.location.search).get("session");
+  if (fromUrl) {
+    // Some embedded WebView environments make sessionStorage unavailable. Keep
+    // an in-memory copy so the initial authenticated API calls still work.
+    cachedDesktopSessionToken = fromUrl;
+    try {
       window.sessionStorage.setItem("seattrellis.desktop.session", fromUrl);
+    } catch {
+      // The in-memory token above is sufficient for this desktop window.
+    }
+    try {
       // The credential is needed only for the first page load. Removing it
       // from the visible URL avoids leaking it through copied links or logs.
       window.history.replaceState({}, document.title, window.location.pathname);
-      return fromUrl;
+    } catch {
+      // History APIs may be restricted by an embedded WebView; keep the URL.
     }
-    return window.sessionStorage.getItem("seattrellis.desktop.session");
-  } catch {
-    return null;
+    return cachedDesktopSessionToken;
   }
+
+  try {
+    cachedDesktopSessionToken = window.sessionStorage.getItem(
+      "seattrellis.desktop.session",
+    );
+  } catch {
+    cachedDesktopSessionToken = null;
+  }
+  return cachedDesktopSessionToken;
 }
