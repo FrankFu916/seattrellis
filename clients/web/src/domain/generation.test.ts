@@ -90,6 +90,8 @@ describe("buildGenerateClassRequest", () => {
           first: "S1",
           second: "S2",
           seatId: "",
+          distance: 2,
+          metric: "graph",
         },
       ],
       preferences: ["fair_rotation"],
@@ -102,6 +104,7 @@ describe("buildGenerateClassRequest", () => {
         fixed_seats: [],
         must_be_adjacent: [],
         cannot_be_adjacent: [{ students: ["S1", "S2"] }],
+        min_distance: [],
       },
       rules_overlay: { soft: { fair_rotation: { enabled: true } } },
     });
@@ -140,6 +143,45 @@ describe("buildGenerateClassRequest", () => {
     expect(seats).toHaveLength(6);
     expect(seats.filter((seat) => seat.enabled)).toHaveLength(3);
     expect(seats[1]).toMatchObject({ enabled: false, zone: "aisle" });
+  });
+
+  it("combines minimum distance with other hard seating requests", () => {
+    const request = buildGenerateClassRequest({
+      className: "Distance class",
+      students,
+      selectedRoomId: "compact",
+      selectedGoalId: "daily-rotation",
+      settings: defaults,
+      roomSettings: defaultRoom,
+      constraints: [
+        {
+          id: "distance-1",
+          kind: "min_distance",
+          first: "S1",
+          second: "S2",
+          seatId: "",
+          distance: 2,
+          metric: "graph",
+        },
+        {
+          id: "fixed-1",
+          kind: "fixed_seat",
+          first: "S1",
+          second: "",
+          seatId: "R1C1",
+          distance: 2,
+          metric: "graph",
+        },
+      ],
+      preferences: [],
+    });
+
+    expect(request.draft.goal.hard_rules).toEqual({
+      fixed_seats: [{ student: "S1", seat_id: "R1C1" }],
+      must_be_adjacent: [],
+      cannot_be_adjacent: [],
+      min_distance: [{ students: ["S1", "S2"], distance: 2, metric: "graph" }],
+    });
   });
 
   it.each([

@@ -400,6 +400,7 @@ export function WorkflowPanel({
                         <option value="avoid_adjacent">{t("constraints.avoidAdjacent")}</option>
                         <option value="must_adjacent">{t("constraints.mustAdjacent")}</option>
                         <option value="fixed_seat">{t("constraints.fixedSeat")}</option>
+                        <option value="min_distance">{t("constraints.minDistance")}</option>
                       </select>
                       <select
                         aria-label={t("constraints.student")}
@@ -441,6 +442,37 @@ export function WorkflowPanel({
                           ))}
                         </select>
                       )}
+                      {constraint.kind === "min_distance" ? (
+                        <>
+                          <label className="constraint-detail-field">
+                            <span className="sr-only">{t("constraints.distance")}</span>
+                            <input
+                              type="number"
+                              min={0.1}
+                              step={0.1}
+                              aria-label={t("constraints.distance")}
+                              value={constraint.distance}
+                              onChange={(event) =>
+                                onConstraintChange(constraint.id, {
+                                  distance: Math.max(0.1, Number(event.target.value) || 0.1),
+                                })
+                              }
+                            />
+                          </label>
+                          <select
+                            aria-label={t("constraints.metric")}
+                            value={constraint.metric}
+                            onChange={(event) =>
+                              onConstraintChange(constraint.id, {
+                                metric: event.target.value as CommonConstraint["metric"],
+                              })
+                            }
+                          >
+                            <option value="graph">{t("constraints.metricGraph")}</option>
+                            <option value="euclidean">{t("constraints.metricEuclidean")}</option>
+                          </select>
+                        </>
+                      ) : null}
                       <button
                         className="icon-button"
                         type="button"

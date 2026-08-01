@@ -137,6 +137,11 @@ function buildHardRules(constraints: CommonConstraint[]): HardRulesPayload | und
   const fixed_seats: Array<{ student: string; seat_id: string }> = [];
   const must_be_adjacent: Array<{ students: [string, string] }> = [];
   const cannot_be_adjacent: Array<{ students: [string, string] }> = [];
+  const min_distance: Array<{
+    students: [string, string];
+    distance: number;
+    metric: "euclidean" | "graph";
+  }> = [];
   for (const constraint of constraints) {
     if (constraint.kind === "fixed_seat" && constraint.first && constraint.seatId) {
       fixed_seats.push({ student: constraint.first, seat_id: constraint.seatId });
@@ -144,12 +149,29 @@ function buildHardRules(constraints: CommonConstraint[]): HardRulesPayload | und
       must_be_adjacent.push({ students: [constraint.first, constraint.second] });
     } else if (constraint.kind === "avoid_adjacent" && constraint.first && constraint.second) {
       cannot_be_adjacent.push({ students: [constraint.first, constraint.second] });
+    } else if (
+      constraint.kind === "min_distance" &&
+      constraint.first &&
+      constraint.second &&
+      Number.isFinite(constraint.distance) &&
+      constraint.distance > 0
+    ) {
+      min_distance.push({
+        students: [constraint.first, constraint.second],
+        distance: constraint.distance,
+        metric: constraint.metric,
+      });
     }
   }
-  if (!fixed_seats.length && !must_be_adjacent.length && !cannot_be_adjacent.length) {
+  if (
+    !fixed_seats.length &&
+    !must_be_adjacent.length &&
+    !cannot_be_adjacent.length &&
+    !min_distance.length
+  ) {
     return undefined;
   }
-  return { fixed_seats, must_be_adjacent, cannot_be_adjacent };
+  return { fixed_seats, must_be_adjacent, cannot_be_adjacent, min_distance };
 }
 
 function buildRulesOverlay(

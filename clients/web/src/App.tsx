@@ -277,6 +277,8 @@ export function App() {
         first: students[0]?.id ?? "",
         second: students[1]?.id ?? students[0]?.id ?? "",
         seatId: "",
+        distance: 2,
+        metric: "graph",
       },
     ]);
   }

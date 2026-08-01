@@ -229,7 +229,8 @@ export type HardRulesPayload = {
 export type CommonConstraintKind =
   | "avoid_adjacent"
   | "must_adjacent"
-  | "fixed_seat";
+  | "fixed_seat"
+  | "min_distance";
 
 export type CommonConstraint = {
   id: string;
@@ -237,6 +238,8 @@ export type CommonConstraint = {
   first: string;
   second: string;
   seatId: string;
+  distance: number;
+  metric: "euclidean" | "graph";
 };
 
 export type CommonPreferenceId =
