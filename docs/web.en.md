@@ -10,8 +10,8 @@ seattrellis workspace
 The React workbench is the default path for ordinary teachers. It covers roster
 import and mapping, room templates, custom rows and columns, aisles and
 unavailable seats, common seating goals, combined preferences, adjacency and
-fixed-seat requests, generation, seat swaps, undo/redo, export, and class-project
-backups. Its **Advanced settings** section is reserved for candidate count, seed,
+fixed-seat requests, generation, visual classroom editing, seat swaps, undo/redo,
+export, and class-project backups. Its **Advanced settings** section is reserved for candidate count, seed,
 time limit, solver backend, and a complete rules JSON object; common classroom
 and seating requests stay in the ordinary flow.
 
@@ -62,8 +62,10 @@ of this view.
 The panel can scan the selected project for sensitive fields, download a
 `.seattrellis.zip` backup, and restore an uploaded bundle to a local folder.
 The same path-safety and manifest checks used by the CLI apply to browser
-uploads. The current panel is a project file and artifact view; visual student,
-rules, and layout editors remain on the roadmap.
+uploads. The classroom editor supports clicking cells to create seats, aisles,
+platforms, or empty space, changing the grid, moving or mirroring the layout,
+and saving the result for generation. Student and rules editors, history
+comparison, and in-place recovery remain on the roadmap.
 
 ## Advanced tools
 
@@ -178,7 +180,7 @@ formats.
 Streamlit tables may still need horizontal scrolling on very narrow phones.
 The interface currently supports Simplified Chinese and English.
 Seat-map clicking and accessible form controls are available. Box selection and
-drag-and-drop are not implemented yet.
+drag-and-drop layout editing remain future work.
 
 ## Privacy
 
