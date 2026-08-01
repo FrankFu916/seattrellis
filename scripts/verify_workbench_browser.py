@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 from playwright.async_api import async_playwright, expect
+from seattrellis import cli
 
 WORKBENCH_URL = "http://127.0.0.1:8765"
 
@@ -146,93 +147,104 @@ async def main() -> int:
         print(f"13. downloaded export: {download.suggested_filename}")
 
         # The project panel is available alongside the main teacher flow. Use
-        # the repository's example project so this check exercises the real
-        # API, not only the component's demo fallback.
-        project_select = page.locator("[data-testid='project-select']")
-        await page.wait_for_function(
-            """() => {
-                const select = document.querySelector('[data-testid="project-select"]');
-                return select && select.options.length > 0 && Boolean(select.value);
-            }""",
-            timeout=30_000,
-        )
-        await page.wait_for_selector("[data-testid='project-history']", timeout=30_000)
-        history_rows = await page.locator("[data-testid='project-history'] .project-artifact-row").count()
-        print(f"14. project history rendered {history_rows} artifacts")
-        if history_rows == 0:
-            await browser.close()
-            return 1
-
-        await page.click("[data-testid='project-privacy-button']")
-        await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
-        print("15. project privacy scan rendered")
-
-        # Compare two historical artifacts and create a new output snapshot.
-        # Older demo projects may only contain one artifact, so keep the
-        # acceptance check useful for both a fresh checkout and a used project.
-        compare_button = page.locator("[data-testid='project-compare-button']")
-        if await compare_button.is_enabled():
-            await compare_button.click()
-            await page.wait_for_function(
-                """() => Boolean(
-                    document.querySelector('[data-testid="project-compare-result"]')
-                    || document.querySelector('[data-testid="project-error"]')
-                )""",
-                timeout=30_000,
-            )
-            compare_error = page.locator("[data-testid='project-error']")
-            if await compare_error.is_visible():
-                print(f"15. project comparison failed: {await compare_error.text_content()}")
-                await browser.close()
-                return 1
-            await page.wait_for_selector("[data-testid='project-compare-result']", timeout=30_000)
-            print("16. project history comparison rendered")
-            assignment_details = page.locator("[data-testid='project-assignment-details']")
-            if await assignment_details.count():
-                await assignment_details.locator("summary").click()
-                await expect(assignment_details).to_contain_text("student-")
-                print("17. anonymous assignment changes expanded")
-            restore_artifact_button = page.locator(
-                "[data-testid='project-restore-artifact-button']"
-            )
-            await restore_artifact_button.click()
+        # a fresh temporary project so migration and restore are exercised
+        # without modifying a checkout or a teacher's existing files.
+        with tempfile.TemporaryDirectory(prefix="seattrellis-browser-project-") as directory:
+            cli.init_demo(output_dir=Path(directory) / "class", overwrite=True)
+            await page.locator("[data-testid='project-root-input']").fill(directory)
+            await page.locator("[data-testid='project-root-input']").press("Enter")
             await page.wait_for_function(
                 """() => {
-                    const status = document.querySelector('[data-testid="project-status"]');
-                    return Boolean(status && status.textContent?.includes('restored'));
+                    const select = document.querySelector('[data-testid="project-select"]');
+                    return select && select.options.length > 0 && Boolean(select.value);
                 }""",
                 timeout=30_000,
             )
-            print("18. historical artifact restored as a new plan")
-        else:
-            print("16. project history comparison skipped (one artifact available)")
+            await page.wait_for_selector("[data-testid='project-history']", timeout=30_000)
+            history_rows = await page.locator("[data-testid='project-history'] .project-artifact-row").count()
+            print(f"14. project history rendered {history_rows} artifacts")
+            if history_rows == 0:
+                await browser.close()
+                return 1
 
-        async with page.expect_download(timeout=30_000) as bundle_info:
-            await page.click("[data-testid='project-backup-button']")
-        bundle = await bundle_info.value
-        if not bundle.suggested_filename.endswith(".seattrellis.zip"):
-            await browser.close()
-            return 1
-        print(f"19. downloaded project bundle: {bundle.suggested_filename}")
+            await page.click("[data-testid='project-privacy-button']")
+            await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
+            print("15. project privacy scan rendered")
 
-        with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as directory:
-            bundle_path = Path(directory) / bundle.suggested_filename
-            await bundle.save_as(str(bundle_path))
-            restore_target = Path(directory) / "restored"
-            await page.locator("[data-testid='project-restore-file']").set_input_files(str(bundle_path))
-            await page.locator("[data-testid='project-restore-target']").fill(str(restore_target))
-            await page.click("[data-testid='project-restore-button']")
+            # Compare two historical artifacts and create a new output snapshot.
+            compare_button = page.locator("[data-testid='project-compare-button']")
+            if await compare_button.is_enabled():
+                await compare_button.click()
+                await page.wait_for_function(
+                    """() => Boolean(
+                        document.querySelector('[data-testid="project-compare-result"]')
+                        || document.querySelector('[data-testid="project-error"]')
+                    )""",
+                    timeout=30_000,
+                )
+                compare_error = page.locator("[data-testid='project-error']")
+                if await compare_error.is_visible():
+                    print(f"15. project comparison failed: {await compare_error.text_content()}")
+                    await browser.close()
+                    return 1
+                await page.wait_for_selector("[data-testid='project-compare-result']", timeout=30_000)
+                print("16. project history comparison rendered")
+                assignment_details = page.locator("[data-testid='project-assignment-details']")
+                if await assignment_details.count():
+                    await assignment_details.locator("summary").click()
+                    await expect(assignment_details).to_contain_text("student-")
+                    print("17. anonymous assignment changes expanded")
+                await page.locator("[data-testid='project-restore-artifact-button']").click()
+                await page.wait_for_function(
+                    """() => {
+                        const status = document.querySelector('[data-testid="project-status"]');
+                        return Boolean(status && /restored|恢复/.test(status.textContent || ''));
+                    }""",
+                    timeout=30_000,
+                )
+                print("18. historical artifact restored as a new plan")
+
+            await page.locator("[data-testid='project-migration-in-place']").check()
+            await page.locator("[data-testid='project-migration-preview']").click()
+            await page.wait_for_selector("[data-testid='project-migration-result']", timeout=30_000)
+            await page.locator("[data-testid='project-migration-apply']").click()
+            await page.wait_for_selector("[data-testid='project-migration-restore']", timeout=30_000)
+            await page.locator("[data-testid='project-migration-restore']").click()
             await page.wait_for_function(
                 """() => {
                     const status = document.querySelector('[data-testid="project-status"]');
-                    return Boolean(status && status.textContent?.includes('restored'));
+                    return Boolean(status && /restored|恢复/.test(status.textContent || ''));
                 }""",
                 timeout=30_000,
             )
-            if not (restore_target / "project.seattrellis.json").exists():
+            print("19. project migration backup restored with a safety copy")
+
+            async with page.expect_download(timeout=30_000) as bundle_info:
+                await page.click("[data-testid='project-backup-button']")
+            bundle = await bundle_info.value
+            if not bundle.suggested_filename.endswith(".seattrellis.zip"):
                 await browser.close()
                 return 1
-        print("20. project bundle restored successfully")
+            print(f"20. downloaded project bundle: {bundle.suggested_filename}")
+
+            with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as restore_directory:
+                bundle_path = Path(restore_directory) / bundle.suggested_filename
+                await bundle.save_as(str(bundle_path))
+                restore_target = Path(restore_directory) / "restored"
+                await page.locator("[data-testid='project-restore-file']").set_input_files(str(bundle_path))
+                await page.locator("[data-testid='project-restore-target']").fill(str(restore_target))
+                await page.click("[data-testid='project-restore-button']")
+                await page.wait_for_function(
+                    """() => {
+                        const status = document.querySelector('[data-testid="project-status"]');
+                        return Boolean(status && /restored|恢复/.test(status.textContent || ''));
+                    }""",
+                    timeout=30_000,
+                )
+                if not (restore_target / "project.seattrellis.json").exists():
+                    await browser.close()
+                    return 1
+            print("21. project bundle restored successfully")
 
         await browser.close()
         return 0
