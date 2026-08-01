@@ -47,13 +47,17 @@ async def main() -> int:
                 str(roster_path)
             )
             await page.wait_for_selector(".roster-mapping-section", timeout=30_000)
+            await expect(page.get_by_role("button", name="确认导入")).to_be_disabled()
+            await expect(
+                page.get_by_text("Map at least one Student ID or Name column.")
+            ).to_have_count(0)
             await page.locator("input[name='roster-mode']").nth(1).check()
-            await page.locator(".roster-mapping-section .secondary-button").click()
+            await page.locator(".roster-preview-button").click()
             await page.wait_for_selector(".preview-result", timeout=30_000)
             if await page.locator(".preview-result .preview-ok").count() == 0:
                 await browser.close()
                 return 1
-            await page.locator(".preview-result button.primary-button").click()
+            await page.locator(".roster-confirm-card button.primary-button").click()
             await page.wait_for_function(
                 """() => document.querySelector('.app-header')?.textContent?.includes('3 名学生')""",
                 timeout=30_000,
@@ -100,7 +104,7 @@ async def main() -> int:
 
         advanced = page.locator("details.advanced-settings")
         await advanced.wait_for(state="visible")
-        await advanced.locator("summary").click()
+        await advanced.locator("summary").first.click()
         await page.wait_for_selector("details.advanced-settings select", timeout=10_000)
         await advanced.locator("input[type='number']").nth(0).fill("2")
         await advanced.locator("input[type='number']").nth(1).fill("5")
