@@ -23,6 +23,8 @@ from seattrellis.api.handlers import (
     project_history,
     project_artifact_compare,
     project_artifact_restore,
+    project_migration_apply,
+    project_migration_preview,
     project_privacy,
     restore_project_bundle_file,
     room_templates,
@@ -57,6 +59,8 @@ from seattrellis.api.models import (
     TeacherGoalsResponse,
     ProjectHistoryResponse,
     ProjectListResponse,
+    ProjectMigrationRequest,
+    ProjectMigrationResponse,
     ProjectPathRequest,
     ProjectPrivacyResponse,
     ProjectRestoreResponse,
@@ -574,6 +578,22 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/projects/artifacts/restore",
         project_artifact_restore,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/preview",
+        project_migration_preview,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/apply",
+        project_migration_apply,
         methods=["POST"],
         response_model=None,
         responses={422: {"model": ErrorResponse}},

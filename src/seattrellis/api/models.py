@@ -411,6 +411,34 @@ class ProjectArtifactRestoreResponse(VersionedResponse):
     restored_artifact: str
 
 
+class ProjectMigrationRequest(ProjectPathRequest):
+    """Select a project file or in-project artifact for safe migration."""
+
+    artifact_path: str | None = None
+    in_place: bool = False
+
+    @field_validator("artifact_path", mode="before")
+    def clean_optional_artifact_path(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("artifact_path must be a string.")
+        text = value.strip()
+        return text or None
+
+
+class ProjectMigrationResponse(VersionedResponse):
+    """Preview or result of one schema migration without exposing file data."""
+
+    project_path: str
+    source_path: str
+    artifact: str
+    schema_version: str | int
+    output_path: str | None = None
+    backup_path: str | None = None
+    dry_run: bool
+
+
 class PrivacyFindingItem(ApiModel):
     file: str
     fields: list[str] = Field(default_factory=list)

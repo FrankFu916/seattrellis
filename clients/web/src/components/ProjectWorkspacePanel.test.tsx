@@ -3,10 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  applyProjectMigration,
   compareProjectArtifacts,
   fetchProjectHistory,
   listRecentProjects,
   downloadProjectBundle,
+  previewProjectMigration,
   restoreProjectBundle,
   restoreProjectArtifact,
   scanProjectPrivacy,
@@ -15,10 +17,12 @@ import { createTranslator } from "../i18n/messages";
 import { ProjectWorkspacePanel } from "./ProjectWorkspacePanel";
 
 vi.mock("../api/client", () => ({
+  applyProjectMigration: vi.fn(),
   compareProjectArtifacts: vi.fn(),
   downloadProjectBundle: vi.fn(),
   fetchProjectHistory: vi.fn(),
   listRecentProjects: vi.fn(),
+  previewProjectMigration: vi.fn(),
   restoreProjectBundle: vi.fn(),
   restoreProjectArtifact: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
@@ -135,6 +139,26 @@ describe("ProjectWorkspacePanel", () => {
       source_artifact: "/classes/history/week1.snapshot.json",
       restored_artifact: "/classes/outputs/restored-week1.snapshot.json",
     });
+    vi.mocked(previewProjectMigration).mockResolvedValue({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      source_path: "/classes/demo.seattrellis.json",
+      artifact: "project",
+      schema_version: "1",
+      output_path: "/classes/demo.seattrellis.migrated.json",
+      backup_path: null,
+      dry_run: true,
+    });
+    vi.mocked(applyProjectMigration).mockResolvedValue({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      source_path: "/classes/demo.seattrellis.json",
+      artifact: "project",
+      schema_version: "1",
+      output_path: "/classes/demo.seattrellis.migrated.json",
+      backup_path: null,
+      dry_run: false,
+    });
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:backup");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
@@ -242,5 +266,38 @@ describe("ProjectWorkspacePanel", () => {
         "/classes/history/week1.snapshot.json",
       );
     });
+  });
+
+  it("previews and writes a project schema migration", async () => {
+    const user = userEvent.setup();
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-select")).toHaveValue(
+        "/classes/demo.seattrellis.json",
+      );
+    });
+    await user.click(screen.getByTestId("project-migration-preview"));
+    await waitFor(() => {
+      expect(previewProjectMigration).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        undefined,
+        false,
+      );
+    });
+    expect(screen.getByTestId("project-migration-result")).toHaveTextContent(
+      "Migration check passed",
+    );
+    await user.click(screen.getByTestId("project-migration-apply"));
+    await waitFor(() => {
+      expect(applyProjectMigration).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        undefined,
+        false,
+      );
+    });
+    expect(screen.getByTestId("project-status")).toHaveTextContent(
+      "Migration written to: /classes/demo.seattrellis.migrated.json",
+    );
   });
 });

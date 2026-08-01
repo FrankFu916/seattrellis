@@ -547,3 +547,14 @@ export type ProjectArtifactRestoreResponse = {
   source_artifact: string;
   restored_artifact: string;
 };
+
+export type ProjectMigrationResponse = {
+  api_version: "1";
+  project_path: string;
+  source_path: string;
+  artifact: string;
+  schema_version: string | number;
+  output_path: string | null;
+  backup_path: string | null;
+  dry_run: boolean;
+};

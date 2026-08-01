@@ -35,6 +35,8 @@ from seattrellis.api.models import (
     ProjectArtifactSummary,
     ProjectHistoryResponse,
     ProjectListResponse,
+    ProjectMigrationRequest,
+    ProjectMigrationResponse,
     ProjectPathRequest,
     ProjectPrivacyResponse,
     ProjectRestoreResponse,
@@ -81,6 +83,7 @@ from seattrellis.project_bundle import (
     restore_project_bundle as restore_bundle,
     scan_project_privacy,
 )
+from seattrellis.schema_migration import migrate_json_file
 from seattrellis.service_types import (
     CANVAS_EXPORT_FORMATS,
     ExportRequest,
@@ -128,6 +131,7 @@ def capabilities() -> CapabilitiesResponse:
             "class-generation",
             "rotation-plans",
             "project-workspace",
+            "project-migration",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -364,6 +368,87 @@ def project_artifact_restore(
     )
 
 
+def project_migration_preview(
+    request: ProjectMigrationRequest,
+) -> ProjectMigrationResponse:
+    """Validate a project artifact and describe a safe migration target."""
+
+    return _migrate_project_artifact(request, dry_run=True)
+
+
+def project_migration_apply(
+    request: ProjectMigrationRequest,
+) -> ProjectMigrationResponse:
+    """Write a migrated artifact, preserving the source unless explicitly in-place."""
+
+    return _migrate_project_artifact(request, dry_run=False)
+
+
+def _migrate_project_artifact(
+    request: ProjectMigrationRequest,
+    *,
+    dry_run: bool,
+) -> ProjectMigrationResponse:
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        source_path = (
+            paths.project_file
+            if request.artifact_path is None
+            else _resolve_project_artifact(paths, request.artifact_path)
+        )
+        if not source_path.is_file():
+            raise InputFileError("The selected project artifact does not exist.")
+        output_path = _migration_output_path(
+            paths,
+            source_path,
+            in_place=request.in_place,
+        )
+        result = migrate_json_file(
+            source_path,
+            output=output_path,
+            in_place=request.in_place,
+            dry_run=dry_run,
+            create_backup=True,
+        )
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_migration_failed",
+            message="The selected project artifact could not be migrated.",
+        ) from exc
+    return ProjectMigrationResponse(
+        project_path=str(paths.project_file),
+        source_path=str(source_path),
+        artifact=result.artifact,
+        schema_version=result.schema_version,
+        output_path=str(result.output_path) if result.output_path is not None else None,
+        backup_path=str(result.backup_path) if result.backup_path is not None else None,
+        dry_run=result.dry_run,
+    )
+
+
+def _migration_output_path(
+    paths: ProjectPaths,
+    source_path: Path,
+    *,
+    in_place: bool,
+) -> Path | None:
+    if in_place:
+        return None
+    if source_path == paths.project_file:
+        directory = source_path.parent
+    else:
+        directory = paths.outputs_dir
+    directory.mkdir(parents=True, exist_ok=True)
+    stem = source_path.name.removesuffix(".json")
+    candidate = directory / f"{stem}.migrated.json"
+    suffix = 2
+    while candidate.exists():
+        candidate = directory / f"{stem}.migrated-{suffix}.json"
+        suffix += 1
+    return candidate
+
+
 def _resolve_project_artifact(paths: ProjectPaths, requested: str) -> Path:
     """Resolve an artifact only when it remains inside the project workspace."""
 
@@ -376,6 +461,8 @@ def _resolve_project_artifact(paths: ProjectPaths, requested: str) -> Path:
         )
         if directory is not None
     ]
+    if candidate == paths.project_file:
+        return candidate
     if not candidate.is_file() or not any(
         candidate.parent == directory or directory in candidate.parents
         for directory in allowed_directories

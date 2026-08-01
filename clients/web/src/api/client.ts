@@ -15,6 +15,7 @@ import type {
   ProjectHistoryResponse,
   ProjectArtifactCompareResponse,
   ProjectArtifactRestoreResponse,
+  ProjectMigrationResponse,
   ProjectListResponse,
   ProjectPrivacyResponse,
   ProjectRestoreResponse,
@@ -165,6 +166,38 @@ export async function restoreProjectArtifact(
     body: JSON.stringify({
       project_path: projectPath,
       artifact_path: artifactPath,
+    }),
+  }, 30_000);
+}
+
+export async function previewProjectMigration(
+  projectPath: string,
+  artifactPath?: string,
+  inPlace = false,
+): Promise<ProjectMigrationResponse> {
+  return fetchJson<ProjectMigrationResponse>("/projects/migration/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      ...(artifactPath ? { artifact_path: artifactPath } : {}),
+      in_place: inPlace,
+    }),
+  }, 30_000);
+}
+
+export async function applyProjectMigration(
+  projectPath: string,
+  artifactPath?: string,
+  inPlace = false,
+): Promise<ProjectMigrationResponse> {
+  return fetchJson<ProjectMigrationResponse>("/projects/migration/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      ...(artifactPath ? { artifact_path: artifactPath } : {}),
+      in_place: inPlace,
     }),
   }, 30_000);
 }

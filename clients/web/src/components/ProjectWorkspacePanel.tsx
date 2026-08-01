@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   compareProjectArtifacts,
+  applyProjectMigration,
   downloadProjectBundle,
   fetchProjectHistory,
   listRecentProjects,
+  previewProjectMigration,
   restoreProjectArtifact,
   restoreProjectBundle,
   RosterApiError,
@@ -14,6 +16,7 @@ import type {
   ProjectArtifact,
   ProjectArtifactCompareResponse,
   ProjectHistoryResponse,
+  ProjectMigrationResponse,
   ProjectPrivacyResponse,
   RecentProject,
 } from "../api/types";
@@ -79,9 +82,20 @@ export function ProjectWorkspacePanel({
   const [compareLeftPath, setCompareLeftPath] = useState("");
   const [compareRightPath, setCompareRightPath] = useState("");
   const [restoreArtifactPath, setRestoreArtifactPath] = useState("");
+  const [migrationArtifactPath, setMigrationArtifactPath] = useState("");
+  const [migrationInPlace, setMigrationInPlace] = useState(false);
+  const [migrationPreview, setMigrationPreview] = useState<ProjectMigrationResponse | null>(null);
   const [comparison, setComparison] = useState<ProjectArtifactCompareResponse | null>(null);
   const [busy, setBusy] = useState<
-    "loading" | "scanning" | "backup" | "restore" | "compare" | "restore-artifact" | null
+    "loading"
+    | "scanning"
+    | "backup"
+    | "restore"
+    | "compare"
+    | "restore-artifact"
+    | "migration-preview"
+    | "migration-apply"
+    | null
   >(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -99,6 +113,8 @@ export function ProjectWorkspacePanel({
       setCompareLeftPath("");
       setCompareRightPath("");
       setRestoreArtifactPath("");
+      setMigrationArtifactPath("");
+      setMigrationPreview(null);
       return;
     }
     setCompareLeftPath((current) =>
@@ -117,6 +133,9 @@ export function ProjectWorkspacePanel({
         ? current
         : allArtifacts[0].path,
     );
+    setMigrationArtifactPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current) ? current : "",
+    );
   }, [allArtifacts]);
 
   async function openProject(path: string): Promise<void> {
@@ -132,6 +151,7 @@ export function ProjectWorkspacePanel({
       const response = await fetchProjectHistory(path);
       setHistory(response);
       setComparison(null);
+      setMigrationPreview(null);
       setStatus(t("project.statusLoaded", { name: response.project_name }));
     } catch (caught) {
       setHistory(null);
@@ -249,6 +269,49 @@ export function ProjectWorkspacePanel({
       const result = await restoreProjectArtifact(selectedPath, restoreArtifactPath);
       await refreshProjects();
       setStatus(t("project.statusArtifactRestored", { name: result.restored_artifact }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleMigrationPreview(): Promise<void> {
+    if (!selectedPath) {
+      return;
+    }
+    setBusy("migration-preview");
+    setError("");
+    try {
+      const result = await previewProjectMigration(
+        selectedPath,
+        migrationArtifactPath || undefined,
+        migrationInPlace,
+      );
+      setMigrationPreview(result);
+      setStatus(t("project.statusMigrationPreview"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleMigrationApply(): Promise<void> {
+    if (!selectedPath || !migrationPreview) {
+      return;
+    }
+    setBusy("migration-apply");
+    setError("");
+    try {
+      const result = await applyProjectMigration(
+        selectedPath,
+        migrationArtifactPath || undefined,
+        migrationInPlace,
+      );
+      setMigrationPreview(result);
+      await refreshProjects();
+      setStatus(t("project.statusMigrationApplied", { path: result.output_path ?? result.source_path }));
     } catch (caught) {
       setError(t("project.error", { message: errorMessage(caught) }));
     } finally {
@@ -477,6 +540,80 @@ export function ProjectWorkspacePanel({
               </div>
             )}
           </>
+        )}
+
+        {selectedPath && (
+          <div className="project-migration" data-testid="project-migration">
+            <h3>{t("project.migrationTitle")}</h3>
+            <p className="muted">{t("project.migrationHint")}</p>
+            <label className="project-field" htmlFor="project-migration-artifact">
+              <span>{t("project.migrationArtifact")}</span>
+              <select
+                id="project-migration-artifact"
+                data-testid="project-migration-artifact"
+                value={migrationArtifactPath}
+                onChange={(event) => {
+                  setMigrationArtifactPath(event.target.value);
+                  setMigrationPreview(null);
+                }}
+              >
+                <option value="">{t("project.migrationProjectFile")}</option>
+                {allArtifacts.map((artifact) => (
+                  <option key={`migration-${artifact.path}`} value={artifact.path}>
+                    {artifact.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="rule-toggle">
+              <input
+                type="checkbox"
+                data-testid="project-migration-in-place"
+                checked={migrationInPlace}
+                onChange={(event) => {
+                  setMigrationInPlace(event.target.checked);
+                  setMigrationPreview(null);
+                }}
+              />
+              <span>{t("project.migrationInPlace")}</span>
+            </label>
+            <div className="project-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                data-testid="project-migration-preview"
+                onClick={() => void handleMigrationPreview()}
+                disabled={busy !== null}
+              >
+                {busy === "migration-preview"
+                  ? t("project.migrationPreviewing")
+                  : t("project.migrationPreview")}
+              </button>
+              {migrationPreview && (
+                <button
+                  className="primary-button"
+                  type="button"
+                  data-testid="project-migration-apply"
+                  onClick={() => void handleMigrationApply()}
+                  disabled={busy !== null}
+                >
+                  {busy === "migration-apply"
+                    ? t("project.migrationApplying")
+                    : t("project.migrationApply")}
+                </button>
+              )}
+            </div>
+            {migrationPreview && (
+              <div className="project-migration-result" data-testid="project-migration-result" role="status">
+                <strong>{t("project.migrationReady")}</strong>
+                <span>{t("project.migrationSchema", { version: migrationPreview.schema_version })}</span>
+                <small>{migrationPreview.output_path ?? t("project.migrationInPlaceTarget")}</small>
+                {migrationPreview.backup_path && (
+                  <small>{t("project.migrationBackup", { path: migrationPreview.backup_path })}</small>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         <div className="project-actions">

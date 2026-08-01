@@ -1929,6 +1929,54 @@ input:focus-visible,
   font-size: 0.65rem;
 }
 
+.project-migration {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.project-migration h3 {
+  color: var(--text-strong);
+  font-size: 0.72rem;
+}
+
+.project-migration .project-field > span {
+  font-size: 0.62rem;
+}
+
+.project-migration select {
+  min-height: 32px;
+  padding: 5px 7px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.65rem;
+}
+
+.project-migration .rule-toggle {
+  font-size: 0.65rem;
+}
+
+.project-migration-result {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-radius: var(--radius-small);
+  background: var(--surface-tint);
+  color: var(--text);
+  font-size: 0.63rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.project-migration-result strong {
+  color: var(--text-strong);
+}
+
 .project-compare-result {
   display: grid;
   gap: 3px;

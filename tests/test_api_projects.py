@@ -148,3 +148,51 @@ def test_project_artifact_endpoints_reject_paths_outside_the_project(tmp_path) -
         },
     )
     assert response.status_code == 422
+
+
+def test_project_schema_migration_can_preview_and_write_a_new_file(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    client = _client()
+    source = paths["project"]
+    original = source.read_bytes()
+
+    preview = client.post(
+        "/api/v1/projects/migration/preview",
+        json={"project_path": str(source)},
+    )
+    assert preview.status_code == 200
+    preview_payload = preview.json()
+    assert preview_payload["dry_run"] is True
+    assert preview_payload["artifact"] == "project"
+    assert preview_payload["output_path"].endswith(".migrated.json")
+    assert not Path(preview_payload["output_path"]).exists()
+    assert source.read_bytes() == original
+
+    applied = client.post(
+        "/api/v1/projects/migration/apply",
+        json={"project_path": str(source)},
+    )
+    assert applied.status_code == 200
+    applied_payload = applied.json()
+    migrated = Path(applied_payload["output_path"])
+    assert applied_payload["dry_run"] is False
+    assert migrated.exists()
+    assert migrated.parent == source.parent
+    assert source.read_bytes() == original
+
+
+def test_project_schema_migration_in_place_keeps_a_backup(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    client = _client()
+    source = paths["project"]
+
+    response = client.post(
+        "/api/v1/projects/migration/apply",
+        json={"project_path": str(source), "in_place": True},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["output_path"] == str(source)
+    assert payload["backup_path"]
+    assert Path(payload["backup_path"]).exists()
+    assert source.exists()
