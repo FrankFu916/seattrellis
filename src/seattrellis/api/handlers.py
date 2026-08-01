@@ -5,10 +5,12 @@ from __future__ import annotations
 import importlib.util
 import os
 import tempfile
+from copy import deepcopy
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from seattrellis.api.drafts import EditorDraftNotFoundError, EditorDraftStore
 from seattrellis.api.errors import ApiProblem
@@ -25,6 +27,11 @@ from seattrellis.api.models import (
     HealthResponse,
     InspectClassResponse,
     ProjectArtifactItem,
+    ProjectArtifactCompareResponse,
+    ProjectArtifactDiff,
+    ProjectArtifactRequest,
+    ProjectArtifactRestoreResponse,
+    ProjectArtifactSummary,
     ProjectHistoryResponse,
     ProjectListResponse,
     ProjectPathRequest,
@@ -56,8 +63,15 @@ from seattrellis.application.teacher_goals import (
     list_teacher_goals,
 )
 from seattrellis.exporters import export_snapshot
-from seattrellis.io.json_files import InputFileError, read_json
-from seattrellis.io.project import load_project_paths
+from seattrellis.io.json_files import (
+    InputFileError,
+    load_candidate_set,
+    load_rotation_plan,
+    load_seating_artifact,
+    read_json,
+    write_json_model,
+)
+from seattrellis.io.project import ProjectPaths, load_project_paths
 from seattrellis.io.validation import ValidationIssue
 from seattrellis.optional import MissingOptionalDependencyError
 from seattrellis.project_bundle import (
@@ -74,6 +88,7 @@ from seattrellis.service_types import (
     RotationInput,
 )
 from seattrellis.service import compute_rotation_plan
+from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.solver.errors import SeatTrellisSolveError
 from seattrellis.solver.registry import registered_solver_backends
 
@@ -231,6 +246,176 @@ def project_history(request: ProjectPathRequest) -> ProjectHistoryResponse:
     )
 
 
+def project_artifact_compare(
+    request: ProjectArtifactRequest,
+) -> ProjectArtifactCompareResponse:
+    """Compare two validated project artifacts without returning student data."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        left_path = _resolve_project_artifact(paths, request.artifact_path)
+        if request.compare_to_path is None:
+            raise InputFileError("compare_to_path is required for artifact comparison.")
+        right_path = _resolve_project_artifact(paths, request.compare_to_path)
+        if left_path == right_path:
+            raise InputFileError("An artifact cannot be compared with itself.")
+        left_kind, left_snapshot, left_created_at = _snapshot_for_artifact(left_path)
+        right_kind, right_snapshot, right_created_at = _snapshot_for_artifact(right_path)
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_artifact_unavailable",
+            message="The selected project artifacts could not be compared.",
+        ) from exc
+
+    left_summary = _artifact_summary(
+        left_path,
+        kind=left_kind,
+        snapshot=left_snapshot,
+        created_at=left_created_at,
+    )
+    right_summary = _artifact_summary(
+        right_path,
+        kind=right_kind,
+        snapshot=right_snapshot,
+        created_at=right_created_at,
+    )
+    left_assignments = {item.student_key: item.seat_id for item in left_snapshot.assignments}
+    right_assignments = {item.student_key: item.seat_id for item in right_snapshot.assignments}
+    all_students = set(left_assignments) | set(right_assignments)
+    return ProjectArtifactCompareResponse(
+        left=left_summary,
+        right=right_summary,
+        diff=ProjectArtifactDiff(
+            assignment_changes=sum(
+                left_assignments.get(student) != right_assignments.get(student)
+                for student in all_students
+            ),
+            roster_added=len(set(right_assignments) - set(left_assignments)),
+            roster_removed=len(set(left_assignments) - set(right_assignments)),
+            layout_changed=(
+                left_snapshot.layout.model_dump(mode="json")
+                != right_snapshot.layout.model_dump(mode="json")
+            ),
+            rules_changed=(
+                left_snapshot.rules.model_dump(mode="json")
+                != right_snapshot.rules.model_dump(mode="json")
+            ),
+            solver_status_changed=left_snapshot.solver_status != right_snapshot.solver_status,
+        ),
+    )
+
+
+def project_artifact_restore(
+    request: ProjectArtifactRequest,
+) -> ProjectArtifactRestoreResponse:
+    """Restore an artifact as a new output snapshot without overwriting history."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        source_path = _resolve_project_artifact(paths, request.artifact_path)
+        kind, snapshot, _created_at = _snapshot_for_artifact(source_path)
+        if kind == "rotation_plan":
+            raise InputFileError(
+                "Select a snapshot or candidate set inside a rotation plan before restoring it."
+            )
+        paths.outputs_dir.mkdir(parents=True, exist_ok=True)
+        metadata = deepcopy(snapshot.metadata)
+        metadata["restored_from"] = source_path.name
+        metadata["restored_at"] = datetime.now(timezone.utc).isoformat()
+        restored = snapshot.model_copy(update={"metadata": metadata})
+        target = _next_restored_path(paths.outputs_dir, source_path.stem)
+        write_json_model(restored, target)
+    except (InputFileError, OSError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_artifact_restore_failed",
+            message="The selected project artifact could not be restored.",
+        ) from exc
+    return ProjectArtifactRestoreResponse(
+        project_path=str(paths.project_file),
+        source_artifact=str(source_path),
+        restored_artifact=str(target),
+    )
+
+
+def _resolve_project_artifact(paths: ProjectPaths, requested: str) -> Path:
+    """Resolve an artifact only when it remains inside the project workspace."""
+
+    candidate = Path(requested).expanduser().resolve()
+    allowed_directories = [
+        directory
+        for directory in (
+            paths.history_dir,
+            paths.outputs_dir,
+        )
+        if directory is not None
+    ]
+    if not candidate.is_file() or not any(
+        candidate.parent == directory or directory in candidate.parents
+        for directory in allowed_directories
+    ):
+        raise InputFileError(
+            "The artifact must be a file inside the project history or outputs directory."
+        )
+    return candidate
+
+
+def _snapshot_for_artifact(
+    path: Path,
+) -> tuple[
+    Literal["snapshot", "candidate_set", "rotation_plan", "unknown"],
+    SeatingSnapshot,
+    datetime | None,
+]:
+    data = read_json(path)
+    kind = data.get("kind")
+    if kind == "candidate_set":
+        artifact = load_candidate_set(path)
+        return "candidate_set", artifact.get_candidate("recommended").snapshot, artifact.created_at
+    if kind == "rotation_plan":
+        artifact = load_rotation_plan(path)
+        return "rotation_plan", artifact.periods[0].snapshot, artifact.created_at
+    if kind in {None, "snapshot"}:
+        artifact = load_seating_artifact(path)
+        if not isinstance(artifact, SeatingSnapshot):
+            raise InputFileError(f"Expected a snapshot artifact: {path}")
+        return "snapshot", artifact, artifact.created_at
+    raise InputFileError(f"Unsupported project artifact kind: {kind}")
+
+
+def _artifact_summary(
+    path: Path,
+    *,
+    kind: Literal["snapshot", "candidate_set", "rotation_plan", "unknown"],
+    snapshot: SeatingSnapshot,
+    created_at: datetime | None,
+) -> ProjectArtifactSummary:
+    return ProjectArtifactSummary(
+        name=path.name,
+        path=str(path),
+        kind=kind,
+        created_at=created_at,
+        student_count=len(snapshot.students),
+        assignment_count=len(snapshot.assignments),
+        enabled_seat_count=len(snapshot.layout.enabled_seats),
+        solver_status=snapshot.solver_status,
+    )
+
+
+def _next_restored_path(outputs_dir: Path, source_stem: str) -> Path:
+    clean_stem = source_stem.removesuffix(".snapshot")
+    base = outputs_dir / f"restored-{clean_stem}.snapshot.json"
+    if not base.exists():
+        return base
+    index = 2
+    while True:
+        candidate = outputs_dir / f"restored-{clean_stem}-{index}.snapshot.json"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
 def project_privacy(request: ProjectPathRequest) -> ProjectPrivacyResponse:
     """Scan a project using the same conservative bundle policy as the CLI."""
 
@@ -321,6 +506,8 @@ def _artifact_items(
             warnings.append(f"Could not read project artifact {path.name}.")
             continue
         kind = data.get("kind")
+        if kind is None and "assignments" in data:
+            kind = "snapshot"
         if kind not in {"snapshot", "candidate_set", "rotation_plan"}:
             kind = "unknown"
         periods = data.get("periods")

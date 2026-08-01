@@ -29,6 +29,10 @@
 - Added an inline roster editor to the ordinary workflow. Teachers can add,
   remove, or correct student IDs, names, scores, height, vision, needs, and
   notes without preparing another spreadsheet.
+- Added history comparison and safe artifact recovery to the Project panel.
+  Teachers can compare two saved plans without exposing student records in the
+  browser, then create a new current-plan snapshot from a selected history or
+  output file without overwriting the original.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.
@@ -38,7 +42,8 @@
 - Added versioned `/api/v1/projects/*` endpoints for recent projects, artifact
   metadata, privacy scanning, bundle download, and safe bundle restore.
 - Added API contract tests, React component tests, and a real-browser acceptance
-  path covering project history, privacy, backup, and restore.
+  path covering project history, comparison, recovery, privacy, backup, and
+  restore.
 - Added a standalone `seattrellis-desktop` entry point and a reproducible
   PyInstaller onedir recipe for the optional desktop preview. The workflow
   produces unsigned bundles for inspection; installers and signing remain a

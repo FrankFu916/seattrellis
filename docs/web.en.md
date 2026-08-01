@@ -60,13 +60,16 @@ Enter a local folder and refresh it to find `*.project.json` and
 metadata only; student records and scores are not sent to the browser as part
 of this view.
 
-The panel can scan the selected project for sensitive fields, download a
-`.seattrellis.zip` backup, and restore an uploaded bundle to a local folder.
-The same path-safety and manifest checks used by the CLI apply to browser
-uploads. The classroom editor supports clicking cells to create seats, aisles,
-platforms, or empty space, changing the grid, moving or mirroring the layout,
-and saving the result for generation. Student and rules editors, history
-comparison, and in-place recovery remain on the roadmap.
+The panel can scan the selected project for sensitive fields, compare two
+history or output artifacts, create a new current-plan snapshot from one of
+them, download a `.seattrellis.zip` backup, and restore an uploaded bundle to a
+local folder. Comparison returns counts and structural changes only; student
+names and scores never enter the browser response. Recovery writes a new
+output file and never overwrites the selected history artifact. The same
+path-safety and manifest checks used by the CLI apply to browser uploads. The
+classroom editor supports clicking cells to create seats, aisles, platforms,
+or empty space, changing the grid, moving or mirroring the layout, and saving
+the result for generation. Student and rules editors remain on the roadmap.
 
 ## Advanced tools
 

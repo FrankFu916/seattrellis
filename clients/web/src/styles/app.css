@@ -1633,6 +1633,66 @@ input:focus-visible,
   line-height: 1.45;
 }
 
+.project-history-tools {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.project-history-tools h3 {
+  color: var(--text-strong);
+  font-size: 0.72rem;
+}
+
+.project-compare-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.project-history-tools .project-field {
+  gap: 3px;
+}
+
+.project-history-tools .project-field > span {
+  font-size: 0.62rem;
+}
+
+.project-history-tools select {
+  min-height: 32px;
+  padding: 5px 7px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.65rem;
+}
+
+.project-history-tools button {
+  justify-self: start;
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 0.65rem;
+}
+
+.project-compare-result {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-radius: var(--radius-small);
+  background: var(--surface-tint);
+  color: var(--text);
+  font-size: 0.63rem;
+  line-height: 1.4;
+}
+
+.project-compare-result strong {
+  color: var(--text-strong);
+}
+
 .project-actions {
   display: flex;
   flex-wrap: wrap;

@@ -149,13 +149,48 @@ async def main() -> int:
         await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
         print("12. project privacy scan rendered")
 
+        # Compare two historical artifacts and create a new output snapshot.
+        # Older demo projects may only contain one artifact, so keep the
+        # acceptance check useful for both a fresh checkout and a used project.
+        compare_button = page.locator("[data-testid='project-compare-button']")
+        if await compare_button.is_enabled():
+            await compare_button.click()
+            await page.wait_for_function(
+                """() => Boolean(
+                    document.querySelector('[data-testid="project-compare-result"]')
+                    || document.querySelector('[data-testid="project-error"]')
+                )""",
+                timeout=30_000,
+            )
+            compare_error = page.locator("[data-testid='project-error']")
+            if await compare_error.is_visible():
+                print(f"13. project comparison failed: {await compare_error.text_content()}")
+                await browser.close()
+                return 1
+            await page.wait_for_selector("[data-testid='project-compare-result']", timeout=30_000)
+            print("13. project history comparison rendered")
+            restore_artifact_button = page.locator(
+                "[data-testid='project-restore-artifact-button']"
+            )
+            await restore_artifact_button.click()
+            await page.wait_for_function(
+                """() => {
+                    const status = document.querySelector('[data-testid="project-status"]');
+                    return Boolean(status && status.textContent?.includes('restored'));
+                }""",
+                timeout=30_000,
+            )
+            print("14. historical artifact restored as a new plan")
+        else:
+            print("13. project history comparison skipped (one artifact available)")
+
         async with page.expect_download(timeout=30_000) as bundle_info:
             await page.click("[data-testid='project-backup-button']")
         bundle = await bundle_info.value
         if not bundle.suggested_filename.endswith(".seattrellis.zip"):
             await browser.close()
             return 1
-        print(f"13. downloaded project bundle: {bundle.suggested_filename}")
+        print(f"15. downloaded project bundle: {bundle.suggested_filename}")
 
         with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as directory:
             bundle_path = Path(directory) / bundle.suggested_filename
@@ -174,7 +209,7 @@ async def main() -> int:
             if not (restore_target / "project.seattrellis.json").exists():
                 await browser.close()
                 return 1
-        print("14. project bundle restored successfully")
+        print("16. project bundle restored successfully")
 
         await browser.close()
         return 0

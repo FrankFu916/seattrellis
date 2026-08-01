@@ -21,6 +21,8 @@ from seattrellis.api.handlers import (
     list_projects,
     pack_project_for_web,
     project_history,
+    project_artifact_compare,
+    project_artifact_restore,
     project_privacy,
     restore_project_bundle_file,
     room_templates,
@@ -556,6 +558,22 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/projects/history",
         project_history,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/artifacts/compare",
+        project_artifact_compare,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/artifacts/restore",
+        project_artifact_restore,
         methods=["POST"],
         response_model=None,
         responses={422: {"model": ErrorResponse}},

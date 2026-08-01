@@ -340,6 +340,62 @@ class ProjectHistoryResponse(VersionedResponse):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ProjectArtifactRequest(ProjectPathRequest):
+    """Select one project artifact without allowing arbitrary file access."""
+
+    artifact_path: str
+    compare_to_path: str | None = None
+
+    @field_validator("artifact_path", "compare_to_path", mode="before")
+    def clean_artifact_path(cls, value: object, info: ValidationInfo) -> object:
+        if value is None and info.field_name == "compare_to_path":
+            return None
+        if not isinstance(value, str):
+            raise ValueError(f"{info.field_name} must be a string.")
+        text = value.strip()
+        if not text:
+            raise ValueError(f"{info.field_name} cannot be empty.")
+        return text
+
+
+class ProjectArtifactSummary(ApiModel):
+    """Privacy-safe summary of a snapshot-like project artifact."""
+
+    name: str
+    path: str
+    kind: Literal["snapshot", "candidate_set", "rotation_plan", "unknown"]
+    created_at: datetime | None = None
+    student_count: int | None = Field(default=None, ge=0)
+    assignment_count: int | None = Field(default=None, ge=0)
+    enabled_seat_count: int | None = Field(default=None, ge=0)
+    solver_status: str | None = None
+
+
+class ProjectArtifactDiff(ApiModel):
+    """Counts and structural changes between two local artifacts."""
+
+    assignment_changes: int = Field(ge=0)
+    roster_added: int = Field(ge=0)
+    roster_removed: int = Field(ge=0)
+    layout_changed: bool
+    rules_changed: bool
+    solver_status_changed: bool
+
+
+class ProjectArtifactCompareResponse(VersionedResponse):
+    left: ProjectArtifactSummary
+    right: ProjectArtifactSummary
+    diff: ProjectArtifactDiff
+
+
+class ProjectArtifactRestoreResponse(VersionedResponse):
+    """Safe recovery creates a new output artifact rather than overwriting history."""
+
+    project_path: str
+    source_artifact: str
+    restored_artifact: str
+
+
 class PrivacyFindingItem(ApiModel):
     file: str
     fields: list[str] = Field(default_factory=list)

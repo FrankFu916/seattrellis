@@ -11,6 +11,8 @@ import type {
   GenerateClassResponse,
   HealthResponse,
   ProjectHistoryResponse,
+  ProjectArtifactCompareResponse,
+  ProjectArtifactRestoreResponse,
   ProjectListResponse,
   ProjectPrivacyResponse,
   ProjectRestoreResponse,
@@ -132,6 +134,36 @@ export async function fetchProjectHistory(
       include_outputs: includeOutputs,
     }),
   });
+}
+
+export async function compareProjectArtifacts(
+  projectPath: string,
+  artifactPath: string,
+  compareToPath: string,
+): Promise<ProjectArtifactCompareResponse> {
+  return fetchJson<ProjectArtifactCompareResponse>("/projects/artifacts/compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      artifact_path: artifactPath,
+      compare_to_path: compareToPath,
+    }),
+  }, 30_000);
+}
+
+export async function restoreProjectArtifact(
+  projectPath: string,
+  artifactPath: string,
+): Promise<ProjectArtifactRestoreResponse> {
+  return fetchJson<ProjectArtifactRestoreResponse>("/projects/artifacts/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_path: projectPath,
+      artifact_path: artifactPath,
+    }),
+  }, 30_000);
 }
 
 export async function scanProjectPrivacy(

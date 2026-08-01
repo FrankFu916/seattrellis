@@ -3,20 +3,24 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  compareProjectArtifacts,
   fetchProjectHistory,
   listRecentProjects,
   downloadProjectBundle,
   restoreProjectBundle,
+  restoreProjectArtifact,
   scanProjectPrivacy,
 } from "../api/client";
 import { createTranslator } from "../i18n/messages";
 import { ProjectWorkspacePanel } from "./ProjectWorkspacePanel";
 
 vi.mock("../api/client", () => ({
+  compareProjectArtifacts: vi.fn(),
   downloadProjectBundle: vi.fn(),
   fetchProjectHistory: vi.fn(),
   listRecentProjects: vi.fn(),
   restoreProjectBundle: vi.fn(),
+  restoreProjectArtifact: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
   scanProjectPrivacy: vi.fn(),
 }));
@@ -48,6 +52,16 @@ const historyResponse = {
       student_count: 30,
       period_count: null,
     },
+    {
+      name: "week2.snapshot.json",
+      path: "/classes/history/week2.snapshot.json",
+      kind: "snapshot" as const,
+      modified_at: "2026-08-02T00:00:00Z",
+      created_at: "2026-08-02T00:00:00Z",
+      size_bytes: 110,
+      student_count: 30,
+      period_count: null,
+    },
   ],
   outputs: [],
   warnings: [],
@@ -76,6 +90,43 @@ describe("ProjectWorkspacePanel", () => {
       project_path: "/classes/restored/demo.seattrellis.json",
       output_dir: "/classes/restored",
     });
+    vi.mocked(compareProjectArtifacts).mockResolvedValue({
+      api_version: "1",
+      left: {
+        name: "week1.snapshot.json",
+        path: "/classes/history/week1.snapshot.json",
+        kind: "snapshot",
+        created_at: "2026-08-01T00:00:00Z",
+        student_count: 30,
+        assignment_count: 30,
+        enabled_seat_count: 30,
+        solver_status: "FEASIBLE",
+      },
+      right: {
+        name: "week1.snapshot.json",
+        path: "/classes/history/week1.snapshot.json",
+        kind: "snapshot",
+        created_at: "2026-08-01T00:00:00Z",
+        student_count: 30,
+        assignment_count: 30,
+        enabled_seat_count: 30,
+        solver_status: "FEASIBLE",
+      },
+      diff: {
+        assignment_changes: 4,
+        roster_added: 1,
+        roster_removed: 0,
+        layout_changed: false,
+        rules_changed: true,
+        solver_status_changed: false,
+      },
+    });
+    vi.mocked(restoreProjectArtifact).mockResolvedValue({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      source_artifact: "/classes/history/week1.snapshot.json",
+      restored_artifact: "/classes/outputs/restored-week1.snapshot.json",
+    });
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:backup");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
@@ -92,9 +143,12 @@ describe("ProjectWorkspacePanel", () => {
       expect(screen.getByTestId("project-select")).toHaveValue(
         "/classes/demo.seattrellis.json",
       );
+      expect(screen.getByTestId("project-compare-right")).toHaveValue(
+        "/classes/history/week2.snapshot.json",
+      );
     });
-    expect(screen.getByText("Seating plan")).toBeInTheDocument();
-    expect(screen.getByText("week1.snapshot.json")).toBeInTheDocument();
+    expect(screen.getAllByText("Seating plan")).toHaveLength(2);
+    expect(screen.getAllByText("week1.snapshot.json").length).toBeGreaterThan(0);
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
 
@@ -145,5 +199,34 @@ describe("ProjectWorkspacePanel", () => {
     expect(screen.getByTestId("project-status")).toHaveTextContent(
       "Project restored to /classes/restored/demo.seattrellis.json",
     );
+  });
+
+  it("compares history and creates a safe restored artifact", async () => {
+    const user = userEvent.setup();
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-select")).toHaveValue(
+        "/classes/demo.seattrellis.json",
+      );
+    });
+    await user.click(screen.getByTestId("project-compare-button"));
+    await waitFor(() => {
+      expect(compareProjectArtifacts).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        "/classes/history/week1.snapshot.json",
+        "/classes/history/week2.snapshot.json",
+      );
+    });
+    expect(screen.getByTestId("project-compare-result")).toHaveTextContent(
+      "Seat changes: 4",
+    );
+    await user.click(screen.getByTestId("project-restore-artifact-button"));
+    await waitFor(() => {
+      expect(restoreProjectArtifact).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        "/classes/history/week1.snapshot.json",
+      );
+    });
   });
 });

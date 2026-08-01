@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
@@ -88,3 +89,58 @@ def test_project_workspace_packs_and_restores_uploaded_bundle(tmp_path) -> None:
     restored_payload = restored.json()
     assert restored_payload["project_path"].endswith("project.seattrellis.json")
     assert destination.joinpath("students.csv").exists()
+
+
+def test_project_artifacts_can_be_compared_and_restored_safely(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    client = _client()
+
+    history = client.post(
+        "/api/v1/projects/history",
+        json={"project_path": str(paths["project"])},
+    ).json()["history"]
+    newest, previous = history[:2]
+
+    compared = client.post(
+        "/api/v1/projects/artifacts/compare",
+        json={
+            "project_path": str(paths["project"]),
+            "artifact_path": newest["path"],
+            "compare_to_path": previous["path"],
+        },
+    )
+    assert compared.status_code == 200
+    compared_payload = compared.json()
+    assert compared_payload["left"]["kind"] == "snapshot"
+    assert compared_payload["diff"]["assignment_changes"] > 0
+    assert "Alice" not in compared.text
+
+    restored = client.post(
+        "/api/v1/projects/artifacts/restore",
+        json={
+            "project_path": str(paths["project"]),
+            "artifact_path": newest["path"],
+        },
+    )
+    assert restored.status_code == 200
+    restored_payload = restored.json()
+    restored_path = Path(restored_payload["restored_artifact"])
+    assert restored_path.exists()
+    assert restored_path.parent == paths["project"].parent / "outputs"
+    assert restored_path.name == "restored-week3.snapshot.json"
+
+
+def test_project_artifact_endpoints_reject_paths_outside_the_project(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    outside = tmp_path / "outside.snapshot.json"
+    outside.write_text("{}", encoding="utf-8")
+    client = _client()
+
+    response = client.post(
+        "/api/v1/projects/artifacts/restore",
+        json={
+            "project_path": str(paths["project"]),
+            "artifact_path": str(outside),
+        },
+    )
+    assert response.status_code == 422

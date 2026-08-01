@@ -36,6 +36,10 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
 
 - `GET /api/v1/projects/recent?root=...&limit=...` 返回最近项目的名称、路径和修改时间；
 - `POST /api/v1/projects/history` 返回历史/生成文件的元数据，不返回学生记录；
+- `POST /api/v1/projects/artifacts/compare` 比较两个历史或输出文件，只返回隐私安全的
+  方案摘要和结构变化数量；
+- `POST /api/v1/projects/artifacts/restore` 从一个历史或输出文件创建新的输出 snapshot，
+  不覆盖原始文件；
 - `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；
 - `POST /api/v1/projects/bundle` 下载 `.seattrellis.zip`；
 - `POST /api/v1/projects/restore` 接收本地 bundle 路径或 multipart 上传并恢复到指定目录。

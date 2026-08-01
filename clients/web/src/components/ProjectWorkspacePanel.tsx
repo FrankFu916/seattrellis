@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  compareProjectArtifacts,
   downloadProjectBundle,
   fetchProjectHistory,
   listRecentProjects,
+  restoreProjectArtifact,
   restoreProjectBundle,
   RosterApiError,
   scanProjectPrivacy,
 } from "../api/client";
 import type {
   ProjectArtifact,
+  ProjectArtifactCompareResponse,
   ProjectHistoryResponse,
   ProjectPrivacyResponse,
   RecentProject,
@@ -73,7 +76,13 @@ export function ProjectWorkspacePanel({
   const [privacy, setPrivacy] = useState<ProjectPrivacyResponse | null>(null);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restoreTarget, setRestoreTarget] = useState("./restored-project");
-  const [busy, setBusy] = useState<"loading" | "scanning" | "backup" | "restore" | null>(null);
+  const [compareLeftPath, setCompareLeftPath] = useState("");
+  const [compareRightPath, setCompareRightPath] = useState("");
+  const [restoreArtifactPath, setRestoreArtifactPath] = useState("");
+  const [comparison, setComparison] = useState<ProjectArtifactCompareResponse | null>(null);
+  const [busy, setBusy] = useState<
+    "loading" | "scanning" | "backup" | "restore" | "compare" | "restore-artifact" | null
+  >(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -84,6 +93,31 @@ export function ProjectWorkspacePanel({
     ],
     [history],
   );
+
+  useEffect(() => {
+    if (!allArtifacts.length) {
+      setCompareLeftPath("");
+      setCompareRightPath("");
+      setRestoreArtifactPath("");
+      return;
+    }
+    setCompareLeftPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current)
+        ? current
+        : allArtifacts[0].path,
+    );
+    setCompareRightPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current) &&
+      current !== allArtifacts[0].path
+        ? current
+        : allArtifacts[1]?.path ?? "",
+    );
+    setRestoreArtifactPath((current) =>
+      allArtifacts.some((artifact) => artifact.path === current)
+        ? current
+        : allArtifacts[0].path,
+    );
+  }, [allArtifacts]);
 
   async function openProject(path: string): Promise<void> {
     if (!path) {
@@ -97,6 +131,7 @@ export function ProjectWorkspacePanel({
     try {
       const response = await fetchProjectHistory(path);
       setHistory(response);
+      setComparison(null);
       setStatus(t("project.statusLoaded", { name: response.project_name }));
     } catch (caught) {
       setHistory(null);
@@ -186,6 +221,41 @@ export function ProjectWorkspacePanel({
     }
   }
 
+  async function handleCompare(): Promise<void> {
+    if (!selectedPath || !compareLeftPath || !compareRightPath) {
+      return;
+    }
+    setBusy("compare");
+    setError("");
+    try {
+      setComparison(
+        await compareProjectArtifacts(selectedPath, compareLeftPath, compareRightPath),
+      );
+      setStatus(t("project.statusCompared"));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRestoreArtifact(): Promise<void> {
+    if (!selectedPath || !restoreArtifactPath) {
+      return;
+    }
+    setBusy("restore-artifact");
+    setError("");
+    try {
+      const result = await restoreProjectArtifact(selectedPath, restoreArtifactPath);
+      await refreshProjects();
+      setStatus(t("project.statusArtifactRestored", { name: result.restored_artifact }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section
       className="side-card project-workspace-card"
@@ -266,6 +336,116 @@ export function ProjectWorkspacePanel({
               <p className="project-warning" role="status">
                 {t("project.warning")}: {history.warnings.length}
               </p>
+            )}
+            {allArtifacts.length > 0 && (
+              <div className="project-history-tools" data-testid="project-history-tools">
+                <h3>{t("project.compareTitle")}</h3>
+                <div className="project-compare-fields">
+                  <label className="project-field">
+                    <span>{t("project.compareLeft")}</span>
+                    <select
+                      data-testid="project-compare-left"
+                      value={compareLeftPath}
+                      onChange={(event) => setCompareLeftPath(event.target.value)}
+                    >
+                      {allArtifacts.map((artifact) => (
+                        <option key={`left-${artifact.path}`} value={artifact.path}>
+                          {artifact.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="project-field">
+                    <span>{t("project.compareRight")}</span>
+                    <select
+                      data-testid="project-compare-right"
+                      value={compareRightPath}
+                      onChange={(event) => setCompareRightPath(event.target.value)}
+                    >
+                      {allArtifacts.map((artifact) => (
+                        <option key={`right-${artifact.path}`} value={artifact.path}>
+                          {artifact.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-compare-button"
+                  onClick={() => void handleCompare()}
+                  disabled={
+                    !compareLeftPath ||
+                    !compareRightPath ||
+                    compareLeftPath === compareRightPath ||
+                    busy !== null
+                  }
+                >
+                  {busy === "compare" ? t("project.comparing") : t("project.compareAction")}
+                </button>
+                <label className="project-field">
+                  <span>{t("project.restoreArtifact")}</span>
+                  <select
+                    data-testid="project-restore-artifact-select"
+                    value={restoreArtifactPath}
+                    onChange={(event) => setRestoreArtifactPath(event.target.value)}
+                  >
+                    {allArtifacts.map((artifact) => (
+                      <option key={`restore-${artifact.path}`} value={artifact.path}>
+                        {artifact.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="project-restore-artifact-button"
+                  onClick={() => void handleRestoreArtifact()}
+                  disabled={!restoreArtifactPath || busy !== null}
+                >
+                  {busy === "restore-artifact"
+                    ? t("project.restoringArtifact")
+                    : t("project.restoreArtifactAction")}
+                </button>
+                {comparison && (
+                  <div
+                    className="project-compare-result"
+                    data-testid="project-compare-result"
+                    role="status"
+                  >
+                    <strong>{t("project.compareResult")}</strong>
+                    <span>
+                      {t("project.assignmentChanges", {
+                        count: comparison.diff.assignment_changes,
+                      })}
+                    </span>
+                    <span>
+                      {t("project.rosterAdded", { count: comparison.diff.roster_added })}
+                    </span>
+                    <span>
+                      {t("project.rosterRemoved", {
+                        count: comparison.diff.roster_removed,
+                      })}
+                    </span>
+                    <span>
+                      {t("project.layoutChanged", {
+                        value: comparison.diff.layout_changed
+                          ? t("project.yes")
+                          : t("project.no"),
+                      })}
+                    </span>
+                    <span>
+                      {t("project.rulesChanged", {
+                        value: comparison.diff.rules_changed
+                          ? t("project.yes")
+                          : t("project.no"),
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </>
         )}

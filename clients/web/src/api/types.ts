@@ -394,6 +394,33 @@ export type ProjectHistoryResponse = {
   warnings: string[];
 };
 
+export type ProjectArtifactSummary = {
+  name: string;
+  path: string;
+  kind: "snapshot" | "candidate_set" | "rotation_plan" | "unknown";
+  created_at: string | null;
+  student_count: number | null;
+  assignment_count: number | null;
+  enabled_seat_count: number | null;
+  solver_status: string | null;
+};
+
+export type ProjectArtifactDiff = {
+  assignment_changes: number;
+  roster_added: number;
+  roster_removed: number;
+  layout_changed: boolean;
+  rules_changed: boolean;
+  solver_status_changed: boolean;
+};
+
+export type ProjectArtifactCompareResponse = {
+  api_version: "1";
+  left: ProjectArtifactSummary;
+  right: ProjectArtifactSummary;
+  diff: ProjectArtifactDiff;
+};
+
 export type ProjectPrivacyFinding = {
   file: string;
   fields: string[];
@@ -411,4 +438,11 @@ export type ProjectRestoreResponse = {
   api_version: "1";
   project_path: string;
   output_dir: string;
+};
+
+export type ProjectArtifactRestoreResponse = {
+  api_version: "1";
+  project_path: string;
+  source_artifact: string;
+  restored_artifact: string;
 };
