@@ -1601,6 +1601,17 @@ input:focus-visible,
   font-size: 0.6rem;
 }
 
+.rules-diagnostics li span {
+  display: grid;
+  gap: 2px;
+}
+
+.rules-diagnostics li small {
+  color: inherit;
+  font-size: 0.58rem;
+  font-weight: 450;
+}
+
 .ruleset-editor {
   display: grid;
   gap: 10px;

@@ -18,6 +18,11 @@ describe("RuleSetDiagnosticsPanel", () => {
     expect(screen.getByTestId("rules-diagnostics")).toHaveAttribute("role", "alert");
     expect(screen.getByText("hard.fixed_seats[0].student")).toBeInTheDocument();
     expect(screen.getByText("This student ID is not in the current roster.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Choose a student from the current roster; re-import the roster if it changed.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("confirms a valid object and explains an empty editor", () => {

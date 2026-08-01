@@ -44,6 +44,9 @@
 - Added field-level checks for custom RuleSet JSON. The workbench now identifies
   unsupported fields, malformed hard rules, unknown students or seats, and
   invalid group definitions before a solve is started.
+- RuleSet diagnostics now include a concrete next step for each reported field,
+  including how to fix malformed pairs, references, distance values, and group
+  definitions.
 - Added a visual RuleSet editor inside Advanced settings. Teachers can create
   and edit hard rules, soft goals, named groups, schema version, and seed while
   keeping the raw JSON available for precise control.
