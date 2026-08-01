@@ -4,6 +4,7 @@ import type {
   AdvancedSolveSettings,
   CommonConstraint,
   CustomRoomSettings,
+  DetailedRuleSettings,
   RotationSettings,
   Student,
 } from "../api/types";
@@ -41,6 +42,30 @@ const defaultRotation: RotationSettings = {
   enabled: true,
   periodCount: 3,
   periodLabels: "Week 1,\nWeek 2, Week 3",
+};
+
+const detailedRules: DetailedRuleSettings = {
+  enabled: true,
+  fairRotation: { enabled: true, weight: 12, lookback: 5 },
+  avoidRecentNeighbors: {
+    enabled: true,
+    weight: 14,
+    lookback: 3,
+    maxRecentCount: 1,
+    withinDistance: 2,
+    relationTypes: ["desk_mate"],
+  },
+  scorePosition: { enabled: true, weight: 18, direction: "high_back" },
+  scoreDistribution: { enabled: true, weight: 20, scope: "row" },
+  mentorPairing: {
+    enabled: true,
+    weight: 16,
+    mentorPercentile: 0.8,
+    learnerPercentile: 0.2,
+    relation: "adjacent_any",
+    avoidRecentRepeats: false,
+    historyLookback: 6,
+  },
 };
 
 describe("buildGenerateClassRequest", () => {
@@ -192,6 +217,68 @@ describe("buildGenerateClassRequest", () => {
     });
   });
 
+  it("serializes detailed rule settings into the shared rules overlay", () => {
+    const request = buildGenerateClassRequest({
+      className: "Detailed class",
+      students,
+      selectedRoomId: "compact",
+      selectedGoalId: "daily-rotation",
+      settings: defaults,
+      roomSettings: defaultRoom,
+      constraints: noConstraints,
+      preferences: [],
+      detailedRules,
+    });
+
+    expect(request.draft.goal.rules_overlay).toEqual({
+      soft: {
+        fair_rotation: { enabled: true, weight: 12, lookback: 5 },
+        avoid_recent_neighbors: {
+          enabled: true,
+          weight: 14,
+          lookback: 3,
+          max_recent_count: 1,
+          within_distance: 2,
+          relation_types: ["desk_mate"],
+        },
+        score_position: { enabled: true, weight: 18, direction: "high_back" },
+        score_distribution: { enabled: true, weight: 20, scope: "row" },
+        mentor_pairing: {
+          enabled: true,
+          weight: 16,
+          mentor_percentile: 0.8,
+          learner_percentile: 0.2,
+          relation: "adjacent_any",
+          avoid_recent_repeats: false,
+          history_lookback: 6,
+        },
+      },
+    });
+  });
+
+  it("rejects invalid detailed mentor percentiles before sending a request", () => {
+    expect(() =>
+      buildGenerateClassRequest({
+        className: "Invalid detailed class",
+        students,
+        selectedRoomId: "compact",
+        selectedGoalId: "daily-rotation",
+        settings: defaults,
+        roomSettings: defaultRoom,
+        constraints: noConstraints,
+        preferences: [],
+        detailedRules: {
+          ...detailedRules,
+          mentorPairing: {
+            ...detailedRules.mentorPairing,
+            mentorPercentile: 0.2,
+            learnerPercentile: 0.8,
+          },
+        },
+      }),
+    ).toThrowError(new InvalidAdvancedSettingError("rules"));
+  });
+
   it("reuses the class request when building a labelled rotation plan", () => {
     const request = buildGenerateRotationPlanRequest({
       className: "Rotation class",
@@ -202,6 +289,7 @@ describe("buildGenerateClassRequest", () => {
       roomSettings: defaultRoom,
       constraints: noConstraints,
       preferences: ["fair_rotation"],
+      detailedRules,
       rotation: defaultRotation,
     });
 
@@ -214,6 +302,19 @@ describe("buildGenerateClassRequest", () => {
         goal: { goal_id: "daily-rotation" },
       },
     });
+    expect(request.draft.goal.rules_overlay).toEqual(
+      buildGenerateClassRequest({
+        className: "Rotation class",
+        students,
+        selectedRoomId: "compact",
+        selectedGoalId: "daily-rotation",
+        settings: defaults,
+        roomSettings: defaultRoom,
+        constraints: noConstraints,
+        preferences: ["fair_rotation"],
+        detailedRules,
+      }).draft.goal.rules_overlay,
+    );
   });
 
   it("rejects a rotation label count that does not match the period count", () => {

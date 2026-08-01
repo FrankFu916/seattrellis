@@ -3,6 +3,7 @@ import type {
   CommonConstraint,
   CommonPreferenceId,
   CustomRoomSettings,
+  DetailedRuleSettings,
   GenerateClassRequest,
   GenerateRotationPlanRequest,
   RotationSettings,
@@ -176,8 +177,51 @@ function buildHardRules(constraints: CommonConstraint[]): HardRulesPayload | und
   return { fixed_seats, must_be_adjacent, cannot_be_adjacent, min_distance };
 }
 
+function validateDetailedRules(settings: DetailedRuleSettings): void {
+  if (!settings.enabled) {
+    return;
+  }
+  const nonNegativeIntegers = [
+    settings.fairRotation.weight,
+    settings.fairRotation.lookback,
+    settings.avoidRecentNeighbors.weight,
+    settings.avoidRecentNeighbors.lookback,
+    settings.avoidRecentNeighbors.maxRecentCount,
+    settings.scorePosition.weight,
+    settings.scoreDistribution.weight,
+    settings.mentorPairing.weight,
+    settings.mentorPairing.historyLookback,
+  ];
+  if (nonNegativeIntegers.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
+  if (
+    !Number.isSafeInteger(settings.avoidRecentNeighbors.withinDistance) ||
+    settings.avoidRecentNeighbors.withinDistance < 1 ||
+    settings.avoidRecentNeighbors.relationTypes.length === 0 ||
+    settings.avoidRecentNeighbors.relationTypes.some(
+      (relation) => relation !== "desk_mate" && relation !== "adjacent_any",
+    )
+  ) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
+  const { mentorPercentile, learnerPercentile } = settings.mentorPairing;
+  if (
+    !Number.isFinite(mentorPercentile) ||
+    !Number.isFinite(learnerPercentile) ||
+    mentorPercentile < 0 ||
+    mentorPercentile > 1 ||
+    learnerPercentile < 0 ||
+    learnerPercentile > 1 ||
+    learnerPercentile >= mentorPercentile
+  ) {
+    throw new InvalidAdvancedSettingError("rules");
+  }
+}
+
 function buildRulesOverlay(
   preferences: CommonPreferenceId[],
+  detailedRules?: DetailedRuleSettings,
 ): Record<string, unknown> | undefined {
   const soft: Record<string, unknown> = {};
   for (const preference of preferences) {
@@ -197,6 +241,40 @@ function buildRulesOverlay(
       soft.mentor_pairing = { enabled: true };
     }
   }
+  if (detailedRules?.enabled) {
+    soft.fair_rotation = {
+      enabled: detailedRules.fairRotation.enabled,
+      weight: detailedRules.fairRotation.weight,
+      lookback: detailedRules.fairRotation.lookback,
+    };
+    soft.avoid_recent_neighbors = {
+      enabled: detailedRules.avoidRecentNeighbors.enabled,
+      weight: detailedRules.avoidRecentNeighbors.weight,
+      lookback: detailedRules.avoidRecentNeighbors.lookback,
+      max_recent_count: detailedRules.avoidRecentNeighbors.maxRecentCount,
+      within_distance: detailedRules.avoidRecentNeighbors.withinDistance,
+      relation_types: detailedRules.avoidRecentNeighbors.relationTypes,
+    };
+    soft.score_position = {
+      enabled: detailedRules.scorePosition.enabled,
+      weight: detailedRules.scorePosition.weight,
+      direction: detailedRules.scorePosition.direction,
+    };
+    soft.score_distribution = {
+      enabled: detailedRules.scoreDistribution.enabled,
+      weight: detailedRules.scoreDistribution.weight,
+      scope: detailedRules.scoreDistribution.scope,
+    };
+    soft.mentor_pairing = {
+      enabled: detailedRules.mentorPairing.enabled,
+      weight: detailedRules.mentorPairing.weight,
+      mentor_percentile: detailedRules.mentorPairing.mentorPercentile,
+      learner_percentile: detailedRules.mentorPairing.learnerPercentile,
+      relation: detailedRules.mentorPairing.relation,
+      avoid_recent_repeats: detailedRules.mentorPairing.avoidRecentRepeats,
+      history_lookback: detailedRules.mentorPairing.historyLookback,
+    };
+  }
   return Object.keys(soft).length ? { soft } : undefined;
 }
 
@@ -209,6 +287,7 @@ export function buildGenerateClassRequest({
   roomSettings,
   constraints,
   preferences,
+  detailedRules,
 }: {
   className: string;
   students: Student[];
@@ -218,6 +297,7 @@ export function buildGenerateClassRequest({
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
   preferences: CommonPreferenceId[];
+  detailedRules?: DetailedRuleSettings;
 }): GenerateClassRequest {
   const customRules = parseJsonObject(settings.customRulesJson, "rules");
   const customLayout = roomSettings.enabled
@@ -226,7 +306,10 @@ export function buildGenerateClassRequest({
       : buildGridLayout(roomSettings)
     : undefined;
   const hardRules = buildHardRules(constraints);
-  const rulesOverlay = buildRulesOverlay(preferences);
+  if (detailedRules) {
+    validateDetailedRules(detailedRules);
+  }
+  const rulesOverlay = buildRulesOverlay(preferences, detailedRules);
   const seedText = settings.seed.trim();
   const seed = seedText === "" ? undefined : Number(seedText);
   if (seed !== undefined && !Number.isSafeInteger(seed)) {
@@ -277,6 +360,7 @@ export function buildGenerateRotationPlanRequest({
   roomSettings,
   constraints,
   preferences,
+  detailedRules,
   rotation,
 }: {
   className: string;
@@ -287,6 +371,7 @@ export function buildGenerateRotationPlanRequest({
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
   preferences: CommonPreferenceId[];
+  detailedRules?: DetailedRuleSettings;
   rotation: RotationSettings;
 }): GenerateRotationPlanRequest {
   const base = buildGenerateClassRequest({
@@ -298,6 +383,7 @@ export function buildGenerateRotationPlanRequest({
     roomSettings,
     constraints,
     preferences,
+    detailedRules,
   });
   const periodLabels = rotation.periodLabels
     .split(/[\n,，]+/u)

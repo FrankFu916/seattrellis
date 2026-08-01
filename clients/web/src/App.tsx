@@ -20,6 +20,7 @@ import type {
   CommonConstraint,
   CommonPreferenceId,
   CustomRoomSettings,
+  DetailedRuleSettings,
   EditorCommand,
   EditorOperation,
   EditorState,
@@ -90,6 +91,42 @@ const DEFAULT_ROTATION_SETTINGS: RotationSettings = {
   enabled: false,
   periodCount: 4,
   periodLabels: "",
+};
+
+const DEFAULT_DETAILED_RULE_SETTINGS: DetailedRuleSettings = {
+  enabled: false,
+  fairRotation: {
+    enabled: true,
+    weight: 10,
+    lookback: 4,
+  },
+  avoidRecentNeighbors: {
+    enabled: true,
+    weight: 10,
+    lookback: 4,
+    maxRecentCount: 1,
+    withinDistance: 2,
+    relationTypes: ["desk_mate", "adjacent_any"],
+  },
+  scorePosition: {
+    enabled: true,
+    weight: 18,
+    direction: "high_front",
+  },
+  scoreDistribution: {
+    enabled: true,
+    weight: 18,
+    scope: "row",
+  },
+  mentorPairing: {
+    enabled: true,
+    weight: 18,
+    mentorPercentile: 0.75,
+    learnerPercentile: 0.25,
+    relation: "desk_mate",
+    avoidRecentRepeats: true,
+    historyLookback: 4,
+  },
 };
 
 function getInitialLocale(): Locale {
@@ -171,6 +208,9 @@ export function App() {
     useState<AdvancedSolveSettings>(DEFAULT_ADVANCED_SETTINGS);
   const [rotationSettings, setRotationSettings] = useState<RotationSettings>(
     DEFAULT_ROTATION_SETTINGS,
+  );
+  const [detailedRules, setDetailedRules] = useState<DetailedRuleSettings>(
+    DEFAULT_DETAILED_RULE_SETTINGS,
   );
   const [rotationPlan, setRotationPlan] = useState<RotationPlan | null>(null);
   const [rotationEditors, setRotationEditors] = useState<EditorState[]>([]);
@@ -513,6 +553,7 @@ export function App() {
         roomSettings,
         constraints,
         preferences,
+        detailedRules,
       };
       const response = rotationSettings.enabled
         ? await generateRotationPlan(
@@ -661,6 +702,7 @@ export function App() {
             showStudentIds={showStudentIds}
             advancedSettings={advancedSettings}
             rotationSettings={rotationSettings}
+            detailedRules={detailedRules}
             rotationPlan={rotationPlan}
             activeRotationPeriod={activeRotationPeriod}
             roomSettings={roomSettings}
@@ -699,6 +741,9 @@ export function App() {
             }
             onRotationSettingsChange={(changes) =>
               setRotationSettings((current) => ({ ...current, ...changes }))
+            }
+            onDetailedRulesChange={(changes) =>
+              setDetailedRules((current) => ({ ...current, ...changes }))
             }
             onRotationPeriodSelect={(period) => {
               void handleRotationPeriodSelect(period);

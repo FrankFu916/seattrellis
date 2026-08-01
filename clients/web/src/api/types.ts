@@ -251,6 +251,44 @@ export type CommonPreferenceId =
   | "score_distribution"
   | "mentor_pairing";
 
+export type RuleRelation = "desk_mate" | "adjacent_any";
+
+export type DetailedRuleSettings = {
+  enabled: boolean;
+  fairRotation: {
+    enabled: boolean;
+    weight: number;
+    lookback: number;
+  };
+  avoidRecentNeighbors: {
+    enabled: boolean;
+    weight: number;
+    lookback: number;
+    maxRecentCount: number;
+    withinDistance: number;
+    relationTypes: RuleRelation[];
+  };
+  scorePosition: {
+    enabled: boolean;
+    weight: number;
+    direction: "high_front" | "high_back";
+  };
+  scoreDistribution: {
+    enabled: boolean;
+    weight: number;
+    scope: "row" | "group";
+  };
+  mentorPairing: {
+    enabled: boolean;
+    weight: number;
+    mentorPercentile: number;
+    learnerPercentile: number;
+    relation: RuleRelation;
+    avoidRecentRepeats: boolean;
+    historyLookback: number;
+  };
+};
+
 export type CustomRoomSettings = {
   enabled: boolean;
   rows: number;

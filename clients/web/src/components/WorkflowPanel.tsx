@@ -6,6 +6,7 @@ import type {
   CommonConstraint,
   CommonPreferenceId,
   CustomRoomSettings,
+  DetailedRuleSettings,
   RotationPlan,
   RotationSettings,
   RoomTemplate,
@@ -15,6 +16,7 @@ import type {
 import type { WorkflowStep } from "../domain/workflow";
 import type { Locale, MessageKey, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
+import { DetailedRulesPanel } from "./DetailedRulesPanel";
 import { RotationPlanSummary } from "./RotationPlanSummary";
 
 const PREFERENCE_OPTIONS: Array<{
@@ -49,6 +51,7 @@ type WorkflowPanelProps = {
   orientation: "portrait" | "landscape";
   showStudentIds: boolean;
   advancedSettings: AdvancedSolveSettings;
+  detailedRules: DetailedRuleSettings;
   rotationSettings: RotationSettings;
   rotationPlan: RotationPlan | null;
   activeRotationPeriod: number;
@@ -70,6 +73,7 @@ type WorkflowPanelProps = {
     changes: Partial<AdvancedSolveSettings>,
   ) => void;
   onRotationSettingsChange: (changes: Partial<RotationSettings>) => void;
+  onDetailedRulesChange: (changes: Partial<DetailedRuleSettings>) => void;
   onRotationPeriodSelect: (period: number) => void;
   onRoomSettingsChange: (changes: Partial<CustomRoomSettings>) => void;
   onConstraintAdd: () => void;
@@ -119,6 +123,7 @@ export function WorkflowPanel({
   orientation,
   showStudentIds,
   advancedSettings,
+  detailedRules,
   rotationSettings,
   rotationPlan,
   activeRotationPeriod,
@@ -138,6 +143,7 @@ export function WorkflowPanel({
   onShowStudentIdsChange,
   onAdvancedSettingsChange,
   onRotationSettingsChange,
+  onDetailedRulesChange,
   onRotationPeriodSelect,
   onRoomSettingsChange,
   onConstraintAdd,
@@ -634,6 +640,11 @@ export function WorkflowPanel({
                 </label>
               </div>
             </details>
+            <DetailedRulesPanel
+              settings={detailedRules}
+              t={t}
+              onChange={onDetailedRulesChange}
+            />
             <details className="rotation-settings" open={rotationSettings.enabled}>
               <summary>{t("rotation.title")}</summary>
               <p className="advanced-settings-hint">{t("rotation.hint")}</p>

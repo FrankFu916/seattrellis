@@ -1204,6 +1204,112 @@ input:focus-visible,
   grid-column: 1 / -1;
 }
 
+.detailed-rules-settings {
+  margin-top: 10px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface-soft);
+}
+
+.detailed-rules-settings summary {
+  padding: 11px 12px;
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.detailed-rules-settings[open] summary {
+  border-bottom: var(--line-width) solid var(--border);
+}
+
+.detailed-rules-toggle,
+.rule-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.detailed-rules-toggle {
+  padding: 11px 12px 12px;
+}
+
+.detailed-rules-toggle input,
+.rule-toggle input,
+.rule-relations input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.detailed-rules-fields {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.detailed-rule-card {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 10px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.detailed-rule-card legend {
+  padding: 0 4px;
+  color: var(--text-strong);
+  font-size: 0.69rem;
+  font-weight: 750;
+}
+
+.rule-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.rule-relations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.rule-relations label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rule-field-label {
+  font-weight: 700;
+}
+
+.rule-help,
+.detailed-rules-note {
+  color: var(--muted);
+  font-size: 0.61rem;
+  line-height: 1.45;
+}
+
+.detailed-rules-note {
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
 .inline-error {
   margin-top: 12px;
   padding: 10px 12px;
