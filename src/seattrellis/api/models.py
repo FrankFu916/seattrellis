@@ -24,7 +24,7 @@ from pydantic import (
 
 from seattrellis.editing_protocol import EditorStateEnvelope
 from seattrellis.models.layout import ClassroomLayout
-from seattrellis.models.rules import RuleSet
+from seattrellis.models.rules import HardRules, RuleSet
 from seattrellis.models.rotation import RotationPlan
 from seattrellis.models.snapshot import SeatingSnapshot
 from seattrellis.models.student import Student
@@ -149,6 +149,8 @@ class RoomSelection(ApiModel):
 class TeacherGoalRequest(ApiModel):
     goal_id: str = "daily-rotation"
     custom_rules: RuleSet | None = None
+    hard_rules: HardRules | None = None
+    rules_overlay: dict[str, Any] | None = None
 
     @field_validator("goal_id", mode="before")
     def clean_goal_id(cls, value: object) -> str:
@@ -542,6 +544,15 @@ class RosterUpdatePreviewRequest(ApiModel):
         "notes",
         "attributes",
     ]] | None = None
+
+    @field_validator("mode", mode="before")
+    def normalize_replace_alias(cls, value: object) -> object:
+        # Older browser builds used "overwrite" for the replace action. Keep
+        # accepting it at the API boundary so an installed client can update
+        # safely while the current contract uses "replace" internally.
+        if value == "overwrite":
+            return "replace"
+        return value
 
     @field_validator("current_revision", mode="before")
     def reject_boolean_roster_revision(cls, value: object) -> object:
