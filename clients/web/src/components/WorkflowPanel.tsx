@@ -19,6 +19,7 @@ import type { Locale, MessageKey, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
 import { DetailedRulesPanel } from "./DetailedRulesPanel";
 import { BulkConstraintEditor } from "./BulkConstraintEditor";
+import { BulkGroupEditor } from "./BulkGroupEditor";
 import { RotationPlanSummary } from "./RotationPlanSummary";
 import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
 
@@ -88,6 +89,7 @@ type WorkflowPanelProps = {
   ) => void;
   onConstraintRemove: (id: string) => void;
   onGroupAdd: () => void;
+  onGroupBatchAdd: (groups: CommonGroupRule[]) => void;
   onGroupChange: (id: string, changes: Partial<CommonGroupRule>) => void;
   onGroupRemove: (id: string) => void;
   onPreferenceToggle: (id: CommonPreferenceId) => void;
@@ -160,6 +162,7 @@ export function WorkflowPanel({
   onConstraintChange,
   onConstraintRemove,
   onGroupAdd,
+  onGroupBatchAdd,
   onGroupChange,
   onGroupRemove,
   onPreferenceToggle,
@@ -595,6 +598,12 @@ export function WorkflowPanel({
                 </div>
               )}
               <small className="constraint-help">{t("groups.studentsHint")}</small>
+              <BulkGroupEditor
+                students={students}
+                existingGroups={groups}
+                t={t}
+                onAdd={onGroupBatchAdd}
+              />
             </section>
           </div>
         ) : null}

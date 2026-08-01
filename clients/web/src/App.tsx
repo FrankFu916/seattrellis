@@ -396,6 +396,10 @@ export function App() {
     setGroups((current) => current.filter((group) => group.id !== id));
   }
 
+  function handleGroupBatchAdd(next: CommonGroupRule[]) {
+    setGroups((current) => [...current, ...next]);
+  }
+
   function handlePreferenceToggle(id: CommonPreferenceId) {
     setPreferences((current) =>
       current.includes(id)
@@ -816,6 +820,7 @@ export function App() {
             onConstraintChange={handleConstraintChange}
             onConstraintRemove={handleConstraintRemove}
             onGroupAdd={handleGroupAdd}
+            onGroupBatchAdd={handleGroupBatchAdd}
             onGroupChange={handleGroupChange}
             onGroupRemove={handleGroupRemove}
             onPreferenceToggle={handlePreferenceToggle}

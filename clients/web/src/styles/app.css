@@ -1318,6 +1318,36 @@ input:focus-visible,
   color: var(--success);
 }
 
+.bulk-group-editor {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.bulk-group-editor summary {
+  cursor: pointer;
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.bulk-group-preview {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.bulk-group-preview > strong {
+  color: var(--text-strong);
+  font-size: 0.7rem;
+}
+
 .goal-choice {
   grid-template-columns: 44px 1fr 24px;
 }
