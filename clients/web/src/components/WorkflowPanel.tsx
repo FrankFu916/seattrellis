@@ -19,6 +19,7 @@ import type { Locale, MessageKey, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
 import { DetailedRulesPanel } from "./DetailedRulesPanel";
 import { RotationPlanSummary } from "./RotationPlanSummary";
+import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
 
 const PREFERENCE_OPTIONS: Array<{
   id: CommonPreferenceId;
@@ -714,6 +715,12 @@ export function WorkflowPanel({
                     }
                   />
                   <small>{t("generate.customRulesHint")}</small>
+                  <RuleSetDiagnosticsPanel
+                    source={advancedSettings.customRulesJson}
+                    students={students}
+                    seatIds={seatIds}
+                    t={t}
+                  />
                 </label>
               </div>
             </details>
