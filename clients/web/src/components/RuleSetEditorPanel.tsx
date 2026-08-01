@@ -294,6 +294,7 @@ export function RuleSetEditorPanel({
           className="text-button"
           type="button"
           data-testid={`ruleset-editor-add-${field}`}
+          disabled={students.length < 2}
           onClick={() =>
             updateHard(field, [
               ...rows,
@@ -356,6 +357,7 @@ export function RuleSetEditorPanel({
           className="text-button"
           type="button"
           data-testid="ruleset-editor-add-fixed"
+          disabled={students.length < 1 || seatIds.length < 1}
           onClick={() =>
             updateHard("fixed_seats", [
               ...rows,
@@ -449,6 +451,7 @@ export function RuleSetEditorPanel({
           className="text-button"
           type="button"
           data-testid="ruleset-editor-add-distance"
+          disabled={students.length < 2}
           onClick={() =>
             updateHard("min_distance", [
               ...rows,
@@ -785,9 +788,9 @@ export function RuleSetEditorPanel({
             <span>{t("ruleSetEditor.schemaVersion")}</span>
             <input
               type="number"
-              min={1}
-              value={numberValue(document.schema_version, RULESET_SCHEMA_VERSION)}
-              onChange={(event) => updateTopLevel("schema_version", integerValue(event.target.value, 1, 99))}
+              value={RULESET_SCHEMA_VERSION}
+              readOnly
+              aria-readonly="true"
             />
           </label>
           <label className="advanced-field">

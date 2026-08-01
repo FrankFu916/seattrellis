@@ -1678,6 +1678,11 @@ input:focus-visible,
   font-weight: 750;
 }
 
+.ruleset-editor .text-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .ruleset-editor-metadata {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
