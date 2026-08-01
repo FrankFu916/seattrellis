@@ -8,7 +8,15 @@ from seattrellis.application.teacher_goals import (
     list_teacher_goals,
     resolve_teacher_goal,
 )
-from seattrellis.models import ClassroomLayout, RuleSet, SeatNode, Student
+from seattrellis.models import (
+    ClassroomLayout,
+    FixedSeatRule,
+    HardRules,
+    PairRule,
+    RuleSet,
+    SeatNode,
+    Student,
+)
 from seattrellis.presets import get_preset
 from seattrellis.service import compute_solve
 from seattrellis.service_types import SolveInput
@@ -135,6 +143,28 @@ def test_non_custom_goal_rejects_custom_rules() -> None:
             TeacherGoalSelection(custom_rules=RuleSet()),
             students=[],
         )
+
+
+def test_builtin_goal_accepts_common_hard_constraints_and_partial_overlay() -> None:
+    resolved = resolve_teacher_goal(
+        TeacherGoalSelection(
+            goal_id="daily-rotation",
+            hard_rules=HardRules(
+                fixed_seats=[FixedSeatRule(student="S1", seat_id="A1")],
+                cannot_be_adjacent=[PairRule(students=("S1", "S2"))],
+            ),
+            rules_overlay={
+                "soft": {
+                    "vision_front": {"enabled": False},
+                }
+            },
+        ),
+        students=[Student(student_id="S1"), Student(student_id="S2")],
+    )
+
+    assert [rule.student for rule in resolved.rules.hard.fixed_seats] == ["S1"]
+    assert resolved.rules.hard.cannot_be_adjacent[0].students == ("S1", "S2")
+    assert not resolved.rules.soft.vision_front.enabled
 
 
 def test_resolve_teacher_goal_rejects_negative_history_count() -> None:

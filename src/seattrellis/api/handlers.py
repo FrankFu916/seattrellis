@@ -555,6 +555,8 @@ def _build_class_draft(request: GenerateClassRequest) -> ClassDraft:
             goal=TeacherGoalSelection(
                 goal_id=request.draft.goal.goal_id,  # type: ignore[arg-type]
                 custom_rules=request.draft.goal.custom_rules,
+                hard_rules=request.draft.goal.hard_rules,
+                rules_overlay=request.draft.goal.rules_overlay,
             ),
             history_snapshots=tuple(request.draft.history_snapshots),
         )

@@ -6,10 +6,11 @@ exposing preset names or individual solver weights to teachers.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
-from seattrellis.models.rules import RuleSet
+from seattrellis.models.rules import HardRules, RuleSet
 from seattrellis.models.student import Student
 from seattrellis.presets import get_preset, preset_context_warnings
 
@@ -39,6 +40,8 @@ class TeacherGoalSelection:
 
     goal_id: TeacherGoalId = "daily-rotation"
     custom_rules: RuleSet | None = None
+    hard_rules: HardRules | None = None
+    rules_overlay: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -126,9 +129,12 @@ def resolve_teacher_goal(
     if definition.goal_id == "custom":
         if selection.custom_rules is None:
             raise ValueError("The custom teacher goal requires custom_rules.")
+        rules = _copy_rules(selection.custom_rules)
+        rules = _apply_rules_overlay(rules, selection.rules_overlay)
+        rules = _append_hard_rules(rules, selection.hard_rules)
         return ResolvedTeacherGoal(
             definition=definition,
-            rules=_copy_rules(selection.custom_rules),
+            rules=rules,
             preset_name=None,
             warnings=(),
         )
@@ -140,6 +146,8 @@ def resolve_teacher_goal(
         raise RuntimeError(f"Teacher goal {definition.goal_id!r} has no preset.")
     preset = get_preset(definition.preset_name)
     rules = _copy_rules(preset.rules)
+    rules = _apply_rules_overlay(rules, selection.rules_overlay)
+    rules = _append_hard_rules(rules, selection.hard_rules)
     warnings = preset_context_warnings(
         preset,
         students,
@@ -156,3 +164,39 @@ def resolve_teacher_goal(
 
 def _copy_rules(rules: RuleSet) -> RuleSet:
     return rules.model_copy(deep=True)
+
+
+def _append_hard_rules(rules: RuleSet, extra: HardRules | None) -> RuleSet:
+    """Add teacher-entered hard constraints without replacing preset rules."""
+
+    if extra is None:
+        return rules
+    rules.hard.fixed_seats.extend(deepcopy(extra.fixed_seats))
+    rules.hard.must_be_adjacent.extend(deepcopy(extra.must_be_adjacent))
+    rules.hard.cannot_be_adjacent.extend(deepcopy(extra.cannot_be_adjacent))
+    rules.hard.min_distance.extend(deepcopy(extra.min_distance))
+    return rules
+
+
+def _apply_rules_overlay(
+    rules: RuleSet,
+    overlay: Mapping[str, Any] | None,
+) -> RuleSet:
+    """Merge a partial JSON overlay into a resolved preset and revalidate it."""
+
+    if overlay is None:
+        return rules
+    if not isinstance(overlay, Mapping):
+        raise ValueError("rules_overlay must be an object.")
+
+    data = rules.model_dump(mode="json")
+    _deep_merge(data, overlay)
+    return RuleSet.model_validate(data)
+
+
+def _deep_merge(target: dict[str, Any], patch: Mapping[str, Any]) -> None:
+    for key, value in patch.items():
+        if isinstance(value, Mapping) and isinstance(target.get(key), dict):
+            _deep_merge(target[key], value)
+        else:
+            target[key] = deepcopy(value)

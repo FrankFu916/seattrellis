@@ -620,6 +620,145 @@ input:focus-visible,
   background: color-mix(in srgb, var(--accent) 72%, transparent);
 }
 
+.custom-room-card,
+.preference-list,
+.constraints-card {
+  margin-top: 14px;
+  padding: 13px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface-soft);
+}
+
+.custom-room-toggle,
+.preference-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.custom-room-toggle input,
+.preference-row input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.custom-room-toggle > span,
+.preference-row > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.custom-room-toggle strong,
+.preference-row strong {
+  color: var(--text-strong);
+  font-size: 0.75rem;
+}
+
+.custom-room-toggle small,
+.preference-row small,
+.preference-list > p,
+.constraints-heading p {
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.custom-room-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: var(--line-width) solid var(--border);
+}
+
+.preference-list {
+  display: grid;
+  gap: 9px;
+}
+
+.preference-list legend {
+  color: var(--text-strong);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.preference-list > p {
+  margin-top: -4px;
+}
+
+.preference-row {
+  padding: 8px 9px;
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.preference-row:hover {
+  background: var(--surface-tint);
+}
+
+.constraints-card {
+  display: grid;
+  gap: 10px;
+}
+
+.constraints-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.constraints-heading h2 {
+  color: var(--text-strong);
+  font-size: 0.78rem;
+}
+
+.constraints-heading p {
+  margin-top: 3px;
+}
+
+.constraint-list {
+  display: grid;
+  gap: 8px;
+}
+
+.constraint-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 32px;
+  gap: 6px;
+  align-items: center;
+}
+
+.constraint-row select,
+.constraint-row input {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 7px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.65rem;
+}
+
+.constraint-row .icon-button {
+  min-height: 32px;
+  padding: 4px;
+  color: var(--muted);
+}
+
+.constraint-row .icon-button:hover {
+  background: var(--danger-soft, #fee8e7);
+  color: var(--danger, #a33a36);
+}
+
 .goal-choice {
   grid-template-columns: 44px 1fr 24px;
 }
@@ -702,6 +841,89 @@ input:focus-visible,
   place-items: center;
   border: 1px solid currentColor;
   border-radius: 50%;
+}
+
+.advanced-settings {
+  margin-top: 16px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface-soft);
+}
+
+.advanced-settings summary {
+  padding: 11px 12px;
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.advanced-settings[open] summary {
+  border-bottom: var(--line-width) solid var(--border);
+}
+
+.advanced-settings-hint {
+  padding: 11px 12px 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.advanced-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 11px 12px 12px;
+}
+
+.advanced-field {
+  display: grid;
+  gap: 5px;
+  color: var(--text-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.advanced-field input,
+.advanced-field select,
+.advanced-field textarea {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.advanced-field textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.advanced-field small {
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 450;
+  line-height: 1.4;
+}
+
+.advanced-field-wide {
+  grid-column: 1 / -1;
+}
+
+.inline-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-small);
+  background: var(--danger-soft, #fee8e7);
+  color: var(--danger, #a33a36);
+  font-size: 0.7rem;
 }
 
 .adjust-tools {
@@ -1578,6 +1800,26 @@ input:focus-visible,
 
   .room-miniature {
     width: 48px;
+  }
+
+  .advanced-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-field-wide {
+    grid-column: auto;
+  }
+
+  .custom-room-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .constraint-row {
+    grid-template-columns: 1fr 1fr 32px;
+  }
+
+  .constraint-row select:first-child {
+    grid-column: 1 / -1;
   }
 }
 

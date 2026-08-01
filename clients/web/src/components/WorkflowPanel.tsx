@@ -1,18 +1,39 @@
 import type { ReactNode } from "react";
 
 import type {
+  AdvancedSolveSettings,
   CatalogOption,
+  CommonConstraint,
+  CommonPreferenceId,
+  CustomRoomSettings,
   RoomTemplate,
   SeatAssignment,
+  Student,
 } from "../api/types";
 import type { WorkflowStep } from "../domain/workflow";
-import type { Locale, Translate } from "../i18n/messages";
+import type { Locale, MessageKey, Translate } from "../i18n/messages";
+
+const PREFERENCE_OPTIONS: Array<{
+  id: CommonPreferenceId;
+  label: MessageKey;
+  description: MessageKey;
+}> = [
+  { id: "vision_front", label: "preference.visionFront", description: "preference.visionFrontHint" },
+  { id: "height_back", label: "preference.heightBack", description: "preference.heightBackHint" },
+  { id: "fair_rotation", label: "preference.fairRotation", description: "preference.fairRotationHint" },
+  { id: "avoid_recent_neighbors", label: "preference.avoidNeighbors", description: "preference.avoidNeighborsHint" },
+  { id: "score_position", label: "preference.scorePosition", description: "preference.scorePositionHint" },
+  { id: "score_distribution", label: "preference.scoreDistribution", description: "preference.scoreDistributionHint" },
+  { id: "mentor_pairing", label: "preference.mentorPairing", description: "preference.mentorPairingHint" },
+];
 
 type WorkflowPanelProps = {
   step: WorkflowStep;
   locale: Locale;
   t: Translate;
   studentCount: number;
+  students: Student[];
+  seatIds: string[];
   selectedFileName: string | null;
   rooms: RoomTemplate[];
   selectedRoomId: string;
@@ -22,6 +43,11 @@ type WorkflowPanelProps = {
   selectedExportFormat: string;
   orientation: "portrait" | "landscape";
   showStudentIds: boolean;
+  advancedSettings: AdvancedSolveSettings;
+  roomSettings: CustomRoomSettings;
+  constraints: CommonConstraint[];
+  preferences: CommonPreferenceId[];
+  error: string | null;
   selectedSeat: SeatAssignment | undefined;
   canUndo: boolean;
   isGenerating: boolean;
@@ -32,6 +58,17 @@ type WorkflowPanelProps = {
   onExportFormatChange: (formatId: string) => void;
   onOrientationChange: (orientation: "portrait" | "landscape") => void;
   onShowStudentIdsChange: (show: boolean) => void;
+  onAdvancedSettingsChange: (
+    changes: Partial<AdvancedSolveSettings>,
+  ) => void;
+  onRoomSettingsChange: (changes: Partial<CustomRoomSettings>) => void;
+  onConstraintAdd: () => void;
+  onConstraintChange: (
+    id: string,
+    changes: Partial<CommonConstraint>,
+  ) => void;
+  onConstraintRemove: (id: string) => void;
+  onPreferenceToggle: (id: CommonPreferenceId) => void;
   onBack: () => void;
   onNext: () => void;
   onGenerate: () => void;
@@ -59,6 +96,8 @@ export function WorkflowPanel({
   locale,
   t,
   studentCount,
+  students,
+  seatIds,
   selectedFileName,
   rooms,
   selectedRoomId,
@@ -68,6 +107,11 @@ export function WorkflowPanel({
   selectedExportFormat,
   orientation,
   showStudentIds,
+  advancedSettings,
+  roomSettings,
+  constraints,
+  preferences,
+  error,
   selectedSeat,
   canUndo,
   isGenerating,
@@ -78,6 +122,12 @@ export function WorkflowPanel({
   onExportFormatChange,
   onOrientationChange,
   onShowStudentIdsChange,
+  onAdvancedSettingsChange,
+  onRoomSettingsChange,
+  onConstraintAdd,
+  onConstraintChange,
+  onConstraintRemove,
+  onPreferenceToggle,
   onBack,
   onNext,
   onGenerate,
@@ -141,80 +191,265 @@ export function WorkflowPanel({
         ) : null}
 
         {step === "room" ? (
-          <fieldset className="choice-list">
-            <legend className="sr-only">{t("step.room.title")}</legend>
-            {rooms.map((room) => (
-              <label
-                className="choice-card room-choice"
-                data-selected={room.id === selectedRoomId}
-                key={room.id}
-              >
-                <input
-                  type="radio"
-                  name="room"
-                  value={room.id}
-                  checked={room.id === selectedRoomId}
-                  onChange={() => onRoomChange(room.id)}
-                />
-                <span
-                  className="room-miniature"
-                  style={{
-                    gridTemplateColumns: `repeat(${Math.min(room.columns, 7)}, 1fr)`,
-                  }}
-                  aria-hidden="true"
+          <div className="room-settings">
+            <fieldset className="choice-list">
+              <legend className="sr-only">{t("step.room.title")}</legend>
+              {rooms.map((room) => (
+                <label
+                  className="choice-card room-choice"
+                  data-selected={!roomSettings.enabled && room.id === selectedRoomId}
+                  key={room.id}
                 >
-                  {Array.from({
-                    length: Math.min(room.rows * room.columns, 21),
-                  }).map((_, index) => (
-                    <i key={index} />
-                  ))}
-                </span>
-                <span className="choice-copy">
-                  <strong>{optionName(room, locale)}</strong>
-                  <small>{optionDescription(room, locale)}</small>
-                  <em>
-                    {t("room.seats", {
-                      count: room.rows * room.columns,
-                    })}
-                  </em>
-                </span>
-                <span className="choice-check" aria-hidden="true">
-                  ✓
+                  <input
+                    type="radio"
+                    name="room"
+                    value={room.id}
+                    checked={!roomSettings.enabled && room.id === selectedRoomId}
+                    onChange={() => onRoomChange(room.id)}
+                  />
+                  <span
+                    className="room-miniature"
+                    style={{
+                      gridTemplateColumns: `repeat(${Math.min(room.columns, 7)}, 1fr)`,
+                    }}
+                    aria-hidden="true"
+                  >
+                    {Array.from({
+                      length: Math.min(room.rows * room.columns, 21),
+                    }).map((_, index) => (
+                      <i key={index} />
+                    ))}
+                  </span>
+                  <span className="choice-copy">
+                    <strong>{optionName(room, locale)}</strong>
+                    <small>{optionDescription(room, locale)}</small>
+                    <em>{t("room.seats", { count: room.rows * room.columns })}</em>
+                  </span>
+                  <span className="choice-check" aria-hidden="true">✓</span>
+                </label>
+              ))}
+            </fieldset>
+            <section className="custom-room-card" aria-labelledby="custom-room-title">
+              <label className="custom-room-toggle">
+                <input
+                  data-testid="custom-room-toggle"
+                  type="checkbox"
+                  checked={roomSettings.enabled}
+                  onChange={(event) =>
+                    onRoomSettingsChange({ enabled: event.target.checked })
+                  }
+                />
+                <span>
+                  <strong id="custom-room-title">{t("room.customTitle")}</strong>
+                  <small>{t("room.customHint")}</small>
                 </span>
               </label>
-            ))}
-          </fieldset>
+              {roomSettings.enabled ? (
+                <div className="custom-room-fields">
+                  <label className="advanced-field">
+                    <span>{t("room.rows")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={roomSettings.rows}
+                      onChange={(event) =>
+                        onRoomSettingsChange({
+                          rows: Math.min(30, Math.max(1, Number(event.target.value) || 1)),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="advanced-field">
+                    <span>{t("room.columns")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={roomSettings.columns}
+                      onChange={(event) =>
+                        onRoomSettingsChange({
+                          columns: Math.min(30, Math.max(1, Number(event.target.value) || 1)),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="advanced-field advanced-field-wide">
+                    <span>{t("room.aisles")}</span>
+                    <input
+                      value={roomSettings.aisleColumns}
+                      placeholder={t("room.aislesPlaceholder")}
+                      onChange={(event) =>
+                        onRoomSettingsChange({ aisleColumns: event.target.value })
+                      }
+                    />
+                    <small>{t("room.aislesHint")}</small>
+                  </label>
+                  <label className="advanced-field advanced-field-wide">
+                    <span>{t("room.disabledSeats")}</span>
+                    <input
+                      value={roomSettings.disabledSeats}
+                      placeholder={t("room.disabledSeatsPlaceholder")}
+                      onChange={(event) =>
+                        onRoomSettingsChange({ disabledSeats: event.target.value })
+                      }
+                    />
+                    <small>{t("room.disabledSeatsHint")}</small>
+                  </label>
+                  <label className="advanced-field advanced-field-wide">
+                    <span>{t("room.layoutJson")}</span>
+                    <textarea
+                      rows={4}
+                      value={roomSettings.layoutJson}
+                      placeholder={t("room.layoutJsonPlaceholder")}
+                      onChange={(event) =>
+                        onRoomSettingsChange({ layoutJson: event.target.value })
+                      }
+                    />
+                    <small>{t("room.layoutJsonHint")}</small>
+                  </label>
+                </div>
+              ) : null}
+            </section>
+          </div>
         ) : null}
 
         {step === "goal" ? (
-          <fieldset className="choice-list">
-            <legend className="sr-only">{t("step.goal.title")}</legend>
-            {goals.map((goal, index) => (
-              <label
-                className="choice-card goal-choice"
-                data-selected={goal.id === selectedGoalId}
-                key={goal.id}
-              >
-                <input
-                  type="radio"
-                  name="goal"
-                  value={goal.id}
-                  checked={goal.id === selectedGoalId}
-                  onChange={() => onGoalChange(goal.id)}
-                />
-                <span className={`goal-symbol goal-symbol-${index + 1}`} aria-hidden="true">
-                  {index === 0 ? "↻" : index === 1 ? "⌁" : "◇"}
-                </span>
-                <span className="choice-copy">
-                  <strong>{optionName(goal, locale)}</strong>
-                  <small>{optionDescription(goal, locale)}</small>
-                </span>
-                <span className="choice-check" aria-hidden="true">
-                  ✓
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          <div className="goal-settings">
+            <fieldset className="choice-list">
+              <legend className="sr-only">{t("step.goal.title")}</legend>
+              {goals.map((goal, index) => (
+                <label
+                  className="choice-card goal-choice"
+                  data-selected={goal.id === selectedGoalId}
+                  key={goal.id}
+                >
+                  <input
+                    type="radio"
+                    name="goal"
+                    value={goal.id}
+                    checked={goal.id === selectedGoalId}
+                    onChange={() => onGoalChange(goal.id)}
+                  />
+                  <span className={`goal-symbol goal-symbol-${index + 1}`} aria-hidden="true">
+                    {index === 0 ? "↻" : index === 1 ? "⌁" : "◇"}
+                  </span>
+                  <span className="choice-copy">
+                    <strong>{optionName(goal, locale)}</strong>
+                    <small>{optionDescription(goal, locale)}</small>
+                  </span>
+                  <span className="choice-check" aria-hidden="true">✓</span>
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className="preference-list">
+              <legend>{t("preference.title")}</legend>
+              <p className="muted">{t("preference.hint")}</p>
+              {PREFERENCE_OPTIONS.map((option) => (
+                <label key={option.id} className="preference-row">
+                  <input
+                    type="checkbox"
+                    checked={preferences.includes(option.id)}
+                    onChange={() => onPreferenceToggle(option.id)}
+                  />
+                  <span>
+                    <strong>{t(option.label)}</strong>
+                    <small>{t(option.description)}</small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <section className="constraints-card" aria-labelledby="constraints-title">
+              <div className="constraints-heading">
+                <div>
+                  <h2 id="constraints-title">{t("constraints.title")}</h2>
+                  <p>{t("constraints.hint")}</p>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={onConstraintAdd}
+                  disabled={students.length < 1}
+                >
+                  {t("constraints.add")}
+                </button>
+              </div>
+              {constraints.length === 0 ? (
+                <p className="muted">{t("constraints.empty")}</p>
+              ) : (
+                <div className="constraint-list">
+                  {constraints.map((constraint) => (
+                    <div className="constraint-row" key={constraint.id}>
+                      <select
+                        aria-label={t("constraints.type")}
+                        value={constraint.kind}
+                        onChange={(event) =>
+                          onConstraintChange(constraint.id, {
+                            kind: event.target.value as CommonConstraint["kind"],
+                          })
+                        }
+                      >
+                        <option value="avoid_adjacent">{t("constraints.avoidAdjacent")}</option>
+                        <option value="must_adjacent">{t("constraints.mustAdjacent")}</option>
+                        <option value="fixed_seat">{t("constraints.fixedSeat")}</option>
+                      </select>
+                      <select
+                        aria-label={t("constraints.student")}
+                        value={constraint.first}
+                        onChange={(event) =>
+                          onConstraintChange(constraint.id, { first: event.target.value })
+                        }
+                      >
+                        <option value="">{t("constraints.chooseStudent")}</option>
+                        {students.map((student) => (
+                          <option key={student.id} value={student.id}>
+                            {student.name} · {student.id}
+                          </option>
+                        ))}
+                      </select>
+                      {constraint.kind === "fixed_seat" ? (
+                        <input
+                          aria-label={t("constraints.seat")}
+                          list="available-seat-ids"
+                          value={constraint.seatId}
+                          placeholder={t("constraints.seatPlaceholder")}
+                          onChange={(event) =>
+                            onConstraintChange(constraint.id, { seatId: event.target.value })
+                          }
+                        />
+                      ) : (
+                        <select
+                          aria-label={t("constraints.otherStudent")}
+                          value={constraint.second}
+                          onChange={(event) =>
+                            onConstraintChange(constraint.id, { second: event.target.value })
+                          }
+                        >
+                          <option value="">{t("constraints.chooseStudent")}</option>
+                          {students.map((student) => (
+                            <option key={student.id} value={student.id}>
+                              {student.name} · {student.id}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        className="icon-button"
+                        type="button"
+                        aria-label={t("constraints.remove")}
+                        onClick={() => onConstraintRemove(constraint.id)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <datalist id="available-seat-ids">
+                {seatIds.map((seatId) => <option key={seatId} value={seatId} />)}
+              </datalist>
+            </section>
+          </div>
         ) : null}
 
         {step === "generate" ? (
@@ -228,7 +463,9 @@ export function WorkflowPanel({
               <div>
                 <dt>{t("generate.room")}</dt>
                 <dd>
-                  {selectedRoom
+                  {roomSettings.enabled
+                    ? t("generate.customLayout")
+                    : selectedRoom
                     ? optionName(selectedRoom, locale)
                     : t("room.current")}
                 </dd>
@@ -236,7 +473,9 @@ export function WorkflowPanel({
               <div>
                 <dt>{t("generate.goal")}</dt>
                 <dd>
-                  {selectedGoal
+                  {advancedSettings.customRulesJson.trim()
+                    ? t("generate.customRules")
+                    : selectedGoal
                     ? optionName(selectedGoal, locale)
                     : t("goal.current")}
                 </dd>
@@ -246,6 +485,102 @@ export function WorkflowPanel({
               <span aria-hidden="true">✓</span>
               {t("generate.note")}
             </p>
+            <details className="advanced-settings">
+              <summary>{t("generate.advanced")}</summary>
+              <p className="advanced-settings-hint">
+                {t("generate.advancedHint")}
+              </p>
+              <div className="advanced-fields">
+                <label className="advanced-field">
+                  <span>{t("generate.candidateCount")}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={advancedSettings.candidateCount}
+                    onChange={(event) =>
+                      onAdvancedSettingsChange({
+                        candidateCount: Math.min(
+                          20,
+                          Math.max(1, Number(event.target.value) || 1),
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <label className="advanced-field">
+                  <span>{t("generate.timeLimit")}</span>
+                  <input
+                    type="number"
+                    min={0.1}
+                    max={300}
+                    step={0.1}
+                    value={advancedSettings.timeLimitSeconds}
+                    onChange={(event) =>
+                      onAdvancedSettingsChange({
+                        timeLimitSeconds: Math.min(
+                          300,
+                          Math.max(0.1, Number(event.target.value) || 0.1),
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <label className="advanced-field">
+                  <span>{t("generate.backend")}</span>
+                  <select
+                    value={advancedSettings.backend}
+                    onChange={(event) =>
+                      onAdvancedSettingsChange({
+                        backend: event.target.value as AdvancedSolveSettings["backend"],
+                      })
+                    }
+                  >
+                    <option value="auto">{t("generate.backendAuto")}</option>
+                    <option value="fallback">
+                      {t("generate.backendFallback")}
+                    </option>
+                    <option value="ortools">
+                      {t("generate.backendOrtools")}
+                    </option>
+                    <option value="native">
+                      {t("generate.backendNative")}
+                    </option>
+                  </select>
+                </label>
+                <label className="advanced-field">
+                  <span>{t("generate.seed")}</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={advancedSettings.seed}
+                    placeholder={t("generate.seedPlaceholder")}
+                    onChange={(event) =>
+                      onAdvancedSettingsChange({ seed: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="advanced-field advanced-field-wide">
+                  <span>{t("generate.customRules")}</span>
+                  <textarea
+                    rows={5}
+                    value={advancedSettings.customRulesJson}
+                    placeholder={t("generate.customRulesPlaceholder")}
+                    onChange={(event) =>
+                      onAdvancedSettingsChange({
+                        customRulesJson: event.target.value,
+                      })
+                    }
+                  />
+                  <small>{t("generate.customRulesHint")}</small>
+                </label>
+              </div>
+            </details>
+            {error ? (
+              <p className="inline-error" role="alert">
+                {error}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -390,4 +725,3 @@ export function WorkflowPanel({
     </section>
   );
 }
-
