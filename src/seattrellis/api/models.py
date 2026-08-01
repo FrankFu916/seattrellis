@@ -439,6 +439,62 @@ class ProjectMigrationResponse(VersionedResponse):
     dry_run: bool
 
 
+class ProjectRotationSaveRequest(ProjectPathRequest):
+    """Persist the current server-owned period drafts as a project artifact."""
+
+    rotation_plan: RotationPlan
+    draft_ids: list[str] = Field(min_length=1, max_length=20)
+    output_name: str | None = None
+
+    @field_validator("draft_ids", mode="before")
+    def clean_draft_ids(cls, value: object) -> list[str]:
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("draft_ids must be a list of strings.")
+        cleaned: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("draft_ids must contain non-empty strings.")
+            draft_id = item.strip()
+            if draft_id in cleaned:
+                raise ValueError("draft_ids must be unique.")
+            cleaned.append(draft_id)
+        return cleaned
+
+    @field_validator("output_name", mode="before")
+    def clean_output_name(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("output_name must be a string.")
+        name = value.strip()
+        if not name:
+            return None
+        if name in {".", ".."} or any(char in name for char in ("/", "\\", ":", "\x00")):
+            raise ValueError("output_name must be a file name, not a path.")
+        if not name.endswith(".json"):
+            name = f"{name}.json"
+        return name
+
+    @model_validator(mode="after")
+    def draft_count_matches_plan(
+        self,
+    ) -> "ProjectRotationSaveRequest":
+        if len(self.draft_ids) != len(self.rotation_plan.periods):
+            raise ValueError(
+                "draft_ids must contain one editing draft for every rotation period."
+            )
+        return self
+
+
+class ProjectRotationSaveResponse(VersionedResponse):
+    """Result of saving edited rotation periods to a new project artifact."""
+
+    project_path: str
+    output_path: str
+    period_count: int = Field(ge=1)
+    saved_at: datetime
+
+
 class PrivacyFindingItem(ApiModel):
     file: str
     fields: list[str] = Field(default_factory=list)

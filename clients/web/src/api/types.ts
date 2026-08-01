@@ -417,13 +417,16 @@ export type RotationPeriod = {
 };
 
 export type RotationPlan = {
+  schema_version?: string;
   kind: "rotation_plan";
+  created_at?: string;
   name: string;
   periods: RotationPeriod[];
   base_history_count: number;
   fairness_summary: Record<string, unknown>;
   pair_repeat_summary: Record<string, unknown>;
   warnings: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type GenerateRotationPlanRequest = {
@@ -564,4 +567,12 @@ export type ProjectMigrationResponse = {
   output_path: string | null;
   backup_path: string | null;
   dry_run: boolean;
+};
+
+export type ProjectRotationSaveResponse = {
+  api_version: "1";
+  project_path: string;
+  output_path: string;
+  period_count: number;
+  saved_at: string;
 };

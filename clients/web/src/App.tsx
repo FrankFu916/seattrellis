@@ -828,7 +828,12 @@ export function App() {
           <aside className="workspace-side-rail">
             <UnseatedTray students={unseatedStudents} t={t} />
             <DiagnosticsPanel diagnostics={diagnostics} t={t} />
-            <ProjectWorkspacePanel locale={locale} t={t} />
+            <ProjectWorkspacePanel
+              locale={locale}
+              t={t}
+              rotationPlan={rotationPlan}
+              rotationDraftIds={rotationEditors.map((editor) => editor.draft_id)}
+            />
           </aside>
         </main>
       </div>

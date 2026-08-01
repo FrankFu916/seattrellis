@@ -196,3 +196,95 @@ def test_project_schema_migration_in_place_keeps_a_backup(tmp_path) -> None:
     assert payload["backup_path"]
     assert Path(payload["backup_path"]).exists()
     assert source.exists()
+
+
+def test_project_rotation_save_persists_current_period_drafts(tmp_path) -> None:
+    paths = cli.init_demo(output_dir=tmp_path / "class", overwrite=True)
+    client = _client()
+    generated = client.post(
+        "/api/v1/classes/rotation",
+        json={
+            "draft": {
+                "name": "Rotation class",
+                "students": [
+                    {"student_id": "S1", "name": "Alice"},
+                    {"student_id": "S2", "name": "Bob"},
+                ],
+                "room": {
+                    "layout": {
+                        "layout_id": "rotation-room",
+                        "name": "Rotation room",
+                        "seats": [
+                            {"seat_id": "A1", "row": 1, "col": 1},
+                            {"seat_id": "A2", "row": 1, "col": 2},
+                        ],
+                    }
+                },
+                "goal": {"goal_id": "quick-shuffle"},
+            },
+            "period_count": 2,
+            "period_labels": ["Monday", "Friday"],
+            "options": {
+                "backend": "fallback",
+                "time_limit_seconds": 0.2,
+                "seed": 7,
+            },
+        },
+    )
+    assert generated.status_code == 200, generated.text
+    generated_payload = generated.json()
+    period_editors = generated_payload["period_editors"]
+
+    first_editor = period_editors[0]
+    first_students = first_editor["students"]
+    swapped = client.post(
+        f"/api/v1/editing/drafts/{first_editor['draft_id']}/commands",
+        json={
+            "kind": "seattrellis_editor_command",
+            "protocol_version": "1.0",
+            "command_id": "save-rotation-swap",
+            "draft_id": first_editor["draft_id"],
+            "base_revision": first_editor["revision"],
+            "action": "apply",
+            "operations": [
+                {
+                    "kind": "swap_students",
+                    "payload": {
+                        "first_student": first_students[0]["student_key"],
+                        "second_student": first_students[1]["student_key"],
+                    },
+                }
+            ],
+        },
+    )
+    assert swapped.status_code == 200, swapped.text
+
+    saved = client.post(
+        "/api/v1/projects/rotation/save",
+        json={
+            "project_path": str(paths["project"]),
+            "rotation_plan": generated_payload["rotation_plan"],
+            "draft_ids": [editor["draft_id"] for editor in period_editors],
+            "output_name": "edited-rotation",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    saved_payload = saved.json()
+    output = Path(saved_payload["output_path"])
+    assert output == paths["project"].parent / "outputs" / "edited-rotation.json"
+    assert output.exists()
+
+    from seattrellis.io.json_files import load_rotation_plan
+
+    plan = load_rotation_plan(output)
+    assert [period.label for period in plan.periods] == ["Monday", "Friday"]
+    assert plan.periods[0].snapshot.metadata["project_persistence"]["period"] == 1
+    assert plan.periods[0].snapshot.metadata["manual_edit"]["operation_count"] == 1
+    assert plan.periods[0].snapshot.metadata["manual_edit"]["commands"][0]["command_id"] == "save-rotation-swap"
+
+    listed = client.post(
+        "/api/v1/projects/history",
+        json={"project_path": str(paths["project"])},
+    ).json()
+    rotation_outputs = [item for item in listed["outputs"] if item["kind"] == "rotation_plan"]
+    assert any(item["path"] == str(output) and item["period_count"] == 2 for item in rotation_outputs)

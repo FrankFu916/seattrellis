@@ -37,6 +37,7 @@ class _StoredDraft:
     undo_stack: list[EditingSession] = field(default_factory=list)
     redo_stack: list[EditingSession] = field(default_factory=list)
     applied_command_ids: set[str] = field(default_factory=set)
+    command_log: list[dict[str, object]] = field(default_factory=list)
     touched_at: float = field(default_factory=monotonic)
 
 
@@ -114,6 +115,15 @@ class EditorDraftStore:
             stored = self._get(draft_id)
             stored.touched_at = monotonic()
             current = stored.session.current_snapshot()
+            if stored.command_log:
+                metadata = dict(current.metadata)
+                metadata["manual_edit"] = {
+                    "source": "web_editor",
+                    "draft_id": stored.draft_id,
+                    "operation_count": len(stored.command_log),
+                    "commands": deepcopy(stored.command_log),
+                }
+                current = current.model_copy(update={"metadata": metadata})
             return current.model_copy(deep=True)
 
     def dispatch(
@@ -134,6 +144,7 @@ class EditorDraftStore:
                 self._redo(stored)
             stored.revision += 1
             stored.applied_command_ids.add(command.command_id)
+            stored.command_log.append(command.model_dump(mode="json", exclude_none=True))
             stored.touched_at = monotonic()
             return _build_state(stored)
 

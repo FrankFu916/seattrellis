@@ -150,6 +150,11 @@ def test_editor_commands_are_atomic_and_undo_redo_at_command_level() -> None:
     assert redone.revision == 3
     assert next(item for item in redone.students if item.student_key == "PRIVATE-1").seat_id == "A2"
 
+    snapshot = store.snapshot(state.draft_id)
+    assert snapshot.metadata["manual_edit"]["source"] == "web_editor"
+    assert snapshot.metadata["manual_edit"]["operation_count"] == 3
+    assert snapshot.metadata["manual_edit"]["commands"][0]["command_id"] == "swap-and-lock"
+
 
 def test_failed_multi_operation_command_rolls_back_all_changes() -> None:
     store = EditorDraftStore()

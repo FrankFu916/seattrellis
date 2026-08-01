@@ -95,7 +95,9 @@ React workbench keeps the ordinary teacher flow focused:
 The Project panel beside the workflow can browse recent local project history,
 scan a project before sharing, and download or restore a `.seattrellis.zip`
 backup. Comparison can also expand an anonymous list of before/after seat
-changes. Common irregular rooms and seating requests can be entered directly in
+changes. After generating a multi-period rotation and selecting a class project,
+you can save the current edits and operation history as a new rotation-plan
+output. Common irregular rooms and seating requests can be entered directly in
 the ordinary flow. The **Detailed seating rules** panel only exposes rules that
 are connected to solving, validation, and scoring. Common named groups can be
 added in the ordinary settings as together/apart requests; the JSON compatibility

@@ -40,10 +40,14 @@
   the number and names of upcoming periods, review repeat-neighbor metrics,
   switch between period-specific editing drafts, and continue editing or
   exporting the selected period through the same workflow.
+- Added **Save current rotation** to the React Project panel. After selecting a
+  class project, teachers can save all edited periods, locks, and web editing
+  commands as a new rotation-plan output without replacing the original plan.
 - Added a detailed rule panel to the React workbench. Teachers can tune history
   lookback, recent-neighbor distance, relationship cooling, score placement and
-  distribution, and peer-support pairing without writing JSON. Group constraints
-  remain available through the raw rules file.
+  distribution, and peer-support pairing without writing JSON. Common
+  together/apart group relationships are available in the ordinary settings,
+  with the raw rules field retained for complex cases.
 - Added an ordinary **Group relationships** editor. Teachers can name a group,
   choose together/apart behavior, and enter its student IDs without editing the
   full rules JSON; invalid or incomplete groups are ignored until they contain
@@ -70,6 +74,8 @@
 - Added `/api/v1/projects/migration/preview` and `/api/v1/projects/migration/apply`
   so browser and desktop clients share the same guarded schema-migration path as
   the CLI.
+- Added `/api/v1/projects/rotation/save`; the local service rebuilds a rotation
+  artifact from server-owned editing drafts and keeps the source output intact.
 - Added API contract tests, React component tests, and a real-browser acceptance
   path covering project history, comparison, recovery, privacy, backup, and
   restore.

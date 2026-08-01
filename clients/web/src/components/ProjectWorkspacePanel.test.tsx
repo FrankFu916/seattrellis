@@ -11,6 +11,7 @@ import {
   previewProjectMigration,
   restoreProjectBundle,
   restoreProjectArtifact,
+  saveProjectRotationPlan,
   scanProjectPrivacy,
 } from "../api/client";
 import { createTranslator } from "../i18n/messages";
@@ -25,6 +26,7 @@ vi.mock("../api/client", () => ({
   previewProjectMigration: vi.fn(),
   restoreProjectBundle: vi.fn(),
   restoreProjectArtifact: vi.fn(),
+  saveProjectRotationPlan: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
   scanProjectPrivacy: vi.fn(),
 }));
@@ -298,6 +300,62 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getByTestId("project-status")).toHaveTextContent(
       "Migration written to: /classes/demo.seattrellis.migrated.json",
+    );
+  });
+
+  it("saves the current rotation drafts to the selected project", async () => {
+    const user = userEvent.setup();
+    const rotationPlan = {
+      kind: "rotation_plan" as const,
+      name: "Weekly rotation",
+      periods: [
+        {
+          period: 1,
+          label: "Monday",
+          snapshot: { assignments: [], solver_status: "feasible" },
+        },
+        {
+          period: 2,
+          label: "Friday",
+          snapshot: { assignments: [], solver_status: "feasible" },
+        },
+      ],
+      base_history_count: 0,
+      fairness_summary: {},
+      pair_repeat_summary: {},
+      warnings: [],
+    };
+    vi.mocked(saveProjectRotationPlan).mockResolvedValue({
+      api_version: "1",
+      project_path: "/classes/demo.seattrellis.json",
+      output_path: "/classes/outputs/rotation-plan.json",
+      period_count: 2,
+      saved_at: "2026-08-01T00:00:00Z",
+    });
+    render(
+      <ProjectWorkspacePanel
+        locale="en"
+        t={createTranslator("en")}
+        rotationPlan={rotationPlan}
+        rotationDraftIds={["period-one", "period-two"]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-select")).toHaveValue(
+        "/classes/demo.seattrellis.json",
+      );
+    });
+    await user.click(screen.getByTestId("project-rotation-save-button"));
+    await waitFor(() => {
+      expect(saveProjectRotationPlan).toHaveBeenCalledWith(
+        "/classes/demo.seattrellis.json",
+        rotationPlan,
+        ["period-one", "period-two"],
+      );
+    });
+    expect(screen.getByTestId("project-status")).toHaveTextContent(
+      "Rotation plan saved to: /classes/outputs/rotation-plan.json",
     );
   });
 });

@@ -98,6 +98,10 @@ the result for generation. Student editing is available in the roster step. The
 detailed rules panel covers the implemented soft rules. A full visual RuleSet
 editor for every remaining hard-rule field remains on the roadmap; common group
 relationships are already available in the ordinary goal step.
+When a rotation has been generated and a class project is selected, the panel
+also offers **Save current rotation**. It writes every period's current seats,
+locks, and editing commands as a new rotation-plan output without replacing the
+source artifact.
 
 ## Advanced tools
 

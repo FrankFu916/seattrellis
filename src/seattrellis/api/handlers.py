@@ -37,6 +37,8 @@ from seattrellis.api.models import (
     ProjectListResponse,
     ProjectMigrationRequest,
     ProjectMigrationResponse,
+    ProjectRotationSaveRequest,
+    ProjectRotationSaveResponse,
     ProjectPathRequest,
     ProjectPrivacyResponse,
     ProjectRestoreResponse,
@@ -132,6 +134,7 @@ def capabilities() -> CapabilitiesResponse:
             "rotation-plans",
             "project-workspace",
             "project-migration",
+            "project-rotation-save",
             "layout-editing",
             "roster-mapping",
             "roster-update-preview",
@@ -382,6 +385,111 @@ def project_migration_apply(
     """Write a migrated artifact, preserving the source unless explicitly in-place."""
 
     return _migrate_project_artifact(request, dry_run=False)
+
+
+def project_rotation_save(
+    request: ProjectRotationSaveRequest,
+    *,
+    draft_store: EditorDraftStore,
+) -> ProjectRotationSaveResponse:
+    """Save all current rotation drafts without exposing them to the client."""
+
+    try:
+        _project, paths = load_project_paths(request.project_path)
+        snapshots: list[SeatingSnapshot] = []
+        for source_period, draft_id in zip(
+            request.rotation_plan.periods,
+            request.draft_ids,
+            strict=True,
+        ):
+            snapshot = draft_store.snapshot(draft_id)
+            _ensure_rotation_draft_matches_source(snapshot, source_period.snapshot)
+            metadata = dict(snapshot.metadata)
+            metadata["project_persistence"] = {
+                "source": "react_rotation_editor",
+                "rotation_plan": request.rotation_plan.name,
+                "period": source_period.period,
+                "draft_id": draft_id,
+            }
+            snapshots.append(snapshot.model_copy(update={"metadata": metadata}))
+
+        saved_at = datetime.now(timezone.utc)
+        periods = [
+            source_period.model_copy(update={"snapshot": snapshot})
+            for source_period, snapshot in zip(
+                request.rotation_plan.periods,
+                snapshots,
+                strict=True,
+            )
+        ]
+        plan = request.rotation_plan.model_copy(
+            update={
+                "periods": periods,
+                "metadata": {
+                    **request.rotation_plan.metadata,
+                    "saved_at": saved_at.isoformat(),
+                    "saved_from": "react_rotation_editor",
+                },
+            }
+        )
+        paths.outputs_dir.mkdir(parents=True, exist_ok=True)
+        output_path = _next_rotation_output_path(
+            paths.outputs_dir,
+            request.output_name,
+        )
+        write_json_model(plan, output_path)
+    except EditorDraftNotFoundError as exc:
+        raise ApiProblem(
+            status_code=409,
+            code="rotation_draft_expired",
+            message="One of the rotation periods has expired. Generate the rotation again before saving.",
+        ) from exc
+    except (InputFileError, OSError, TypeError, ValueError) as exc:
+        raise ApiProblem(
+            status_code=422,
+            code="project_rotation_save_failed",
+            message="The edited rotation plan could not be saved to this project.",
+        ) from exc
+    return ProjectRotationSaveResponse(
+        project_path=str(paths.project_file),
+        output_path=str(output_path),
+        period_count=plan.period_count,
+        saved_at=saved_at,
+    )
+
+
+def _ensure_rotation_draft_matches_source(
+    current: SeatingSnapshot,
+    source: SeatingSnapshot,
+) -> None:
+    """Prevent a draft from being saved under the wrong rotation period."""
+
+    if {student.key for student in current.students} != {
+        student.key for student in source.students
+    }:
+        raise InputFileError("A rotation editing draft has a different roster.")
+    if current.layout.model_dump(mode="json") != source.layout.model_dump(mode="json"):
+        raise InputFileError("A rotation editing draft has a different layout.")
+
+
+def _next_rotation_output_path(
+    outputs_dir: Path,
+    output_name: str | None,
+) -> Path:
+    """Choose a new rotation artifact without overwriting an existing output."""
+
+    base_name = output_name or "rotation-plan.json"
+    candidate = outputs_dir / base_name
+    if not candidate.exists():
+        return candidate
+    stem = candidate.stem
+    suffix = candidate.suffix or ".json"
+    index = 2
+    while True:
+        candidate = outputs_dir / f"{stem}-{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
 
 
 def _migrate_project_artifact(

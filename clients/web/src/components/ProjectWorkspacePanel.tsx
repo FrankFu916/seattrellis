@@ -10,6 +10,7 @@ import {
   restoreProjectArtifact,
   restoreProjectBundle,
   RosterApiError,
+  saveProjectRotationPlan,
   scanProjectPrivacy,
 } from "../api/client";
 import type {
@@ -18,6 +19,7 @@ import type {
   ProjectHistoryResponse,
   ProjectMigrationResponse,
   ProjectPrivacyResponse,
+  RotationPlan,
   RecentProject,
 } from "../api/types";
 import type { Locale, Translate } from "../i18n/messages";
@@ -25,6 +27,8 @@ import type { Locale, Translate } from "../i18n/messages";
 type ProjectWorkspacePanelProps = {
   locale: Locale;
   t: Translate;
+  rotationPlan?: RotationPlan | null;
+  rotationDraftIds?: string[];
 };
 
 function errorMessage(error: unknown): string {
@@ -71,6 +75,8 @@ function triggerDownload(blob: Blob, filename: string): void {
 export function ProjectWorkspacePanel({
   locale,
   t,
+  rotationPlan = null,
+  rotationDraftIds = [],
 }: ProjectWorkspacePanelProps) {
   const [root, setRoot] = useState(".");
   const [projects, setProjects] = useState<RecentProject[]>([]);
@@ -95,6 +101,7 @@ export function ProjectWorkspacePanel({
     | "restore-artifact"
     | "migration-preview"
     | "migration-apply"
+    | "rotation-save"
     | null
   >(null);
   const [status, setStatus] = useState("");
@@ -312,6 +319,31 @@ export function ProjectWorkspacePanel({
       setMigrationPreview(result);
       await refreshProjects();
       setStatus(t("project.statusMigrationApplied", { path: result.output_path ?? result.source_path }));
+    } catch (caught) {
+      setError(t("project.error", { message: errorMessage(caught) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRotationSave(): Promise<void> {
+    if (
+      !selectedPath ||
+      !rotationPlan ||
+      rotationDraftIds.length !== rotationPlan.periods.length
+    ) {
+      return;
+    }
+    setBusy("rotation-save");
+    setError("");
+    try {
+      const result = await saveProjectRotationPlan(
+        selectedPath,
+        rotationPlan,
+        rotationDraftIds,
+      );
+      await refreshProjects();
+      setStatus(t("project.statusRotationSaved", { path: result.output_path }));
     } catch (caught) {
       setError(t("project.error", { message: errorMessage(caught) }));
     } finally {
@@ -615,6 +647,26 @@ export function ProjectWorkspacePanel({
             )}
           </div>
         )}
+
+        {selectedPath &&
+          rotationPlan &&
+          rotationDraftIds.length === rotationPlan.periods.length && (
+            <div className="project-migration" data-testid="project-rotation-save">
+              <h3>{t("project.rotationSaveTitle")}</h3>
+              <p className="muted">{t("project.rotationSaveHint")}</p>
+              <button
+                className="primary-button"
+                type="button"
+                data-testid="project-rotation-save-button"
+                onClick={() => void handleRotationSave()}
+                disabled={busy !== null}
+              >
+                {busy === "rotation-save"
+                  ? t("project.rotationSaving")
+                  : t("project.rotationSaveAction")}
+              </button>
+            </div>
+          )}
 
         <div className="project-actions">
           <button
