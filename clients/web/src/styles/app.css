@@ -1003,6 +1003,12 @@ input:focus-visible,
   color: var(--danger, #a33a36);
 }
 
+.constraint-help {
+  color: var(--muted);
+  font-size: 0.64rem;
+  line-height: 1.45;
+}
+
 .goal-choice {
   grid-template-columns: 44px 1fr 24px;
 }

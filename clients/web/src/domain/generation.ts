@@ -1,6 +1,7 @@
 import type {
   AdvancedSolveSettings,
   CommonConstraint,
+  CommonGroupRule,
   CommonPreferenceId,
   CustomRoomSettings,
   DetailedRuleSettings,
@@ -241,6 +242,7 @@ function validateDetailedRules(settings: DetailedRuleSettings): void {
 function buildRulesOverlay(
   preferences: CommonPreferenceId[],
   detailedRules?: DetailedRuleSettings,
+  groups?: CommonGroupRule[],
 ): Record<string, unknown> | undefined {
   const soft: Record<string, unknown> = {};
   for (const preference of preferences) {
@@ -301,6 +303,20 @@ function buildRulesOverlay(
       history_lookback: detailedRules.mentorPairing.historyLookback,
     };
   }
+  const validGroups = (groups ?? [])
+    .map((group) => ({
+      name: group.name.trim(),
+      students: [...new Set(group.students.map((student) => student.trim()).filter(Boolean))],
+      separate: group.mode === "separate",
+      together: group.mode === "together",
+    }))
+    .filter((group) => group.name && group.students.length >= 2);
+  if (validGroups.length) {
+    return {
+      ...(Object.keys(soft).length ? { soft } : {}),
+      groups: validGroups,
+    };
+  }
   return Object.keys(soft).length ? { soft } : undefined;
 }
 
@@ -312,6 +328,7 @@ export function buildGenerateClassRequest({
   settings,
   roomSettings,
   constraints,
+  groups,
   preferences,
   detailedRules,
 }: {
@@ -322,6 +339,7 @@ export function buildGenerateClassRequest({
   settings: AdvancedSolveSettings;
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
+  groups?: CommonGroupRule[];
   preferences: CommonPreferenceId[];
   detailedRules?: DetailedRuleSettings;
 }): GenerateClassRequest {
@@ -335,7 +353,7 @@ export function buildGenerateClassRequest({
   if (detailedRules) {
     validateDetailedRules(detailedRules);
   }
-  const rulesOverlay = buildRulesOverlay(preferences, detailedRules);
+  const rulesOverlay = buildRulesOverlay(preferences, detailedRules, groups);
   const seedText = settings.seed.trim();
   const seed = seedText === "" ? undefined : Number(seedText);
   if (seed !== undefined && !Number.isSafeInteger(seed)) {
@@ -385,6 +403,7 @@ export function buildGenerateRotationPlanRequest({
   settings,
   roomSettings,
   constraints,
+  groups,
   preferences,
   detailedRules,
   rotation,
@@ -396,6 +415,7 @@ export function buildGenerateRotationPlanRequest({
   settings: AdvancedSolveSettings;
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
+  groups?: CommonGroupRule[];
   preferences: CommonPreferenceId[];
   detailedRules?: DetailedRuleSettings;
   rotation: RotationSettings;
@@ -408,6 +428,7 @@ export function buildGenerateRotationPlanRequest({
     settings,
     roomSettings,
     constraints,
+    groups,
     preferences,
     detailedRules,
   });

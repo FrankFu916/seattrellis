@@ -226,6 +226,13 @@ export type HardRulesPayload = {
   }>;
 };
 
+export type CommonGroupRule = {
+  id: string;
+  name: string;
+  mode: "together" | "separate";
+  students: string[];
+};
+
 export type CommonConstraintKind =
   | "avoid_adjacent"
   | "must_adjacent"

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AdvancedSolveSettings,
   CommonConstraint,
+  CommonGroupRule,
   CustomRoomSettings,
   DetailedRuleSettings,
   RotationSettings,
@@ -156,6 +157,38 @@ describe("buildGenerateClassRequest", () => {
       seed: 42,
       time_limit_seconds: 30,
       backend: "ortools",
+    });
+  });
+
+  it("serializes teacher-facing group relationships into the rules overlay", () => {
+    const request = buildGenerateClassRequest({
+      className: "Group class",
+      students,
+      selectedRoomId: "compact",
+      selectedGoalId: "daily-rotation",
+      settings: defaults,
+      roomSettings: defaultRoom,
+      constraints: noConstraints,
+      groups: [
+        {
+          id: "group-1",
+          name: "Lab partners",
+          mode: "together",
+          students: ["S1", "S2", "S2"],
+        },
+      ],
+      preferences: [],
+    });
+
+    expect(request.draft.goal.rules_overlay).toEqual({
+      groups: [
+        {
+          name: "Lab partners",
+          students: ["S1", "S2"],
+          separate: false,
+          together: true,
+        },
+      ],
     });
   });
 

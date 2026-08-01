@@ -4,6 +4,7 @@ import type {
   AdvancedSolveSettings,
   CatalogOption,
   CommonConstraint,
+  CommonGroupRule,
   CommonPreferenceId,
   CustomRoomSettings,
   DetailedRuleSettings,
@@ -57,6 +58,7 @@ type WorkflowPanelProps = {
   activeRotationPeriod: number;
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
+  groups: CommonGroupRule[];
   preferences: CommonPreferenceId[];
   error: string | null;
   selectedSeat: SeatAssignment | undefined;
@@ -82,6 +84,9 @@ type WorkflowPanelProps = {
     changes: Partial<CommonConstraint>,
   ) => void;
   onConstraintRemove: (id: string) => void;
+  onGroupAdd: () => void;
+  onGroupChange: (id: string, changes: Partial<CommonGroupRule>) => void;
+  onGroupRemove: (id: string) => void;
   onPreferenceToggle: (id: CommonPreferenceId) => void;
   onBack: () => void;
   onNext: () => void;
@@ -129,6 +134,7 @@ export function WorkflowPanel({
   activeRotationPeriod,
   roomSettings,
   constraints,
+  groups,
   preferences,
   error,
   selectedSeat,
@@ -149,6 +155,9 @@ export function WorkflowPanel({
   onConstraintAdd,
   onConstraintChange,
   onConstraintRemove,
+  onGroupAdd,
+  onGroupChange,
+  onGroupRemove,
   onPreferenceToggle,
   onBack,
   onNext,
@@ -507,6 +516,74 @@ export function WorkflowPanel({
               <datalist id="available-seat-ids">
                 {seatIds.map((seatId) => <option key={seatId} value={seatId} />)}
               </datalist>
+            </section>
+            <section className="constraints-card" aria-labelledby="groups-title">
+              <div className="constraints-heading">
+                <div>
+                  <h2 id="groups-title">{t("groups.title")}</h2>
+                  <p>{t("groups.hint")}</p>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={onGroupAdd}
+                  disabled={students.length < 2}
+                >
+                  {t("groups.add")}
+                </button>
+              </div>
+              {groups.length === 0 ? (
+                <p className="muted">{t("groups.empty")}</p>
+              ) : (
+                <div className="constraint-list">
+                  {groups.map((group) => (
+                    <div className="constraint-row group-row" key={group.id}>
+                      <input
+                        aria-label={t("groups.name")}
+                        value={group.name}
+                        placeholder={t("groups.namePlaceholder")}
+                        onChange={(event) =>
+                          onGroupChange(group.id, { name: event.target.value })
+                        }
+                      />
+                      <select
+                        aria-label={t("groups.mode")}
+                        value={group.mode}
+                        onChange={(event) =>
+                          onGroupChange(group.id, {
+                            mode: event.target.value as CommonGroupRule["mode"],
+                          })
+                        }
+                      >
+                        <option value="separate">{t("groups.separate")}</option>
+                        <option value="together">{t("groups.together")}</option>
+                      </select>
+                      <input
+                        aria-label={t("groups.students")}
+                        value={group.students.join(", ")}
+                        placeholder={t("groups.studentsPlaceholder")}
+                        onChange={(event) =>
+                          onGroupChange(group.id, {
+                            students: event.target.value
+                              .split(/[,，\n]+/u)
+                              .map((student) => student.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                      />
+                      <button
+                        className="icon-button"
+                        type="button"
+                        aria-label={t("groups.remove")}
+                        onClick={() => onGroupRemove(group.id)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <small className="constraint-help">{t("groups.studentsHint")}</small>
             </section>
           </div>
         ) : null}

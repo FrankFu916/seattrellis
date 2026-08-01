@@ -18,6 +18,7 @@ import {
 import type {
   BootstrapData,
   CommonConstraint,
+  CommonGroupRule,
   CommonPreferenceId,
   CustomRoomSettings,
   DetailedRuleSettings,
@@ -226,6 +227,7 @@ export function App() {
     useState<CustomRoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [preferences, setPreferences] = useState<CommonPreferenceId[]>([]);
   const [constraints, setConstraints] = useState<CommonConstraint[]>([]);
+  const [groups, setGroups] = useState<CommonGroupRule[]>([]);
   const [assignments, setAssignments] = useState<SeatAssignment[]>(() =>
     createSeatAssignments(4, 5, demoStudents, 16),
   );
@@ -365,6 +367,28 @@ export function App() {
 
   function handleConstraintRemove(id: string) {
     setConstraints((current) => current.filter((constraint) => constraint.id !== id));
+  }
+
+  function handleGroupAdd() {
+    setGroups((current) => [
+      ...current,
+      {
+        id: newCommandId(),
+        name: locale === "zh-CN" ? `小组 ${current.length + 1}` : `Group ${current.length + 1}`,
+        mode: "separate",
+        students: students.slice(0, 2).map((student) => student.id),
+      },
+    ]);
+  }
+
+  function handleGroupChange(id: string, changes: Partial<CommonGroupRule>) {
+    setGroups((current) =>
+      current.map((group) => (group.id === id ? { ...group, ...changes } : group)),
+    );
+  }
+
+  function handleGroupRemove(id: string) {
+    setGroups((current) => current.filter((group) => group.id !== id));
   }
 
   function handlePreferenceToggle(id: CommonPreferenceId) {
@@ -559,6 +583,7 @@ export function App() {
         settings: advancedSettings,
         roomSettings,
         constraints,
+        groups,
         preferences,
         detailedRules,
       };
@@ -644,6 +669,7 @@ export function App() {
     setHistory([]);
     setSelectedSeatId(null);
     setSelectedFileName(null);
+    setGroups([]);
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
@@ -660,6 +686,15 @@ export function App() {
       reconcileStudentAssignments(current, editedStudents),
     );
     setHistory([]);
+    setGroups((current) => {
+      const validIds = new Set(editedStudents.map((student) => student.id));
+      return current
+        .map((group) => ({
+          ...group,
+          students: group.students.filter((student) => validIds.has(student)),
+        }))
+        .filter((group) => group.students.length > 0);
+    });
     setSelectedSeatId(null);
     setEditorDraftId(null);
     setEditorRevision(0);
@@ -714,6 +749,7 @@ export function App() {
             activeRotationPeriod={activeRotationPeriod}
             roomSettings={roomSettings}
             constraints={constraints}
+            groups={groups}
             preferences={preferences}
             error={step === "generate" ? saveError : null}
             selectedSeat={selectedSeat}
@@ -759,6 +795,9 @@ export function App() {
             onConstraintAdd={handleConstraintAdd}
             onConstraintChange={handleConstraintChange}
             onConstraintRemove={handleConstraintRemove}
+            onGroupAdd={handleGroupAdd}
+            onGroupChange={handleGroupChange}
+            onGroupRemove={handleGroupRemove}
             onPreferenceToggle={handlePreferenceToggle}
             onBack={() => setStep((current) => getAdjacentStep(current, -1))}
             onNext={() => setStep((current) => getAdjacentStep(current, 1))}
