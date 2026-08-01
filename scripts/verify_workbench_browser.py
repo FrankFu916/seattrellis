@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, expect
 
 WORKBENCH_URL = "http://127.0.0.1:8765"
 
@@ -122,17 +122,23 @@ async def main() -> int:
             await browser.close()
             return 1
 
+        await page.locator("[data-testid='rotation-period-2']").click()
+        await expect(page.locator("[data-testid='rotation-period-2']")).to_have_attribute(
+            "aria-pressed", "true", timeout=30_000
+        )
+        print("10. switched to the second rotation period")
+
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector("#panel-title-export", timeout=15_000)
         await page.wait_for_selector(".export-options", timeout=15_000)
         await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector(".preview-dialog", timeout=15_000)
-        print("10. export preview opened")
+        print("11. export preview opened")
 
         async with page.expect_download(timeout=30_000) as download_info:
             await page.locator(".preview-dialog button.primary-button").click()
         download = await download_info.value
-        print(f"11. downloaded export: {download.suggested_filename}")
+        print(f"12. downloaded export: {download.suggested_filename}")
 
         # The project panel is available alongside the main teacher flow. Use
         # the repository's example project so this check exercises the real
@@ -147,14 +153,14 @@ async def main() -> int:
         )
         await page.wait_for_selector("[data-testid='project-history']", timeout=30_000)
         history_rows = await page.locator("[data-testid='project-history'] .project-artifact-row").count()
-        print(f"12. project history rendered {history_rows} artifacts")
+        print(f"13. project history rendered {history_rows} artifacts")
         if history_rows == 0:
             await browser.close()
             return 1
 
         await page.click("[data-testid='project-privacy-button']")
         await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
-        print("13. project privacy scan rendered")
+        print("14. project privacy scan rendered")
 
         # Compare two historical artifacts and create a new output snapshot.
         # Older demo projects may only contain one artifact, so keep the
@@ -171,11 +177,11 @@ async def main() -> int:
             )
             compare_error = page.locator("[data-testid='project-error']")
             if await compare_error.is_visible():
-                print(f"13. project comparison failed: {await compare_error.text_content()}")
+                print(f"14. project comparison failed: {await compare_error.text_content()}")
                 await browser.close()
                 return 1
             await page.wait_for_selector("[data-testid='project-compare-result']", timeout=30_000)
-            print("14. project history comparison rendered")
+            print("15. project history comparison rendered")
             restore_artifact_button = page.locator(
                 "[data-testid='project-restore-artifact-button']"
             )
@@ -187,9 +193,9 @@ async def main() -> int:
                 }""",
                 timeout=30_000,
             )
-            print("15. historical artifact restored as a new plan")
+            print("16. historical artifact restored as a new plan")
         else:
-            print("14. project history comparison skipped (one artifact available)")
+            print("15. project history comparison skipped (one artifact available)")
 
         async with page.expect_download(timeout=30_000) as bundle_info:
             await page.click("[data-testid='project-backup-button']")
@@ -197,7 +203,7 @@ async def main() -> int:
         if not bundle.suggested_filename.endswith(".seattrellis.zip"):
             await browser.close()
             return 1
-        print(f"16. downloaded project bundle: {bundle.suggested_filename}")
+        print(f"17. downloaded project bundle: {bundle.suggested_filename}")
 
         with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as directory:
             bundle_path = Path(directory) / bundle.suggested_filename
@@ -216,7 +222,7 @@ async def main() -> int:
             if not (restore_target / "project.seattrellis.json").exists():
                 await browser.close()
                 return 1
-        print("17. project bundle restored successfully")
+        print("18. project bundle restored successfully")
 
         await browser.close()
         return 0

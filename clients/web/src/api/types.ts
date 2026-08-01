@@ -380,6 +380,7 @@ export type GenerateRotationPlanResponse = {
   warnings: string[];
   rotation_plan: RotationPlan;
   editor: EditorState;
+  period_editors?: EditorState[];
 };
 
 export type ExportDraftRequest = {

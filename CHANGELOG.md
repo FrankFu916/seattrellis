@@ -35,7 +35,8 @@
   output file without overwriting the original.
 - Added future rotation controls to the React workbench. Teachers can choose
   the number and names of upcoming periods, review repeat-neighbor metrics,
-  and continue editing or exporting the first period through the same workflow.
+  switch between period-specific editing drafts, and continue editing or
+  exporting the selected period through the same workflow.
 - Fixed the desktop preview startup path so its bundled React page can load
   before the local API bearer session is attached. The API remains protected
   after the page bootstrap.
@@ -47,8 +48,8 @@
 - Added API contract tests, React component tests, and a real-browser acceptance
   path covering project history, comparison, recovery, privacy, backup, and
   restore.
-- The rotation API now returns an editing draft for period one, so a multi-period
-  result does not become a read-only branch of the application.
+- The rotation API now returns an editing draft for every generated period, so
+  a multi-period result does not become a read-only branch of the application.
 - Added a standalone `seattrellis-desktop` entry point and a reproducible
   PyInstaller onedir recipe for the optional desktop preview. The workflow
   produces unsigned bundles for inspection; installers and signing remain a

@@ -173,6 +173,8 @@ export function App() {
     DEFAULT_ROTATION_SETTINGS,
   );
   const [rotationPlan, setRotationPlan] = useState<RotationPlan | null>(null);
+  const [rotationEditors, setRotationEditors] = useState<EditorState[]>([]);
+  const [activeRotationPeriod, setActiveRotationPeriod] = useState(1);
   const [roomSettings, setRoomSettings] =
     useState<CustomRoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [preferences, setPreferences] = useState<CommonPreferenceId[]>([]);
@@ -273,6 +275,8 @@ export function App() {
     setEditorRevision(0);
     setEditorUndoDepth(0);
     setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
   }
 
   function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
@@ -282,6 +286,8 @@ export function App() {
     setEditorRevision(0);
     setEditorUndoDepth(0);
     setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
   }
 
   function handleConstraintAdd() {
@@ -458,6 +464,37 @@ export function App() {
     setAssignments((current) => toggleSeatLock(current, selectedSeatId));
   }
 
+  function applyEditorState(editor: EditorState) {
+    const plan = editorToPlan(editor);
+    setStudents(plan.students);
+    setAssignments(plan.assignments);
+    setEditorDraftId(editor.draft_id);
+    setEditorRevision(editor.revision);
+    setEditorUndoDepth(editor.undo_depth);
+    setSelectedSeatId(null);
+  }
+
+  async function handleRotationPeriodSelect(period: number) {
+    const target = rotationEditors.find(
+      (editor) => editor.candidate_id === `period-${period}`,
+    );
+    if (!target) {
+      return;
+    }
+    if (target.draft_id === editorDraftId) {
+      setActiveRotationPeriod(period);
+      return;
+    }
+    setSaveError(null);
+    try {
+      const editor = await fetchEditorState(target.draft_id);
+      applyEditorState(editor);
+      setActiveRotationPeriod(period);
+    } catch (err) {
+      setSaveError(friendlyError(err));
+    }
+  }
+
   async function handleGenerate() {
     setIsGenerating(true);
     setSaveError(null);
@@ -485,16 +522,16 @@ export function App() {
             }),
           )
         : await generateClass(buildGenerateClassRequest(requestArgs));
-      const editor = await fetchEditorState(response.editor.draft_id);
-      const plan = editorToPlan(editor);
-      setStudents(plan.students);
-      setAssignments(plan.assignments);
-      setEditorDraftId(editor.draft_id);
-      setEditorRevision(editor.revision);
-      setEditorUndoDepth(editor.undo_depth);
-      setRotationPlan(
-        "rotation_plan" in response ? response.rotation_plan : null,
-      );
+      const isRotation = "rotation_plan" in response;
+      const periodEditors =
+        isRotation && response.period_editors?.length
+          ? response.period_editors
+          : [response.editor];
+      const editor = await fetchEditorState(periodEditors[0].draft_id);
+      applyEditorState(editor);
+      setRotationEditors(isRotation ? periodEditors : []);
+      setActiveRotationPeriod(1);
+      setRotationPlan(isRotation ? response.rotation_plan : null);
       setHistory([]);
       setSelectedSeatId(null);
       setStep("adjust");
@@ -563,6 +600,8 @@ export function App() {
     setEditorRevision(0);
     setEditorUndoDepth(0);
     setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
     setStep("room");
   }
 
@@ -578,6 +617,8 @@ export function App() {
     setEditorRevision(0);
     setEditorUndoDepth(0);
     setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
   }
 
   return (
@@ -621,6 +662,7 @@ export function App() {
             advancedSettings={advancedSettings}
             rotationSettings={rotationSettings}
             rotationPlan={rotationPlan}
+            activeRotationPeriod={activeRotationPeriod}
             roomSettings={roomSettings}
             constraints={constraints}
             preferences={preferences}
@@ -658,6 +700,9 @@ export function App() {
             onRotationSettingsChange={(changes) =>
               setRotationSettings((current) => ({ ...current, ...changes }))
             }
+            onRotationPeriodSelect={(period) => {
+              void handleRotationPeriodSelect(period);
+            }}
             onRoomSettingsChange={handleRoomSettingsChange}
             onConstraintAdd={handleConstraintAdd}
             onConstraintChange={handleConstraintChange}

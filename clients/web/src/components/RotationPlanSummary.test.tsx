@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { RotationPlan } from "../api/types";
 import { createTranslator } from "../i18n/messages";
@@ -50,5 +50,20 @@ describe("RotationPlanSummary", () => {
     expect(screen.getByText("Period 1: Week 1")).toBeInTheDocument();
     expect(screen.getByText("Repeated neighbor pairs: 2")).toBeInTheDocument();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+  });
+
+  it("lets the teacher switch to another period", () => {
+    const onPeriodSelect = vi.fn();
+    render(
+      <RotationPlanSummary
+        plan={plan}
+        t={createTranslator("en")}
+        onPeriodSelect={onPeriodSelect}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("rotation-period-2"));
+
+    expect(onPeriodSelect).toHaveBeenCalledWith(2);
   });
 });

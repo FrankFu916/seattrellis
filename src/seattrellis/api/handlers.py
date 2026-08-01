@@ -719,35 +719,41 @@ def generate_rotation_plan(
             code="plan_not_found",
             message="No rotation plan was found with the current room and rules.",
         ) from exc
-    first_snapshot = output.plan.periods[0].snapshot
-    first_score = score_snapshot(first_snapshot)
-    first_candidate = CandidatePlan(
-        candidate_id="period-1",
-        snapshot=first_snapshot,
-        score=first_score,
-        hard_constraints_satisfied=(
-            first_score.breakdown.hard_constraint_summary.satisfied
-        ),
-        metadata={
-            "rotation_plan": output.plan.name,
-            "rotation_period": 1,
-        },
-    )
     editor_store = draft_store or EditorDraftStore()
-    editor_candidate_set = CandidateSet(
-        candidates=[first_candidate],
-        recommended_candidate_id=first_candidate.candidate_id,
-        metadata={
-            "source": "rotation_plan",
-            "period_count": output.plan.period_count,
-        },
-    )
+    period_editors: list[EditorStateEnvelope] = []
+    for period in output.plan.periods:
+        period_score = score_snapshot(period.snapshot)
+        period_candidate = CandidatePlan(
+            candidate_id=f"period-{period.period}",
+            snapshot=period.snapshot,
+            score=period_score,
+            hard_constraints_satisfied=(
+                period_score.breakdown.hard_constraint_summary.satisfied
+            ),
+            metadata={
+                "rotation_plan": output.plan.name,
+                "rotation_period": period.period,
+            },
+        )
+        period_editors.append(
+            editor_store.create(
+                CandidateSet(
+                    candidates=[period_candidate],
+                    recommended_candidate_id=period_candidate.candidate_id,
+                    metadata={
+                        "source": "rotation_plan",
+                        "period_count": output.plan.period_count,
+                    },
+                )
+            )
+        )
     return GenerateRotationPlanResponse(
         class_name=draft.name,
         goal=_goal_summary(readiness.resolved_goal),
         warnings=list(dict.fromkeys((*readiness.warnings, *output.plan.warnings))),
         rotation_plan=output.plan,
-        editor=editor_store.create(editor_candidate_set),
+        editor=period_editors[0],
+        period_editors=period_editors,
     )
 
 

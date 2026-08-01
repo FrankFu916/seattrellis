@@ -53,9 +53,10 @@ height, or vision information is unavailable. Quick shuffle remains available
 when the roster contains names only.
 
 The Generate step can also create a future rotation. Choose the number of
-periods and optionally provide labels separated by commas or new lines. The
-first period opens in the normal editing and export flow, while the summary
-lists all periods and repeated-neighbor metrics.
+periods and optionally provide labels separated by commas or new lines. Each
+period has its own editing draft; select a period in the summary to load it
+into the normal editing and export flow, while the summary lists all periods
+and repeated-neighbor metrics.
 
 ### React workbench project panel
 

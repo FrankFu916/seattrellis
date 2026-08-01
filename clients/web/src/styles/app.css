@@ -1273,13 +1273,33 @@ input:focus-visible,
 }
 
 .rotation-period-list li {
+  border-radius: var(--radius-small);
+}
+
+.rotation-period-list button {
   display: flex;
+  width: 100%;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
   padding: 7px 8px;
+  border: 0;
   border-radius: var(--radius-small);
   background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rotation-period-list button:hover,
+.rotation-period-list button:focus-visible,
+.rotation-period-list button.active {
+  background: var(--accent-soft);
+}
+
+.rotation-period-list button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .rotation-period-list strong {

@@ -285,9 +285,10 @@ class GenerateRotationPlanResponse(VersionedResponse):
     warnings: list[str] = Field(default_factory=list)
     rotation_plan: RotationPlan
     # The first period is exposed through the same editing protocol as a
-    # regular solve.  The remaining periods stay immutable until the teacher
-    # explicitly selects one for a future editing session.
+    # regular solve.  Each additional period has its own draft as well, so a
+    # teacher can switch periods without losing the existing edit history.
     editor: EditorStateEnvelope
+    period_editors: list[EditorStateEnvelope] = Field(default_factory=list)
 
 
 class RecentProjectItem(ApiModel):

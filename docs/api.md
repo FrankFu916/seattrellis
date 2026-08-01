@@ -40,8 +40,8 @@ snapshot 会加入下一时段的历史输入，因此已有的公平轮换和�
   方案摘要和结构变化数量；
 - `POST /api/v1/projects/artifacts/restore` 从一个历史或输出文件创建新的输出 snapshot，
   不覆盖原始文件；
-- `POST /api/v1/classes/rotation` 根据一个班级草稿生成多个未来 period，并返回第 1 期的
-  编辑草稿；
+- `POST /api/v1/classes/rotation` 根据一个班级草稿生成多个未来 period，并返回每一期的
+  独立编辑草稿；
 - `POST /api/v1/projects/privacy` 执行分享前敏感字段检查；
 - `POST /api/v1/projects/bundle` 下载 `.seattrellis.zip`；
 - `POST /api/v1/projects/restore` 接收本地 bundle 路径或 multipart 上传并恢复到指定目录。

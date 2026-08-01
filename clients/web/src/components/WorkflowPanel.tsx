@@ -51,6 +51,7 @@ type WorkflowPanelProps = {
   advancedSettings: AdvancedSolveSettings;
   rotationSettings: RotationSettings;
   rotationPlan: RotationPlan | null;
+  activeRotationPeriod: number;
   roomSettings: CustomRoomSettings;
   constraints: CommonConstraint[];
   preferences: CommonPreferenceId[];
@@ -69,6 +70,7 @@ type WorkflowPanelProps = {
     changes: Partial<AdvancedSolveSettings>,
   ) => void;
   onRotationSettingsChange: (changes: Partial<RotationSettings>) => void;
+  onRotationPeriodSelect: (period: number) => void;
   onRoomSettingsChange: (changes: Partial<CustomRoomSettings>) => void;
   onConstraintAdd: () => void;
   onConstraintChange: (
@@ -119,6 +121,7 @@ export function WorkflowPanel({
   advancedSettings,
   rotationSettings,
   rotationPlan,
+  activeRotationPeriod,
   roomSettings,
   constraints,
   preferences,
@@ -135,6 +138,7 @@ export function WorkflowPanel({
   onShowStudentIdsChange,
   onAdvancedSettingsChange,
   onRotationSettingsChange,
+  onRotationPeriodSelect,
   onRoomSettingsChange,
   onConstraintAdd,
   onConstraintChange,
@@ -692,7 +696,14 @@ export function WorkflowPanel({
 
         {step === "adjust" ? (
           <div className="adjust-tools">
-            {rotationPlan ? <RotationPlanSummary plan={rotationPlan} t={t} /> : null}
+            {rotationPlan ? (
+              <RotationPlanSummary
+                plan={rotationPlan}
+                t={t}
+                activePeriod={activeRotationPeriod}
+                onPeriodSelect={onRotationPeriodSelect}
+              />
+            ) : null}
             <div className="selection-status" aria-live="polite">
               <span
                 className={selectedSeat ? "selection-dot active" : "selection-dot"}
