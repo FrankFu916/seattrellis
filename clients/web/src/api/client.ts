@@ -41,9 +41,9 @@ async function fetchJson<T>(
 
   try {
     const response = await fetch(`${API_ROOT}${path}`, {
+      ...init,
       headers,
       signal: controller.signal,
-      ...init,
     });
     if (!response.ok) {
       const detail = await safeErrorDetail(response);

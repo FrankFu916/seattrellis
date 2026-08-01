@@ -83,6 +83,17 @@ def test_roster_preview_supports_incremental_and_replace_updates() -> None:
     ]
 
 
+def test_roster_preview_accepts_legacy_overwrite_alias() -> None:
+    request = RosterUpdatePreviewRequest.model_validate(
+        {
+            "mapping": [],
+            "mode": "overwrite",
+        }
+    )
+
+    assert request.mode == "replace"
+
+
 def test_roster_preview_keeps_identity_conflicts_visible() -> None:
     store = RosterDraftStore()
     state = store.create(_table("id,name\nS9,Alice\n"))

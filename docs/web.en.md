@@ -8,11 +8,12 @@ seattrellis workspace
 ```
 
 The React workbench is the default path for ordinary teachers. It covers roster
-import and mapping, room templates, common seating goals, generation, seat
-swaps, undo/redo, export, and class-project backups. Its **Advanced settings**
-section can submit candidate count, seed, time limit, solver backend, and custom
-rules/layout JSON when needed; the ordinary path keeps those controls collapsed.
-Full visual student, rules, and layout editors remain on the roadmap.
+import and mapping, room templates, custom rows and columns, aisles and
+unavailable seats, common seating goals, combined preferences, adjacency and
+fixed-seat requests, generation, seat swaps, undo/redo, export, and class-project
+backups. Its **Advanced settings** section is reserved for candidate count, seed,
+time limit, solver backend, and a complete rules JSON object; common classroom
+and seating requests stay in the ordinary flow.
 
 ## Streamlit compatibility and advanced tools
 
@@ -36,9 +37,9 @@ The default workspace keeps the ordinary path focused on classroom tasks:
 1. Enter a class name and import a CSV, XLSX, or XLSM roster. A name column is
    enough to begin.
 2. Accept the recommended 30-, 48-, or 60-seat room, or set custom rows, seats
-   per row, and aisle positions.
-3. Choose Daily rotation, Quick shuffle, or Peer support and generate three
-   seating options.
+   per row, aisle positions, and unavailable seats.
+3. Choose Daily rotation, Quick shuffle, or Peer support, combine preferences,
+   and add keep-apart, keep-together, or fixed-seat requests.
 4. Review the recommended map, then swap, move, lock, undo, or redo as needed.
 5. Prepare and download either a public print or a teacher print.
 

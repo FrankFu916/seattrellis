@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { RosterApiError, previewRosterUpdate, uploadRosterDraft } from "../api/client";
 import { demoStudents } from "../api/demo";
@@ -49,6 +49,7 @@ export function RosterImportPanel({
   const [mode, setMode] = useState<RosterUpdateMode>("incremental");
   const [preview, setPreview] = useState<RosterUpdatePreviewResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const friendlyError = useCallback((err: unknown): string => {
     if (err instanceof RosterApiError) {
@@ -132,6 +133,14 @@ export function RosterImportPanel({
         preview.resulting_students.map((student) => ({
           id: student.student_id || student.name || "",
           name: student.name || student.student_id || "",
+          gender: student.gender,
+          heightCm: student.height_cm,
+          score: student.score,
+          vision: student.vision,
+          tags: student.tags,
+          needs: student.needs,
+          notes: student.notes,
+          attributes: student.attributes,
         })),
       );
     } else if (preview && preview.can_apply) {
@@ -151,6 +160,10 @@ export function RosterImportPanel({
     setError(null);
     setMapping({});
     setSelectedFile(null);
+    setMode("incremental");
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
   }
 
   const columnLabel = (index: number, header: string): string =>
@@ -185,6 +198,7 @@ export function RosterImportPanel({
             : t("roster.fileHint")}
         </small>
         <input
+          ref={inputRef}
           type="file"
           accept=".csv,.xlsx,.xls"
           onChange={handleFileChange}
@@ -275,12 +289,12 @@ export function RosterImportPanel({
                 <small>{t("roster.incrementalHint")}</small>
               </span>
             </label>
-            <label className={mode === "overwrite" ? "selected" : ""}>
+            <label className={mode === "replace" ? "selected" : ""}>
               <input
                 type="radio"
                 name="roster-mode"
-                checked={mode === "overwrite"}
-                onChange={() => setMode("overwrite")}
+                checked={mode === "replace"}
+                onChange={() => setMode("replace")}
               />
               <span>
                 <strong>{t("roster.overwrite")}</strong>

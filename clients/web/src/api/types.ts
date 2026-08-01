@@ -34,6 +34,14 @@ export type BootstrapData = {
 export type Student = {
   id: string;
   name: string;
+  gender?: string | null;
+  heightCm?: number | null;
+  score?: number | null;
+  vision?: string | number | null;
+  tags?: string[];
+  needs?: string[];
+  notes?: string | null;
+  attributes?: Record<string, unknown>;
 };
 
 export type SeatAssignment = {
@@ -88,7 +96,7 @@ export type RosterDraftResponse = {
   mapping_issues: RosterMappingIssueItem[];
 };
 
-export type RosterUpdateMode = "incremental" | "overwrite";
+export type RosterUpdateMode = "incremental" | "replace";
 
 export type RosterUpdatePreviewRequest = {
   mapping: RosterMappingItem[];
@@ -132,6 +140,14 @@ export type RosterUpdatePreviewResponse = {
   resulting_students: Array<{
     student_id?: string | null;
     name?: string | null;
+    gender?: string | null;
+    height_cm?: number | null;
+    score?: number | null;
+    vision?: string | number | null;
+    tags?: string[];
+    needs?: string[];
+    notes?: string | null;
+    attributes?: Record<string, unknown>;
   }> | null;
 };
 
@@ -166,9 +182,28 @@ export type EditorState = {
 export type GenerateClassRequest = {
   draft: {
     name: string;
-    students: Array<{ student_id?: string | null; name?: string | null }>;
-    room: { template_id: string };
-    goal: { goal_id: string };
+    students: Array<{
+      student_id?: string | null;
+      name?: string | null;
+      gender?: string | null;
+      height_cm?: number | null;
+      score?: number | null;
+      vision?: string | number | null;
+      tags?: string[];
+      needs?: string[];
+      notes?: string | null;
+      attributes?: Record<string, unknown>;
+    }>;
+    room: {
+      template_id?: string;
+      layout?: Record<string, unknown>;
+    };
+    goal: {
+      goal_id: string;
+      custom_rules?: Record<string, unknown>;
+      hard_rules?: HardRulesPayload;
+      rules_overlay?: Record<string, unknown>;
+    };
   };
   options?: {
     candidate_count?: number;
@@ -176,6 +211,58 @@ export type GenerateClassRequest = {
     time_limit_seconds?: number;
     backend?: string;
   };
+};
+
+export type SolverBackend = "auto" | "fallback" | "ortools" | "native";
+
+export type HardRulesPayload = {
+  fixed_seats?: Array<{ student: string; seat_id: string }>;
+  must_be_adjacent?: Array<{ students: [string, string] }>;
+  cannot_be_adjacent?: Array<{ students: [string, string] }>;
+  min_distance?: Array<{
+    students: [string, string];
+    distance: number;
+    metric?: "euclidean" | "graph";
+  }>;
+};
+
+export type CommonConstraintKind =
+  | "avoid_adjacent"
+  | "must_adjacent"
+  | "fixed_seat";
+
+export type CommonConstraint = {
+  id: string;
+  kind: CommonConstraintKind;
+  first: string;
+  second: string;
+  seatId: string;
+};
+
+export type CommonPreferenceId =
+  | "vision_front"
+  | "height_back"
+  | "fair_rotation"
+  | "avoid_recent_neighbors"
+  | "score_position"
+  | "score_distribution"
+  | "mentor_pairing";
+
+export type CustomRoomSettings = {
+  enabled: boolean;
+  rows: number;
+  columns: number;
+  aisleColumns: string;
+  disabledSeats: string;
+  layoutJson: string;
+};
+
+export type AdvancedSolveSettings = {
+  candidateCount: number;
+  seed: string;
+  timeLimitSeconds: number;
+  backend: SolverBackend;
+  customRulesJson: string;
 };
 
 export type GenerateClassResponse = {

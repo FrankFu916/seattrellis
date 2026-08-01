@@ -107,6 +107,22 @@ def test_inspect_class_request_reuses_teacher_goal_and_validation_layers() -> No
     assert response.warnings == []
 
 
+def test_generate_request_can_combine_goal_with_common_hard_rules() -> None:
+    payload = _request().model_dump(mode="json")
+    payload["draft"]["goal"]["hard_rules"] = {
+        "cannot_be_adjacent": [{"students": ["PRIVATE-001", "PRIVATE-002"]}]
+    }
+    payload["draft"]["goal"]["rules_overlay"] = {
+        "soft": {"vision_front": {"enabled": False}}
+    }
+    request = GenerateClassRequest.model_validate(payload)
+
+    response = inspect_class_request(request)
+
+    assert response.validation.ready
+    assert response.goal.goal_id == "quick-shuffle"
+
+
 def test_generate_class_runs_through_existing_application_workflow() -> None:
     response = generate_class(_request())
 

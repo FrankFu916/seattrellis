@@ -16,9 +16,13 @@ import {
 } from "./api/demo";
 import type {
   BootstrapData,
+  CommonConstraint,
+  CommonPreferenceId,
+  CustomRoomSettings,
   EditorCommand,
   EditorOperation,
   EditorState,
+  AdvancedSolveSettings,
   SeatAssignment,
   Student,
 } from "./api/types";
@@ -41,6 +45,10 @@ import {
   type WorkflowStep,
 } from "./domain/workflow";
 import {
+  buildGenerateClassRequest,
+  InvalidAdvancedSettingError,
+} from "./domain/generation";
+import {
   createTranslator,
   type Locale,
 } from "./i18n/messages";
@@ -51,6 +59,23 @@ import {
 } from "./theme/theme";
 
 const LOCALE_STORAGE_KEY = "seattrellis-locale";
+
+const DEFAULT_ADVANCED_SETTINGS: AdvancedSolveSettings = {
+  candidateCount: 1,
+  seed: "",
+  timeLimitSeconds: 10,
+  backend: "auto",
+  customRulesJson: "",
+};
+
+const DEFAULT_ROOM_SETTINGS: CustomRoomSettings = {
+  enabled: false,
+  rows: 5,
+  columns: 6,
+  aisleColumns: "",
+  disabledSeats: "",
+  layoutJson: "",
+};
 
 function getInitialLocale(): Locale {
   const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
@@ -127,6 +152,12 @@ export function App() {
     "portrait" | "landscape"
   >("landscape");
   const [showStudentIds, setShowStudentIds] = useState(false);
+  const [advancedSettings, setAdvancedSettings] =
+    useState<AdvancedSolveSettings>(DEFAULT_ADVANCED_SETTINGS);
+  const [roomSettings, setRoomSettings] =
+    useState<CustomRoomSettings>(DEFAULT_ROOM_SETTINGS);
+  const [preferences, setPreferences] = useState<CommonPreferenceId[]>([]);
+  const [constraints, setConstraints] = useState<CommonConstraint[]>([]);
   const [assignments, setAssignments] = useState<SeatAssignment[]>(() =>
     createSeatAssignments(4, 5, demoStudents, 16),
   );
@@ -208,6 +239,7 @@ export function App() {
       return;
     }
     setSelectedRoomId(roomId);
+    setRoomSettings((current) => ({ ...current, enabled: false }));
     setAssignments(
       createSeatAssignments(
         room.rows,
@@ -221,6 +253,50 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+  }
+
+  function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
+    setRoomSettings((current) => ({ ...current, ...changes }));
+    setSelectedSeatId(null);
+    setEditorDraftId(null);
+    setEditorRevision(0);
+    setEditorUndoDepth(0);
+  }
+
+  function handleConstraintAdd() {
+    setConstraints((current) => [
+      ...current,
+      {
+        id: newCommandId(),
+        kind: students.length >= 2 ? "avoid_adjacent" : "fixed_seat",
+        first: students[0]?.id ?? "",
+        second: students[1]?.id ?? students[0]?.id ?? "",
+        seatId: "",
+      },
+    ]);
+  }
+
+  function handleConstraintChange(
+    id: string,
+    changes: Partial<CommonConstraint>,
+  ) {
+    setConstraints((current) =>
+      current.map((constraint) =>
+        constraint.id === id ? { ...constraint, ...changes } : constraint,
+      ),
+    );
+  }
+
+  function handleConstraintRemove(id: string) {
+    setConstraints((current) => current.filter((constraint) => constraint.id !== id));
+  }
+
+  function handlePreferenceToggle(id: CommonPreferenceId) {
+    setPreferences((current) =>
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id],
+    );
   }
 
   function handleSeatActivate(seatId: string) {
@@ -368,18 +444,18 @@ export function App() {
         ? "我的班级"
         : "My class";
     try {
-      const response = await generateClass({
-        draft: {
-          name: className,
-          students: students.map((student) => ({
-            student_id: student.id,
-            name: student.name,
-          })),
-          room: { template_id: selectedRoomId },
-          goal: { goal_id: selectedGoalId },
-        },
-        options: { candidate_count: 1, time_limit_seconds: 10 },
-      });
+      const response = await generateClass(
+        buildGenerateClassRequest({
+          className,
+          students,
+          selectedRoomId,
+          selectedGoalId,
+          settings: advancedSettings,
+          roomSettings,
+          constraints,
+          preferences,
+        }),
+      );
       const editor = await fetchEditorState(response.editor.draft_id);
       const plan = editorToPlan(editor);
       setStudents(plan.students);
@@ -391,7 +467,20 @@ export function App() {
       setSelectedSeatId(null);
       setStep("adjust");
     } catch (err) {
-      setSaveError(friendlyError(err));
+      if (err instanceof InvalidAdvancedSettingError) {
+        setSaveError(
+          err.kind === "seed"
+            ? t("generate.seedInvalid")
+            : t("generate.jsonInvalid", {
+                  field:
+                    err.kind === "rules"
+                      ? t("generate.customRules")
+                    : t("room.invalid"),
+              }),
+        );
+      } else {
+        setSaveError(friendlyError(err));
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -468,6 +557,8 @@ export function App() {
             locale={locale}
             t={t}
             studentCount={students.length}
+            students={students}
+            seatIds={assignments.map((seat) => seat.seatId)}
             selectedFileName={selectedFileName}
             rooms={catalogs.roomTemplates}
             selectedRoomId={selectedRoomId}
@@ -477,6 +568,11 @@ export function App() {
             selectedExportFormat={selectedExportFormat}
             orientation={orientation}
             showStudentIds={showStudentIds}
+            advancedSettings={advancedSettings}
+            roomSettings={roomSettings}
+            constraints={constraints}
+            preferences={preferences}
+            error={step === "generate" ? saveError : null}
             selectedSeat={selectedSeat}
             canUndo={
               editorDraftId ? editorUndoDepth > 0 : history.length > 0
@@ -497,6 +593,14 @@ export function App() {
             onExportFormatChange={setSelectedExportFormat}
             onOrientationChange={setOrientation}
             onShowStudentIdsChange={setShowStudentIds}
+            onAdvancedSettingsChange={(changes) =>
+              setAdvancedSettings((current) => ({ ...current, ...changes }))
+            }
+            onRoomSettingsChange={handleRoomSettingsChange}
+            onConstraintAdd={handleConstraintAdd}
+            onConstraintChange={handleConstraintChange}
+            onConstraintRemove={handleConstraintRemove}
+            onPreferenceToggle={handlePreferenceToggle}
             onBack={() => setStep((current) => getAdjacentStep(current, -1))}
             onNext={() => setStep((current) => getAdjacentStep(current, 1))}
             onGenerate={handleGenerate}

@@ -31,29 +31,81 @@ async def main() -> int:
         await page.wait_for_selector(".app-shell", timeout=30_000)
         print("1. workbench shell rendered")
 
-        # Walk roster -> room -> goal -> generate.
-        for step in ("room", "goal", "generate"):
-            await page.click("button:has-text('继续')")
-            print(f"   advanced to step {step}")
+        # Use a real CSV and the full-replace path. This catches regressions in
+        # the browser/API contract that a demo-only flow cannot see.
+        with tempfile.TemporaryDirectory(prefix="seattrellis-browser-upload-") as directory:
+            roster_path = Path(directory) / "class.csv"
+            roster_path.write_text(
+                "student_id,name,score,height_cm,needs\n"
+                "S01,Alice,92,158,front\n"
+                "S02,Bob,84,172,\n"
+                "S03,Cara,78,164,hearing\n",
+                encoding="utf-8",
+            )
+            await page.locator(".roster-import-panel input[type='file']").set_input_files(
+                str(roster_path)
+            )
+            await page.wait_for_selector(".roster-mapping-section", timeout=30_000)
+            await page.locator("input[name='roster-mode']").nth(1).check()
+            await page.locator(".roster-mapping-section .secondary-button").click()
+            await page.wait_for_selector(".preview-result", timeout=30_000)
+            if await page.locator(".preview-result .preview-ok").count() == 0:
+                await browser.close()
+                return 1
+            await page.locator(".preview-result button.primary-button").click()
+            await page.wait_for_function(
+                """() => document.querySelector('.app-header')?.textContent?.includes('3 名学生')""",
+                timeout=30_000,
+            )
+        print("2. CSV roster imported with metadata")
 
-        await page.click("button:has-text('生成座位表')")
-        await page.wait_for_selector(".seat-occupied", timeout=60_000)
+        # Exercise the ordinary custom-room controls as well as the importer.
+        await page.locator("[data-testid='custom-room-toggle']").check()
+        custom_room = page.locator(".custom-room-fields")
+        await custom_room.locator("input[type='number']").nth(0).fill("2")
+        await custom_room.locator("input[type='number']").nth(1).fill("3")
+        await custom_room.locator("input").nth(3).fill("2-3")
+        print("3. custom classroom dimensions applied")
+
+        # Importing a roster advances the workflow to the room step.
+        # Continue room -> goal -> generate.
+        await page.locator(".panel-actions .primary-button").click()
+        await page.wait_for_selector("#panel-title-goal", timeout=10_000)
+        await page.locator(".preference-list input[type='checkbox']").first.check()
+        await page.locator(".constraints-card .secondary-button").click()
+        print("4. common preference and hard constraint added")
+        await page.locator(".panel-actions .primary-button").click()
+        await page.wait_for_selector("#panel-title-generate", timeout=10_000)
+
+        advanced = page.locator("details.advanced-settings")
+        await advanced.wait_for(state="visible")
+        await advanced.locator("summary").click()
+        await page.wait_for_selector("details.advanced-settings select", timeout=10_000)
+        await advanced.locator("input[type='number']").nth(0).fill("2")
+        await advanced.locator("input[type='number']").nth(1).fill("5")
+        await page.locator("details.advanced-settings select").select_option("fallback")
+        await advanced.locator("input[type='number']").nth(2).fill("17")
+        print("5. advanced generation settings applied")
+        await page.locator(".panel-actions .primary-button").click()
+        await page.wait_for_selector("#panel-title-adjust", timeout=60_000)
+        await page.wait_for_selector(".seat-occupied", timeout=15_000)
         occupied = await page.locator(".seat-occupied").count()
-        print(f"2. generated plan rendered {occupied} occupied seats")
+        print(f"6. generated plan rendered {occupied} occupied seats")
         if occupied == 0:
             await browser.close()
             return 1
 
-        await page.click("button:has-text('继续')")
+        await page.locator(".panel-actions .primary-button").click()
+        await page.wait_for_selector("#panel-title-export", timeout=15_000)
         await page.wait_for_selector(".export-options", timeout=15_000)
-        await page.click("button:has-text('打开导出预览')")
+        await page.locator(".panel-actions .primary-button").click()
         await page.wait_for_selector(".preview-dialog", timeout=15_000)
-        print("3. export preview opened")
+        print("7. export preview opened")
 
         async with page.expect_download(timeout=30_000) as download_info:
-            await page.click("button:has-text('保存一份')")
+            await page.locator(".preview-dialog button.primary-button").click()
         download = await download_info.value
-        print(f"4. downloaded export: {download.suggested_filename}")
+        print(f"8. downloaded export: {download.suggested_filename}")
 
         # The project panel is available alongside the main teacher flow. Use
         # the repository's example project so this check exercises the real
@@ -68,14 +120,14 @@ async def main() -> int:
         )
         await page.wait_for_selector("[data-testid='project-history']", timeout=30_000)
         history_rows = await page.locator("[data-testid='project-history'] .project-artifact-row").count()
-        print(f"5. project history rendered {history_rows} artifacts")
+        print(f"9. project history rendered {history_rows} artifacts")
         if history_rows == 0:
             await browser.close()
             return 1
 
         await page.click("[data-testid='project-privacy-button']")
         await page.wait_for_selector("[data-testid='project-privacy-status']", timeout=30_000)
-        print("6. project privacy scan rendered")
+        print("10. project privacy scan rendered")
 
         async with page.expect_download(timeout=30_000) as bundle_info:
             await page.click("[data-testid='project-backup-button']")
@@ -83,7 +135,7 @@ async def main() -> int:
         if not bundle.suggested_filename.endswith(".seattrellis.zip"):
             await browser.close()
             return 1
-        print(f"7. downloaded project bundle: {bundle.suggested_filename}")
+        print(f"11. downloaded project bundle: {bundle.suggested_filename}")
 
         with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as directory:
             bundle_path = Path(directory) / bundle.suggested_filename
@@ -102,7 +154,7 @@ async def main() -> int:
             if not (restore_target / "project.seattrellis.json").exists():
                 await browser.close()
                 return 1
-        print("8. project bundle restored successfully")
+        print("12. project bundle restored successfully")
 
         await browser.close()
         return 0
