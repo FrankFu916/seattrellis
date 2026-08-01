@@ -12,6 +12,10 @@
 - Added printable HTML and CSV group registers for saved rotation plans. Each
   period keeps empty groups, unseated students, and roster members that could
   not be found in the saved class data.
+- Added a privacy-safe membership preview for rotation group registers. Teachers
+  can review group sizes, seated/unseated counts, and additions/removals between
+  periods before downloading; names and student IDs are not returned by the
+  preview API.
 - Added a Project workspace panel to the React workbench. Teachers can browse
   recent local classes, review saved history and generated files, and open a
   privacy check without exposing student records in the browser response.
