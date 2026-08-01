@@ -45,7 +45,9 @@ undo/redo, and export. The ordinary flow also accepts custom rows, columns,
 aisles, unavailable seats, combined preferences, and common adjacency or fixed
 seat requests. Complex solver settings stay collapsed by default; expand
 **Advanced settings** when you need candidate count, seed, time limit, backend,
-or a complete rules JSON object.
+historical snapshot files, a complete rules JSON object, or an irregular layout
+JSON object. Rules and layout files can be imported, checked, and downloaded;
+the React workbench does not discard the existing file-based workflow.
 
 ### Streamlit web UI (compatibility and advanced configuration)
 

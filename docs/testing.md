@@ -18,7 +18,7 @@ mkdocs build --strict
 
 ## Web smoke 测试
 
-当前 Web 自动测试使用 Streamlit 的 app testing API：
+Streamlit 兼容入口仍使用 app testing API：
 
 ```bash
 python -m pytest tests/test_web_workflow.py
@@ -50,6 +50,24 @@ python -m pytest tests/test_web_workflow.py
 扩展属性，并核对学生与座位关联一致。两份编辑器 JSON Schema 与 registry 生成结果
 逐字典比较，避免已提交契约漂移。
 
+React 工作台的前端单元测试和生产构建在 `clients/web/` 完成：
+
+```bash
+cd clients/web
+npm test -- --run
+npm run build
+```
+
+发布前还应运行一次真实 Chromium 流程：
+
+```bash
+python scripts/verify_workbench_browser.py
+```
+
+该脚本覆盖 React 名单导入映射、确认导入、教室编辑、常用与高级规则、未来轮换、
+调整、导出以及项目面板。它会检查旧的英文映射错误和“打开导出预览”误导按钮不会
+出现在名单导入流程中。
+
 ## 浏览器级 E2E
 
 真实浏览器测试与 AppTest 分开安装和执行：
@@ -65,7 +83,7 @@ Linux 开发机若尚未安装 Chromium 的系统依赖，使用
 `e2e/constraints.txt` 固定已验证的 Streamlit 与 Playwright 组合；项目 extras
 仍保留兼容范围，便于本地验证更新版本。
 
-当前套件会启动独立的 Streamlit 进程，并在三个隔离浏览器会话中真实执行：
+兼容入口套件会启动独立的 Streamlit 进程，并在三个隔离浏览器会话中真实执行：
 
 1. Demo → 三个候选 → public 模板 → 姓名匿名化 → A4 横向英文 Print HTML，
    同时检查全班原姓名、学号、成绩、身高、视力和特殊需求没有泄漏；

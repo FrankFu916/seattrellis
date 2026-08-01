@@ -26,6 +26,7 @@ import type {
   EditorCommand,
   EditorOperation,
   EditorState,
+  HistorySnapshotPayload,
   ProjectRotationLoadResponse,
   AdvancedSolveSettings,
   RotationPlan,
@@ -66,6 +67,7 @@ import {
 import {
   createTranslator,
   type Locale,
+  type Translate,
 } from "./i18n/messages";
 import {
   applyTheme,
@@ -185,14 +187,25 @@ function newCommandId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function friendlyError(err: unknown): string {
+function friendlyError(err: unknown, t?: Translate): string {
   if (err instanceof RosterApiError) {
-    return err.message;
+    const localizedKey: Record<string, Parameters<Translate>[0]> = {
+      class_not_ready: "app.classNotReady",
+      invalid_class_draft: "app.classNotReady",
+      plan_not_found: "app.planNotFound",
+      feature_unavailable: "app.featureUnavailable",
+      session_required: "app.sessionExpired",
+      editor_revision_conflict: "app.operationFailed",
+      layout_revision_conflict: "app.operationFailed",
+    };
+    const key = localizedKey[err.code];
+    return t && key ? t(key) : t ? t("app.operationFailed") : err.message;
   }
   if (err instanceof Error) {
-    return err.message;
+    console.error("Workbench operation failed", err);
+    return t ? t("app.operationFailed") : err.message;
   }
-  return String(err);
+  return t ? t("app.operationFailed") : "The operation could not be completed.";
 }
 
 /** Convert the authoritative editor state into the canvas plan model. */
@@ -250,6 +263,9 @@ export function App() {
   const [pageScale, setPageScale] = useState(1);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSolveSettings>(DEFAULT_ADVANCED_SETTINGS);
+  const [historySnapshots, setHistorySnapshots] = useState<HistorySnapshotPayload[]>([]);
+  const [historyFileNames, setHistoryFileNames] = useState<string[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [rotationSettings, setRotationSettings] = useState<RotationSettings>(
     DEFAULT_ROTATION_SETTINGS,
   );
@@ -457,6 +473,60 @@ export function App() {
     );
   }
 
+  async function handleHistoryFiles(files: File[]) {
+    const MAX_HISTORY_FILES = 40;
+    const MAX_HISTORY_FILE_BYTES = 20 * 1024 * 1024;
+    if (files.length > MAX_HISTORY_FILES) {
+      setHistoryError(t("generate.historyTooMany"));
+      return;
+    }
+
+    const parsed: HistorySnapshotPayload[] = [];
+    try {
+      for (const file of files) {
+        if (file.size > MAX_HISTORY_FILE_BYTES) {
+          throw new Error("history_file_too_large");
+        }
+        const value: unknown = JSON.parse(await file.text());
+        const entries = Array.isArray(value) ? value : [value];
+        if (
+          entries.length === 0 ||
+          entries.some(
+            (entry) =>
+              entry === null ||
+              typeof entry !== "object" ||
+              Array.isArray(entry) ||
+              !("students" in entry) ||
+              !("layout" in entry) ||
+              !("rules" in entry) ||
+              !("assignments" in entry),
+          )
+        ) {
+          throw new Error("history_file_invalid");
+        }
+        parsed.push(...(entries as HistorySnapshotPayload[]));
+      }
+    } catch (error) {
+      console.error("History import failed", error);
+      setHistoryError(
+        error instanceof Error && error.message === "history_file_too_large"
+          ? t("generate.historyTooLarge")
+          : t("generate.historyInvalid"),
+      );
+      return;
+    }
+
+    setHistorySnapshots(parsed);
+    setHistoryFileNames(files.map((file) => file.name));
+    setHistoryError(null);
+  }
+
+  function clearHistoryFiles() {
+    setHistorySnapshots([]);
+    setHistoryFileNames([]);
+    setHistoryError(null);
+  }
+
   function handleSeatActivate(seatId: string) {
     if (!selectedSeatId) {
       setSelectedSeatId(seatId);
@@ -550,7 +620,7 @@ export function App() {
       setSelectedSeatId(null);
       setIsDirty(true);
     } catch (err) {
-      setSaveError(friendlyError(err));
+      setSaveError(friendlyError(err, t));
       setSelectedSeatId(null);
     }
   }
@@ -625,7 +695,7 @@ export function App() {
       applyEditorState(editor);
       setActiveRotationPeriod(period);
     } catch (err) {
-      setSaveError(friendlyError(err));
+      setSaveError(friendlyError(err, t));
     }
   }
 
@@ -663,6 +733,7 @@ export function App() {
         groups,
         preferences,
         detailedRules,
+        historySnapshots,
       };
       const response = rotationSettings.enabled
         ? await generateRotationPlan(
@@ -701,7 +772,7 @@ export function App() {
                 }),
         );
       } else {
-        setSaveError(friendlyError(err));
+        setSaveError(friendlyError(err, t));
       }
     } finally {
       setIsGenerating(false);
@@ -741,7 +812,7 @@ export function App() {
       setPreviewOpen(false);
       setIsDirty(false);
     } catch (err) {
-      setSaveError(friendlyError(err));
+      setSaveError(friendlyError(err, t));
     } finally {
       setIsSaving(false);
     }
@@ -757,6 +828,7 @@ export function App() {
     setSelectedSeatId(null);
     setSelectedFileName(null);
     setGroups([]);
+    clearHistoryFiles();
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
@@ -833,7 +905,10 @@ export function App() {
             pageScale={pageScale}
             advancedSettings={advancedSettings}
             rotationSettings={rotationSettings}
-            detailedRules={detailedRules}
+              detailedRules={detailedRules}
+              historyFileNames={historyFileNames}
+              historySnapshotCount={historySnapshots.length}
+              historyError={historyError}
             rotationPlan={rotationPlan}
             activeRotationPeriod={activeRotationPeriod}
             roomSettings={roomSettings}
@@ -884,6 +959,10 @@ export function App() {
             onDetailedRulesChange={(changes) =>
               setDetailedRules((current) => ({ ...current, ...changes }))
             }
+            onHistoryFilesChange={(files) => {
+              void handleHistoryFiles(files);
+            }}
+            onHistoryClear={clearHistoryFiles}
             onRotationPeriodSelect={(period) => {
               void handleRotationPeriodSelect(period);
             }}

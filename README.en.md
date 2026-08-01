@@ -88,7 +88,8 @@ React workbench keeps the ordinary teacher flow focused:
    keeping students apart, keeping them together, or fixing a seat. When the
    common controls are not precise enough, open **Detailed seating rules** to
    configure history lookback, neighbor distance, score placement/distribution,
-   and peer-support pairing;
+   and peer-support pairing. Advanced settings can also import or download a
+   complete rules JSON file and load multiple historical snapshot JSON files;
 4. Generate one plan or several future periods, inspect score dimensions, and
    manually adjust seats with undo and redo;
 5. Export as HTML, Excel, PNG, PDF, Word, SVG, or PPTX.
@@ -107,8 +108,8 @@ field remains available for more complex group relationships. Relationship
 cooling is available in the detailed panel. The project migration view shows
 privacy-safe field changes, validation state, and the available backup or
 rollback path without returning original values. The optional **Advanced
-settings** section is for complete rules JSON, candidate count, seed, time limit,
-and solver backend details. The default path does not require any of these
+settings** section is for complete rules/layout JSON, historical snapshots,
+candidate count, seed, time limit, and solver backend details. The default path does not require any of these
 settings.
 For a saved rotation plan, the Project panel can also download a period-by-period
 group register as printable HTML or CSV. Empty groups, unseated students, and

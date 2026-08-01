@@ -16,6 +16,11 @@
 
 ### User-facing changes
 
+- React advanced settings can now import and download rules JSON and irregular-room layout JSON,
+  and load multiple historical snapshots for fair rotation and recent-neighbor scoring through
+  the same application API.
+- Generation, editing, and export failures now use teacher-facing localized messages instead of
+  exposing backend English or raw exception text.
 - Expanded the React and desktop export panel with public, teacher, and plan
   report templates. Each template now has localized field-level privacy
   switches, optional name anonymization, A4 page scaling, and the same safe
