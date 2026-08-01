@@ -227,7 +227,7 @@ jobs:
           path: dist/
       - name: Generate SHA-256 checksums
         working-directory: dist
-        run: sha256sum seattrellis-* > SHA256SUMS
+        run: sha256sum seattrellis-* > PYTHON-SHA256SUMS
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}

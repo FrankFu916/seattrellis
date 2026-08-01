@@ -49,7 +49,8 @@ seattrellis --help
 完全一致；Release 标题和目标提交仍需在发布前人工核对。
 
 正式发布成功后，工作流还会从 PyPI 重新下载并安装对应 wheel，验证版本与 CLI，
-并把 wheel、sdist 和 `SHA256SUMS` 附加到 GitHub Release。GitHub Actions 临时
+并把 wheel、sdist 和 `PYTHON-SHA256SUMS` 附加到 GitHub Release。桌面构建会使用
+独立的 `DESKTOP-SHA256SUMS`，避免两个工作流覆盖彼此的校验清单。GitHub Actions 临时
 artifact 只用于 job 之间传递文件，不替代这些公开 Release 附件。
 
 如果 Trusted Publisher 尚未配置，发布 job 会失败且不会回退到长期 token。
