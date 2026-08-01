@@ -75,3 +75,27 @@ def test_archive_bundle_rejects_missing_or_unsafe_inputs(tmp_path) -> None:
     )
     with ZipFile(archive) as contents:
         assert contents.read("SeatTrellis/link.dylib") == b"library"
+
+
+def test_archive_bundle_expands_safe_directory_symlinks(tmp_path) -> None:
+    bundle = tmp_path / "SeatTrellis"
+    target = bundle / "Python.framework" / "Versions" / "Current" / "Resources"
+    target.mkdir(parents=True)
+    (target / "version.txt").write_text("3.14", encoding="utf-8")
+    link = bundle / "Python.framework" / "Resources"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlinks are not available on this filesystem")
+
+    archive = archive_bundle(
+        bundle,
+        tmp_path / "release",
+        platform_name="macOS",
+        version="manual",
+    )
+
+    with ZipFile(archive) as contents:
+        assert contents.read(
+            "SeatTrellis/Python.framework/Resources/version.txt"
+        ) == b"3.14"

@@ -47,31 +47,22 @@ def archive_bundle(
 
     # Sort by the POSIX archive path rather than ``Path`` ordering.  ``Path``
     # comparisons use platform-specific rules, so the same bundle could have
-    # a different member order on Windows and Unix hosts.
+    # a different member order on Windows and Unix hosts.  PyInstaller's
+    # macOS framework sometimes contains directory symlinks (for example
+    # ``Python.framework/Resources``); ``_collect_files`` expands those links
+    # into regular archive entries while still rejecting links that leave the
+    # bundle.
     files = sorted(
-        bundle.rglob("*"),
-        key=lambda path: path.relative_to(bundle).as_posix(),
+        _collect_files(bundle),
+        key=lambda entry: entry[0].as_posix(),
     )
     with ZipFile(archive_path, "w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
-        for path in files:
-            source = path
-            if path.is_symlink():
-                source = path.resolve()
-                try:
-                    source.relative_to(bundle)
-                except ValueError as exc:
-                    raise ValueError(
-                        f"Desktop bundle symlink points outside the bundle: {path}"
-                    ) from exc
-                if source.is_dir():
-                    raise ValueError(
-                        f"Desktop bundle cannot archive symlinked directories: {path}"
-                    )
-            if path.is_dir():
-                continue
+        for relative_path, source in files:
             if not source.is_file():
-                raise ValueError(f"Desktop bundle contains an unsafe entry: {path}")
-            relative = Path("SeatTrellis") / path.relative_to(bundle)
+                raise ValueError(
+                    f"Desktop bundle contains an unsafe entry: {bundle / relative_path}"
+                )
+            relative = Path("SeatTrellis") / relative_path
             info = ZipInfo(relative.as_posix())
             info.date_time = (1980, 1, 1, 0, 0, 0)
             info.compress_type = ZIP_DEFLATED
@@ -81,11 +72,64 @@ def archive_bundle(
             # PyInstaller's launcher is the bundle root executable, so retain
             # the executable bit for that well-known entry when the host API
             # reports no execute permissions.
-            if not mode & 0o111 and _is_bundle_launcher(path, bundle):
+            if not mode & 0o111 and _is_bundle_launcher(bundle / relative_path, bundle):
                 mode = 0o755
             info.external_attr = mode << 16
             archive.writestr(info, source.read_bytes())
     return archive_path
+
+
+def _collect_files(bundle: Path) -> list[tuple[Path, Path]]:
+    """Return logical archive paths and their safe source files.
+
+    Directory symlinks are expanded instead of being written as symlink
+    metadata.  This keeps the extracted desktop package usable on systems
+    where ZIP extraction does not recreate symlinks, while the containment
+    check prevents a bundle from smuggling files from outside its root.
+    """
+
+    entries: list[tuple[Path, Path]] = []
+
+    def visit(path: Path, relative: Path, active_directories: set[Path]) -> None:
+        if path.is_symlink():
+            resolved = path.resolve()
+            _ensure_inside_bundle(resolved, bundle, path)
+            if resolved.is_dir():
+                if resolved in active_directories:
+                    raise ValueError(f"Desktop bundle contains a symlink loop: {path}")
+                visit_directory(resolved, relative, active_directories)
+                return
+            if resolved.is_file():
+                entries.append((relative, resolved))
+                return
+            raise ValueError(f"Desktop bundle contains an unsafe entry: {path}")
+
+        if path.is_dir():
+            visit_directory(path, relative, active_directories)
+            return
+        if path.is_file():
+            entries.append((relative, path))
+            return
+        raise ValueError(f"Desktop bundle contains an unsafe entry: {path}")
+
+    def visit_directory(path: Path, relative: Path, active_directories: set[Path]) -> None:
+        resolved_directory = path.resolve()
+        _ensure_inside_bundle(resolved_directory, bundle, path)
+        next_active = {*active_directories, resolved_directory}
+        for child in path.iterdir():
+            visit(child, relative / child.name, next_active)
+
+    visit_directory(bundle, Path(), set())
+    return entries
+
+
+def _ensure_inside_bundle(path: Path, bundle: Path, original: Path) -> None:
+    try:
+        path.relative_to(bundle)
+    except ValueError as exc:
+        raise ValueError(
+            f"Desktop bundle symlink points outside the bundle: {original}"
+        ) from exc
 
 
 def sha256(path: Path) -> str:
