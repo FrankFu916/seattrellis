@@ -85,4 +85,30 @@ describe("RosterImportPanel", () => {
       ]);
     });
   });
+
+  it("keeps the mapping form open when preview fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(previewRosterUpdate).mockRejectedValueOnce(
+      new Error("HTTP 500: internal solver details"),
+    );
+    const { container } = render(
+      <RosterImportPanel
+        locale="zh-CN"
+        t={createTranslator("zh-CN")}
+        currentStudents={[]}
+        currentRevision={0}
+        onImportConfirmed={vi.fn()}
+      />,
+    );
+
+    const file = new File(["小林,18513806422"], "students.csv", {
+      type: "text/csv",
+    });
+    await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, file);
+    await user.click(await screen.findByRole("button", { name: "检查导入变化" }));
+
+    expect(await screen.findByText("预览失败：名单操作没有完成，请检查文件后重试。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "检查导入变化" })).toBeInTheDocument();
+    expect(screen.queryByText("HTTP 500: internal solver details")).not.toBeInTheDocument();
+  });
 });

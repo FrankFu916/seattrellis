@@ -116,9 +116,13 @@ export function RosterImportPanel({
       }
     }
     if (err instanceof Error) {
-      return err.message;
+      // Do not expose implementation details (for example a raw fetch or
+      // parser error) in the teacher-facing panel.  Keep the original error
+      // available to the browser console while presenting a useful action.
+      console.error("Roster import failed", err);
+      return t("roster.errorGeneric");
     }
-    return String(err);
+    return t("roster.errorGeneric");
   }, [t]);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -189,7 +193,9 @@ export function RosterImportPanel({
       setIsPreviewing(false);
     } catch (err) {
       setError(friendlyError(err));
-      setPhase("error");
+      // Keep the draft and mapping visible so the teacher can correct the
+      // selection and retry.  A preview failure is not an upload failure.
+      setPhase("mapping");
       setIsPreviewing(false);
     }
   }
