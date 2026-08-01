@@ -113,6 +113,10 @@ def test_project_artifacts_can_be_compared_and_restored_safely(tmp_path) -> None
     compared_payload = compared.json()
     assert compared_payload["left"]["kind"] == "snapshot"
     assert compared_payload["diff"]["assignment_changes"] > 0
+    assert compared_payload["diff"]["assignment_details"]
+    assert compared_payload["diff"]["assignment_details"][0]["student_ref"].startswith(
+        "student-"
+    )
     assert "Alice" not in compared.text
 
     restored = client.post(

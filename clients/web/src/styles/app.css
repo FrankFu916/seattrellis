@@ -1944,6 +1944,44 @@ input:focus-visible,
   color: var(--text-strong);
 }
 
+.project-compare-details {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: var(--line-width) solid var(--border);
+}
+
+.project-compare-details summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.project-compare-details ul {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-compare-details li {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 7px;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.project-compare-details li strong {
+  color: var(--text-strong);
+}
+
+.project-compare-details li small {
+  color: var(--muted);
+  font-size: inherit;
+}
+
 .project-actions {
   display: flex;
   flex-wrap: wrap;

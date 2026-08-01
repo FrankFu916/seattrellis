@@ -119,6 +119,14 @@ describe("ProjectWorkspacePanel", () => {
         layout_changed: false,
         rules_changed: true,
         solver_status_changed: false,
+        assignment_details: [
+          {
+            student_ref: "student-1",
+            change: "moved",
+            before_seat_id: "R1C1",
+            after_seat_id: "R2C2",
+          },
+        ],
       },
     });
     vi.mocked(restoreProjectArtifact).mockResolvedValue({
@@ -220,6 +228,12 @@ describe("ProjectWorkspacePanel", () => {
     });
     expect(screen.getByTestId("project-compare-result")).toHaveTextContent(
       "Seat changes: 4",
+    );
+    await user.click(
+      screen.getByTestId("project-assignment-details").querySelector("summary")!,
+    );
+    expect(screen.getByTestId("project-assignment-details")).toHaveTextContent(
+      "student-1",
     );
     await user.click(screen.getByTestId("project-restore-artifact-button"));
     await waitFor(() => {

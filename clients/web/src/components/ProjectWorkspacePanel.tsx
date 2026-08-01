@@ -443,6 +443,35 @@ export function ProjectWorkspacePanel({
                           : t("project.no"),
                       })}
                     </span>
+                    {comparison.diff.assignment_details.length > 0 ? (
+                      <details
+                        className="project-compare-details"
+                        data-testid="project-assignment-details"
+                      >
+                        <summary>{t("project.assignmentDetails")}</summary>
+                        <ul>
+                          {comparison.diff.assignment_details.map((change) => (
+                            <li
+                              key={`${change.student_ref}-${change.before_seat_id ?? "none"}-${change.after_seat_id ?? "none"}`}
+                            >
+                              <strong>{change.student_ref}</strong>
+                              <span>
+                                {change.change === "moved"
+                                  ? t("project.assignmentMoved")
+                                  : change.change === "seated"
+                                    ? t("project.assignmentSeated")
+                                    : t("project.assignmentUnseated")}
+                              </span>
+                              <small>
+                                {t("project.assignmentBefore")}: {change.before_seat_id ?? "—"}
+                                {" → "}
+                                {t("project.assignmentAfter")}: {change.after_seat_id ?? "—"}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
                   </div>
                 )}
               </div>

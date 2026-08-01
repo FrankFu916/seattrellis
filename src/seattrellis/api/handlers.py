@@ -29,6 +29,7 @@ from seattrellis.api.models import (
     ProjectArtifactItem,
     ProjectArtifactCompareResponse,
     ProjectArtifactDiff,
+    ProjectArtifactAssignmentChange,
     ProjectArtifactRequest,
     ProjectArtifactRestoreResponse,
     ProjectArtifactSummary,
@@ -285,6 +286,27 @@ def project_artifact_compare(
     left_assignments = {item.student_key: item.seat_id for item in left_snapshot.assignments}
     right_assignments = {item.student_key: item.seat_id for item in right_snapshot.assignments}
     all_students = set(left_assignments) | set(right_assignments)
+    assignment_details: list[ProjectArtifactAssignmentChange] = []
+    for index, student_key in enumerate(sorted(all_students), start=1):
+        before_seat_id = left_assignments.get(student_key)
+        after_seat_id = right_assignments.get(student_key)
+        if before_seat_id == after_seat_id:
+            continue
+        change = (
+            "seated"
+            if before_seat_id is None
+            else "unseated"
+            if after_seat_id is None
+            else "moved"
+        )
+        assignment_details.append(
+            ProjectArtifactAssignmentChange(
+                student_ref=f"student-{index}",
+                change=change,
+                before_seat_id=before_seat_id,
+                after_seat_id=after_seat_id,
+            )
+        )
     return ProjectArtifactCompareResponse(
         left=left_summary,
         right=right_summary,
@@ -304,6 +326,7 @@ def project_artifact_compare(
                 != right_snapshot.rules.model_dump(mode="json")
             ),
             solver_status_changed=left_snapshot.solver_status != right_snapshot.solver_status,
+            assignment_details=assignment_details,
         ),
     )
 

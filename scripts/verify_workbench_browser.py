@@ -187,6 +187,11 @@ async def main() -> int:
                 return 1
             await page.wait_for_selector("[data-testid='project-compare-result']", timeout=30_000)
             print("16. project history comparison rendered")
+            assignment_details = page.locator("[data-testid='project-assignment-details']")
+            if await assignment_details.count():
+                await assignment_details.locator("summary").click()
+                await expect(assignment_details).to_contain_text("student-")
+                print("17. anonymous assignment changes expanded")
             restore_artifact_button = page.locator(
                 "[data-testid='project-restore-artifact-button']"
             )
@@ -198,7 +203,7 @@ async def main() -> int:
                 }""",
                 timeout=30_000,
             )
-            print("17. historical artifact restored as a new plan")
+            print("18. historical artifact restored as a new plan")
         else:
             print("16. project history comparison skipped (one artifact available)")
 
@@ -208,7 +213,7 @@ async def main() -> int:
         if not bundle.suggested_filename.endswith(".seattrellis.zip"):
             await browser.close()
             return 1
-        print(f"18. downloaded project bundle: {bundle.suggested_filename}")
+        print(f"19. downloaded project bundle: {bundle.suggested_filename}")
 
         with tempfile.TemporaryDirectory(prefix="seattrellis-browser-restore-") as directory:
             bundle_path = Path(directory) / bundle.suggested_filename
@@ -227,7 +232,7 @@ async def main() -> int:
             if not (restore_target / "project.seattrellis.json").exists():
                 await browser.close()
                 return 1
-        print("19. project bundle restored successfully")
+        print("20. project bundle restored successfully")
 
         await browser.close()
         return 0

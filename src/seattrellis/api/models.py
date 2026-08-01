@@ -376,6 +376,15 @@ class ProjectArtifactSummary(ApiModel):
     solver_status: str | None = None
 
 
+class ProjectArtifactAssignmentChange(ApiModel):
+    """One privacy-safe assignment change without exposing student identifiers."""
+
+    student_ref: str
+    change: Literal["moved", "seated", "unseated"]
+    before_seat_id: str | None = None
+    after_seat_id: str | None = None
+
+
 class ProjectArtifactDiff(ApiModel):
     """Counts and structural changes between two local artifacts."""
 
@@ -385,6 +394,7 @@ class ProjectArtifactDiff(ApiModel):
     layout_changed: bool
     rules_changed: bool
     solver_status_changed: bool
+    assignment_details: list[ProjectArtifactAssignmentChange] = Field(default_factory=list)
 
 
 class ProjectArtifactCompareResponse(VersionedResponse):

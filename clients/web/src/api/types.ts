@@ -494,6 +494,12 @@ export type ProjectArtifactDiff = {
   layout_changed: boolean;
   rules_changed: boolean;
   solver_status_changed: boolean;
+  assignment_details: Array<{
+    student_ref: string;
+    change: "moved" | "seated" | "unseated";
+    before_seat_id: string | null;
+    after_seat_id: string | null;
+  }>;
 };
 
 export type ProjectArtifactCompareResponse = {
