@@ -22,7 +22,7 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));
-    out.push_str("   Render a solved seating plan as SVG or HTML.\n    ");
+    out.push_str("   Render a solved seating plan as SVG, HTML, PNG, or PDF.\n    ");
     out.push_str(&styler.cyan("help"));
     out.push_str("     Show this help.\n\n");
 
@@ -45,7 +45,7 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push_str(" ");
     out.push_str(&styler.cyan("export"));
-    out.push_str(" --problem <problem.json> --solution <result.json> \\\n                           --format <svg|html> --output <file>\n\n");
+    out.push_str(" --problem <problem.json> --solution <result.json> \\\n                           --format <svg|html|png|pdf> --output <file>\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>   The same solve-request JSON used for solve (seat grid). Required.\n      ");
@@ -54,8 +54,12 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.bold("--format"));
     out.push_str(" <f>       Output format: ");
     out.push_str(&styler.cyan("svg"));
-    out.push_str(" or ");
+    out.push_str(", ");
     out.push_str(&styler.cyan("html"));
+    out.push_str(", ");
+    out.push_str(&styler.cyan("png"));
+    out.push_str(", or ");
+    out.push_str(&styler.cyan("pdf"));
     out.push_str(". Required.\n      ");
     out.push_str(&styler.bold("--output"));
     out.push_str(" <file>    Write the rendered plan to <file>. Required.\n\n");

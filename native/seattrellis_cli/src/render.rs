@@ -1,4 +1,4 @@
-//! SVG / HTML rendering of a solved seating plan.
+//! Rendering of a solved seating plan to SVG, HTML, PNG, or PDF.
 //!
 //! The seat grid is recovered from the problem: each `seat_positions` entry
 //! becomes a grid cell at `(row = round(y), col = round(x))` — or, when the
@@ -6,9 +6,12 @@
 //! used instead. The solve response's `assignment` fills each occupied seat
 //! with a student label.
 //!
-//! Both renderers are fully self-contained: no `<script>`, no external
-//! references, no embedded fonts — just plain shapes/text with a generic
-//! `sans-serif` family so Chinese names render with whatever the system has.
+//! All four renderers share the same geometry constants and a single palette.
+//! SVG and HTML are fully self-contained (no `<script>`, no external
+//! references, no embedded fonts — a generic `sans-serif` family lets Chinese
+//! names render with whatever the system has). PNG is drawn with the `png`
+//! crate plus a tiny hand-rolled raster; PDF is written by hand (see the
+//! section notes for the text trade-offs).
 
 use std::collections::HashMap;
 
@@ -359,6 +362,341 @@ pub fn render_html(grid: &SeatingGrid) -> String {
     out
 }
 
+// ---------------------------------------------------------------------------
+// PNG / PDF shared palette
+// ---------------------------------------------------------------------------
+
+/// RGB colors shared by the PNG and PDF renderers. Mirrors the SVG palette so
+/// all four exports agree: occupied seats are blue-tinted, empty seats light
+/// gray, disabled seats a muted gray, and void grid positions near-white.
+type Rgb = [u8; 3];
+
+const WHITE: Rgb = [0xff, 0xff, 0xff];
+const OCCUPIED_FILL: Rgb = [0xe8, 0xf0, 0xfe];
+const OCCUPIED_STROKE: Rgb = [0x4a, 0x7f, 0xd4];
+const EMPTY_FILL: Rgb = [0xf7, 0xf8, 0xf9];
+const EMPTY_STROKE: Rgb = [0xcf, 0xd8, 0xe2];
+const DISABLED_FILL: Rgb = [0xec, 0xef, 0xf3];
+const DISABLED_STROKE: Rgb = [0x9a, 0xa7, 0xb5];
+const VOID_FILL: Rgb = [0xfb, 0xfb, 0xfc];
+const VOID_STROKE: Rgb = [0xec, 0xef, 0xf2];
+const DIVIDER: Rgb = [0xc8, 0xd2, 0xde];
+
+/// The (fill, stroke) color pair for the grid position at `(row, col)`.
+fn cell_colors(grid: &SeatingGrid, row: i32, col: i32) -> (Rgb, Rgb) {
+    match grid.cell_at(row, col) {
+        Some(cell) if cell.student.is_some() => (OCCUPIED_FILL, OCCUPIED_STROKE),
+        Some(cell) if !cell.enabled => (DISABLED_FILL, DISABLED_STROKE),
+        Some(_) => (EMPTY_FILL, EMPTY_STROKE),
+        None => (VOID_FILL, VOID_STROKE),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PNG
+// ---------------------------------------------------------------------------
+
+/// Rasterize the plan as an RGB PNG.
+///
+/// The seat grid is drawn as solid colored rectangles with a thin border using
+/// the same palette as the SVG renderer. No text is drawn: drawing legible
+/// labels would require either embedding a font or carrying a hand-rolled
+/// bitmap font, and the mandate here is a small binary over glyph fidelity.
+/// The output is a standard PNG (IHDR/IDAT/IEND) readable by any image tool.
+pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
+    let cols = grid_cols(grid);
+    let rows = grid_rows(grid);
+    let width = (PAD * 2.0 + cols as f64 * CELL_W).ceil() as u32;
+    let height = (HEADER_H + PAD * 2.0 + rows as f64 * CELL_H).ceil() as u32;
+    if width == 0 || height == 0 {
+        return Err("cannot render an empty grid to PNG".to_string());
+    }
+
+    let mut data = vec![0u8; width as usize * height as usize * 3];
+    let mut canvas = Canvas::new(&mut data, width, height);
+    canvas.fill(0, 0, width, height, WHITE);
+    // Front-of-room divider under the (textless) header band.
+    let divider_y = (HEADER_H + 4.0) as u32;
+    canvas.fill(0, divider_y, width, 1, DIVIDER);
+
+    for row in grid.min_row..=grid.max_row {
+        for col in grid.min_col..=grid.max_col {
+            let (x, y) = cell_origin(grid, row, col);
+            canvas.rect(x + 4.0, y + 4.0, RECT_W, RECT_H, cell_colors(grid, row, col), 2);
+        }
+    }
+
+    let mut out = Vec::new();
+    {
+        // The encoder borrows `out`; drop the writer before returning it.
+        let mut encoder = png::Encoder::new(&mut out, width, height);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|error| format!("PNG header write failed: {error}"))?;
+        writer
+            .write_image_data(&data)
+            .map_err(|error| format!("PNG data write failed: {error}"))?;
+    }
+    Ok(out)
+}
+
+/// A small RGB raster with bounds-clipping fill helpers (kept private; the
+/// `png` encoder owns the chunk/compression details).
+struct Canvas<'a> {
+    data: &'a mut [u8],
+    width: u32,
+    height: u32,
+}
+
+impl Canvas<'_> {
+    fn new(data: &mut [u8], width: u32, height: u32) -> Canvas<'_> {
+        Canvas { data, width, height }
+    }
+
+    /// Fill `[x, x+w) x [y, y+h)` with `rgb`, clipped to the image bounds.
+    fn fill(&mut self, x: u32, y: u32, w: u32, h: u32, rgb: Rgb) {
+        let x_end = (x + w).min(self.width);
+        let y_end = (y + h).min(self.height);
+        if x >= self.width || y >= self.height || x_end <= x || y_end <= y {
+            return;
+        }
+        let row_len = self.width as usize * 3;
+        for yy in y..y_end {
+            let start = yy as usize * row_len + x as usize * 3;
+            let end = yy as usize * row_len + x_end as usize * 3;
+            for idx in (start..end).step_by(3) {
+                self.data[idx] = rgb[0];
+                self.data[idx + 1] = rgb[1];
+                self.data[idx + 2] = rgb[2];
+            }
+        }
+    }
+
+    /// Draw a rectangle with a `border`-pixel border in the stroke color around
+    /// an interior filled with the fill color.
+    fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, colors: (Rgb, Rgb), border: u32) {
+        let (fill, stroke) = colors;
+        let x0 = x.round() as u32;
+        let y0 = y.round() as u32;
+        let rw = w.round() as u32;
+        let rh = h.round() as u32;
+        // Outer rect in the stroke color, then the inset area in the fill color.
+        self.fill(x0, y0, rw, rh, stroke);
+        if rw > border * 2 && rh > border * 2 {
+            self.fill(x0 + border, y0 + border, rw - border * 2, rh - border * 2, fill);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PDF
+// ---------------------------------------------------------------------------
+
+/// A4 portrait page size in points (PDF coordinates grow up and to the right).
+const PAGE_W: f64 = 595.0;
+const PAGE_H: f64 = 842.0;
+const PDF_MARGIN: f64 = 36.0;
+/// Vertical space reserved for the title, subtitle, and front-of-room label.
+const PDF_HEADER_SPACE: f64 = 100.0;
+
+/// Render the plan as a single-page, hand-written PDF.
+///
+/// The document is generated directly (catalog -> pages -> page -> content
+/// stream -> Helvetica font, plus a correct xref table) rather than via
+/// `printpdf` or similar, keeping the dependency tree — and the binary — tiny.
+/// Text uses the standard-14 Helvetica, so ASCII labels render everywhere; a
+/// non-ASCII label (e.g. a CJK name) falls back to a plain placeholder because
+/// encoding it would require embedding a CID font, which is not worth the size.
+pub fn render_pdf(grid: &SeatingGrid) -> String {
+    let content = build_pdf_content(grid);
+
+    let mut bodies: Vec<String> = Vec::new();
+    bodies.push("<< /Type /Catalog /Pages 2 0 R >>".to_string()); // obj 1
+    bodies.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string()); // obj 2
+    bodies.push(format!( // obj 3
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] \
+         /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+    ));
+    bodies.push(format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len())); // obj 4
+    bodies.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string()); // obj 5
+
+    let count = bodies.len() + 1;
+    let mut out = String::with_capacity(4096 + content.len());
+    out.push_str("%PDF-1.4\n%\u{e2}\u{e3}\u{cf}\u{d3}\n");
+    let mut offsets = Vec::with_capacity(bodies.len());
+    for (i, body) in bodies.iter().enumerate() {
+        offsets.push(out.len());
+        out.push_str(&format!("{} 0 obj\n{body}\nendobj\n", i + 1));
+    }
+    let xref_pos = out.len();
+    out.push_str(&format!("xref\n0 {count}\n"));
+    out.push_str("0000000000 65535 f \n");
+    for offset in &offsets {
+        out.push_str(&format!("{offset:010} 00000 n \n"));
+    }
+    out.push_str(&format!(
+        "trailer\n<< /Size {count} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n"
+    ));
+    out
+}
+
+/// The page content stream: white background, header text, front-of-room
+/// label, and one colored rectangle (+ label) per seat.
+fn build_pdf_content(grid: &SeatingGrid) -> String {
+    let cols = grid_cols(grid) as f64;
+    let rows = grid_rows(grid) as f64;
+    let grid_w = cols * CELL_W;
+    let grid_h = rows * CELL_H;
+
+    // Scale the SVG geometry down (or up) to fit the printable area.
+    let avail_w = PAGE_W - PDF_MARGIN * 2.0;
+    let avail_h = PAGE_H - PDF_HEADER_SPACE - PDF_MARGIN;
+    let scale = (avail_w / grid_w).min(avail_h / grid_h).clamp(0.1, 2.0);
+
+    let grid_x = PDF_MARGIN;
+    let grid_top = PAGE_H - PDF_HEADER_SPACE + 10.0;
+
+    let mut ops = String::with_capacity(4096 + grid.cells.len() * 140);
+
+    // White page background.
+    ops.push_str(&format!(
+        "q\n{} rg\n0 0 {PAGE_W} {PAGE_H} re f\nQ\n",
+        pdf_rgb(WHITE)
+    ));
+
+    // Title + subtitle (fall back to ASCII placeholders for non-Latin text).
+    let title = pdf_text(&grid.title).unwrap_or("Seating Plan");
+    ops.push_str(&text_op_centered(title, 16.0, PAGE_W / 2.0, PAGE_H - 48.0));
+    let subtitle = pdf_text(&grid.subtitle).unwrap_or("");
+    ops.push_str(&text_op_centered(subtitle, 11.0, PAGE_W / 2.0, PAGE_H - 66.0));
+
+    // Front-of-room divider line and label above the grid.
+    let front_y = grid_top - 8.0;
+    ops.push_str(&format!(
+        "{} RG\n0.8 w\n{grid_x:.2} {front_y:.2} m {:.2} {front_y:.2} l S\n",
+        pdf_rgb(DIVIDER),
+        grid_x + grid_w * scale
+    ));
+    ops.push_str(&text_op_centered(
+        "front of room",
+        9.0,
+        grid_x + grid_w * scale / 2.0,
+        front_y - 7.0,
+    ));
+
+    for row in grid.min_row..=grid.max_row {
+        for col in grid.min_col..=grid.max_col {
+            let (x, y) = cell_origin(grid, row, col);
+            let rect_x = grid_x + (x - PAD) * scale;
+            let offset = (y - HEADER_H - PAD) / CELL_H; // row index within the grid
+            let cell_top = grid_top - offset * CELL_H * scale;
+            let inner_x = rect_x + 4.0 * scale;
+            let inner_w = RECT_W * scale;
+            let inner_y = cell_top - CELL_H * scale + 4.0 * scale;
+            let inner_h = RECT_H * scale;
+
+            let (fill, stroke) = cell_colors(grid, row, col);
+            ops.push_str(&format!(
+                "q\n{} rg\n{inner_x:.2} {inner_y:.2} {inner_w:.2} {inner_h:.2} re f\n\
+                 {} RG\n0.6 w\n{inner_x:.2} {inner_y:.2} {inner_w:.2} {inner_h:.2} re S\nQ\n",
+                pdf_rgb(fill),
+                pdf_rgb(stroke)
+            ));
+
+            let center_x = inner_x + inner_w / 2.0;
+            let center_y = inner_y + inner_h / 2.0;
+            if let Some(cell) = grid.cell_at(row, col) {
+                if let Some(name) = &cell.student {
+                    if let Some(label) = pdf_text(name) {
+                        let size = (name_font_size(name) as f64 * scale).clamp(6.0, 12.0);
+                        ops.push_str(&text_op_centered(
+                            label,
+                            size,
+                            center_x,
+                            center_y - size * 0.35,
+                        ));
+                    }
+                    let num = (cell.seat_index + 1).to_string();
+                    ops.push_str(&text_op_centered(&num, 7.0, center_x, inner_y + 9.0));
+                } else {
+                    let label = if cell.enabled { "empty" } else { "unused" };
+                    ops.push_str(&text_op_centered(label, 8.0, center_x, center_y - 2.8));
+                }
+            }
+        }
+    }
+    ops
+}
+
+/// A color as a PDF nonstroking/stroking operand (`r g b`).
+fn pdf_rgb(rgb: Rgb) -> String {
+    format!(
+        "{:.3} {:.3} {:.3}",
+        rgb[0] as f64 / 255.0,
+        rgb[1] as f64 / 255.0,
+        rgb[2] as f64 / 255.0
+    )
+}
+
+/// Escape text for a PDF literal string. Non-ASCII characters (e.g. CJK)
+/// become `?` — the standard-14 Helvetica cannot encode them.
+fn escape_pdf_literal(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '(' => out.push_str("\\("),
+            ')' => out.push_str("\\)"),
+            '\x20'..='\x7e' => out.push(ch),
+            _ => out.push('?'),
+        }
+    }
+    out
+}
+
+/// `Some(text)` when `text` is pure printable ASCII (safe for Helvetica);
+/// `None` when it contains non-ASCII characters.
+fn pdf_text(text: &str) -> Option<&str> {
+    if text.chars().all(|ch| matches!(ch, '\x20'..='\x7e')) {
+        Some(text)
+    } else {
+        None
+    }
+}
+
+/// A left-aligned text run: `BT /F1 <size> Tf 1 0 0 1 <x> <y> Tm (text) Tj ET`.
+fn text_op(text: &str, size: f64, x: f64, y: f64) -> String {
+    format!(
+        "BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm ({}) Tj ET\n",
+        escape_pdf_literal(text)
+    )
+}
+
+/// Center `text` horizontally at `center_x` with its baseline at `baseline_y`.
+fn text_op_centered(text: &str, size: f64, center_x: f64, baseline_y: f64) -> String {
+    let width = approx_text_width(text, size);
+    text_op(text, size, center_x - width / 2.0, baseline_y)
+}
+
+/// Rough Helvetica advance widths so centered text lands close to the mark.
+fn approx_text_width(text: &str, size: f64) -> f64 {
+    let mut units = 0.0;
+    for ch in text.chars() {
+        let factor = match ch {
+            // Narrow glyphs first so the broad ranges below don't shadow them.
+            'i' | 'l' | 'I' | 'j' | 't' | 'f' | '\'' | '.' | ',' | ':' | ';' => 0.25,
+            ' ' => 0.28,
+            'A'..='Z' => 0.72,
+            '0'..='9' | 'a'..='z' => 0.5,
+            _ => 0.42,
+        };
+        units += factor;
+    }
+    units * size
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,5 +883,83 @@ mod tests {
         assert_eq!(name_font_size("Alice"), 13);
         assert_eq!(name_font_size("AliceandBob"), 10);
         assert_eq!(name_font_size("AveryLongStudentName"), 8);
+    }
+
+    #[test]
+    fn png_magic_header_and_dimensions_match_grid() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let bytes = render_png(&grid).unwrap();
+
+        // 8-byte PNG signature.
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n", "PNG signature");
+        // IHDR width/height are big-endian u32s at bytes 16..24.
+        let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+        let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+        let cols = grid_cols(&grid) as f64;
+        let rows = grid_rows(&grid) as f64;
+        assert_eq!(width, (PAD * 2.0 + cols * CELL_W).ceil() as u32);
+        assert_eq!(height, (HEADER_H + PAD * 2.0 + rows * CELL_H).ceil() as u32);
+        // Closes with an IEND chunk.
+        let tail = &bytes[bytes.len() - 8..bytes.len() - 4];
+        assert_eq!(tail, b"IEND", "last chunk must be IEND");
+    }
+
+    #[test]
+    fn pdf_has_header_page_and_content_stream() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let pdf = render_pdf(&grid);
+        assert!(pdf.starts_with("%PDF-1.4"));
+        assert!(pdf.contains("/Type /Page"));
+        assert!(pdf.contains("/BaseFont /Helvetica"));
+        assert!(pdf.contains("stream\n"));
+        assert!(pdf.contains("endstream"));
+        assert!(pdf.contains("startxref"));
+        assert!(pdf.ends_with("%%EOF\n"));
+        // Labels survive as PDF literal text.
+        assert!(pdf.contains("(Alice)"));
+        assert!(pdf.contains("(S3)"));
+        assert!(pdf.contains("(3)"), "seat numbers render next to names");
+    }
+
+    #[test]
+    fn pdf_cjk_names_fall_back_to_ascii() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let pdf = render_pdf(&grid);
+        // 张伟 is non-ASCII so it must not appear raw in the literal string.
+        assert!(!pdf.contains("张伟"));
+        // The cell still renders its seat number instead.
+        assert!(pdf.contains("(4)"));
+        // An ASCII name does appear.
+        assert!(pdf.contains("(Bob)"));
+    }
+
+    #[test]
+    fn pdf_xref_offsets_point_at_each_object() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let pdf = render_pdf(&grid);
+
+        // Locate the xref table via startxref.
+        let startxref = pdf.find("startxref").expect("startxref keyword");
+        let rest = &pdf[startxref + "startxref".len()..];
+        let xref_offset: usize = rest.trim_start().lines().next().unwrap().trim().parse().unwrap();
+        let xref = &pdf[xref_offset..];
+        assert!(xref.starts_with("xref\n"), "xref table at reported offset");
+
+        let mut lines = xref.lines();
+        assert_eq!(lines.next().unwrap(), "xref");
+        let counts = lines.next().unwrap();
+        let mut counts = counts.split_whitespace();
+        let first_obj: usize = counts.next().unwrap().parse().unwrap();
+        let count: usize = counts.next().unwrap().parse().unwrap();
+        assert_eq!((first_obj, count), (0, 6), "expected 0..6 table entries");
+
+        // Entry 0 is the free list head; entries 1..=5 must point at objects.
+        assert!(lines.next().unwrap().contains(" f "), "free head entry");
+        for obj_num in 1..count {
+            let entry = lines.next().expect("an xref entry per object");
+            let offset: usize = entry.split_whitespace().next().unwrap().parse().unwrap();
+            let head = format!("{obj_num} 0 obj");
+            assert_eq!(&pdf[offset..offset + head.len()], head, "offset for object {obj_num}");
+        }
     }
 }

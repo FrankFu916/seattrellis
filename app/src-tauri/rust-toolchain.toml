@@ -1,0 +1,7 @@
+# Tauri 2.x dependencies currently require rustc >= 1.86/1.88 (icu_normalizer 2.2,
+# plist 1.10, time 0.3.55, serde_with 3.21, darling 0.23). The rest of the repo
+# (app/, native/) builds on the default toolchain; only this shell crate needs
+# the newer compiler. Reversible: delete this file to go back to default.
+[toolchain]
+channel = "1.88.0"
+profile = "minimal"
