@@ -24,6 +24,7 @@ from seattrellis.api.handlers import (
     project_artifact_compare,
     project_artifact_restore,
     project_migration_apply,
+    project_migration_batch_preview,
     project_migration_preview,
     project_migration_restore,
     project_group_register,
@@ -622,6 +623,14 @@ def create_app(
     app.add_api_route(
         f"{API_PREFIX}/projects/migration/apply",
         project_migration_apply,
+        methods=["POST"],
+        response_model=None,
+        responses={422: {"model": ErrorResponse}},
+        tags=["projects"],
+    )
+    app.add_api_route(
+        f"{API_PREFIX}/projects/migration/batch/preview",
+        project_migration_batch_preview,
         methods=["POST"],
         response_model=None,
         responses={422: {"model": ErrorResponse}},

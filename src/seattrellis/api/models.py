@@ -498,6 +498,43 @@ class ProjectMigrationResponse(VersionedResponse):
     reference_checks: list[ProjectMigrationReferenceCheck] = Field(default_factory=list)
 
 
+class ProjectMigrationBatchRequest(ApiModel):
+    """Preview several project files together before a migration run."""
+
+    project_paths: list[str] = Field(min_length=2, max_length=20)
+    in_place: bool = False
+
+    @field_validator("project_paths", mode="before")
+    def clean_project_paths(cls, value: object) -> list[str]:
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("project_paths must be a list of strings.")
+        cleaned: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("project_paths must contain non-empty strings.")
+            path = item.strip()
+            if path in cleaned:
+                raise ValueError("project_paths must not contain duplicates.")
+            cleaned.append(path)
+        return cleaned
+
+
+class ProjectMigrationSharedReference(ApiModel):
+    """A reference file shared by multiple selected projects."""
+
+    path: str
+    projects: list[str] = Field(min_length=2, max_length=20)
+    fields: list[str] = Field(min_length=1, max_length=5)
+
+
+class ProjectMigrationBatchResponse(VersionedResponse):
+    """Combined migration preview with cross-project reference warnings."""
+
+    projects: list[ProjectMigrationResponse] = Field(min_length=2, max_length=20)
+    shared_references: list[ProjectMigrationSharedReference] = Field(default_factory=list)
+    ready: bool = True
+
+
 class ProjectMigrationRestoreRequest(ProjectPathRequest):
     """Restore one migration backup to its original project artifact."""
 

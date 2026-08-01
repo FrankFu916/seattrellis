@@ -46,6 +46,9 @@ from seattrellis.api.models import (
     ProjectMigrationChange,
     ProjectMigrationReferenceCheck,
     ProjectMigrationResponse,
+    ProjectMigrationBatchRequest,
+    ProjectMigrationBatchResponse,
+    ProjectMigrationSharedReference,
     ProjectGroupMemberChange,
     ProjectGroupPreview,
     ProjectGroupRegisterRequest,
@@ -159,6 +162,7 @@ def capabilities() -> CapabilitiesResponse:
             "project-workspace",
             "project-migration",
             "project-migration-restore",
+            "project-migration-batch",
             "project-rotation-save",
             "project-rotation-load",
             "project-group-register",
@@ -413,6 +417,54 @@ def project_migration_apply(
     """Write a migrated artifact, preserving the source unless explicitly in-place."""
 
     return _migrate_project_artifact(request, dry_run=False)
+
+
+def project_migration_batch_preview(
+    request: ProjectMigrationBatchRequest,
+) -> ProjectMigrationBatchResponse:
+    """Preview several project migrations and detect shared references."""
+
+    previews: list[ProjectMigrationResponse] = []
+    references: dict[Path, list[tuple[str, str]]] = {}
+    for project_path in request.project_paths:
+        preview = _migrate_project_artifact(
+            ProjectMigrationRequest(
+                project_path=project_path,
+                in_place=request.in_place,
+            ),
+            dry_run=True,
+        )
+        previews.append(preview)
+        if preview.artifact != "project":
+            continue
+        project_root = Path(preview.source_path).parent
+        for check in preview.reference_checks:
+            if check.status != "ok":
+                continue
+            resolved = (project_root / check.path).resolve()
+            references.setdefault(resolved, []).append(
+                (preview.project_path, check.field)
+            )
+
+    shared_references = [
+        ProjectMigrationSharedReference(
+            path=str(path),
+            projects=sorted({project for project, _field in owners}),
+            fields=sorted({field for _project, field in owners}),
+        )
+        for path, owners in sorted(references.items(), key=lambda item: str(item[0]))
+        if len({project for project, _field in owners}) >= 2
+    ]
+    ready = all(
+        check.status == "ok"
+        for preview in previews
+        for check in preview.reference_checks
+    )
+    return ProjectMigrationBatchResponse(
+        projects=previews,
+        shared_references=shared_references,
+        ready=ready,
+    )
 
 
 def project_migration_restore(

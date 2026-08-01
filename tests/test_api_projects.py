@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -287,6 +288,42 @@ def test_project_schema_migration_checks_referenced_files(tmp_path) -> None:
     assert checks["layout"]["status"] == "ok"
     assert checks["rules"]["status"] == "ok"
     assert checks["outputs_dir"]["status"] == "ok"
+
+
+def test_project_schema_batch_preview_reports_shared_references(tmp_path) -> None:
+    demo = cli.init_demo(output_dir=tmp_path / "demo", overwrite=True)
+    project_root = tmp_path / "projects"
+    project_root.mkdir()
+    for key in ("students_csv", "layout", "rules"):
+        shutil.copy2(demo[key], project_root / demo[key].name)
+    (project_root / "outputs").mkdir()
+    first = cli.project_init(
+        project_path=project_root / "first.seattrellis.project.json",
+        name="First class",
+        force=True,
+    )
+    second = cli.project_init(
+        project_path=project_root / "second.seattrellis.project.json",
+        name="Second class",
+        force=True,
+    )
+
+    response = _client().post(
+        "/api/v1/projects/migration/batch/preview",
+        json={"project_paths": [str(first), str(second)]},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ready"] is True
+    assert len(payload["projects"]) == 2
+    shared = {item["path"]: item for item in payload["shared_references"]}
+    assert shared[str(project_root / "students.csv")]["projects"] == [
+        str(first),
+        str(second),
+    ]
+    assert set(shared[str(project_root / "students.csv")]["fields"]) == {"students"}
+    assert "Alice" not in response.text
+    assert "Bob" not in response.text
 
 
 def test_project_schema_migration_backup_can_be_restored_safely(tmp_path) -> None:
