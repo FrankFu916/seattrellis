@@ -37,7 +37,10 @@ jobs:
           - platform: windows-latest
             bundles: msi,nsis
           - platform: ubuntu-22.04
-            bundles: deb,appimage
+            # The .deb stays compact and uses the distribution WebKitGTK
+            # runtime. AppImage is intentionally not part of the default
+            # preview because bundling GTK/WebKit makes it roughly 80 MB.
+            bundles: deb
 
     steps:
       - uses: actions/checkout@v7

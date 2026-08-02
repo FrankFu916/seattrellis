@@ -81,7 +81,7 @@ The following gaps must stay visible in release notes and documentation:
 4. Tauri installers, signing/notarization, and clean-machine installation tests
    are still release work. The repository now has a reproducible
    `.github/workflows/tauri.yml` path for unsigned `.app`/`.dmg`, `.msi`/NSIS,
-   and `.deb`/AppImage bundles. It attaches only to an existing release: run it
+   and compact `.deb` bundles. It attaches only to an existing release: run it
    manually with a release tag, or publish a `desktop-v*` release. Preview tags
    are intentionally separate from the Python `v1.x` releases.
 

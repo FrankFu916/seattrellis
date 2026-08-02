@@ -44,7 +44,7 @@ SeatTrellis 的求解、验证、历史公平性和导出能力已经具备稳�
 ### v1.8.0：桌面应用与正式分发（GitHub #17）
 
 - Windows、macOS 安装包和一个有明确安装说明的 Linux 分发形式；Tauri 流水线已经可以
-  将未签名的 `.app`/`.dmg`、`.msi`/NSIS、`.deb`/AppImage 附加到已有 Release，签名版仍待
+  将未签名的 `.app`/`.dmg`、`.msi`/NSIS、紧凑 `.deb` 附加到已有 Release，签名版仍待
   证书和公证配置；Python onedir 压缩包继续作为兼容分发；
 - pywebview 已支持名单原生打开、导出原生另存为和本机最近名单路径；浏览器端保留普通
   上传/下载回退。浏览器与桌面工作台已经加入未保存修改提示；
