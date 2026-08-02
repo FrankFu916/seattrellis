@@ -445,6 +445,74 @@ pub struct CoreSolveResponse {
     pub total_cost: Option<f64>,
 }
 
+/// Hard-rule index pairs after `rules.groups` are expanded into pairwise
+/// constraints. Mirrors `rule_compiler.compile_hard_rules`: the request's
+/// explicit pair lists come first, group-derived pairs after, so duplicate
+/// pairs are checked exactly as often as Python checks them.
+#[derive(Debug, Default)]
+pub struct ResolvedHardRules {
+    pub must_be_adjacent: Vec<[usize; 2]>,
+    pub cannot_be_adjacent: Vec<[usize; 2]>,
+}
+
+/// Expand `rules.groups` (separate/together) into pairwise hard-rule index
+/// pairs, merged with the request's explicit pair lists.
+///
+/// Mirrors `rule_compiler._expand_group_rules` (every member pair of each
+/// group; `together` → must_be_adjacent, `separate` → cannot_be_adjacent) and
+/// strict `_require_student` resolution (unknown members are a hard error).
+/// Members are matched by student `key` and deduplicated in order, mirroring
+/// `tuple(dict.fromkeys(...))`. A group with fewer than two distinct members
+/// contributes no constraints, exactly like `itertools.combinations`.
+pub fn resolve_group_rules(request: &CoreSolveRequest) -> Result<ResolvedHardRules, String> {
+    let mut resolved = ResolvedHardRules {
+        must_be_adjacent: request.must_be_adjacent.clone(),
+        cannot_be_adjacent: request.cannot_be_adjacent.clone(),
+    };
+    let Some(rules) = &request.rules else {
+        return Ok(resolved);
+    };
+    if rules.groups.is_empty() {
+        return Ok(resolved);
+    }
+    let students = effective_students(request);
+    let index_by_key: HashMap<&str, usize> = students
+        .iter()
+        .enumerate()
+        .map(|(index, student)| (student.key.as_str(), index))
+        .collect();
+    for group in &rules.groups {
+        let mut members: Vec<&str> = Vec::new();
+        for member in &group.students {
+            if !members.contains(&member.as_str()) {
+                members.push(member);
+            }
+        }
+        for first_offset in 0..members.len() {
+            for second in &members[first_offset + 1..] {
+                let first_index = index_by_key.get(members[first_offset]).copied().ok_or_else(
+                    || format!("Unknown student reference: {:?}.", members[first_offset]),
+                )?;
+                let second_index = index_by_key
+                    .get(second)
+                    .copied()
+                    .ok_or_else(|| format!("Unknown student reference: {second:?}."))?;
+                if first_index == second_index {
+                    return Err("A pair rule must reference two different students.".to_string());
+                }
+                let pair = [first_index.min(second_index), first_index.max(second_index)];
+                if group.together {
+                    resolved.must_be_adjacent.push(pair);
+                }
+                if group.separate {
+                    resolved.cannot_be_adjacent.push(pair);
+                }
+            }
+        }
+    }
+    Ok(resolved)
+}
+
 /// Everything the cost-ranked greedy needs to score candidate seats and full
 /// solutions. Built once per solve.
 struct CostContext {
@@ -461,6 +529,7 @@ struct CostContext {
 
 pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, String> {
     validate_solve_request(request)?;
+    let resolved = resolve_group_rules(request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
     let graph_distances = build_graph_distance_matrix(&adjacency);
     let attempts = (request.student_count * 12).max(40);
@@ -472,9 +541,15 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     // lowest-total-cost complete assignment across every attempt wins.
     let mut best: Option<(Vec<usize>, f64, usize)> = None;
     for attempt in 0..attempts {
-        if let Some(assignment) =
-            greedy_attempt(request, &adjacency, &graph_distances, &mut rng, &ctx, attempt)
-        {
+        if let Some(assignment) = greedy_attempt(
+            request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            &mut rng,
+            &ctx,
+            attempt,
+        ) {
             let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
             if best
                 .as_ref()
@@ -744,6 +819,7 @@ fn full_solution_total_cost(
 
 fn greedy_attempt(
     request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
     adjacency: &[Vec<usize>],
     graph_distances: &[Vec<Option<u32>>],
     rng: &mut SplitMix64,
@@ -766,6 +842,7 @@ fn greedy_attempt(
             }
             let candidates = valid_candidate_seats(
                 request,
+                resolved,
                 &mut assignment,
                 &used,
                 adjacency,
@@ -812,6 +889,7 @@ fn greedy_attempt(
 
 fn valid_candidate_seats(
     request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
     assignment: &mut [Option<usize>],
     used: &[bool],
     adjacency: &[Vec<usize>],
@@ -834,7 +912,8 @@ fn valid_candidate_seats(
             }
         }
         assignment[student] = Some(seat);
-        let ok = solve_partial_assignment_valid(request, assignment, adjacency, graph_distances);
+        let ok =
+            solve_partial_assignment_valid(request, resolved, assignment, adjacency, graph_distances);
         assignment[student] = None;
         if ok {
             candidates.push(seat);
@@ -845,6 +924,7 @@ fn valid_candidate_seats(
 
 fn solve_partial_assignment_valid(
     request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
     assignment: &[Option<usize>],
     adjacency: &[Vec<usize>],
     graph_distances: &[Vec<Option<u32>>],
@@ -856,7 +936,7 @@ fn solve_partial_assignment_valid(
             }
         }
     }
-    for [first_student, second_student] in &request.must_be_adjacent {
+    for [first_student, second_student] in &resolved.must_be_adjacent {
         if assignment[*first_student].is_some()
             && assignment[*second_student].is_some()
             && !assigned_students_are_adjacent(
@@ -869,7 +949,7 @@ fn solve_partial_assignment_valid(
             return false;
         }
     }
-    for [first_student, second_student] in &request.cannot_be_adjacent {
+    for [first_student, second_student] in &resolved.cannot_be_adjacent {
         if assignment[*first_student].is_some()
             && assignment[*second_student].is_some()
             && assigned_students_are_adjacent(
@@ -950,13 +1030,25 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
         .chain(request.must_be_adjacent.iter())
         .chain(request.cannot_be_adjacent.iter())
     {
-        if pair[0] >= request.student_count || pair[1] >= request.student_count {
+        // Only the student slot (`pair[0]`) is shared across all three lists;
+        // fixed_seats pairs are `[student, seat]`, so their second element is
+        // validated separately below against the seat count.
+        if pair[0] >= request.student_count {
             return Err("hard rules reference an unknown student".to_string());
         }
     }
-    for [_student_index, seat_index] in &request.fixed_seats {
-        if *seat_index >= seat_count {
-            return Err("fixed_seats reference an unknown seat".to_string());
+    for [student_index, seat_index] in &request.fixed_seats {
+        if *student_index >= request.student_count || *seat_index >= seat_count {
+            return Err("fixed_seats reference an unknown student or seat".to_string());
+        }
+    }
+    for pair in request
+        .must_be_adjacent
+        .iter()
+        .chain(request.cannot_be_adjacent.iter())
+    {
+        if pair[0] >= request.student_count || pair[1] >= request.student_count {
+            return Err("pair rules reference an unknown student".to_string());
         }
     }
     for rule in &request.min_distance {
@@ -967,6 +1059,9 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
             return Err("min_distance values must be positive and finite".to_string());
         }
     }
+    // Resolving groups surfaces unknown-member references, mirroring strict
+    // rule compilation; the derived pairs are validated by the caller.
+    resolve_group_rules(request)?;
     Ok(())
 }
 
@@ -980,8 +1075,9 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 #[cfg(test)]
 mod tests {
     use super::{
-        assignment_is_unique, evaluate_problem_json, seat_distance, solve_problem_json,
-        validate_solve_request_json, CoreEvaluationResponse, CoreSolveResponse, NATIVE_API_VERSION,
+        assignment_is_unique, evaluate_problem_json, resolve_group_rules, seat_distance,
+        solve_problem_json, validate_solve_request_json, CoreEvaluationResponse,
+        CoreSolveRequest, CoreSolveResponse, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -1023,6 +1119,29 @@ mod tests {
             "fixed_seats": [[0, 0]]
         }"#;
         assert!(validate_solve_request_json(request).is_ok());
+
+        // Regression: a fixed seat whose seat index is >= student_count must
+        // validate (seat indexes are independent of student_count). The merged
+        // hard-rule loop used to mistake the seat slot for a student index and
+        // reject this valid request.
+        let fixed_high_seat = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "fixed_seats": [[0, 0], [1, 2]]
+        }"#;
+        assert!(
+            validate_solve_request_json(fixed_high_seat).is_ok(),
+            "fixed seat index 2 with 2 students must be accepted"
+        );
+        let fixed_out_of_range = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "fixed_seats": [[0, 0], [1, 5]]
+        }"#;
+        let error = validate_solve_request_json(fixed_out_of_range).unwrap_err();
+        assert!(error.contains("unknown student or seat"), "{error}");
 
         let invalid = r#"{
             "api_version": 2,
@@ -1357,5 +1476,172 @@ mod tests {
             "40-parity: native feasible=true total_cost={total_cost:.1} python_reference_cost={:.1}",
             python_cost.unwrap()
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Group rules (RuleSet.groups): expanded into pairwise must/cannot-be-
+    // adjacent constraints exactly like `rule_compiler._expand_group_rules`.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn expands_group_rules_into_pairwise_hard_rules() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 4,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
+                "must_be_adjacent": [[0, 1]],
+                "students": [
+                    {"key": "A"}, {"key": "B"}, {"key": "C"}, {"key": "D"}
+                ],
+                "rules": {
+                    "seed": 1,
+                    "groups": [
+                        {"name": "buddies", "students": ["A", "B", "C"], "together": true},
+                        {"name": "rivals", "students": ["C", "D"], "separate": true},
+                        {"name": "solo", "students": ["D"], "together": true},
+                        {"name": "dupe", "students": ["A", "A", "B"], "separate": true}
+                    ]
+                }
+            }"#,
+        )
+        .expect("request parses");
+
+        let resolved = resolve_group_rules(&request).expect("groups resolve");
+        // Explicit pairs first, then group-derived pairs in member order:
+        // buddies(A,B,C) together → (A,B),(A,C),(B,C).
+        assert_eq!(resolved.must_be_adjacent, vec![[0, 1], [0, 1], [0, 2], [1, 2]]);
+        // rivals(C,D) separate → (C,D); dupe dedupes to (A,B) → (A,B).
+        assert_eq!(resolved.cannot_be_adjacent, vec![[2, 3], [0, 1]]);
+    }
+
+    #[test]
+    fn group_member_references_resolve_by_student_key() {
+        // Members may appear in any order and are paired by index, not by the
+        // order the student records appear in the request.
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 3,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+                "students": [
+                    {"key": "first", "display_name": "Alpha"},
+                    {"key": "second", "display_name": "Beta"},
+                    {"key": "third", "display_name": "Gamma"}
+                ],
+                "rules": {
+                    "groups": [
+                        {"name": "trio", "students": ["third", "first"], "together": true}
+                    ]
+                }
+            }"#,
+        )
+        .expect("request parses");
+        let resolved = resolve_group_rules(&request).expect("groups resolve");
+        assert_eq!(resolved.must_be_adjacent, vec![[0, 2]]);
+        assert!(resolved.cannot_be_adjacent.is_empty());
+    }
+
+    #[test]
+    fn rejects_group_member_that_is_not_a_student() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 2,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+                "students": [{"key": "A"}, {"key": "B"}],
+                "rules": {
+                    "groups": [{"name": "g", "students": ["A", "GHOST"], "together": true}]
+                }
+            }"#,
+        )
+        .expect("request parses");
+        let error = resolve_group_rules(&request).unwrap_err();
+        assert!(error.contains("Unknown student reference"), "{error}");
+        assert!(error.contains("GHOST"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_unknown_group_member() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "students": [{"key": "A"}, {"key": "B"}],
+            "rules": {"groups": [{"name": "g", "students": ["A", "GHOST"], "together": true}]}
+        }"#;
+        let error = validate_solve_request_json(request).unwrap_err();
+        assert!(error.contains("Unknown student reference"), "{error}");
+    }
+
+    /// The solver must honor group rules end-to-end: a `together` group is
+    /// seated adjacently and a `separate` group is kept apart, using only the
+    /// top-level `rules.groups` (no explicit pairwise lists).
+    #[test]
+    fn solver_enforces_group_together_and_separate() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 4,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+            "edges": [[0, 1], [1, 2], [2, 3]],
+            "students": [
+                {"key": "A", "score": 90.0},
+                {"key": "B", "score": 80.0},
+                {"key": "C", "score": 70.0},
+                {"key": "D", "score": 60.0}
+            ],
+            "rules": {
+                "seed": 7,
+                "soft": {"randomize": {"enabled": false, "weight": 1}},
+                "groups": [
+                    {"name": "buddy", "students": ["A", "B"], "together": true},
+                    {"name": "rival", "students": ["C", "D"], "separate": true}
+                ]
+            }
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should be valid");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+        assert!(response.feasible, "groups A/B together and C/D apart must be feasible");
+        assert!(response.hard_constraints_satisfied);
+
+        let seat_of = |student: usize| -> usize {
+            response
+                .assignment
+                .iter()
+                .find(|pair| pair[0] == student)
+                .map(|pair| pair[1])
+                .expect("student is assigned")
+        };
+        let adjacent = |first: usize, second: usize| {
+            (seat_of(first) as i64 - seat_of(second) as i64).abs() == 1
+        };
+        assert!(adjacent(0, 1), "A and B must sit together");
+        assert!(!adjacent(2, 3), "C and D must sit apart");
+    }
+
+    /// An infeasible group combination must be reported as infeasible rather
+    /// than silently ignored.
+    #[test]
+    fn solver_reports_infeasible_group_as_not_found() {
+        // Three seats in a line, A fixed to seat 0 and B to seat 2; the
+        // `together` group demands adjacency, which the fixed seats rule out.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 1], [1, 2]],
+            "fixed_seats": [[0, 0], [1, 2]],
+            "students": [{"key": "A"}, {"key": "B"}],
+            "rules": {
+                "seed": 3,
+                "groups": [{"name": "g", "students": ["A", "B"], "together": true}]
+            }
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should be valid");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+        assert!(!response.feasible, "A and B are pinned apart but must sit together");
+        assert!(response.assignment.is_empty());
     }
 }

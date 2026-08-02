@@ -38,6 +38,7 @@
 //!   seat because an aisle is never the final grid column).
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Mirror of seattrellis_core::models (byte-compatible JSON shapes)
@@ -316,6 +317,95 @@ pub fn list_room_template_ids() -> Vec<&'static str> {
 pub fn room_template_grid(template_id: &str) -> Result<RoomGrid, String> {
     let spec = resolve_template(template_id)?;
     Ok(build_grid(spec))
+}
+
+/// Build a [`RoomGrid`] from a client-supplied layout document (the React room
+/// builder's `draft.room.layout`). Mirrors [`build_grid`]'s derivation:
+/// `seat_positions` are the enabled seats in layout order (`[x or col, y or
+/// row]`) and `edges` follow the layout's adjacency config.
+///
+/// # Errors
+///
+/// Returns `Err` when the document is not a valid layout or contains no
+/// enabled seats.
+pub fn grid_from_layout(layout_value: &serde_json::Value) -> Result<RoomGrid, String> {
+    let layout: Layout = serde_json::from_value(layout_value.clone())
+        .map_err(|error| format!("invalid custom layout: {error}"))?;
+    let enabled: Vec<&Seat> = layout.seats.iter().filter(|seat| seat.enabled).collect();
+    if enabled.is_empty() {
+        return Err("custom layout has no enabled seats".to_string());
+    }
+    let seat_positions: Vec<[f64; 2]> = enabled
+        .iter()
+        .map(|seat| {
+            [
+                seat.x.unwrap_or(seat.col as f64),
+                seat.y.unwrap_or(seat.row as f64),
+            ]
+        })
+        .collect();
+    let edges = derive_edges(&layout, &enabled);
+    let rows = enabled.iter().map(|seat| seat.row).max().unwrap_or(1);
+    let grid_columns = enabled.iter().map(|seat| seat.col).max().unwrap_or(1);
+    Ok(RoomGrid {
+        layout_id: layout.layout_id.clone(),
+        name: layout.name.clone(),
+        rows,
+        grid_columns,
+        seat_positions,
+        edges,
+        layout,
+    })
+}
+
+/// Derive the adjacency `edges` (enabled-seat index pairs) from a layout's
+/// adjacency config. Row/column deltas gate horizontal/vertical/diagonal
+/// neighbors; an optional `max_distance` under `use_xy_distance` also admits
+/// nearby seats; `custom_edges` name additional `seat_id` pairs.
+fn derive_edges(layout: &Layout, enabled: &[&Seat]) -> Vec<[usize; 2]> {
+    let adjacency = &layout.adjacency;
+    let mut edges: Vec<[usize; 2]> = Vec::new();
+    for first in 0..enabled.len() {
+        for second in (first + 1)..enabled.len() {
+            let a = enabled[first];
+            let b = enabled[second];
+            let row_delta = (a.row - b.row).abs();
+            let col_delta = (a.col - b.col).abs();
+            let horizontal = row_delta == 0 && col_delta == 1;
+            let vertical = col_delta == 0 && row_delta == 1;
+            let diagonal = row_delta == 1 && col_delta == 1;
+            let mut adjacent = (adjacency.include_horizontal && horizontal)
+                || (adjacency.include_vertical && vertical)
+                || (adjacency.include_diagonal && diagonal);
+            if adjacency.use_xy_distance {
+                if let Some(max_distance) = adjacency.max_distance {
+                    let delta_x = a.x.unwrap_or(a.col as f64) - b.x.unwrap_or(b.col as f64);
+                    let delta_y = a.y.unwrap_or(a.row as f64) - b.y.unwrap_or(b.row as f64);
+                    if (delta_x * delta_x + delta_y * delta_y).sqrt() <= max_distance {
+                        adjacent = true;
+                    }
+                }
+            }
+            if adjacent {
+                edges.push([first, second]);
+            }
+        }
+    }
+    let index_by_id: HashMap<&str, usize> = enabled
+        .iter()
+        .enumerate()
+        .map(|(index, seat)| (seat.seat_id.as_str(), index))
+        .collect();
+    for (first_id, second_id) in &adjacency.custom_edges {
+        if let (Some(&first), Some(&second)) =
+            (index_by_id.get(first_id.as_str()), index_by_id.get(second_id.as_str()))
+        {
+            if !edges.contains(&[first, second]) {
+                edges.push([first, second]);
+            }
+        }
+    }
+    edges
 }
 
 // ---------------------------------------------------------------------------

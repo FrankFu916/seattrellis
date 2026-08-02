@@ -317,6 +317,29 @@ React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交
   共同验收，不能只凭单元测试宣布完全重写完成。完成这些门槛后，Rust 才在 v2.0.0
   成为默认运行时；在此之前，1.x 继续保持 Python 兼容路径。
 
+#### 已完成的验证（2026-08）
+
+- **40/50/60 人 Python/Rust 差分**（`scripts/rust_python_diff.py`，完整学生+规则数据）：
+  可行性全部匹配、硬约束全部满足；Rust 求解器找到的成本 ≤ Python（40 人 59807 vs 60431、
+  50 人 73177 vs 73727、60 人 102924 vs 103075），耗时相当或更短。结论：成本函数奇偶已确认，
+  Rust 求解质量持平或更优。
+- **规则能力审计**：Rust core 支持全部 10 类软规则（vision/height/randomize/score_balance/
+  score_position/score_distribution/mentor_pairing/fair_rotation/avoid_recent_neighbors/cooling）
+  与 4 类硬约束（fixed_seats/must_be_adjacent/cannot_be_adjacent/min_distance）。此前唯一差距
+  `RuleSet.groups`（separate/together）已补齐：core 新增 `groups` 字段并展开为成对约束，
+  与 Python `_expand_group_rules` 逐对奇偶验证一致，经 CLI 与求解器端到端测试。
+- **App 服务端接线**（此前 React 高级设置被静默丢弃，现已接通）：`rules_overlay` 深合并
+  （软规则覆盖 + 分组）、`hard_rules`（固定座位/必须相邻/禁止相邻/最小距离，由学生 key 与
+  seat_id 解析为索引对）、`custom` 目标（custom_rules 全量规则）、以及 `draft.room.layout`
+  自定义教室布局（此前会被误判为非法请求返回 400）。均以 HTTP 集成测试 + 真实浏览器验证。
+- **修复**：`validate_solve_request` 的硬规则校验把 fixed_seats 的第二个元素误当学生索引，
+  导致「学生数 < 座位数」时固定到高序号座位被误拒绝，已修复并加回归测试。
+- **桌面端端到端**：从 main 构建的 App 服务器经真实浏览器验证——名单导入、生成（含 demo 与
+  导入名单）、交换调整、SVG/PNG/PDF/HTML 导出全部可用，无 console/page 错误。
+- **已知剩余项**：单次 generate 的 `history_snapshots`（历史座位快照）暂未在 Rust 服务端
+  转成 fair_rotation 的成本输入（旋转计划路径已在 `rotation.rs` 原生处理多期历史），列入
+  v2.0 parity 收尾项。
+
 完整的迁移阶段、发布门槛和当前测量方法见 [Rust-first migration](rust-migration.md)。
 
 ### Pydantic 迁移与 Starlette 升级（已完成）

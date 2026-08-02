@@ -484,13 +484,34 @@ impl Default for SoftRules {
     }
 }
 
+/// `GroupRule` (`models/rules.py`) — a named hard group rule for separation or
+/// togetherness. Membership is expanded into pairwise constraints by
+/// [`crate::resolve_group_rules`]; `together` requires every member pair to be
+/// adjacent while `separate` keeps every member pair apart, exactly like the
+/// shared Python rule compiler.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GroupRule {
+    pub name: String,
+    #[serde(default)]
+    pub students: Vec<String>,
+    #[serde(default)]
+    pub separate: bool,
+    #[serde(default)]
+    pub together: bool,
+}
+
 /// `RuleSet` (`models/rules.py`) — the cost/objective-relevant fields.
+///
+/// `groups` is serialization-omitted when empty so goal-rule documents that
+/// carry only `seed` + `soft` still round-trip unchanged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuleSet {
     #[serde(default = "default_rule_seed")]
     pub seed: u64,
     #[serde(default)]
     pub soft: SoftRules,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<GroupRule>,
 }
 
 fn default_rule_seed() -> u64 {
@@ -502,6 +523,7 @@ impl Default for RuleSet {
         Self {
             seed: 42,
             soft: SoftRules::default(),
+            groups: Vec::new(),
         }
     }
 }
