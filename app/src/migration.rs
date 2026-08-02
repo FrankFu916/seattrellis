@@ -33,7 +33,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -51,6 +50,32 @@ const SNAPSHOT_SCHEMA_VERSION: &str = "1.0";
 const CANDIDATE_SCHEMA_VERSION: &str = "0.2.2";
 const ROTATION_PLAN_SCHEMA_VERSION: &str = "1.0";
 const RULESET_SCHEMA_VERSION: i64 = 1;
+
+#[cfg(unix)]
+fn existing_permission_mode(metadata: &fs::Metadata) -> Option<u32> {
+    use std::os::unix::fs::PermissionsExt;
+
+    Some(metadata.permissions().mode())
+}
+
+#[cfg(not(unix))]
+fn existing_permission_mode(_metadata: &fs::Metadata) -> Option<u32> {
+    None
+}
+
+#[cfg(unix)]
+fn set_permission_mode(path: &Path, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+#[cfg(not(unix))]
+fn set_permission_mode(_path: &Path, _mode: u32) -> io::Result<()> {
+    // Windows does not expose POSIX mode bits. The default permissions on the
+    // newly-created temporary file are the closest portable equivalent.
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -599,7 +624,7 @@ fn write_temp_then_rename(
     })?;
     drop(file);
     if let Some(mode) = existing_mode {
-        fs::set_permissions(temp, fs::Permissions::from_mode(mode)).map_err(|error| {
+        set_permission_mode(temp, mode).map_err(|error| {
             TempWriteError::Other(format!(
                 "Could not set permissions on migrated JSON file {}: {error}",
                 output.display()
@@ -619,7 +644,9 @@ fn write_temp_then_rename(
 fn write_json_atomic(data: &Value, output: &Path) -> Result<(), String> {
     fs::create_dir_all(parent_of(output))
         .map_err(|error| format!("Could not prepare migrated JSON file {}: {error}", output.display()))?;
-    let existing_mode = fs::metadata(output).ok().map(|metadata| metadata.permissions().mode());
+    let existing_mode = fs::metadata(output)
+        .ok()
+        .and_then(|metadata| existing_permission_mode(&metadata));
 
     let mut temp = temp_sibling_path(output);
     for _ in 0..8 {
@@ -1040,6 +1067,9 @@ pub fn migration_restore_json(backup_path: &str, destination: &str) -> Result<St
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
     /// A minimal project file missing the canonical fields a migration adds.
     const PROJECT_FIXTURE: &str = r#"{
         "name": "Mig Test",
@@ -1362,6 +1392,7 @@ mod tests {
         assert!(error.contains("reference checks"), "unexpected: {error}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn batch_apply_rolls_back_earlier_writes_on_failure() {
         let root = TestDir::new("batch_rollback");
