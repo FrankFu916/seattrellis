@@ -54,9 +54,10 @@ engineering measurements, not yet signed release artifacts.
 
 The following gaps must stay visible in release notes and documentation:
 
-1. The Rust CLI is not yet a drop-in replacement for the Python CLI. It does
-   not currently expose Python's `validate`, history reports, project
-   commands, schema migration commands, or full candidate-set reporting.
+1. The Rust CLI is not yet a drop-in replacement for the Python CLI. It now
+   exposes native input validation, but history reports, project commands,
+   schema migration commands, and full candidate-set reporting are still
+   pending.
 2. The Rust solver is a heuristic implementation. It satisfies the native
    hard-rule contract and covers the currently ported objectives, but it is not
    an exact replacement for the Python OR-Tools CP-SAT backend.

@@ -37,7 +37,7 @@ app/target/release/seattrellis_app --open-browser
 ```
 
 当前 Rust CLI 约 1.6 MiB，嵌入工作台的 App 约 2.7 MiB，Tauri 壳约 9 MiB（开发机
-实测值，未签名）。Rust CLI 目前提供 `solve` 和 `export`；Python CLI、Streamlit
+实测值，未签名）。Rust CLI 目前提供 `validate`、`solve` 和 `export`；Python CLI、Streamlit
 兼容界面以及完整的项目/历史命令仍保留，直到 Rust 功能对拍和三平台安装验收完成。
 迁移阶段和明确的发布门槛见 [Rust-first migration](docs/rust-migration.md)。
 

@@ -56,7 +56,8 @@ for the embedded App, and 9 MiB for the Tauri shell (unsigned, measured on the
 development Mac). The Rust CLI currently exposes `solve` and `export`; the
 Python CLI, Streamlit compatibility UI, and full project/history commands stay
 available until native parity and three-platform installation checks are
-complete. See the [Rust-first migration guide](docs/rust-migration.md).
+complete. The native CLI also has input-only `validate`; see the
+[Rust-first migration guide](docs/rust-migration.md).
 
 ## Installation Tiers
 
