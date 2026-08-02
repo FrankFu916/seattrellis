@@ -10,6 +10,9 @@
 - The old Python desktop archive is no longer attached automatically to Python
   releases. It remains available only as a manually triggered compatibility
   build, so the desktop download page can focus on the Rust/Tauri preview.
+- Desktop preview tags no longer trigger PyPI publication or Python package
+  verification, preventing a native preview from being mistaken for a Python
+  release.
 
 ## 1.8.4 - 2026-08-01
 

@@ -43,10 +43,13 @@ seattrellis --help
 
 ## PyPI
 
-从已经通过审查的 `main` 提交创建 GitHub Release 后，`release.published` 事件
-会使用 `pypi` environment 发布同一构建产物。工作流会强制校验
+从已经通过审查的 `main` 提交创建 Python `v<version>` GitHub Release 后，
+`release.published` 事件会使用 `pypi` environment 发布同一构建产物。工作流会强制校验
 `pyproject.toml`、运行时 `seattrellis.__version__` 与 `v<version>` release tag
 完全一致；Release 标题和目标提交仍需在发布前人工核对。
+
+`desktop-v*` 预览 Release 不会触发 Python 发布流程；它们由 Rust 和 Tauri
+工作流单独处理。
 
 正式发布成功后，工作流还会从 PyPI 重新下载并安装对应 wheel，验证版本与 CLI，
 并把 wheel、sdist 和 `PYTHON-SHA256SUMS` 附加到 GitHub Release。桌面构建会使用
