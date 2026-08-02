@@ -29,7 +29,7 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");
     out.push_str(&styler.cyan("seattrellis_cli"));
-    out.push_str(" ");
+    out.push(' ');
     out.push_str(&styler.cyan("solve"));
     out.push_str(" --problem <problem.json> [--seed <n>] [--output <result.json>]\n\n");
     out.push_str("      ");
@@ -43,7 +43,7 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.bold("EXPORT:"));
     out.push_str("\n    ");
     out.push_str(&styler.cyan("seattrellis_cli"));
-    out.push_str(" ");
+    out.push(' ');
     out.push_str(&styler.cyan("export"));
     out.push_str(" --problem <problem.json> --solution <result.json> \\\n                           --format <svg|html|png|pdf> --output <file>\n\n");
     out.push_str("      ");

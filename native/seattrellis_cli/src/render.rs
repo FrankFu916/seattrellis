@@ -136,7 +136,7 @@ fn student_label(request: &CoreSolveRequest, index: usize) -> String {
             let name = student
                 .display_name
                 .as_deref()
-                .or_else(|| Some(student.key.as_str()))
+                .or(Some(student.key.as_str()))
                 .filter(|candidate| !candidate.is_empty());
             if let Some(name) = name {
                 return name.to_string();
