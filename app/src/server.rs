@@ -59,6 +59,9 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
 /// fallback so the binary serves assets regardless of the launch directory.
 const BUILTIN_WEB_STATIC: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../src/seattrellis/web_static");
+/// Display path used when a release binary serves the compiled-in workbench.
+/// It deliberately does not point at a real filesystem directory.
+const EMBEDDED_WEB_STATIC: &str = "<embedded>/src/seattrellis/web_static";
 
 /// Original solve request bodies, keyed by editor draft id. The export route
 /// needs the request that produced a draft so it can reconstruct the full
@@ -161,20 +164,33 @@ impl Server {
 /// 1. the `SEATTRELLIS_WEB_STATIC` env var,
 /// 2. the launch working directory (`src/seattrellis/web_static` or a
 ///    `../src/...` when launched from the app crate),
-/// 3. the compile-time path baked into the binary.
+/// 3. the workbench embedded at build time,
+/// 4. the compile-time path baked into the binary (a development fallback).
 pub fn resolve_web_root() -> Result<PathBuf, ServerError> {
-    let candidates = [
+    let disk_candidates = [
         std::env::var_os("SEATTRELLIS_WEB_STATIC").map(PathBuf::from),
         Some(PathBuf::from("src/seattrellis/web_static")),
         Some(PathBuf::from("../src/seattrellis/web_static")),
-        Some(PathBuf::from(BUILTIN_WEB_STATIC)),
     ];
 
-    for candidate in candidates.into_iter().flatten() {
+    for candidate in disk_candidates.into_iter().flatten() {
         if let Ok(resolved) = candidate.canonicalize() {
             if resolved.join("index.html").is_file() {
                 return Ok(resolved);
             }
+        }
+    }
+
+    if crate::embedded_web::has_index() {
+        return Ok(PathBuf::from(EMBEDDED_WEB_STATIC));
+    }
+
+    // This is only reachable for an unusual development build that omitted
+    // the generated asset manifest. Keep the source-tree fallback so the
+    // error remains actionable for contributors.
+    if let Ok(resolved) = Path::new(BUILTIN_WEB_STATIC).canonicalize() {
+        if resolved.join("index.html").is_file() {
+            return Ok(resolved);
         }
     }
 
@@ -1911,20 +1927,31 @@ fn required_string_array(value: &Value, field: &str) -> Result<Vec<String>, Resp
 fn index_response(web_root: &Path) -> Response {
     match fs::read(web_root.join("index.html")) {
         Ok(bytes) => Response::text(200, "text/html; charset=utf-8", bytes),
-        Err(_) => plain_response(500, "workbench index.html is missing"),
+        Err(_) => match crate::embedded_web::get("index.html") {
+            Some(bytes) => Response::text(200, "text/html; charset=utf-8", bytes.to_vec()),
+            None => plain_response(500, "workbench index.html is missing"),
+        },
     }
 }
 
 fn static_response(web_root: &Path, path: &str) -> Response {
-    let Some(target) = safe_join(web_root, path) else {
+    if let Some(target) = safe_join(web_root, path) {
+        if let Ok(bytes) = fs::read(&target) {
+            let content_type = content_type_for(&target);
+            return Response::text(200, content_type, bytes);
+        }
+    }
+
+    let Some(asset_path) = normalized_asset_path(path) else {
         return plain_response(404, "not found");
     };
-    match fs::read(&target) {
-        Ok(bytes) => {
-            let content_type = content_type_for(&target);
-            Response::text(200, content_type, bytes)
-        }
-        Err(_) => plain_response(404, "not found"),
+    match crate::embedded_web::get(&asset_path) {
+        Some(bytes) => Response::text(
+            200,
+            content_type_for(Path::new(&asset_path)),
+            bytes.to_vec(),
+        ),
+        None => plain_response(404, "not found"),
     }
 }
 
@@ -2059,28 +2086,7 @@ fn find_sequence(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
 /// - As defense in depth, the canonicalised target must remain under the
 ///   canonicalised root.
 fn safe_join(web_root: &Path, path: &str) -> Option<PathBuf> {
-    let decoded = percent_decode(path).ok()?;
-    if decoded.contains('\0') {
-        return None;
-    }
-    let trimmed = decoded.trim_start_matches('/');
-    if trimmed.is_empty() {
-        return Some(web_root.join("index.html"));
-    }
-
-    let mut segments: Vec<&str> = Vec::new();
-    for segment in trimmed.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => return None,
-            segment => segments.push(segment),
-        }
-    }
-
-    let joined = segments.join("/");
-    if joined.is_empty() {
-        return Some(web_root.join("index.html"));
-    }
+    let joined = normalized_asset_path(path)?;
     let candidate = web_root.join(joined);
 
     let root_canonical = web_root.canonicalize().ok()?;
@@ -2089,6 +2095,31 @@ fn safe_join(web_root: &Path, path: &str) -> Option<PathBuf> {
         return None;
     }
     Some(candidate)
+}
+
+/// Normalize a URL path for both filesystem and embedded-asset lookups.
+/// Keeping this check shared prevents the embedded fallback from becoming a
+/// weaker path than the development filesystem server.
+fn normalized_asset_path(path: &str) -> Option<String> {
+    let decoded = percent_decode(path).ok()?;
+    if decoded.contains('\0') {
+        return None;
+    }
+
+    let mut segments = Vec::new();
+    for segment in decoded.trim_start_matches('/').split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => return None,
+            segment => segments.push(segment),
+        }
+    }
+    let joined = segments.join("/");
+    Some(if joined.is_empty() {
+        "index.html".to_string()
+    } else {
+        joined
+    })
 }
 
 /// Minimal RFC 3986 percent-decoding (uppercase/lowercase hex).
@@ -2311,6 +2342,28 @@ mod tests {
         assert_eq!(response.status, 200);
         assert_eq!(response.content_type, Some("text/html; charset=utf-8"));
         assert_eq!(response.body, b"<html>test workbench</html>");
+    }
+
+    #[test]
+    fn embedded_workbench_is_used_when_filesystem_root_is_missing() {
+        let root = std::env::temp_dir().join(format!(
+            "seattrellis_missing_web_root_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+
+        let index = route_one(&request("GET", "/", b""), &root);
+        assert_eq!(index.status, 200);
+        assert_eq!(index.content_type, Some("text/html; charset=utf-8"));
+        assert_eq!(index.body.as_slice(), crate::embedded_web::get("index.html").unwrap());
+
+        let asset_path = crate::embedded_web::EMBEDDED_WEB_ASSETS
+            .iter()
+            .find_map(|(path, _)| path.strip_prefix("assets/").map(|_| *path))
+            .expect("embedded workbench should contain an asset");
+        let asset = route_one(&request("GET", &format!("/{asset_path}"), b""), &root);
+        assert_eq!(asset.status, 200);
+        assert_eq!(asset.body.as_slice(), crate::embedded_web::get(asset_path).unwrap());
     }
 
     #[test]

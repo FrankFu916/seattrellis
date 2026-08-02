@@ -8,7 +8,6 @@ use std::io::IsTerminal;
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
 const CYAN: &str = "\x1b[36m";
 const GREEN: &str = "\x1b[32m";
 const YELLOW: &str = "\x1b[33m";
@@ -45,10 +44,6 @@ impl Styler {
 
     pub fn bold(&self, text: &str) -> String {
         self.paint(BOLD, text)
-    }
-
-    pub fn dim(&self, text: &str) -> String {
-        self.paint(DIM, text)
     }
 
     pub fn cyan(&self, text: &str) -> String {

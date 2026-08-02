@@ -13,6 +13,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 concurrency:
   group: rust-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -62,7 +65,7 @@ jobs:
       - name: Build the CLI
         run: cargo build --release --locked --manifest-path native/Cargo.toml -p seattrellis_cli
       - name: Build the App server
-        run: cargo build --release --manifest-path app/Cargo.toml
+        run: cargo build --release --locked --manifest-path app/Cargo.toml
       - name: Upload CLI binary
         uses: actions/upload-artifact@v7
         with:
@@ -79,17 +82,45 @@ jobs:
             app/target/release/seattrellis_app
             app/target/release/seattrellis_app.exe
           if-no-files-found: error
-      - name: Attach binaries to the release
+
+  publish-assets:
+    name: Publish release binaries
+    if: github.event_name == 'release'
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download platform binaries
+        uses: actions/download-artifact@v7
+        with:
+          pattern: seattrellis-*
+          path: artifacts
+          merge-multiple: false
+      - name: Rename binaries and create checksums
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p release
+          for kind in cli app; do
+            for artifact in artifacts/seattrellis-${kind}-*; do
+              [ -d "$artifact" ] || continue
+              platform="${artifact#artifacts/seattrellis-${kind}-}"
+              source="$(find "$artifact" -maxdepth 1 -type f | head -n 1)"
+              [ -n "$source" ]
+              suffix=""
+              case "$source" in
+                *.exe) suffix=".exe" ;;
+              esac
+              cp "$source" "release/seattrellis-${kind}-${platform}${suffix}"
+            done
+          done
+          test "$(find release -type f | wc -l)" -eq 6
+          (cd release && sha256sum seattrellis-* > SHA256SUMS)
+      - name: Attach binaries and checksums to the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         shell: bash
-        run: |
-          set -eux
-          cd native/target/release
-          if [ -f seattrellis_cli ]; then gh release upload "$RELEASE_TAG" seattrellis_cli --clobber; fi
-          if [ -f seattrellis_cli.exe ]; then gh release upload "$RELEASE_TAG" seattrellis_cli.exe --clobber; fi
-          cd ../../../app/target/release
-          if [ -f seattrellis_app ]; then gh release upload "$RELEASE_TAG" seattrellis_app --clobber; fi
-          if [ -f seattrellis_app.exe ]; then gh release upload "$RELEASE_TAG" seattrellis_app.exe --clobber; fi
+        run: gh release upload "$RELEASE_TAG" release/* --clobber

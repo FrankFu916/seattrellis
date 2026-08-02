@@ -56,6 +56,11 @@ pub struct SolveArgs {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct ValidateArgs {
+    pub problem: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct ExportArgs {
     pub problem: PathBuf,
     pub solution: PathBuf,
@@ -67,6 +72,7 @@ pub struct ExportArgs {
 enum Command {
     Help,
     Version,
+    Validate(ValidateArgs),
     Solve(SolveArgs),
     Export(ExportArgs),
 }
@@ -157,6 +163,27 @@ fn parse_solve(tokens: &[String]) -> Result<Command, String> {
     }))
 }
 
+fn parse_validate(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?.ok_or("validate requires --problem <file>")?;
+    Ok(Command::Validate(ValidateArgs {
+        problem: PathBuf::from(problem),
+    }))
+}
+
 fn parse_export(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag { name: "--problem", takes_value: true },
@@ -203,6 +230,7 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
     match command.as_str() {
         "--help" | "-h" | "help" => Ok(Command::Help),
         "--version" | "-V" | "version" => Ok(Command::Version),
+        "validate" => parse_validate(&text[1..]),
         "solve" => parse_solve(&text[1..]),
         "export" => parse_export(&text[1..]),
         other => Err(format!("unknown command '{other}'")),
@@ -225,6 +253,14 @@ fn run_command(command: Command) -> ExitCode {
             );
             ExitCode::SUCCESS
         }
+        Command::Validate(args) => match commands::run_validate(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::FAILURE
+            }
+        },
         Command::Solve(args) => match commands::run_solve(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
@@ -292,6 +328,19 @@ mod tests {
         assert_eq!(args.problem, PathBuf::from("p.json"));
         assert_eq!(args.seed, None);
         assert_eq!(args.output, None);
+    }
+
+    #[test]
+    fn parse_validate_requires_a_problem() {
+        let Command::Validate(args) =
+            parse_args(&args_of(&["validate", "--problem", "p.json"])).unwrap()
+        else {
+            panic!("expected a validate command");
+        };
+        assert_eq!(args.problem, PathBuf::from("p.json"));
+
+        let error = parse_args(&args_of(&["validate"])).unwrap_err();
+        assert!(error.contains("--problem"), "unexpected error: {error}");
     }
 
     #[test]

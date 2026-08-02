@@ -39,7 +39,6 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -65,6 +64,32 @@ const MAX_OUTPUT_SUFFIX_ATTEMPTS: u32 = 10_000;
 
 /// Maximum number of atomic-write temp-name collisions to retry before giving up.
 const MAX_TEMP_WRITE_ATTEMPTS: u8 = 8;
+
+#[cfg(unix)]
+fn existing_permission_mode(metadata: &fs::Metadata) -> Option<u32> {
+    use std::os::unix::fs::PermissionsExt;
+
+    Some(metadata.permissions().mode())
+}
+
+#[cfg(not(unix))]
+fn existing_permission_mode(_metadata: &fs::Metadata) -> Option<u32> {
+    None
+}
+
+#[cfg(unix)]
+fn set_permission_mode(path: &Path, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+#[cfg(not(unix))]
+fn set_permission_mode(_path: &Path, _mode: u32) -> io::Result<()> {
+    // Windows does not expose POSIX mode bits. The default permissions on the
+    // newly-created temporary file are the closest portable equivalent.
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -994,7 +1019,9 @@ fn atomic_write_json(output: &Path, value: &Value) -> Result<(), String> {
     let parent = output.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)
         .map_err(|e| format!("Could not prepare output directory {}: {e}", parent.display()))?;
-    let existing_mode = fs::metadata(output).ok().map(|metadata| metadata.permissions().mode());
+    let existing_mode = fs::metadata(output)
+        .ok()
+        .and_then(|metadata| existing_permission_mode(&metadata));
 
     let mut temp = temp_sibling_path(output);
     for _ in 0..MAX_TEMP_WRITE_ATTEMPTS {
@@ -1066,7 +1093,7 @@ fn write_temp_then_rename(
     })?;
     drop(file);
     if let Some(mode) = existing_mode {
-        fs::set_permissions(temp, fs::Permissions::from_mode(mode)).map_err(|error| {
+        set_permission_mode(temp, mode).map_err(|error| {
             TempWriteError::Other(format!(
                 "Could not set permissions on JSON file {}: {error}",
                 output.display()
