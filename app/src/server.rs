@@ -774,20 +774,29 @@ fn generate_response(
 }
 
 /// `true` when the body is a React workbench `GenerateClassRequest`, i.e. it
-/// carries a `draft` object whose `room.template_id` names a room template.
+/// carries a `draft` object whose `room` selects a room template (`template_id`)
+/// or an explicit custom layout (`layout`).
 fn is_frontend_class_request(value: &Value) -> bool {
-    value
+    if value
         .pointer("/draft/room/template_id")
         .and_then(Value::as_str)
         .map(|template_id| !template_id.is_empty())
         .unwrap_or(false)
+    {
+        return true;
+    }
+    value
+        .pointer("/draft/room/layout")
+        .is_some_and(Value::is_object)
 }
 
-/// Adapt a React `GenerateClassRequest` (`draft.students` +
-/// `draft.room.template_id` + `draft.goal.goal_id`) into the core
-/// `CoreSolveRequest` JSON document, expanding the room template grid and the
-/// goal rule-set and mapping each student record onto the core `Student`
-/// shape (`key`/`display_name`/`score`/`height_cm`/`vision`/`tags`/`needs`).
+/// Adapt a React `GenerateClassRequest` (`draft.students` + `draft.room`
+/// template or custom layout + `draft.goal`) into the core `CoreSolveRequest`
+/// JSON document, expanding the room grid and the goal rule-set, mapping each
+/// student record onto the core `Student` shape (`key`/`display_name`/
+/// `score`/`height_cm`/`vision`/`tags`/`needs`), deep-merging the
+/// `rules_overlay`, and resolving `hard_rules` (fixed seats, adjacency pairs,
+/// min-distance) from student keys and seat ids into index pairs.
 ///
 /// Returns a `422` response naming the missing piece when the draft is
 /// malformed (`invalid_class_draft`), the room template is unknown
@@ -797,31 +806,76 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, Response> {
         .get("draft")
         .and_then(Value::as_object)
         .ok_or_else(|| code_json_error(422, "invalid_class_draft", "missing 'draft' object"))?;
-    let template_id = draft
+    let room = draft
         .get("room")
         .and_then(Value::as_object)
-        .and_then(|room| room.get("template_id"))
-        .and_then(Value::as_str)
-        .filter(|id| !id.is_empty())
-        .ok_or_else(|| {
-            code_json_error(422, "invalid_class_draft", "missing draft.room.template_id")
-        })?;
-    let goal_id = draft
+        .ok_or_else(|| code_json_error(422, "invalid_class_draft", "missing 'draft.room' object"))?;
+    let goal = draft
         .get("goal")
         .and_then(Value::as_object)
-        .and_then(|goal| goal.get("goal_id"))
-        .and_then(Value::as_str)
-        .filter(|id| !id.is_empty())
-        .ok_or_else(|| code_json_error(422, "invalid_class_draft", "missing draft.goal.goal_id"))?;
+        .ok_or_else(|| code_json_error(422, "invalid_class_draft", "missing 'draft.goal' object"))?;
 
-    let grid = match crate::room_templates::room_template_grid(template_id) {
-        Ok(grid) => grid,
-        Err(message) => return Err(code_json_error(422, "room_not_found", &message)),
+    // Room source: a built-in template id or an explicit custom layout.
+    let grid = if let Some(layout) = room.get("layout") {
+        match crate::room_templates::grid_from_layout(layout) {
+            Ok(grid) => grid,
+            Err(message) => return Err(code_json_error(422, "invalid_class_draft", &message)),
+        }
+    } else {
+        let template_id = room
+            .get("template_id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| {
+                code_json_error(422, "invalid_class_draft", "missing draft.room.template_id")
+            })?;
+        match crate::room_templates::room_template_grid(template_id) {
+            Ok(grid) => grid,
+            Err(message) => return Err(code_json_error(422, "room_not_found", &message)),
+        }
     };
-    let rules = match crate::goal_rules::goal_rules(goal_id) {
-        Ok(rules) => rules,
-        Err(message) => return Err(code_json_error(422, "unknown_goal", &message)),
+
+    let goal_id = goal
+        .get("goal_id")
+        .and_then(Value::as_str)
+        .map(|id| id.trim().to_ascii_lowercase().replace('_', "-"))
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| "daily-rotation".to_string());
+
+    // Base rules: the custom goal's full document, or the goal preset.
+    let mut rules: Value = if goal_id == "custom" {
+        match goal
+            .get("custom_rules")
+            .filter(|value| !value.is_null() && value.is_object())
+        {
+            Some(custom_rules) => custom_rules.clone(),
+            None => {
+                return Err(code_json_error(
+                    422,
+                    "invalid_class_draft",
+                    "the custom goal requires draft.goal.custom_rules",
+                ))
+            }
+        }
+    } else {
+        match crate::goal_rules::goal_rules(&goal_id) {
+            Ok(rules) => rules,
+            Err(message) => return Err(code_json_error(422, "unknown_goal", &message)),
+        }
     };
+
+    // Deep-merge the partial rules_overlay (soft weights + groups) on top of
+    // the base rules, mirroring `presets._deep_merge`.
+    if let Some(overlay) = goal.get("rules_overlay") {
+        if !overlay.is_object() {
+            return Err(code_json_error(
+                422,
+                "invalid_class_draft",
+                "rules_overlay must be an object",
+            ));
+        }
+        deep_merge_value(&mut rules, overlay);
+    }
 
     let students: Vec<Value> = draft
         .get("students")
@@ -837,10 +891,9 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, Response> {
 
     // The solver, the editor-draft builder and the renderer all assume
     // `layout.seats[index]` aligns one-to-one with `seat_positions[index]`.
-    // The grid's full layout also carries disabled aisle cells, so hand the
-    // request the *enabled* seats in layout order (which `room_templates`
-    // guarantees are exactly `seat_positions`, in order). The physical aisle
-    // gap is preserved anyway because `seat_positions` skip the aisle column.
+    // The grid's full layout also carries disabled cells, so hand the request
+    // the *enabled* seats in layout order (which `room_templates` guarantees
+    // are exactly `seat_positions`, in order).
     let layout = crate::room_templates::Layout {
         layout_id: grid.layout.layout_id.clone(),
         name: grid.layout.name.clone(),
@@ -853,6 +906,15 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, Response> {
         adjacency: grid.layout.adjacency.clone(),
     };
 
+    // Resolve teacher-entered hard rules (student keys + seat ids) into the
+    // core request's index pairs, mirroring `_append_hard_rules`.
+    let ResolvedHardRules {
+        fixed_seats,
+        must_be_adjacent,
+        cannot_be_adjacent,
+        min_distance,
+    } = resolve_hard_rules(goal, &students, &grid)?;
+
     Ok(json!({
         "api_version": 2,
         "student_count": students.len(),
@@ -862,7 +924,204 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, Response> {
         "rules": rules,
         "students": students,
         "seed": seed,
+        "fixed_seats": fixed_seats,
+        "must_be_adjacent": must_be_adjacent,
+        "cannot_be_adjacent": cannot_be_adjacent,
+        "min_distance": min_distance,
     }))
+}
+
+/// Hard rules resolved to core index pairs.
+struct ResolvedHardRules {
+    fixed_seats: Vec<[usize; 2]>,
+    must_be_adjacent: Vec<[usize; 2]>,
+    cannot_be_adjacent: Vec<[usize; 2]>,
+    min_distance: Vec<Value>,
+}
+
+/// Resolve `draft.goal.hard_rules` (student-key + seat-id references) into
+/// core index pairs. Missing or unresolvable references are a 422
+/// `invalid_class_draft`, mirroring strict Python rule compilation.
+fn resolve_hard_rules(
+    goal: &serde_json::Map<String, Value>,
+    students: &[Value],
+    grid: &crate::room_templates::RoomGrid,
+) -> Result<ResolvedHardRules, Response> {
+    let Some(hard) = goal
+        .get("hard_rules")
+        .filter(|value| !value.is_null())
+    else {
+        return Ok(ResolvedHardRules {
+            fixed_seats: Vec::new(),
+            must_be_adjacent: Vec::new(),
+            cannot_be_adjacent: Vec::new(),
+            min_distance: Vec::new(),
+        });
+    };
+    if !hard.is_object() {
+        return Err(code_json_error(
+            422,
+            "invalid_class_draft",
+            "hard_rules must be an object",
+        ));
+    }
+
+    let student_index: HashMap<&str, usize> = students
+        .iter()
+        .enumerate()
+        .filter_map(|(index, student)| core_student_key(student).map(|key| (key, index)))
+        .collect();
+    let seat_index: HashMap<&str, usize> = grid
+        .layout
+        .enabled_seats()
+        .iter()
+        .enumerate()
+        .map(|(index, seat)| (seat.seat_id.as_str(), index))
+        .collect();
+
+    let mut fixed_seats: Vec<[usize; 2]> = Vec::new();
+    for entry in hard
+        .get("fixed_seats")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let student = entry.get("student").and_then(Value::as_str).unwrap_or("");
+        let seat_id = entry.get("seat_id").and_then(Value::as_str).unwrap_or("");
+        let student_index = *student_index.get(student).ok_or_else(|| {
+            code_json_error(
+                422,
+                "invalid_class_draft",
+                &format!("hard rule references unknown student {student:?}"),
+            )
+        })?;
+        let seat_index = *seat_index.get(seat_id).ok_or_else(|| {
+            code_json_error(
+                422,
+                "invalid_class_draft",
+                &format!("hard rule references unknown seat {seat_id:?}"),
+            )
+        })?;
+        fixed_seats.push([student_index, seat_index]);
+    }
+
+    let mut must_be_adjacent: Vec<[usize; 2]> = Vec::new();
+    let mut cannot_be_adjacent: Vec<[usize; 2]> = Vec::new();
+    for (field, out) in [
+        ("must_be_adjacent", &mut must_be_adjacent),
+        ("cannot_be_adjacent", &mut cannot_be_adjacent),
+    ] {
+        for entry in hard.get(field).and_then(Value::as_array).into_iter().flatten() {
+            let pair = resolve_student_pair(entry, &student_index)?;
+            out.push(pair);
+        }
+    }
+
+    let mut min_distance: Vec<Value> = Vec::new();
+    for entry in hard
+        .get("min_distance")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let pair = resolve_student_pair(entry, &student_index)?;
+        let distance = entry
+            .get("distance")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .ok_or_else(|| {
+                code_json_error(422, "invalid_class_draft", "min_distance needs a positive distance")
+            })?;
+        let metric = match entry.get("metric").and_then(Value::as_str) {
+            Some("euclidean") => "euclidean",
+            _ => "graph",
+        };
+        min_distance.push(json!({
+            "students": pair,
+            "distance": distance,
+            "metric": metric,
+        }));
+    }
+
+    Ok(ResolvedHardRules {
+        fixed_seats,
+        must_be_adjacent,
+        cannot_be_adjacent,
+        min_distance,
+    })
+}
+
+/// Resolve one `{ "students": [keyA, keyB] }` hard-rule entry into a
+/// normalized student-index pair.
+fn resolve_student_pair(
+    entry: &Value,
+    student_index: &HashMap<&str, usize>,
+) -> Result<[usize; 2], Response> {
+    let names = entry
+        .get("students")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            code_json_error(422, "invalid_class_draft", "pair rule needs a 'students' array")
+        })?;
+    let first = names.first().and_then(Value::as_str).unwrap_or("");
+    let second = names.get(1).and_then(Value::as_str).unwrap_or("");
+    let first_index = *student_index.get(first).ok_or_else(|| {
+        code_json_error(
+            422,
+            "invalid_class_draft",
+            &format!("pair rule references unknown student {first:?}"),
+        )
+    })?;
+    let second_index = *student_index.get(second).ok_or_else(|| {
+        code_json_error(
+            422,
+            "invalid_class_draft",
+            &format!("pair rule references unknown student {second:?}"),
+        )
+    })?;
+    if first_index == second_index {
+        return Err(code_json_error(
+            422,
+            "invalid_class_draft",
+            "a pair rule must reference two different students",
+        ));
+    }
+    Ok([first_index.min(second_index), first_index.max(second_index)])
+}
+
+/// The core student key for a `draft.students` entry (mirrors
+/// [`core_student_value`]: `student_id` if present, else `name`, falling back
+/// to the already-mapped `key` when the record is core-shaped).
+fn core_student_key(student: &Value) -> Option<&str> {
+    let student_id = student.get("student_id").and_then(Value::as_str).unwrap_or("");
+    let name = student.get("name").and_then(Value::as_str).unwrap_or("");
+    if !student_id.is_empty() {
+        Some(student_id)
+    } else if !name.is_empty() {
+        Some(name)
+    } else {
+        student
+            .get("key")
+            .and_then(Value::as_str)
+            .filter(|key| !key.is_empty())
+    }
+}
+
+/// Recursive deep merge: object values merge key-by-key, any other value
+/// replaces the target (mirrors `presets._deep_merge`).
+fn deep_merge_value(target: &mut Value, patch: &Value) {
+    let (Some(target_object), Some(patch_object)) = (target.as_object_mut(), patch.as_object()) else {
+        *target = patch.clone();
+        return;
+    };
+    for (key, patch_value) in patch_object {
+        match target_object.get_mut(key) {
+            Some(existing) => deep_merge_value(existing, patch_value),
+            None => {
+                target_object.insert(key.clone(), patch_value.clone());
+            }
+        }
+    }
 }
 
 /// Default solve seed when the frontend sends no `options.seed` (matches the
@@ -2277,6 +2536,39 @@ mod tests {
         serde_json::from_slice(&response.body).unwrap()
     }
 
+    /// Seat coordinates `(row, col)` for a seated student in an editor draft.
+    fn editor_seat_coords(editor: &Value, student_key: &str) -> Option<(i64, i64)> {
+        let entry = editor["students"]
+            .as_array()?
+            .iter()
+            .find(|student| student["student_key"].as_str() == Some(student_key))?;
+        let seat_id = entry["seat_id"].as_str()?;
+        let seat = editor["seats"]
+            .as_array()?
+            .iter()
+            .find(|seat| seat["seat_id"].as_str() == Some(seat_id))?;
+        Some((seat["row"].as_i64()?, seat["col"].as_i64()?))
+    }
+
+    /// Four enabled seats in a single row (deterministic adjacency for tests).
+    fn line_of_four_layout() -> Value {
+        json!({
+            "layout_id": "line-4",
+            "name": "Line of four",
+            "seats": [
+                {"seat_id": "P1", "row": 1, "col": 1, "enabled": true},
+                {"seat_id": "P2", "row": 1, "col": 2, "enabled": true},
+                {"seat_id": "P3", "row": 1, "col": 3, "enabled": true},
+                {"seat_id": "P4", "row": 1, "col": 4, "enabled": true}
+            ],
+            "adjacency": {
+                "include_horizontal": true,
+                "include_vertical": false,
+                "include_diagonal": false
+            }
+        })
+    }
+
     /// Build a minimal multipart body with a single `file` field.
     fn multipart_body(file_bytes: &[u8], filename: &str, boundary: &str) -> Vec<u8> {
         let mut body = Vec::new();
@@ -2618,6 +2910,203 @@ mod tests {
         let value = body_json(&response);
         assert_eq!(value["error"], "unknown_goal");
         assert!(value["message"].as_str().unwrap().contains("warp-speed"));
+    }
+
+    /// `rules_overlay.groups` must reach the solver: a `together` group is
+    /// seated adjacently and a `separate` group is kept apart.
+    #[test]
+    fn frontend_rules_overlay_groups_reach_the_solver() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Groups",
+                "students": [
+                    {"student_id": "S1", "name": "Ann"},
+                    {"student_id": "S2", "name": "Ben"},
+                    {"student_id": "S3", "name": "Cid"},
+                    {"student_id": "S4", "name": "Dee"}
+                ],
+                "room": {"layout": line_of_four_layout()},
+                "goal": {
+                    "goal_id": "quick-shuffle",
+                    "rules_overlay": {
+                        "groups": [
+                            {"name": "buddy", "students": ["S1", "S2"], "together": true},
+                            {"name": "rival", "students": ["S3", "S4"], "separate": true}
+                        ]
+                    }
+                }
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let editor = body_json(&response)["editor"].clone();
+        let coords = |key: &str| editor_seat_coords(&editor, key).expect("seated student");
+        let (row_a, col_a) = coords("S1");
+        let (row_b, col_b) = coords("S2");
+        let (row_c, col_c) = coords("S3");
+        let (row_d, col_d) = coords("S4");
+        assert_eq!(row_a, row_b, "S1 and S2 share a row");
+        assert_eq!((col_a - col_b).abs(), 1, "S1 and S2 must sit together");
+        assert!(
+            row_c != row_d || (col_c - col_d).abs() != 1,
+            "S3 and S4 must sit apart"
+        );
+    }
+
+    /// `hard_rules` (fixed seat + adjacency pairs) must be resolved from
+    /// student keys and seat ids into enforced index pairs.
+    #[test]
+    fn frontend_hard_rules_are_resolved_and_enforced() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Pinned",
+                "students": [
+                    {"student_id": "S1", "name": "Ann"},
+                    {"student_id": "S2", "name": "Ben"},
+                    {"student_id": "S3", "name": "Cid"},
+                    {"student_id": "S4", "name": "Dee"}
+                ],
+                "room": {"layout": line_of_four_layout()},
+                "goal": {
+                    "goal_id": "quick-shuffle",
+                    "hard_rules": {
+                        "fixed_seats": [{"student": "S1", "seat_id": "P4"}],
+                        "must_be_adjacent": [{"students": ["S2", "S3"]}]
+                    }
+                }
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let editor = body_json(&response)["editor"].clone();
+        let coords = |key: &str| editor_seat_coords(&editor, key).expect("seated student");
+        assert_eq!(coords("S1"), (1, 4), "S1 is pinned to P4");
+        let (row_b, col_b) = coords("S2");
+        let (row_c, col_c) = coords("S3");
+        assert_eq!(row_b, row_c, "S2 and S3 share a row");
+        assert_eq!((col_b - col_c).abs(), 1, "S2 and S3 must sit adjacent");
+    }
+
+    /// A custom `draft.room.layout` (the React room builder) must be accepted
+    /// and drive the grid instead of a template id.
+    #[test]
+    fn frontend_custom_layout_generates() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Custom room",
+                "students": [
+                    {"student_id": "S1", "name": "Ann"},
+                    {"student_id": "S2", "name": "Ben"}
+                ],
+                "room": {"layout": line_of_four_layout()},
+                "goal": {"goal_id": "quick-shuffle"}
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["editor"]["seats"].as_array().map(Vec::len), Some(4));
+    }
+
+    /// The custom goal requires `custom_rules`; a full document is accepted and
+    /// a missing one is a 422.
+    #[test]
+    fn frontend_custom_goal_requires_custom_rules() {
+        let root = test_web_root();
+        let missing = json!({
+            "draft": {
+                "name": "Custom",
+                "students": [
+                    {"student_id": "S1", "name": "Ann"},
+                    {"student_id": "S2", "name": "Ben"}
+                ],
+                "room": {"template_id": "standard-30"},
+                "goal": {"goal_id": "custom"}
+            }
+        });
+        let body = serde_json::to_vec(&missing).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(response.status, 422, "custom goal without rules must be a 422");
+        assert_eq!(body_json(&response)["error"], "invalid_class_draft");
+
+        let with_rules = json!({
+            "draft": {
+                "name": "Custom",
+                "students": [
+                    {"student_id": "S1", "name": "Ann", "score": 90},
+                    {"student_id": "S2", "name": "Ben", "score": 70}
+                ],
+                "room": {"template_id": "standard-30"},
+                "goal": {
+                    "goal_id": "custom",
+                    "custom_rules": {
+                        "seed": 1,
+                        "soft": {
+                            "vision_front": {"enabled": true, "weight": 20},
+                            "randomize": {"enabled": true, "weight": 1}
+                        }
+                    }
+                }
+            }
+        });
+        let body = serde_json::to_vec(&with_rules).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+    }
+
+    /// A hard rule that names an unknown student must be a 422, not silently
+    /// dropped.
+    #[test]
+    fn frontend_hard_rule_unknown_student_is_422() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Bad",
+                "students": [
+                    {"student_id": "S1", "name": "Ann"},
+                    {"student_id": "S2", "name": "Ben"}
+                ],
+                "room": {"layout": line_of_four_layout()},
+                "goal": {
+                    "goal_id": "quick-shuffle",
+                    "hard_rules": {
+                        "fixed_seats": [{"student": "GHOST", "seat_id": "P1"}]
+                    }
+                }
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(response.status, 422, "unknown hard-rule student must be a 422");
+        let value = body_json(&response);
+        assert_eq!(value["error"], "invalid_class_draft");
+        assert!(value["message"].as_str().unwrap().contains("GHOST"));
     }
 
     #[test]
