@@ -519,6 +519,18 @@ pub fn solve_problem_json(request_json: &str) -> Result<String, String> {
         .map_err(|error| format!("could not serialize native solve response: {error}"))
 }
 
+/// Validate a solve request without spending the solver's attempt budget.
+///
+/// This is the native counterpart to the Python CLI's input-only `validate`
+/// command. It checks the versioned DTO, capacity, coordinates, student
+/// records, and hard-rule references, but it does not claim that a feasible
+/// assignment exists; use [`solve_problem_json`] for that check.
+pub fn validate_solve_request_json(request_json: &str) -> Result<(), String> {
+    let request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)
+}
+
 /// Build the cost context for a solve request, degrading gracefully when the
 /// optional cost data is absent.
 fn build_cost_context(request: &CoreSolveRequest) -> CostContext {
@@ -969,7 +981,7 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 mod tests {
     use super::{
         assignment_is_unique, evaluate_problem_json, seat_distance, solve_problem_json,
-        CoreEvaluationResponse, CoreSolveResponse, NATIVE_API_VERSION,
+        validate_solve_request_json, CoreEvaluationResponse, CoreSolveResponse, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -1000,6 +1012,25 @@ mod tests {
     fn computes_euclidean_distance() {
         assert_eq!(seat_distance(1.0, 1.0, 4.0, 5.0), Some(5.0));
         assert_eq!(seat_distance(f64::NAN, 1.0, 4.0, 5.0), None);
+    }
+
+    #[test]
+    fn validates_solve_request_without_running_search() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "fixed_seats": [[0, 0]]
+        }"#;
+        assert!(validate_solve_request_json(request).is_ok());
+
+        let invalid = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]]
+        }"#;
+        let error = validate_solve_request_json(invalid).unwrap_err();
+        assert!(error.contains("more students than available seats"));
     }
 
     #[test]

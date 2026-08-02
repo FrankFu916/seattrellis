@@ -9,11 +9,47 @@
 
 use std::path::Path;
 
-use seattrellis_core::{solve_problem_json, CoreSolveRequest, CoreSolveResponse};
+use seattrellis_core::{
+    solve_problem_json, validate_solve_request_json, CoreSolveRequest, CoreSolveResponse,
+};
 
 use crate::render::SeatingGrid;
 use crate::style::Styler;
 use crate::{ExportArgs, ExportFormat, SolveArgs};
+use crate::ValidateArgs;
+
+pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
+    let styler = Styler::stdout();
+    let problem_text = read_text(&args.problem)?;
+    validate_solve_request_json(&problem_text)
+        .map_err(|error| format!("'{}' is invalid: {error}", args.problem.display()))?;
+
+    let problem: CoreSolveRequest = serde_json::from_str(&problem_text)
+        .map_err(|error| format!("'{}' is not valid JSON: {error}", args.problem.display()))?;
+    println!("{}: {}", styler.bold("valid"), styler.green("true"));
+    println!(
+        "{}: {}",
+        styler.bold("students"),
+        styler.cyan(&problem.student_count.to_string())
+    );
+    println!(
+        "{}: {}",
+        styler.bold("seats"),
+        styler.cyan(&problem.seat_positions.len().to_string())
+    );
+    println!(
+        "{}: {}",
+        styler.bold("hard rules"),
+        styler.cyan(
+            &(problem.fixed_seats.len()
+                + problem.must_be_adjacent.len()
+                + problem.cannot_be_adjacent.len()
+                + problem.min_distance.len())
+                .to_string(),
+        )
+    );
+    Ok(())
+}
 
 pub fn run_solve(args: &SolveArgs) -> Result<(), String> {
     let styler = Styler::stdout();
