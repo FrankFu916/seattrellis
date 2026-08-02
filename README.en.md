@@ -171,6 +171,13 @@ python -m pip install -e ".[web,desktop-build]"
 python scripts/build_desktop.py
 ```
 
+This Python onedir bundle is for compatibility and diagnostics only. Its
+archive intentionally contains the Python runtime and an `internal/` directory;
+it is not the Rust desktop application. The `Legacy Python desktop builds`
+workflow is now manual-only and no longer attaches these archives to formal
+releases. Download Rust/Tauri previews from their separate `desktop-v*`
+release.
+
 The repository now includes a Tauri bundle workflow for macOS `.app`/`.dmg`,
 Windows `.msi`/NSIS, and Linux `.deb`/AppImage. It produces unsigned bundles
 and attaches them to an existing GitHub Release; see

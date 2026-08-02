@@ -1,9 +1,7 @@
-name: Desktop builds
+name: Legacy Python desktop builds
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -48,26 +46,3 @@ jobs:
           path: dist/release/*.zip
           if-no-files-found: error
           retention-days: 14
-
-  release-assets:
-    name: Attach desktop bundles
-    if: github.event_name == 'release'
-    needs: bundle
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: SeatTrellis-*
-          path: release/
-          merge-multiple: true
-      - name: Generate SHA-256 checksums
-        working-directory: release
-        run: sha256sum *.zip > DESKTOP-SHA256SUMS
-      - name: Upload desktop assets to the GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$RELEASE_TAG" release/*.zip release/DESKTOP-SHA256SUMS --clobber

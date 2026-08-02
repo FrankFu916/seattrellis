@@ -39,6 +39,11 @@ production files into the binary, while `SEATTRELLIS_WEB_STATIC` remains a
 development override. A copied release binary therefore does not depend on
 the source checkout or a runtime frontend installation.
 
+The former Python onedir/pywebview package remains available for compatibility
+diagnostics, but its `internal/` Python libraries are deliberately not part of
+the Rust desktop distribution. Its GitHub workflow is manual-only; published
+desktop previews use the Tauri workflow below.
+
 ## Delivered so far
 
 - `native/seattrellis_core`: versioned JSON problem/response contracts,

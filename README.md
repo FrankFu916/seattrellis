@@ -128,6 +128,11 @@ python scripts/build_desktop.py
 普通上传和下载。最近使用的名单只保存本机路径，不保存名单内容。旧版桌面包如果仍显示
 `session_required` 或旧的英文导入界面，请退出旧进程后安装最新 release。
 
+这个 Python onedir 包只作为兼容和诊断路径，GitHub 上的旧压缩包包含 Python 运行时及
+`internal/` 目录，不是 Rust 桌面版。它现在只能通过 `Legacy Python desktop builds`
+工作流手动生成，不再自动附加到正式 Release。Rust/Tauri 预览包请从独立的
+`desktop-v*` Release 下载。
+
 仓库已经提供 Tauri 安装包流水线（macOS `.app`/`.dmg`、Windows `.msi`/NSIS、Linux
 `.deb`/AppImage），默认生成未签名产物并附加到已有 GitHub Release；运行方式见
 `.github/workflows/tauri.yml`。Windows/macOS 代码签名、公证、干净机器安装和自动更新

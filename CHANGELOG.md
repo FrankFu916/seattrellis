@@ -7,6 +7,9 @@
 - Native Rust and Tauri desktop previews now have a clearly separate release
   line from the stable Python `v1.x` package. The preview line can evolve
   independently until the Rust implementation is ready for `v2.0.0`.
+- The old Python desktop archive is no longer attached automatically to Python
+  releases. It remains available only as a manually triggered compatibility
+  build, so the desktop download page can focus on the Rust/Tauri preview.
 
 ## 1.8.4 - 2026-08-01
 
