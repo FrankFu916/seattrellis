@@ -22,8 +22,8 @@ jobs:
     name: Bundle / ${{ matrix.platform }}
     # Desktop releases are deliberately opt-in until the first signed installer
     # is ready. Manual runs can attach bundles to any existing release; the
-    # automatic path uses a desktop-v* tag so a Python-only release is not
-    # unexpectedly mixed with a different application version.
+    # automatic path uses a desktop-v* preview tag so a Python-only release is
+    # not unexpectedly mixed with a different application version.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.event.release.tag_name, 'desktop-v')

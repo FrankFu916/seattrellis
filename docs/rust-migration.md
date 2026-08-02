@@ -9,6 +9,15 @@ This is a migration, not a claim that every Python command has already been
 reimplemented. The Python package remains the compatibility and library path
 while the native contracts are completed and compared against it.
 
+## Version policy
+
+Python remains the stable `v1.x` compatibility line while the native crates
+and Tauri shell are being completed. Native preview versions and desktop
+preview tags may use their own `0.x` or preview numbering; they are not
+intended to imply Python feature parity. Rust becomes the default runtime only
+with a future `v2.0.0` release after the parity, performance, installation,
+and offline-use gates below are green.
+
 ## Target architecture
 
 ```text
@@ -68,7 +77,8 @@ The following gaps must stay visible in release notes and documentation:
    are still release work. The repository now has a reproducible
    `.github/workflows/tauri.yml` path for unsigned `.app`/`.dmg`, `.msi`/NSIS,
    and `.deb`/AppImage bundles. It attaches only to an existing release: run it
-   manually with a release tag, or publish a `desktop-v*` release.
+   manually with a release tag, or publish a `desktop-v*` release. Preview tags
+   are intentionally separate from the Python `v1.x` releases.
 
 ## Migration stages
 

@@ -176,8 +176,9 @@ Windows `.msi`/NSIS, and Linux `.deb`/AppImage. It produces unsigned bundles
 and attaches them to an existing GitHub Release; see
 `.github/workflows/tauri.yml`. Windows/macOS code signing, notarisation,
 clean-machine installation, and automatic updates are still in progress. The
-current Rust build is a preview path and does not yet claim full Python command
-parity.
+current Rust build is an independent preview line and does not yet claim full
+Python command parity. Rust will become the default runtime only in v2.0.0
+after the compatibility gates pass.
 
 ## CLI
 

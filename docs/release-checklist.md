@@ -101,8 +101,10 @@ entire matrix after every small change.
 - [ ] Confirm the Release contains the wheel, source distribution and
       `PYTHON-SHA256SUMS`；桌面包使用 `DESKTOP-SHA256SUMS`。
 - [ ] For a desktop release, run `Tauri desktop bundles` with the existing
-      release tag and inspect the unsigned `.app`/`.dmg`, `.msi`/NSIS, and
-      `.deb`/AppImage assets before enabling signing or notarisation.
+      dedicated desktop preview tag and inspect the unsigned
+      `.app`/`.dmg`, `.msi`/NSIS, and `.deb`/AppImage assets before enabling
+      signing or notarisation. A desktop preview must not be attached to the
+      Python-only `v<version>` release.
 - [ ] Install `seattrellis==<version>` from PyPI in a clean environment and run
       `seattrellis --version`, `seattrellis --help` and one solve/export smoke
       workflow.

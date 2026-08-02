@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### User-facing changes
+
+- Native Rust and Tauri desktop previews now have a clearly separate release
+  line from the stable Python `v1.x` package. The preview line can evolve
+  independently until the Rust implementation is ready for `v2.0.0`.
+
 ## 1.8.4 - 2026-08-01
 
 ### User-facing changes
