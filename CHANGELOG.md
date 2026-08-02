@@ -13,6 +13,9 @@
 - Desktop preview tags no longer trigger PyPI publication or Python package
   verification, preventing a native preview from being mistaken for a Python
   release.
+- Linux desktop previews now default to the compact `.deb`; the larger
+  AppImage form is not published by default because it bundles the GTK/WebKit
+  runtime.
 
 ## 1.8.4 - 2026-08-01
 

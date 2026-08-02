@@ -102,7 +102,7 @@ entire matrix after every small change.
       `PYTHON-SHA256SUMS`；桌面包使用 `DESKTOP-SHA256SUMS`。
 - [ ] For a desktop release, run `Tauri desktop bundles` with the existing
       dedicated desktop preview tag and inspect the unsigned
-      `.app`/`.dmg`, `.msi`/NSIS, and `.deb`/AppImage assets before enabling
+      `.app`/`.dmg`, `.msi`/NSIS, and `.deb` assets before enabling
       signing or notarisation. A desktop preview must not be attached to the
       Python-only `v<version>` release.
 - [ ] Install `seattrellis==<version>` from PyPI in a clean environment and run

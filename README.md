@@ -134,10 +134,13 @@ python scripts/build_desktop.py
 `desktop-v*` Release 下载。
 
 仓库已经提供 Tauri 安装包流水线（macOS `.app`/`.dmg`、Windows `.msi`/NSIS、Linux
-`.deb`/AppImage），默认生成未签名产物并附加到已有 GitHub Release；运行方式见
+`.deb`），默认生成未签名产物并附加到已有 GitHub Release；运行方式见
 `.github/workflows/tauri.yml`。Windows/macOS 代码签名、公证、干净机器安装和自动更新
 仍在进行中；当前 Rust 构建是独立的预览路径，尚未宣称替代 Python 的全部命令。Rust
 功能完成并通过兼容性验收后，才会在 v2.0.0 成为默认运行时。
+
+Linux 预览默认发布小体积 `.deb`，使用系统已有的 WebKitGTK。AppImage 会把 GTK/WebKit
+运行库一并封装，通常约 80MB，因此暂不作为默认下载项。
 
 ### Streamlit 网页端（兼容）
 
