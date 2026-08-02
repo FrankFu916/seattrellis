@@ -1501,7 +1501,7 @@ mod tests {
         let a = project_a.display().to_string();
         let b = project_b.display().to_string();
 
-        let error = migration_batch_preview_json(&[a.clone()]).unwrap_err();
+        let error = migration_batch_preview_json(std::slice::from_ref(&a)).unwrap_err();
         assert!(error.contains("between 2 and 20"), "unexpected: {error}");
 
         let error = migration_batch_preview_json(&[a.clone(), a.clone()]).unwrap_err();
