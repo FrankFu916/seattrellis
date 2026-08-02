@@ -22,6 +22,11 @@ concurrency:
 jobs:
   build:
     name: Build and verify
+    # A desktop-v* release is handled by the Rust and Tauri workflows. Do not
+    # try to publish the Python package or validate a desktop tag as v<version>.
+    if: >-
+      github.event_name != 'release' ||
+      !startsWith(github.event.release.tag_name, 'desktop-')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.package-version.outputs.version }}
@@ -151,7 +156,9 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    if: github.event_name == 'release'
+    if: >-
+      github.event_name == 'release' &&
+      !startsWith(github.event.release.tag_name, 'desktop-')
     needs:
       - build
       - verify-wheel
@@ -170,7 +177,9 @@ jobs:
 
   verify-pypi:
     name: Verify PyPI / Python ${{ matrix.python-version }}
-    if: github.event_name == 'release'
+    if: >-
+      github.event_name == 'release' &&
+      !startsWith(github.event.release.tag_name, 'desktop-')
     needs:
       - build
       - publish-pypi
@@ -213,7 +222,9 @@ jobs:
 
   release-assets:
     name: Attach verified distributions
-    if: github.event_name == 'release'
+    if: >-
+      github.event_name == 'release' &&
+      !startsWith(github.event.release.tag_name, 'desktop-')
     needs:
       - build
       - verify-pypi
