@@ -43,8 +43,9 @@ SeatTrellis 的求解、验证、历史公平性和导出能力已经具备稳�
 
 ### v1.8.0：桌面应用与正式分发（GitHub #17）
 
-- Windows、macOS 安装包和一个有明确安装说明的 Linux 分发形式；当前只有可复现的
-  未签名 onedir 压缩包；
+- Windows、macOS 安装包和一个有明确安装说明的 Linux 分发形式；Tauri 流水线已经可以
+  将未签名的 `.app`/`.dmg`、`.msi`/NSIS、`.deb`/AppImage 附加到已有 Release，签名版仍待
+  证书和公证配置；Python onedir 压缩包继续作为兼容分发；
 - pywebview 已支持名单原生打开、导出原生另存为和本机最近名单路径；浏览器端保留普通
   上传/下载回退。浏览器与桌面工作台已经加入未保存修改提示；
 - SVG、单页 16:9 PPTX 和实时导出预览；
@@ -308,8 +309,9 @@ React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交
 - **App 版**（`app/`）：loopback 纯 Rust 服务，提供名单、生成、调整、导出、布局、项目、
   迁移、轮换和分组接口；React 生产资源已嵌入，当前约 **2.7 MiB**；Tauri 2 壳约 **9 MiB**；
 - **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app 在 3 OS 测试 + clippy、
-  core MSRV 1.83，并在 release 事件构建 CLI/App；
-- **crates.io 分发**已完成打包准备，但实际发布仍需维护者在本机完成 token 登录；
+  core MSRV 1.83，并在 release 事件构建 CLI/App；`.github/workflows/tauri.yml` 负责
+  现有 Release 的跨平台桌面安装包；
+- **crates.io 分发**已完成打包准备，实际发布还需要 crates.io 账号完成邮箱验证；
 - Rust App 的正式替代资格仍需 40/50/60 人基准、Python/Rust 差分、三平台安装器和桌面 E2E
   共同验收，不能只凭单元测试宣布完全重写完成。
 

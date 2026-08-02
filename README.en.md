@@ -171,9 +171,13 @@ python -m pip install -e ".[web,desktop-build]"
 python scripts/build_desktop.py
 ```
 
-Rust/Tauri installers, Windows/macOS code signing, notarisation, clean-machine
-installation, and automatic updates are still in progress. The current Rust
-build is a preview path and does not yet claim full Python command parity.
+The repository now includes a Tauri bundle workflow for macOS `.app`/`.dmg`,
+Windows `.msi`/NSIS, and Linux `.deb`/AppImage. It produces unsigned bundles
+and attaches them to an existing GitHub Release; see
+`.github/workflows/tauri.yml`. Windows/macOS code signing, notarisation,
+clean-machine installation, and automatic updates are still in progress. The
+current Rust build is a preview path and does not yet claim full Python command
+parity.
 
 ## CLI
 
