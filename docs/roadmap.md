@@ -311,9 +311,11 @@ React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交
 - **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app 在 3 OS 测试 + clippy、
   core MSRV 1.83，并在 release 事件构建 CLI/App；`.github/workflows/tauri.yml` 负责
   现有 Release 的跨平台桌面安装包；
-- **crates.io 分发**已完成打包准备，实际发布还需要 crates.io 账号完成邮箱验证；
+- **crates.io 分发**已完成打包准备；Rust 预览 crate 可继续使用独立的 `0.x` 版本，实际发布
+  还需要 crates.io 账号完成邮箱验证；
 - Rust App 的正式替代资格仍需 40/50/60 人基准、Python/Rust 差分、三平台安装器和桌面 E2E
-  共同验收，不能只凭单元测试宣布完全重写完成。
+  共同验收，不能只凭单元测试宣布完全重写完成。完成这些门槛后，Rust 才在 v2.0.0
+  成为默认运行时；在此之前，1.x 继续保持 Python 兼容路径。
 
 完整的迁移阶段、发布门槛和当前测量方法见 [Rust-first migration](rust-migration.md)。
 

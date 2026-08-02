@@ -1,4 +1,4 @@
-//! SeatTrellis desktop shell (Tauri v0).
+//! SeatTrellis desktop shell.
 //!
 //! The shell starts the loopback Rust backend (`seattrellis_app::server`) on an
 //! OS-assigned free port and opens a WebView window pointed at it. The React
