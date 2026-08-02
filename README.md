@@ -128,8 +128,10 @@ python scripts/build_desktop.py
 普通上传和下载。最近使用的名单只保存本机路径，不保存名单内容。旧版桌面包如果仍显示
 `session_required` 或旧的英文导入界面，请退出旧进程后安装最新 release。
 
-Rust/Tauri 安装器、Windows/macOS 代码签名、公证、干净机器安装和自动更新仍在进行中；
-当前 Rust 构建是预览路径，尚未宣称替代 Python 的全部命令。
+仓库已经提供 Tauri 安装包流水线（macOS `.app`/`.dmg`、Windows `.msi`/NSIS、Linux
+`.deb`/AppImage），默认生成未签名产物并附加到已有 GitHub Release；运行方式见
+`.github/workflows/tauri.yml`。Windows/macOS 代码签名、公证、干净机器安装和自动更新
+仍在进行中；当前 Rust 构建是预览路径，尚未宣称替代 Python 的全部命令。
 
 ### Streamlit 网页端（兼容）
 

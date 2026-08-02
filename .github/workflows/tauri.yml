@@ -1,0 +1,91 @@
+name: Tauri desktop bundles
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub Release tag to receive the desktop bundles
+        required: true
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tauri-${{ github.event.release.tag_name || inputs.release_tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    name: Bundle / ${{ matrix.platform }}
+    # Desktop releases are deliberately opt-in until the first signed installer
+    # is ready. Manual runs can attach bundles to any existing release; the
+    # automatic path uses a desktop-v* tag so a Python-only release is not
+    # unexpectedly mixed with a different application version.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.release.tag_name, 'desktop-v')
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            bundles: app,dmg
+          - platform: windows-latest
+            bundles: msi,nsis
+          - platform: ubuntu-22.04
+            bundles: deb,appimage
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve the existing release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_TAG"
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq .id)"
+          test -n "$release_id"
+          echo "id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux bundler dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            file \
+            libappindicator3-dev \
+            libfuse2 \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install the pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Build and upload desktop bundles
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: app/src-tauri
+          releaseId: ${{ steps.release.outputs.id }}
+          tagName: ${{ steps.release.outputs.tag }}
+          args: --bundles ${{ matrix.bundles }} --no-sign
+          releaseAssetNamePattern: seattrellis-desktop-[platform]-[arch]-[bundle][ext]
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
