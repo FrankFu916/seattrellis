@@ -38,6 +38,26 @@ seattrellis export --snapshot outputs/latest.snapshot.json --format html
 
 Exported files are written to `outputs/`, which is ignored by Git.
 
+## Rust desktop build (compact distribution preview)
+
+SeatTrellis now follows a Rust-first desktop distribution path. `app/` is a
+local loopback service with no Python, Node.js, or Streamlit runtime
+requirement, and `app/src-tauri/` provides the native window shell. The
+production React files are embedded at build time, so a copied release binary
+does not need the source checkout.
+
+```bash
+cargo build --release --locked --manifest-path app/Cargo.toml
+app/target/release/seattrellis_app --open-browser
+```
+
+Current development measurements are about 1.6 MiB for the Rust CLI, 2.7 MiB
+for the embedded App, and 9 MiB for the Tauri shell (unsigned, measured on the
+development Mac). The Rust CLI currently exposes `solve` and `export`; the
+Python CLI, Streamlit compatibility UI, and full project/history commands stay
+available until native parity and three-platform installation checks are
+complete. See the [Rust-first migration guide](docs/rust-migration.md).
+
 ## Installation Tiers
 
 ### Minimal Install
@@ -141,19 +161,18 @@ python -m pip install -e ".[desktop]"
 seattrellis desktop
 ```
 
-The pywebview shell shares the React client and local API with the browser
-workbench. To build an onedir development bundle:
+The pywebview shell remains available as a Python compatibility path and shares
+the React client and Python local API with the browser workbench. To build an
+onedir development bundle:
 
 ```bash
 python -m pip install -e ".[web,desktop-build]"
 python scripts/build_desktop.py
 ```
 
-Release archives are currently unsigned. Installers, signing, notarisation,
-and update support are planned separately. The desktop shell passes a one-time
-local session token to the embedded workbench. If an older window still shows
-`session_required`, close the old process and reinstall or rebuild the desktop
-bundle from the current source.
+Rust/Tauri installers, Windows/macOS code signing, notarisation, clean-machine
+installation, and automatic updates are still in progress. The current Rust
+build is a preview path and does not yet claim full Python command parity.
 
 ## CLI
 

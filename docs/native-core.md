@@ -1,8 +1,13 @@
-# Rust native core
+# Rust native core and Python compatibility extension
 
-SeatTrellis keeps Python as the default runtime. The Rust native core is an
-experimental v1.4 spike for low-level validation and future scoring/precompute
-work. It does not replace the Python fallback solver or Python OR-Tools backend.
+SeatTrellis now has a Rust-first compact desktop runtime. The `app/` and Tauri
+paths use `seattrellis_core` directly and are covered in
+[the migration guide](rust-migration.md). Python 1.x remains the compatibility
+and library path during the staged migration.
+
+This document specifically describes the separate `seattrellis_native` PyO3
+extension. It is still an optional Python-side experiment and is not the same
+thing as the standalone Rust App or CLI.
 
 Current behavior:
 

@@ -25,6 +25,22 @@ seattrellis export --snapshot outputs/daily.snapshot.json --format html
 
 更多命令、场景和详细用法见 **[快速开始指南](docs/quickstart.zh.md)**。
 
+## Rust 桌面版（紧凑分发预览）
+
+项目已经确定采用 Rust-first 的桌面分发路线。`app/` 是不依赖 Python、Node.js
+或 Streamlit 的本地 loopback 服务，`app/src-tauri/` 提供原生窗口；生产 React
+资源会在构建时嵌入 Rust App，因此复制二进制到没有源码的目录也可以启动。
+
+```bash
+cargo build --release --locked --manifest-path app/Cargo.toml
+app/target/release/seattrellis_app --open-browser
+```
+
+当前 Rust CLI 约 1.6 MiB，嵌入工作台的 App 约 2.7 MiB，Tauri 壳约 9 MiB（开发机
+实测值，未签名）。Rust CLI 目前提供 `solve` 和 `export`；Python CLI、Streamlit
+兼容界面以及完整的项目/历史命令仍保留，直到 Rust 功能对拍和三平台安装验收完成。
+迁移阶段和明确的发布门槛见 [Rust-first migration](docs/rust-migration.md)。
+
 ## 安装层级
 
 ### 最小安装
@@ -93,14 +109,14 @@ seattrellis workspace
 使用 `--no-open-browser` 可禁止自动打开浏览器，使用 `--host` 和 `--port`
 可自定义监听地址。开发模式下可在 `clients/web/` 目录运行 Vite 开发服务器。
 
-桌面开发原型可通过可选的 pywebview 壳启动：
+Python 桌面兼容原型可通过可选的 pywebview 壳启动：
 
 ```bash
 python -m pip install -e ".[desktop]"
 seattrellis desktop
 ```
 
-桌面壳和浏览器工作台共享同一套 React 资源与本地 API。制作可分发的 onedir
+该兼容壳和浏览器工作台共享同一套 React 资源与 Python 本地 API。制作可分发的 onedir
 开发包需要：
 
 ```bash
@@ -112,9 +128,8 @@ python scripts/build_desktop.py
 普通上传和下载。最近使用的名单只保存本机路径，不保存名单内容。旧版桌面包如果仍显示
 `session_required` 或旧的英文导入界面，请退出旧进程后安装最新 release。
 
-当前发布资产仍是未签名的压缩包；Windows/macOS 安装器、代码签名、公证和自动更新
-会在桌面端正式发布前另行完成。桌面壳会通过一次性本地会话令牌访问 API；如果旧版
-窗口仍显示 `session_required`，请关闭旧进程并重新安装或从当前源码重新构建桌面包。
+Rust/Tauri 安装器、Windows/macOS 代码签名、公证、干净机器安装和自动更新仍在进行中；
+当前 Rust 构建是预览路径，尚未宣称替代 Python 的全部命令。
 
 ### Streamlit 网页端（兼容）
 

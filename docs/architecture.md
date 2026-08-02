@@ -1,6 +1,9 @@
 # 架构
 
-SeatTrellis 按职责分为四层：
+SeatTrellis 按职责分为两条共享契约的运行时路径：Python 兼容路径和 Rust-first
+桌面路径。两者不在 UI 中复制规则，而是通过版本化 JSON 和编辑命令协议对齐。
+
+Python 兼容路径按职责分为四层：
 
 1. **Models / I/O**：Pydantic 数据模型、CSV/Excel/JSON 读取与校验；
 2. **Solver / Scoring**：fallback 与可选 OR-Tools 求解、历史统计和候选评分；
@@ -34,4 +37,24 @@ v1.4 开始，solver backend 共享 `CompiledProblem` 边界：输入模型先�
 fallback、OR-Tools 或实验 native backend 模块。`cp_sat.py` 仅保留为兼容入口和
 调度层。这样可以先稳定领域语义，再逐步把验证、评分和启发式计算迁入 Rust。
 
-所有文件操作默认发生在本机。未来桌面端应继续复用 service API，而不是在 UI 中重新实现业务规则。
+## Rust-first desktop path
+
+Rust 桌面路径复用同一套 React/TypeScript 工作台，但由 `app/` 的 loopback
+服务器提供本地 API：
+
+```text
+React workbench → Rust App HTTP service → seattrellis_core → validation/solve/render
+                                      ↘ local project and export I/O
+```
+
+`seattrellis_core` 和 App 使用版本化、粗粒度 JSON DTO；前端不会逐座位调用
+底层求解器。App 构建时把 `src/seattrellis/web_static` 嵌入二进制，开发时仍可用
+`SEATTRELLIS_WEB_STATIC` 覆盖资源目录。Tauri 只负责窗口生命周期和原生桌面集成，
+不再承载第二套排座规则。
+
+Rust 求解器当前是成本排序启发式实现，不等同于 Python OR-Tools CP-SAT；在
+40/50/60 人基准、规则差分和候选质量验收完成前，Python OR-Tools 仍是兼容后端。
+详细迁移阶段和发布门槛见 [Rust-first migration](rust-migration.md)。
+
+所有文件操作默认发生在本机。桌面端复用 application/service 契约，而不是在 UI
+中重新实现业务规则。

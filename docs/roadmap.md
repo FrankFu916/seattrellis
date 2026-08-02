@@ -296,21 +296,24 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
 - 桌面安装包可以固定一个经过完整验证的内置 Python 版本，源码包的兼容范围不受
   该选择影响。
 
-### Rust 重写进展（2026-08 起）
+### Rust-first 重写进展（2026-08 起，方向已确认）
 
-为达到"解压后 5-20MB 的小体积桌面工具"，核心向 Rust 迁移，React 前端不变：
+为达到“解压后 5–20MB 的小体积桌面工具”，项目决定把 Rust 作为桌面主运行时，
+React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交付与边界如下：
 
-- **`native/seattrellis_core`**：成本排序贪心求解器（镜像 Python fallback），成本函数与软目标
-  （成绩位置/均衡/师徒结对，含匈牙利算法）与 Python 逐值对拍一致；JSON 契约 `solve_problem_json`；
-- **CLI 版**（`native/seattrellis_cli`）：单文件二进制 **1.6MB**，`solve` + SVG/HTML/PNG/PDF 导出，
-  彩色输出，零重量依赖；
-- **App 版**（`app/`）：loopback 纯 Rust 服务器（**~2MB**，serve 完整工作台：名单/生成/调整/导出/
-  布局/项目/迁移/轮换/分组）+ Tauri 2 壳（**9.0MB**，内嵌后端 + 原生窗口）。均已在 5-20MB 目标内；
-- **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app 在 3 OS 测试 + clippy、core MSRV
-  1.83、release 时构建并附加 CLI/App 二进制到 GitHub Release；
-- **crates.io 分发**（准备就绪，需 token 后 `cargo publish`）：`seattrellis_core` 可打包（124.8KiB），
-  先发布 core 再发布 `seattrellis_cli`（version 依赖）；
-- Python 版继续作为兼容/库入口（PyPI 1.8.x），Rust 为主分发路径。
+- **`native/seattrellis_core`**：版本化 JSON 契约、图距离、硬约束验证、成本评分和
+  成本排序启发式求解。它覆盖当前已迁移的规则，但不是 Python OR-Tools CP-SAT 的精确替代；
+- **CLI 版**（`native/seattrellis_cli`）：单文件约 **1.6 MiB**，提供 `solve` 和
+  SVG/HTML/PNG/PDF 导出；`validate`、历史/项目/schema/multi-candidate 等命令仍在迁移；
+- **App 版**（`app/`）：loopback 纯 Rust 服务，提供名单、生成、调整、导出、布局、项目、
+  迁移、轮换和分组接口；React 生产资源已嵌入，当前约 **2.7 MiB**；Tauri 2 壳约 **9 MiB**；
+- **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app 在 3 OS 测试 + clippy、
+  core MSRV 1.83，并在 release 事件构建 CLI/App；
+- **crates.io 分发**已完成打包准备，但实际发布仍需维护者在本机完成 token 登录；
+- Rust App 的正式替代资格仍需 40/50/60 人基准、Python/Rust 差分、三平台安装器和桌面 E2E
+  共同验收，不能只凭单元测试宣布完全重写完成。
+
+完整的迁移阶段、发布门槛和当前测量方法见 [Rust-first migration](rust-migration.md)。
 
 ### Pydantic 迁移与 Starlette 升级（已完成）
 
@@ -330,8 +333,8 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
   Python wheel 和运行后端契约测试；
 - 提高 MSRV 必须有依赖或安全原因，并记录在 changelog 和发布说明中；
 - Python 原生扩展继续按 Python 3.11–3.14 和三平台验证；
-- Rust 后端保持可选，只有性能、结果质量、约束一致性和发布可靠性同时达标后，
-  才能成为默认后端。
+- Rust 是紧凑桌面分发的主后端；Python fallback/OR-Tools 在兼容路径中继续保留，直到
+  性能、结果质量、约束一致性和发布可靠性同时达标后，才考虑改变 Python 工作流的默认后端。
 
 ### TypeScript 与 Node.js
 

@@ -1,7 +1,13 @@
 # seattrellis_cli
 
-A single-file command-line solver and exporter for [SeatTrellis](https://github.com/FrankFu916/seattrellis)
-classroom seating. The release binary is ~1.6 MB with no runtime dependencies.
+A single-file native command-line solver and exporter for
+[SeatTrellis](https://github.com/FrankFu916/seattrellis) classroom seating. The
+release binary is ~1.6 MB with no runtime dependencies.
+
+This is the compact native CLI surface, not yet a drop-in replacement for the
+Python CLI. It currently focuses on solving a versioned JSON problem and
+exporting a solved plan; validation, history, project, schema migration, and
+full candidate-report commands remain on the migration roadmap.
 
 ```
 seattrellis_cli solve --problem problem.json [--seed N] [--output result.json]
