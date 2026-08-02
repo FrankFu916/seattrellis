@@ -30,6 +30,9 @@ use std::time::{Duration, SystemTime};
 use serde_json::{json, Value};
 
 use crate::editing::{self, EditorDraftStore, EditorSeatSpec};
+use seattrellis_core::cost::{
+    classify_seat_position, detect_neighbor_relation_types, student_pair_key,
+};
 use seattrellis_core::CoreSolveRequest;
 
 /// Status-code -> reason text table for the responses we emit.
@@ -915,7 +918,18 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, Response> {
         min_distance,
     } = resolve_hard_rules(goal, &students, &grid)?;
 
-    Ok(json!({
+    // Forward history snapshots so fair_rotation / recent-neighbor costs see
+    // past placements (mirrors `history.build_seat_history` +
+    // `history.build_pair_history`).
+    let history_snapshots: Vec<Value> = draft
+        .get("history_snapshots")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let (history, pair_history) =
+        build_history_json(&students, &grid, &history_snapshots).unwrap_or((Value::Null, Value::Null));
+
+    let mut request = json!({
         "api_version": 2,
         "student_count": students.len(),
         "seat_positions": grid.seat_positions.clone(),
@@ -928,7 +942,12 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, Response> {
         "must_be_adjacent": must_be_adjacent,
         "cannot_be_adjacent": cannot_be_adjacent,
         "min_distance": min_distance,
-    }))
+    });
+    if !history.is_null() {
+        request["history"] = history;
+        request["pair_history"] = pair_history;
+    }
+    Ok(request)
 }
 
 /// Hard rules resolved to core index pairs.
@@ -1122,6 +1141,126 @@ fn deep_merge_value(target: &mut Value, patch: &Value) {
             }
         }
     }
+}
+
+/// Build the core `history` and `pair_history` JSON documents from the
+/// frontend's `draft.history_snapshots`, mirroring
+/// `history.build_seat_history` and `history.build_pair_history`: per-student
+/// seat-category counts and records for fair rotation, plus per-pair relation
+/// records for recent-neighbor avoidance. Returns `None` when there are no
+/// snapshots.
+///
+/// Snapshot assignments that reference a student outside the current roster or
+/// an unknown seat are skipped, exactly like Python's missing-student handling.
+fn build_history_json(
+    students: &[Value],
+    grid: &crate::room_templates::RoomGrid,
+    snapshots: &[Value],
+) -> Option<(Value, Value)> {
+    if snapshots.is_empty() {
+        return None;
+    }
+    let core_layout: seattrellis_core::models::Layout =
+        serde_json::from_value(serde_json::to_value(&grid.layout).ok()?).ok()?;
+    let current_keys: std::collections::HashSet<&str> =
+        students.iter().filter_map(core_student_key).collect();
+    let seat_by_id: HashMap<&str, &seattrellis_core::models::Seat> = core_layout
+        .seats
+        .iter()
+        .map(|seat| (seat.seat_id.as_str(), seat))
+        .collect();
+
+    let mut student_histories: serde_json::Map<String, Value> = serde_json::Map::new();
+    let mut pair_histories: serde_json::Map<String, Value> = serde_json::Map::new();
+
+    for snapshot in snapshots {
+        let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) else {
+            continue;
+        };
+        // One shared view of the known (current-student -> seat) assignments so
+        // the per-student and per-pair records describe the same snapshot.
+        let mut known: Vec<(&str, &seattrellis_core::models::Seat)> = Vec::new();
+        for assignment in assignments {
+            let Some(student_key) = assignment.get("student_key").and_then(Value::as_str) else {
+                continue;
+            };
+            if !current_keys.contains(student_key) {
+                continue;
+            }
+            let Some(seat_id) = assignment.get("seat_id").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(seat) = seat_by_id.get(seat_id) else {
+                continue;
+            };
+            known.push((student_key, seat));
+        }
+
+        for (student_key, seat) in &known {
+            let categories = classify_seat_position(seat, &core_layout);
+            let entry = student_histories
+                .entry((*student_key).to_string())
+                .or_insert_with(|| json!({ "category_counts": {}, "records": [] }));
+            if let Some(counts) = entry
+                .get_mut("category_counts")
+                .and_then(Value::as_object_mut)
+            {
+                for category in &categories {
+                    let current = counts.get(category).and_then(Value::as_u64).unwrap_or(0);
+                    counts.insert(category.clone(), json!(current + 1));
+                }
+            }
+            if let Some(records) = entry.get_mut("records").and_then(Value::as_array_mut) {
+                let sorted: Vec<String> = {
+                    let mut list: Vec<String> = categories.into_iter().collect();
+                    list.sort();
+                    list
+                };
+                records.push(json!({ "categories": sorted }));
+            }
+        }
+
+        for first in 0..known.len() {
+            for second in (first + 1)..known.len() {
+                let (first_key, first_seat) = known[first];
+                let (second_key, second_seat) = known[second];
+                let relations = detect_neighbor_relation_types(
+                    first_seat,
+                    second_seat,
+                    &core_layout,
+                    None,
+                    2,
+                );
+                if relations.is_empty() {
+                    continue;
+                }
+                let pair_key = student_pair_key(first_key, second_key);
+                let entry = pair_histories
+                    .entry(pair_key)
+                    .or_insert_with(|| json!({ "records": [] }));
+                if let Some(records) = entry.get_mut("records").and_then(Value::as_array_mut) {
+                    let sorted: Vec<String> = {
+                        let mut list: Vec<String> = relations.into_iter().collect();
+                        list.sort();
+                        list
+                    };
+                    records.push(json!({ "relations": sorted }));
+                }
+            }
+        }
+    }
+
+    let history = json!({
+        "history_count": snapshots.len(),
+        "students": student_histories,
+    });
+    let pair_history = json!({
+        "history_count": snapshots.len(),
+        "within_distance_metric": "graph",
+        "within_distance": 2,
+        "pairs": pair_histories,
+    });
+    Some((history, pair_history))
 }
 
 /// Default solve seed when the frontend sends no `options.seed` (matches the
@@ -3107,6 +3246,96 @@ mod tests {
         let value = body_json(&response);
         assert_eq!(value["error"], "invalid_class_draft");
         assert!(value["message"].as_str().unwrap().contains("GHOST"));
+    }
+
+    /// `history_snapshots` must be forwarded as core `history` + `pair_history`
+    /// so fair_rotation and recent-neighbor costs see past placements.
+    #[test]
+    fn history_snapshots_forward_fair_rotation_and_pair_data() {
+        let grid = crate::room_templates::grid_from_layout(&line_of_four_layout())
+            .expect("line layout is valid");
+        let students: Vec<Value> = json!([{ "key": "S1" }, { "key": "S2" }])
+            .as_array()
+            .unwrap()
+            .clone();
+        let snapshots: Vec<Value> = json!([{
+            "schema_version": "1",
+            "assignments": [
+                {"student_key": "S1", "seat_id": "P1"},
+                {"student_key": "S2", "seat_id": "P2"}
+            ]
+        }])
+        .as_array()
+        .unwrap()
+        .clone();
+
+        let (history, pair_history) =
+            build_history_json(&students, &grid, &snapshots).expect("snapshots build");
+        assert_eq!(history["history_count"], 1);
+        let s1 = &history["students"]["S1"];
+        assert_eq!(s1["records"].as_array().map(Vec::len), Some(1));
+        let s1_categories = s1["records"][0]["categories"].as_array().unwrap();
+        // P1 is col 1 in the single-row layout: side + corner (no zones, so the
+        // single row is inferred as "middle" rather than "front").
+        for expected in ["side", "corner"] {
+            assert!(
+                s1_categories.iter().any(|category| category == expected),
+                "S1 (P1) should include {expected}: {s1_categories:?}"
+            );
+        }
+        for category in s1_categories {
+            assert_eq!(
+                s1["category_counts"][category.as_str().unwrap()],
+                json!(1),
+                "category_counts must agree with records"
+            );
+        }
+        // S1 (P1) and S2 (P2) sit side by side, so their pair relation is
+        // recorded and the recent-neighbor cost can penalize a repeat.
+        assert_eq!(pair_history["history_count"], 1);
+        let pair = &pair_history["pairs"]["S1|S2"];
+        assert!(pair.is_object(), "adjacent S1/S2 must appear in pair history");
+        let relations = pair["records"][0]["relations"].as_array().unwrap();
+        assert!(
+            relations.iter().any(|relation| relation == "desk_mate"),
+            "side-by-side seats are desk mates: {relations:?}"
+        );
+    }
+
+    /// A frontend request carrying history_snapshots must still generate (the
+    /// history is forwarded, not rejected).
+    #[test]
+    fn frontend_history_snapshots_do_not_break_generation() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "History",
+                "students": [
+                    {"student_id": "S1", "name": "Ann", "score": 92},
+                    {"student_id": "S2", "name": "Ben", "score": 84}
+                ],
+                "room": {"layout": line_of_four_layout()},
+                "goal": {"goal_id": "daily-rotation"},
+                "history_snapshots": [{
+                    "schema_version": "1",
+                    "assignments": [
+                        {"student_key": "S1", "seat_id": "P1"},
+                        {"student_key": "S2", "seat_id": "P2"}
+                    ]
+                }]
+            }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["goal"]["goal_id"], "daily-rotation");
+        assert_eq!(value["editor"]["students"].as_array().map(Vec::len), Some(2));
     }
 
     #[test]

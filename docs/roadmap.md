@@ -336,9 +336,12 @@ React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交
   导致「学生数 < 座位数」时固定到高序号座位被误拒绝，已修复并加回归测试。
 - **桌面端端到端**：从 main 构建的 App 服务器经真实浏览器验证——名单导入、生成（含 demo 与
   导入名单）、交换调整、SVG/PNG/PDF/HTML 导出全部可用，无 console/page 错误。
-- **已知剩余项**：单次 generate 的 `history_snapshots`（历史座位快照）暂未在 Rust 服务端
-  转成 fair_rotation 的成本输入（旋转计划路径已在 `rotation.rs` 原生处理多期历史），列入
-  v2.0 parity 收尾项。
+- **历史快照转发**：单次 generate 的 `history_snapshots` 现已在 Rust 服务端转为 core 的
+  `history`（每生 fair_rotation 的座位分类计数/记录）与 `pair_history`（近邻重复惩罚的成对
+  关系记录），复用 core 的 `classify_seat_position` / `detect_neighbor_relation_types`，
+  与 Python `build_seat_history` / `build_pair_history` 语义一致（旋转计划路径继续在
+  `rotation.rs` 原生处理多期历史）。实测历史使 daily-rotation 的总成本从 939 升到 3779，
+  说明 fair_rotation/近邻成本已生效。
 
 完整的迁移阶段、发布门槛和当前测量方法见 [Rust-first migration](rust-migration.md)。
 
