@@ -323,6 +323,14 @@ React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交
   可行性全部匹配、硬约束全部满足；Rust 求解器找到的成本 ≤ Python（40 人 59807 vs 60431、
   50 人 73177 vs 73727、60 人 102924 vs 103075），耗时相当或更短。结论：成本函数奇偶已确认，
   Rust 求解质量持平或更优。
+  （M0-03 起该 harness 升级为七状态语义：Python error 一律不再记为 INFEASIBLE、mismatch
+  非零退出。最新结果见 `python scripts/rust_python_diff.py --time-limit 3`：SOLVED 类三档
+  全部匹配；TIMEOUT 类（60 人、0.1s 预算）暴露 Rust 无时间预算的文档化差距，计划 M3-04 补齐。
+  fixtures 模式 `--fixtures` 覆盖 41 个 corpus case：34 个合法 case 两侧均为 SOLVED；
+  7 个 invalid case 中 Python 全部拒绝，Rust 侧对 `invalid-empty-*`、
+  `invalid-students-gt-seats`、`invalid-dup-student-id` 拒绝一致，其余
+  （未知规则字段、坏邻接引用）为已知差距：Rust core 会忽略未知规则字段、
+  CLI 无法表达坏邻接布局——对应 ledger §4.1/§16，纳入 M2/M3 修复清单。）
 - **规则能力审计**：Rust core 支持全部 10 类软规则（vision/height/randomize/score_balance/
   score_position/score_distribution/mentor_pairing/fair_rotation/avoid_recent_neighbors/cooling）
   与 4 类硬约束（fixed_seats/must_be_adjacent/cannot_be_adjacent/min_distance）。此前唯一差距

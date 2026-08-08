@@ -1,0 +1,7 @@
+{
+  "command": "solve",
+  "exit_code": 1,
+  "invalid_kind": "bad_adjacency",
+  "stderr_head": "Error: Invalid classroom layout: <case_dir>/classroom.json\nValue error, custom_edges reference unknown seat_id values: R99C99",
+  "stdout": ""
+}

@@ -1,0 +1,18 @@
+{
+  "hard": {},
+  "seed": 737994,
+  "soft": {
+    "avoid_recent_neighbors": {
+      "enabled": true,
+      "weight": 10
+    },
+    "cooling": {
+      "enabled": true,
+      "weight": 5
+    },
+    "fair_rotation": {
+      "enabled": true,
+      "weight": 10
+    }
+  }
+}

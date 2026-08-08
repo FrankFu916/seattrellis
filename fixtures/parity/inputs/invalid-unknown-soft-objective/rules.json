@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 823397,
+  "soft": {
+    "magic_seating": {
+      "enabled": true,
+      "weight": 5
+    }
+  }
+}

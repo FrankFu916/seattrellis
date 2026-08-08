@@ -1,0 +1,48 @@
+{
+  "hard": {},
+  "seed": 210938,
+  "soft": {
+    "avoid_recent_neighbors": {
+      "enabled": true,
+      "weight": 10
+    },
+    "cooling": {
+      "enabled": true,
+      "weight": 5
+    },
+    "fair_rotation": {
+      "enabled": true,
+      "weight": 10
+    },
+    "height_back": {
+      "enabled": true,
+      "weight": 1
+    },
+    "mentor_pairing": {
+      "enabled": true,
+      "weight": 10
+    },
+    "randomize": {
+      "enabled": true,
+      "weight": 1
+    },
+    "score_balance": {
+      "enabled": true,
+      "weight": 1
+    },
+    "score_distribution": {
+      "enabled": true,
+      "scope": "row",
+      "weight": 1
+    },
+    "score_position": {
+      "direction": "high_front",
+      "enabled": true,
+      "weight": 1
+    },
+    "vision_front": {
+      "enabled": true,
+      "weight": 20
+    }
+  }
+}

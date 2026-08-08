@@ -1,0 +1,4944 @@
+{
+  "category_totals": {
+    "back": 50,
+    "corner": 40,
+    "front": 50,
+    "middle": 300,
+    "near_ac": 0,
+    "near_door": 80,
+    "near_platform": 50,
+    "near_window": 80,
+    "side": 160
+  },
+  "history_count": 10,
+  "student_count": 40,
+  "students": [
+    {
+      "category_counts": {
+        "corner": 3,
+        "front": 10,
+        "near_door": 1,
+        "near_platform": 10,
+        "near_window": 2,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C1": 2,
+        "R1C2": 2,
+        "R1C3": 2,
+        "R1C4": 3,
+        "R1C5": 1
+      },
+      "student_key": "STU001",
+      "student_name": "Student001",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 10,
+        "corner": 4,
+        "near_door": 2,
+        "near_window": 2,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R8C1": 2,
+        "R8C2": 2,
+        "R8C3": 1,
+        "R8C4": 3,
+        "R8C5": 2
+      },
+      "student_key": "STU002",
+      "student_name": "Student002",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 10,
+        "corner": 4,
+        "near_door": 1,
+        "near_window": 3,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R8C1": 3,
+        "R8C2": 1,
+        "R8C3": 2,
+        "R8C4": 3,
+        "R8C5": 1
+      },
+      "student_key": "STU003",
+      "student_name": "Student003",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 10,
+        "corner": 3,
+        "near_door": 2,
+        "near_window": 1,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R8C1": 1,
+        "R8C2": 2,
+        "R8C3": 2,
+        "R8C4": 3,
+        "R8C5": 2
+      },
+      "student_key": "STU004",
+      "student_name": "Student004",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "corner": 4,
+        "front": 10,
+        "near_door": 3,
+        "near_platform": 10,
+        "near_window": 1,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C1": 1,
+        "R1C2": 4,
+        "R1C3": 1,
+        "R1C4": 1,
+        "R1C5": 3
+      },
+      "student_key": "STU005",
+      "student_name": "Student005",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 7,
+        "corner": 2,
+        "middle": 3,
+        "near_door": 2,
+        "side": 2
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R7C2": 1,
+        "R7C4": 2,
+        "R8C2": 3,
+        "R8C3": 2,
+        "R8C5": 2
+      },
+      "student_key": "STU006",
+      "student_name": "Student006",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 3,
+        "corner": 2,
+        "middle": 7,
+        "near_door": 3,
+        "near_window": 3,
+        "side": 6
+      },
+      "records": [
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R7C1": 3,
+        "R7C2": 1,
+        "R7C4": 2,
+        "R7C5": 1,
+        "R8C4": 1,
+        "R8C5": 2
+      },
+      "student_key": "STU007",
+      "student_name": "Student007",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 1,
+        "middle": 9,
+        "near_door": 1,
+        "near_window": 2,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R7C1": 2,
+        "R7C2": 1,
+        "R7C3": 2,
+        "R7C4": 3,
+        "R7C5": 1,
+        "R8C2": 1
+      },
+      "student_key": "STU008",
+      "student_name": "Student008",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 6,
+        "corner": 2,
+        "middle": 4,
+        "near_door": 1,
+        "near_window": 3,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R7C1": 1,
+        "R7C3": 2,
+        "R7C5": 1,
+        "R8C1": 2,
+        "R8C2": 1,
+        "R8C3": 3
+      },
+      "student_key": "STU009",
+      "student_name": "Student009",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "corner": 3,
+        "front": 10,
+        "near_door": 1,
+        "near_platform": 10,
+        "near_window": 2,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C1": 2,
+        "R1C2": 2,
+        "R1C3": 1,
+        "R1C4": 4,
+        "R1C5": 1
+      },
+      "student_key": "STU010",
+      "student_name": "Student010",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "corner": 4,
+        "front": 6,
+        "middle": 4,
+        "near_door": 4,
+        "near_platform": 6,
+        "near_window": 2,
+        "side": 6
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C2": 1,
+        "R1C3": 1,
+        "R1C5": 4,
+        "R2C1": 2,
+        "R2C2": 1,
+        "R2C3": 1
+      },
+      "student_key": "STU011",
+      "student_name": "Student011",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "side": 1
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R7C2": 5,
+        "R7C3": 3,
+        "R7C4": 1,
+        "R7C5": 1
+      },
+      "student_key": "STU012",
+      "student_name": "Student012",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 3,
+        "near_window": 2,
+        "side": 5
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R6C1": 2,
+        "R6C2": 1,
+        "R6C3": 3,
+        "R6C5": 3,
+        "R7C2": 1
+      },
+      "student_key": "STU013",
+      "student_name": "Student013",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "near_window": 1,
+        "side": 2
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R6C2": 2,
+        "R6C4": 3,
+        "R7C1": 1,
+        "R7C2": 1,
+        "R7C3": 1,
+        "R7C4": 1,
+        "R7C5": 1
+      },
+      "student_key": "STU014",
+      "student_name": "Student014",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "corner": 1,
+        "front": 1,
+        "middle": 9,
+        "near_door": 2,
+        "near_platform": 1,
+        "near_window": 3,
+        "side": 5
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C1": 1,
+        "R2C1": 2,
+        "R2C3": 4,
+        "R2C4": 1,
+        "R2C5": 2
+      },
+      "student_key": "STU015",
+      "student_name": "Student015",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 1,
+        "corner": 1,
+        "middle": 9,
+        "near_door": 3,
+        "near_window": 2,
+        "side": 5
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R6C1": 1,
+        "R6C3": 3,
+        "R6C4": 1,
+        "R7C1": 1,
+        "R7C3": 1,
+        "R7C5": 2,
+        "R8C5": 1
+      },
+      "student_key": "STU016",
+      "student_name": "Student016",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 3,
+        "near_window": 1,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R6C1": 1,
+        "R6C2": 1,
+        "R6C3": 2,
+        "R6C4": 3,
+        "R6C5": 3
+      },
+      "student_key": "STU017",
+      "student_name": "Student017",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "back": 2,
+        "corner": 2,
+        "middle": 8,
+        "near_door": 4,
+        "near_window": 4,
+        "side": 8
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "back",
+            "corner",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R8C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R6C1": 2,
+        "R6C2": 2,
+        "R6C5": 2,
+        "R7C5": 2,
+        "R8C1": 2
+      },
+      "student_key": "STU018",
+      "student_name": "Student018",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "near_window": 2,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R5C1": 2,
+        "R5C2": 2,
+        "R5C3": 1,
+        "R5C4": 1,
+        "R5C5": 1,
+        "R6C2": 2,
+        "R6C4": 1
+      },
+      "student_key": "STU019",
+      "student_name": "Student019",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "front": 1,
+        "middle": 9,
+        "near_door": 3,
+        "near_platform": 1,
+        "near_window": 1,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C3": 1,
+        "R2C1": 1,
+        "R2C4": 5,
+        "R2C5": 3
+      },
+      "student_key": "STU020",
+      "student_name": "Student020",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 3,
+        "near_window": 1,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R5C1": 1,
+        "R5C2": 1,
+        "R5C3": 2,
+        "R5C4": 3,
+        "R5C5": 3
+      },
+      "student_key": "STU021",
+      "student_name": "Student021",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "corner": 4,
+        "front": 8,
+        "middle": 2,
+        "near_door": 2,
+        "near_platform": 8,
+        "near_window": 4,
+        "side": 6
+      },
+      "records": [
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_door",
+            "near_platform",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C1": 3,
+        "R1C2": 1,
+        "R1C3": 1,
+        "R1C4": 2,
+        "R1C5": 1,
+        "R2C1": 1,
+        "R2C5": 1
+      },
+      "student_key": "STU022",
+      "student_name": "Student022",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 2,
+        "near_window": 2,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R5C4": 1,
+        "R6C1": 2,
+        "R6C2": 1,
+        "R6C3": 1,
+        "R6C4": 1,
+        "R6C5": 1,
+        "R7C3": 1,
+        "R7C4": 1,
+        "R7C5": 1
+      },
+      "student_key": "STU023",
+      "student_name": "Student023",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "near_window": 3,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R5C1": 2,
+        "R5C2": 2,
+        "R5C4": 2,
+        "R5C5": 1,
+        "R6C3": 1,
+        "R6C4": 1,
+        "R7C1": 1
+      },
+      "student_key": "STU024",
+      "student_name": "Student024",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "corner": 1,
+        "front": 2,
+        "middle": 8,
+        "near_door": 1,
+        "near_platform": 2,
+        "near_window": 2,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "corner",
+            "front",
+            "near_platform",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C1": 1,
+        "R1C3": 1,
+        "R2C1": 1,
+        "R2C2": 5,
+        "R2C4": 1,
+        "R2C5": 1
+      },
+      "student_key": "STU025",
+      "student_name": "Student025",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 4,
+        "near_window": 2,
+        "side": 6
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R5C1": 2,
+        "R5C3": 2,
+        "R5C4": 2,
+        "R5C5": 4
+      },
+      "student_key": "STU026",
+      "student_name": "Student026",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 2,
+        "near_window": 1,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R4C2": 1,
+        "R4C3": 1,
+        "R4C5": 2,
+        "R5C2": 1,
+        "R5C3": 2,
+        "R5C4": 1,
+        "R6C1": 1,
+        "R6C2": 1
+      },
+      "student_key": "STU027",
+      "student_name": "Student027",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "near_window": 4,
+        "side": 5
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R4C1": 3,
+        "R4C4": 2,
+        "R4C5": 1,
+        "R5C1": 1,
+        "R5C2": 2,
+        "R5C3": 1
+      },
+      "student_key": "STU028",
+      "student_name": "Student028",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "near_window": 3,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R4C1": 2,
+        "R4C2": 2,
+        "R4C3": 1,
+        "R4C4": 2,
+        "R4C5": 1,
+        "R5C1": 1,
+        "R5C3": 1
+      },
+      "student_key": "STU029",
+      "student_name": "Student029",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 3,
+        "near_window": 2,
+        "side": 5
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R2C1": 1,
+        "R2C3": 1,
+        "R2C4": 3,
+        "R2C5": 1,
+        "R3C1": 1,
+        "R3C2": 1,
+        "R3C5": 2
+      },
+      "student_key": "STU030",
+      "student_name": "Student030",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 4,
+        "near_window": 4,
+        "side": 8
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R4C1": 3,
+        "R4C4": 1,
+        "R4C5": 3,
+        "R5C1": 1,
+        "R5C2": 1,
+        "R6C5": 1
+      },
+      "student_key": "STU031",
+      "student_name": "Student031",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "side": 1
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R4C2": 4,
+        "R4C3": 3,
+        "R4C4": 2,
+        "R5C5": 1
+      },
+      "student_key": "STU032",
+      "student_name": "Student032",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 2,
+        "near_window": 4,
+        "side": 6
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R2C1": 1,
+        "R2C2": 2,
+        "R2C3": 1,
+        "R3C1": 3,
+        "R3C2": 1,
+        "R3C5": 2
+      },
+      "student_key": "STU033",
+      "student_name": "Student033",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "near_window": 1,
+        "side": 2
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C2",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R3C4": 1,
+        "R4C1": 1,
+        "R4C2": 3,
+        "R4C3": 2,
+        "R4C4": 2,
+        "R4C5": 1
+      },
+      "student_key": "STU034",
+      "student_name": "Student034",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "front": 1,
+        "middle": 9,
+        "near_door": 3,
+        "near_platform": 1,
+        "near_window": 1,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C1",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C2",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C5",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C3": 1,
+        "R2C1": 1,
+        "R2C2": 2,
+        "R2C3": 1,
+        "R2C5": 2,
+        "R3C3": 2,
+        "R3C5": 1
+      },
+      "student_key": "STU035",
+      "student_name": "Student035",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 3,
+        "near_window": 2,
+        "side": 5
+      },
+      "records": [
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R3C1": 1,
+        "R3C2": 2,
+        "R3C3": 1,
+        "R3C4": 2,
+        "R3C5": 2,
+        "R4C1": 1,
+        "R4C5": 1
+      },
+      "student_key": "STU036",
+      "student_name": "Student036",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 1,
+        "near_window": 2,
+        "side": 3
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C2",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R7C1",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R5C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R6C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R4C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R3C2": 1,
+        "R4C3": 3,
+        "R4C4": 1,
+        "R4C5": 1,
+        "R5C2": 1,
+        "R5C3": 1,
+        "R6C1": 1,
+        "R7C1": 1
+      },
+      "student_key": "STU037",
+      "student_name": "Student037",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_window": 2,
+        "side": 2
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R3C1": 2,
+        "R3C3": 3,
+        "R3C4": 5
+      },
+      "student_key": "STU038",
+      "student_name": "Student038",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "middle": 10,
+        "near_door": 2,
+        "near_window": 2,
+        "side": 4
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C3",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R3C1": 2,
+        "R3C2": 1,
+        "R3C3": 4,
+        "R3C4": 1,
+        "R3C5": 2
+      },
+      "student_key": "STU039",
+      "student_name": "Student039",
+      "total_assignments": 10
+    },
+    {
+      "category_counts": {
+        "front": 1,
+        "middle": 9,
+        "near_door": 1,
+        "near_platform": 1,
+        "near_window": 1,
+        "side": 2
+      },
+      "records": [
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 1,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 2,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_door",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C5",
+          "snapshot_index": 3,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 4,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 5,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C2",
+          "snapshot_index": 6,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "front",
+            "near_platform"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R1C3",
+          "snapshot_index": 7,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R2C3",
+          "snapshot_index": 8,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C4",
+          "snapshot_index": 9,
+          "unknown_seat": false
+        },
+        {
+          "categories": [
+            "middle",
+            "near_window",
+            "side"
+          ],
+          "disabled_seat": false,
+          "seat_id": "R3C1",
+          "snapshot_index": 10,
+          "unknown_seat": false
+        }
+      ],
+      "seat_counts": {
+        "R1C3": 1,
+        "R2C3": 2,
+        "R3C1": 1,
+        "R3C2": 4,
+        "R3C4": 1,
+        "R3C5": 1
+      },
+      "student_key": "STU040",
+      "student_name": "Student040",
+      "total_assignments": 10
+    }
+  ],
+  "summary": {
+    "category_spread": {
+      "back": {
+        "max": 10,
+        "min": 0,
+        "spread": 10
+      },
+      "corner": {
+        "max": 4,
+        "min": 0,
+        "spread": 4
+      },
+      "front": {
+        "max": 10,
+        "min": 0,
+        "spread": 10
+      },
+      "middle": {
+        "max": 10,
+        "min": 0,
+        "spread": 10
+      },
+      "near_ac": {
+        "max": 0,
+        "min": 0,
+        "spread": 0
+      },
+      "near_door": {
+        "max": 4,
+        "min": 0,
+        "spread": 4
+      },
+      "near_platform": {
+        "max": 10,
+        "min": 0,
+        "spread": 10
+      },
+      "near_window": {
+        "max": 4,
+        "min": 0,
+        "spread": 4
+      },
+      "side": {
+        "max": 8,
+        "min": 1,
+        "spread": 7
+      }
+    },
+    "warning_count": 0
+  },
+  "warnings": []
+}

@@ -1,7 +1,11 @@
 # ADR-0001：原生计算内核采用 Rust
 
-- 状态：接受
+- 状态：接受（已被 ADR-0004 supersede，2026-08-08）
 - 日期：2026-07-06
+
+> **superseded**：ADR-0004 将 v2.0.0 的方向改为 Rust-only 生产运行时；
+> 本 ADR 中"不进行全量重写""Python 至少保留到 Rust backend 通过验收"的
+> 表述不再适用。Python 以 oracle 角色保留，删除 gate 见 ADR-0004。
 
 ## 背景
 

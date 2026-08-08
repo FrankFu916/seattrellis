@@ -1,0 +1,143 @@
+{
+  "candidate_count": 3,
+  "candidates": [
+    {
+      "advantages": [
+        "plan diversity: high (95.0)",
+        "vision preference: high (91.7)"
+      ],
+      "candidate_id": "candidate_01",
+      "costs": [],
+      "dimension_scores": {
+        "avoid_recent_neighbors_score": null,
+        "diversity_score": 95.0,
+        "fair_rotation_score": null,
+        "height_preference_score": 71.82,
+        "mentor_pairing_score": null,
+        "score_balance_score": null,
+        "score_distribution_score": null,
+        "score_position_score": null,
+        "stability_score": null,
+        "vision_preference_score": 91.67
+      },
+      "explanations": [
+        {
+          "dimension": "diversity_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 95.0
+        },
+        {
+          "dimension": "vision_preference_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 91.67
+        }
+      ],
+      "hard_constraint_checked_count": 3,
+      "hard_constraint_violation_count": 0,
+      "hard_constraints_satisfied": true,
+      "history_comparison": {
+        "avoid_recent_neighbors": "not_available",
+        "fair_rotation": "not_available"
+      },
+      "score_delta_from_recommended": 0.0,
+      "total_score": 90.92
+    },
+    {
+      "advantages": [
+        "vision preference: high (91.7)",
+        "plan diversity: high (90.0)"
+      ],
+      "candidate_id": "candidate_02",
+      "costs": [],
+      "dimension_scores": {
+        "avoid_recent_neighbors_score": null,
+        "diversity_score": 90.0,
+        "fair_rotation_score": null,
+        "height_preference_score": 71.86,
+        "mentor_pairing_score": null,
+        "score_balance_score": null,
+        "score_distribution_score": null,
+        "score_position_score": null,
+        "stability_score": null,
+        "vision_preference_score": 91.67
+      },
+      "explanations": [
+        {
+          "dimension": "vision_preference_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 91.67
+        },
+        {
+          "dimension": "diversity_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 90.0
+        }
+      ],
+      "hard_constraint_checked_count": 3,
+      "hard_constraint_violation_count": 0,
+      "hard_constraints_satisfied": true,
+      "history_comparison": {
+        "avoid_recent_neighbors": "not_available",
+        "fair_rotation": "not_available"
+      },
+      "score_delta_from_recommended": -0.23,
+      "total_score": 90.69
+    },
+    {
+      "advantages": [
+        "vision preference: high (91.7)",
+        "plan diversity: high (90.0)"
+      ],
+      "candidate_id": "candidate_03",
+      "costs": [],
+      "dimension_scores": {
+        "avoid_recent_neighbors_score": null,
+        "diversity_score": 90.0,
+        "fair_rotation_score": null,
+        "height_preference_score": 74.36,
+        "mentor_pairing_score": null,
+        "score_balance_score": null,
+        "score_distribution_score": null,
+        "score_position_score": null,
+        "stability_score": null,
+        "vision_preference_score": 91.67
+      },
+      "explanations": [
+        {
+          "dimension": "vision_preference_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 91.67
+        },
+        {
+          "dimension": "diversity_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 90.0
+        }
+      ],
+      "hard_constraint_checked_count": 3,
+      "hard_constraint_violation_count": 0,
+      "hard_constraints_satisfied": true,
+      "history_comparison": {
+        "avoid_recent_neighbors": "not_available",
+        "fair_rotation": "not_available"
+      },
+      "score_delta_from_recommended": -0.11,
+      "total_score": 90.81
+    }
+  ],
+  "kind": "plan_comparison_report",
+  "metadata": {
+    "history_baseline": "not_available",
+    "recommendation_method": "Highest weighted total among hard-constraint-satisfying candidates; ties are resolved by candidate_id.",
+    "recommendation_method_code": "highest_valid_weighted_total"
+  },
+  "recommended_candidate_id": "candidate_01",
+  "schema_version": "0.2.2",
+  "warnings": []
+}

@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 719929,
+  "soft": {
+    "cooling": {
+      "enabled": true,
+      "weight": 5
+    }
+  }
+}

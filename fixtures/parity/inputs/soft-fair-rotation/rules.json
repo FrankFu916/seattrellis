@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 858379,
+  "soft": {
+    "fair_rotation": {
+      "enabled": true,
+      "weight": 10
+    }
+  }
+}

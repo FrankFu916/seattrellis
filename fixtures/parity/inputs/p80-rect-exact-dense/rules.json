@@ -1,0 +1,83 @@
+{
+  "groups": [
+    {
+      "name": "Alpha",
+      "separate": false,
+      "students": [
+        "STU001",
+        "STU006",
+        "STU011"
+      ]
+    },
+    {
+      "name": "Beta",
+      "separate": true,
+      "students": [
+        "STU002",
+        "STU007",
+        "STU012"
+      ]
+    }
+  ],
+  "hard": {
+    "cannot_be_adjacent": [
+      {
+        "students": [
+          "STU004",
+          "STU005"
+        ]
+      }
+    ],
+    "fixed_seats": [
+      {
+        "seat_id": "R1C1",
+        "student": "STU001"
+      }
+    ],
+    "min_distance": [
+      {
+        "distance": 2,
+        "metric": "euclidean",
+        "students": [
+          "STU006",
+          "STU007"
+        ]
+      },
+      {
+        "distance": 1,
+        "metric": "graph",
+        "students": [
+          "STU008",
+          "STU009"
+        ]
+      }
+    ],
+    "must_be_adjacent": [
+      {
+        "students": [
+          "STU002",
+          "STU003"
+        ]
+      }
+    ]
+  },
+  "seed": 235887,
+  "soft": {
+    "height_back": {
+      "enabled": true,
+      "weight": 1
+    },
+    "randomize": {
+      "enabled": true,
+      "weight": 1
+    },
+    "score_balance": {
+      "enabled": true,
+      "weight": 1
+    },
+    "vision_front": {
+      "enabled": true,
+      "weight": 20
+    }
+  }
+}

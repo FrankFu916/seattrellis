@@ -224,3 +224,25 @@ jobs:
           name: web-e2e-failure
           path: test-results/
           if-no-files-found: ignore
+
+  parity-oracle:
+    # M0-02/M0-03: the frozen Python oracle corpus must stay byte-stable.
+    # Regenerates every fixtures/parity case into a temp dir and compares the
+    # inputs and goldens against the committed corpus (SHA-256 in MANIFEST).
+    # Python is pinned to 3.12 to match the oracle generation environment.
+    name: Oracle parity corpus / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the package (base deps, fallback backend)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Replay the oracle golden corpus (byte-stable)
+        run: python scripts/gen_parity_fixtures.py verify

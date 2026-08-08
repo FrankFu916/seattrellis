@@ -1,0 +1,22 @@
+{
+  "hard": {
+    "cannot_be_adjacent": [
+      {
+        "students": [
+          "STU004",
+          "STU005"
+        ]
+      }
+    ],
+    "must_be_adjacent": [
+      {
+        "students": [
+          "STU002",
+          "STU003"
+        ]
+      }
+    ]
+  },
+  "seed": 675259,
+  "soft": {}
+}

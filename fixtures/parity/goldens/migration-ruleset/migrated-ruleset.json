@@ -1,0 +1,88 @@
+{
+  "hard": {
+    "fixed_seats": [
+      {
+        "seat_id": "R1C1",
+        "student": "STU001"
+      }
+    ],
+    "must_be_adjacent": [],
+    "cannot_be_adjacent": [],
+    "min_distance": []
+  },
+  "seed": 256499,
+  "soft": {
+    "vision_front": {
+      "enabled": true,
+      "weight": 20
+    },
+    "height_back": {
+      "enabled": true,
+      "weight": 1
+    },
+    "randomize": {
+      "enabled": true,
+      "weight": 1
+    },
+    "score_balance": {
+      "enabled": false,
+      "weight": 1
+    },
+    "score_position": {
+      "enabled": false,
+      "weight": 1,
+      "direction": "high_front"
+    },
+    "score_distribution": {
+      "enabled": false,
+      "weight": 1,
+      "scope": "row"
+    },
+    "mentor_pairing": {
+      "enabled": false,
+      "weight": 1,
+      "mentor_percentile": 0.75,
+      "learner_percentile": 0.25,
+      "relation": "desk_mate",
+      "avoid_recent_repeats": true,
+      "history_lookback": 4
+    },
+    "fair_rotation": {
+      "enabled": false,
+      "weight": 10,
+      "avoid_repeating_categories": [
+        "front",
+        "back",
+        "side",
+        "corner",
+        "near_window",
+        "near_door",
+        "near_ac"
+      ],
+      "lookback": 4
+    },
+    "avoid_recent_neighbors": {
+      "enabled": false,
+      "weight": 10,
+      "relation_types": [
+        "desk_mate",
+        "adjacent_any"
+      ],
+      "lookback": 4,
+      "max_recent_count": 1,
+      "within_distance": 2
+    },
+    "cooling": {
+      "enabled": false,
+      "weight": 5,
+      "cooling_period": 3,
+      "relation_types": [
+        "desk_mate",
+        "adjacent_any"
+      ],
+      "within_distance": 2
+    }
+  },
+  "schema_version": 1,
+  "groups": []
+}

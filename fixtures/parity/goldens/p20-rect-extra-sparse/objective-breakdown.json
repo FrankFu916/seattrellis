@@ -1,0 +1,386 @@
+{
+  "candidates": [
+    {
+      "breakdown": {
+        "avoid_recent_neighbors_score": {
+          "details": {
+            "reason": "avoid_recent_neighbors is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "diversity_score": {
+          "details": {
+            "compared_candidate_count": 2,
+            "meaning": "Mean percentage of students seated differently from the other candidates."
+          },
+          "rating": "high",
+          "raw_value": 80.0,
+          "score": 80.0,
+          "status": "available",
+          "weight": 1.0
+        },
+        "fair_rotation_score": {
+          "details": {
+            "reason": "fair_rotation is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "hard_constraint_summary": {
+          "checked_rule_count": 6,
+          "details": {
+            "assignment_count": 20,
+            "cannot_be_adjacent_count": 1,
+            "fixed_seat_count": 1,
+            "min_distance_count": 0,
+            "must_be_adjacent_count": 1,
+            "student_count": 20
+          },
+          "satisfied": true,
+          "violation_count": 0,
+          "violations": []
+        },
+        "height_preference_score": {
+          "details": {
+            "lower_error_is_better": true,
+            "mean_normalized_position_error": 0.3492982456140351
+          },
+          "rating": "medium",
+          "raw_value": 0.3492982456140351,
+          "score": 65.07,
+          "status": "available",
+          "weight": 1.0
+        },
+        "rule_scores": {
+          "mentor_pairing_score": {
+            "details": {
+              "reason": "mentor_pairing is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          },
+          "score_distribution_score": {
+            "details": {
+              "reason": "score_distribution is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          },
+          "score_position_score": {
+            "details": {
+              "reason": "score_position is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          }
+        },
+        "score_balance_score": {
+          "details": {
+            "reason": "score_balance is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "stability_score": {
+          "details": {
+            "reason": "No previous snapshot was supplied."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "vision_preference_score": {
+          "details": {
+            "lower_row_value_is_better": true,
+            "mean_normalized_row": 0.06666666666666667,
+            "students_needing_front": 6
+          },
+          "rating": "high",
+          "raw_value": 0.06666666666666667,
+          "score": 93.33,
+          "status": "available",
+          "weight": 20.0
+        }
+      },
+      "candidate_id": "candidate_01",
+      "hard_constraint_violations": null,
+      "total_score": 91.44
+    },
+    {
+      "breakdown": {
+        "avoid_recent_neighbors_score": {
+          "details": {
+            "reason": "avoid_recent_neighbors is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "diversity_score": {
+          "details": {
+            "compared_candidate_count": 2,
+            "meaning": "Mean percentage of students seated differently from the other candidates."
+          },
+          "rating": "high",
+          "raw_value": 87.5,
+          "score": 87.5,
+          "status": "available",
+          "weight": 1.0
+        },
+        "fair_rotation_score": {
+          "details": {
+            "reason": "fair_rotation is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "hard_constraint_summary": {
+          "checked_rule_count": 6,
+          "details": {
+            "assignment_count": 20,
+            "cannot_be_adjacent_count": 1,
+            "fixed_seat_count": 1,
+            "min_distance_count": 0,
+            "must_be_adjacent_count": 1,
+            "student_count": 20
+          },
+          "satisfied": true,
+          "violation_count": 0,
+          "violations": []
+        },
+        "height_preference_score": {
+          "details": {
+            "lower_error_is_better": true,
+            "mean_normalized_position_error": 0.3387719298245614
+          },
+          "rating": "medium",
+          "raw_value": 0.3387719298245614,
+          "score": 66.12,
+          "status": "available",
+          "weight": 1.0
+        },
+        "rule_scores": {
+          "mentor_pairing_score": {
+            "details": {
+              "reason": "mentor_pairing is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          },
+          "score_distribution_score": {
+            "details": {
+              "reason": "score_distribution is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          },
+          "score_position_score": {
+            "details": {
+              "reason": "score_position is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          }
+        },
+        "score_balance_score": {
+          "details": {
+            "reason": "score_balance is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "stability_score": {
+          "details": {
+            "reason": "No previous snapshot was supplied."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "vision_preference_score": {
+          "details": {
+            "lower_row_value_is_better": true,
+            "mean_normalized_row": 0.06666666666666667,
+            "students_needing_front": 6
+          },
+          "rating": "high",
+          "raw_value": 0.06666666666666667,
+          "score": 93.33,
+          "status": "available",
+          "weight": 20.0
+        }
+      },
+      "candidate_id": "candidate_02",
+      "hard_constraint_violations": null,
+      "total_score": 91.83
+    },
+    {
+      "breakdown": {
+        "avoid_recent_neighbors_score": {
+          "details": {
+            "reason": "avoid_recent_neighbors is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "diversity_score": {
+          "details": {
+            "compared_candidate_count": 2,
+            "meaning": "Mean percentage of students seated differently from the other candidates."
+          },
+          "rating": "high",
+          "raw_value": 82.5,
+          "score": 82.5,
+          "status": "available",
+          "weight": 1.0
+        },
+        "fair_rotation_score": {
+          "details": {
+            "reason": "fair_rotation is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "hard_constraint_summary": {
+          "checked_rule_count": 6,
+          "details": {
+            "assignment_count": 20,
+            "cannot_be_adjacent_count": 1,
+            "fixed_seat_count": 1,
+            "min_distance_count": 0,
+            "must_be_adjacent_count": 1,
+            "student_count": 20
+          },
+          "satisfied": true,
+          "violation_count": 0,
+          "violations": []
+        },
+        "height_preference_score": {
+          "details": {
+            "lower_error_is_better": true,
+            "mean_normalized_position_error": 0.3492982456140351
+          },
+          "rating": "medium",
+          "raw_value": 0.3492982456140351,
+          "score": 65.07,
+          "status": "available",
+          "weight": 1.0
+        },
+        "rule_scores": {
+          "mentor_pairing_score": {
+            "details": {
+              "reason": "mentor_pairing is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          },
+          "score_distribution_score": {
+            "details": {
+              "reason": "score_distribution is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          },
+          "score_position_score": {
+            "details": {
+              "reason": "score_position is disabled."
+            },
+            "rating": "not_available",
+            "raw_value": null,
+            "score": null,
+            "status": "not_available",
+            "weight": 0.0
+          }
+        },
+        "score_balance_score": {
+          "details": {
+            "reason": "score_balance is disabled."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "stability_score": {
+          "details": {
+            "reason": "No previous snapshot was supplied."
+          },
+          "rating": "not_available",
+          "raw_value": null,
+          "score": null,
+          "status": "not_available",
+          "weight": 0.0
+        },
+        "vision_preference_score": {
+          "details": {
+            "lower_row_value_is_better": true,
+            "mean_normalized_row": 0.06666666666666667,
+            "students_needing_front": 6
+          },
+          "rating": "high",
+          "raw_value": 0.06666666666666667,
+          "score": 93.33,
+          "status": "available",
+          "weight": 20.0
+        }
+      },
+      "candidate_id": "candidate_03",
+      "hard_constraint_violations": null,
+      "total_score": 91.55
+    }
+  ],
+  "schema_version": "0.2.2"
+}
