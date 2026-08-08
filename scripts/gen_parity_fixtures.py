@@ -902,6 +902,7 @@ def write_manifest() -> None:
         "python_version": sys.version.split()[0],
         "generator": "scripts/gen_parity_fixtures.py",
         "solver_backend": SOLVER_BACKEND,
+        "pip_extras": "image,excel,pdf,docx,pptx",
         "golden_contract": (
             "Heuristic solutions are not required to match seat-for-seat between "
             "Python and Rust; semantics, legality, scoring definitions and quality "
