@@ -132,11 +132,11 @@ the migration; C/C++ is not part of the mainline architecture.
 ## Local verification
 
 ```bash
-cargo test --locked --manifest-path native/Cargo.toml \
+cargo test --locked \
   -p seattrellis_core -p seattrellis_cli
-cargo test --locked --manifest-path app/Cargo.toml
-cargo clippy --all-targets --manifest-path app/Cargo.toml -- -D warnings
-cargo build --release --locked --manifest-path app/Cargo.toml
+cargo test --locked -p seattrellis_app
+cargo clippy --all-targets -p seattrellis_app -- -D warnings
+cargo build --release --locked -p seattrellis_app
 ```
 
 To verify the standalone path, run the release binary from a directory that

@@ -1,0 +1,33 @@
+# SeatTrellis root production workspace (M1-01).
+#
+# Unifies the former native/, app/ and app/src-tauri/ workspaces into a single
+# lockfile and build graph. The PyO3 compatibility crate (seattrellis_native)
+# stays a member but is excluded from default-members so `cargo build` /
+# `cargo test` at the root never compiles it (plan: PyO3 isolated from
+# production default-members; removed before beta.1).
+
+[workspace]
+members = [
+    "native/seattrellis_core",
+    "native/seattrellis_cli",
+    "native/seattrellis_native",
+    "app",
+    "app/src-tauri",
+]
+default-members = [
+    "native/seattrellis_core",
+    "native/seattrellis_cli",
+    "app",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.88"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

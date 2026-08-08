@@ -155,9 +155,8 @@ pub fn compile_soft_objectives(
                 let missing_count = enabled_seats.len() - grouped.len();
                 warnings.push(format!(
                     "score_distribution with scope='group' requires group_id on every \
-                     enabled seat; {} seat(s) are missing it, so the group distribution \
-                     objective is unavailable.",
-                    missing_count
+                     enabled seat; {missing_count} seat(s) are missing it, so the group \
+                     distribution objective is unavailable."
                 ));
                 distribution_buckets.clear();
             }

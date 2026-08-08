@@ -47,7 +47,7 @@ production React files are embedded at build time, so a copied release binary
 does not need the source checkout.
 
 ```bash
-cargo build --release --locked --manifest-path app/Cargo.toml
+cargo build --release --locked
 app/target/release/seattrellis_app --open-browser
 ```
 

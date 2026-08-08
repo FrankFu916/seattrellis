@@ -1,10 +1,10 @@
 [package]
 name = "seattrellis_desktop"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.83"
+edition.workspace = true
+rust-version.workspace = true
 description = "SeatTrellis desktop shell (Tauri): WebView window over the loopback Rust backend."
-license = "Apache-2.0"
+license.workspace = true
 
 [lib]
 name = "seattrellis_desktop_lib"
@@ -25,6 +25,3 @@ seattrellis_app = { path = "../" }
 # server is running; keep it so the bundler can produce a standalone .app.
 custom-protocol = ["tauri/custom-protocol"]
 
-# Own workspace root so this shell crate is independent of the `app/` and
-# `native/` workspaces (it already depends on `app` by path).
-[workspace]

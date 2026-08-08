@@ -30,7 +30,7 @@ check below succeeds.
 Local Rust checks:
 
 ```bash
-cargo test --manifest-path native/Cargo.toml
+cargo test --locked
 ```
 
 To evaluate the extension, activate a virtual environment in a matching source
