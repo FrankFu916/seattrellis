@@ -1,0 +1,2067 @@
+{
+  "components": {
+    "responses": {
+      "Conflict": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "Revision conflict, stale base, or already-applied command"
+      },
+      "InternalError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "Internal fault"
+      },
+      "InvalidHost": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "Host header is not the loopback address the server is bound to (DNS rebinding guard)"
+      },
+      "InvalidInput": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "Malformed request or validation failure"
+      },
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "Unknown draft, project or artifact"
+      },
+      "Unprocessable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "Semantic validation failure (422)"
+      }
+    },
+    "schemas": {
+      "CoreSolveRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "api_version": {
+            "type": "integer"
+          },
+          "cannot_be_adjacent": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "edges": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "fixed_seats": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "history": {
+            "type": "object"
+          },
+          "layout": {
+            "type": "object"
+          },
+          "min_distance": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "must_be_adjacent": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "pair_history": {
+            "type": "object"
+          },
+          "rules": {
+            "type": "object"
+          },
+          "seat_positions": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "student_count": {
+            "type": "integer"
+          },
+          "students": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "api_version",
+          "student_count",
+          "seat_positions"
+        ],
+        "type": "object"
+      },
+      "CreateLayoutDraftRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "columns": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          },
+          "template_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EditorCommandEnvelope": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "base_revision": {
+            "type": "integer"
+          },
+          "command_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "protocol_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "protocol_version",
+          "command_id",
+          "draft_id",
+          "base_revision",
+          "action"
+        ],
+        "type": "object"
+      },
+      "EditorState": {
+        "additionalProperties": true,
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "protocol_version": {
+            "type": "string"
+          },
+          "redo_depth": {
+            "type": "integer"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "seats": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "students": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "display_name": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "seat_id": {
+                  "type": "string"
+                },
+                "student_key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "student_key",
+                "display_name",
+                "locked"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "undo_depth": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "protocol_version",
+          "draft_id",
+          "revision",
+          "undo_depth",
+          "redo_depth",
+          "students",
+          "seats"
+        ],
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": true,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "ExportDraftRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "svg",
+              "html",
+              "print-html",
+              "png",
+              "pdf",
+              "excel",
+              "docx",
+              "pptx"
+            ],
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "orientation": {
+            "type": "string"
+          },
+          "page_scale": {
+            "type": "number"
+          },
+          "privacy": {
+            "type": "string"
+          },
+          "show_student_ids": {
+            "type": "boolean"
+          },
+          "template": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "draft_id",
+          "format"
+        ],
+        "type": "object"
+      },
+      "GenerateClassRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "draft": {
+            "properties": {
+              "goal": {
+                "properties": {
+                  "custom": {
+                    "type": "object"
+                  },
+                  "goal_id": {
+                    "type": "string"
+                  },
+                  "hard_rules": {
+                    "type": "object"
+                  },
+                  "rules_overlay": {
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "history_snapshots": {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "room": {
+                "properties": {
+                  "layout": {
+                    "type": "object"
+                  },
+                  "template_id": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "students": {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "students",
+              "room",
+              "goal"
+            ],
+            "type": "object"
+          },
+          "options": {
+            "properties": {
+              "candidate_count": {
+                "type": "integer"
+              },
+              "seed": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "draft"
+        ],
+        "type": "object"
+      },
+      "GenerateClassResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "candidate_id": {
+                  "type": "string"
+                },
+                "recommended": {
+                  "type": "boolean"
+                },
+                "total_score": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "candidate_id",
+                "recommended",
+                "total_score"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "class_name": {
+            "type": "string"
+          },
+          "editor": {
+            "$ref": "#/components/schemas/EditorState"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "recommended_candidate_id": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "class_name",
+          "goal",
+          "warnings",
+          "recommended_candidate_id",
+          "candidates",
+          "editor"
+        ],
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_version",
+          "service",
+          "status"
+        ],
+        "type": "object"
+      },
+      "LayoutCommand": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "base_revision": {
+            "type": "integer"
+          },
+          "command_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "command_id",
+          "draft_id",
+          "base_revision",
+          "action"
+        ],
+        "type": "object"
+      },
+      "PlanNotFound": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "const": "plan_not_found",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "Solved",
+              "ProvenInfeasible",
+              "Timeout",
+              "Unknown",
+              "InvalidInput",
+              "Cancelled",
+              "InternalError"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "status",
+          "message"
+        ],
+        "type": "object"
+      },
+      "RosterDraftResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "column_count": {
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "headerless": {
+            "type": "boolean"
+          },
+          "mapping_issues": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "preview_rows": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "row_count": {
+            "type": "integer"
+          },
+          "source_format": {
+            "type": "string"
+          },
+          "suggested_mapping": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "draft_id",
+          "source_format",
+          "headerless",
+          "row_count",
+          "column_count",
+          "columns",
+          "preview_rows",
+          "suggested_mapping",
+          "mapping_issues"
+        ],
+        "type": "object"
+      },
+      "RosterUpdatePreviewRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "current_revision": {
+            "type": "integer"
+          },
+          "current_students": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "mapping": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "updated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mapping",
+          "mode",
+          "current_students",
+          "current_revision",
+          "updated_fields"
+        ],
+        "type": "object"
+      },
+      "SessionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "type": "integer"
+          },
+          "session_token": {
+            "description": "256-bit hex token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_version",
+          "session_token"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerSession": {
+        "description": "256-bit loopback session token (GET /api/v1/session)",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Loopback-only backend for the SeatTrellis workbench. Every /api/* endpoint except GET /api/v1/session requires `Authorization: Bearer <session token>`. The Host header must be the loopback address the server is bound to; cross-origin requests are rejected (M1-05).",
+    "title": "SeatTrellis loopback API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "The compiled workbench HTML"
+          }
+        },
+        "security": [],
+        "summary": "Workbench entry point (index.html)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/catalogs": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Bilingual catalogs"
+          }
+        },
+        "summary": "Room templates, teacher goals and export formats",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/classes/generate": {
+      "post": {
+        "description": "Two request shapes: the raw CoreSolveRequest or the workbench GenerateClassRequest (draft.students + draft.room + draft.goal).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CoreSolveRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GenerateClassRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateClassResponse"
+                }
+              }
+            },
+            "description": "GenerateClassResponse with candidates + editor draft"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanNotFound"
+                }
+              }
+            },
+            "description": "Heuristic exhaustion (status: Unknown)"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "Generate seating plans and open an editable draft",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/classes/rotation": {
+      "post": {
+        "description": "NOT IMPLEMENTED in the Rust server (Python-only). Rotation generation is M4-04 work.",
+        "responses": {
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Generate a multi-period rotation plan",
+        "tags": [
+          "classes"
+        ],
+        "x-implemented": false
+      }
+    },
+    "/api/v1/editing/drafts/{draft_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorState"
+                }
+              }
+            },
+            "description": "EditorState"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Fetch the current editor state",
+        "tags": [
+          "editing"
+        ]
+      }
+    },
+    "/api/v1/editing/drafts/{draft_id}/commands": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorCommandEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorState"
+                }
+              }
+            },
+            "description": "Updated EditorState"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Dispatch an editor command (revision-checked)",
+        "tags": [
+          "editing"
+        ]
+      }
+    },
+    "/api/v1/exports": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Binary artifact (Content-Disposition attachment)"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "Export a draft in one of 8 formats",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Service health"
+          }
+        },
+        "summary": "Health probe",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/layouts/drafts": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLayoutDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "LayoutStateResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Create a layout draft (rows/columns or template)",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/layouts/drafts/{draft_id}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Delete a layout draft",
+        "tags": [
+          "layouts"
+        ]
+      },
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "LayoutStateResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Fetch a layout draft",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/layouts/drafts/{draft_id}/commands": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated LayoutStateResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Dispatch a layout command (revision-checked)",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/layouts/drafts/{draft_id}/compiled": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CompiledLayoutResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Compile a layout draft into a solvable ClassroomLayout",
+        "tags": [
+          "layouts"
+        ]
+      }
+    },
+    "/api/v1/projects/artifacts/compare": {
+      "post": {
+        "description": "NOT IMPLEMENTED in the Rust server (Python-only).",
+        "responses": {
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Compare two project artifacts",
+        "tags": [
+          "projects"
+        ],
+        "x-implemented": false
+      }
+    },
+    "/api/v1/projects/artifacts/restore": {
+      "post": {
+        "description": "NOT IMPLEMENTED in the Rust server (Python-only).",
+        "responses": {
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Restore a project artifact",
+        "tags": [
+          "projects"
+        ],
+        "x-implemented": false
+      }
+    },
+    "/api/v1/projects/bundle": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Zip bundle (Content-Disposition attachment)"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Pack a project into a .seattrellis.zip bundle",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/history": {
+      "post": {
+        "description": "Project file history",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Result document"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "history",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/migration/apply": {
+      "post": {
+        "description": "Migrate an artifact (backup + atomic write)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Result document"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "migration apply",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/migration/batch/apply": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "in_place": {
+                    "type": "boolean"
+                  },
+                  "project_paths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "project_paths"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Batch apply report"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Batch migration apply",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/migration/batch/preview": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "in_place": {
+                    "type": "boolean"
+                  },
+                  "project_paths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "project_paths"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Batch preview report"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Batch migration preview",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/migration/preview": {
+      "post": {
+        "description": "Dry-run artifact migration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Result document"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "migration preview",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/migration/reference-checks": {
+      "post": {
+        "description": "Cross-artifact reference checks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Result document"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "reference checks",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/migration/restore": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "backup_path": {
+                    "type": "string"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Restore result"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Restore a migration backup",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/privacy": {
+      "post": {
+        "description": "Scan a project for sensitive fields",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Result document"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "privacy",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/recent": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent project list"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "List recent projects",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/restore": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "bundle": {
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "output_dir": {
+                    "type": "string"
+                  },
+                  "overwrite": {
+                    "description": "1/true/yes/on",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bundle",
+                  "output_dir"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Restored project info"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Restore a project from an uploaded bundle (multipart `bundle` + `output_dir`)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/rotation/group-register": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "artifact_path": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "enum": [
+                      "html",
+                      "csv"
+                    ],
+                    "type": "string"
+                  },
+                  "locale": {
+                    "type": "string"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path",
+                  "format"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Group register file"
+          },
+          "400": {
+            "description": "Unknown format"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Download the group register (html or csv)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/rotation/group-register/preview": {
+      "post": {
+        "description": "Preview period groups",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Result document"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "group register preview",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/rotation/group-register/save": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "groups": {
+                    "type": "object"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Save result"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Save group assignments (JSON or multipart)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/rotation/load": {
+      "post": {
+        "description": "Load a rotation plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "include_outputs": {
+                    "type": "boolean"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Result document"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "summary": "rotation load",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/rotation/save": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "draft_ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "output_name": {
+                    "type": "string"
+                  },
+                  "project_path": {
+                    "type": "string"
+                  },
+                  "rotation_plan": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "project_path",
+                  "rotation_plan"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Rotation save response"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Save a rotation plan",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/rosters/drafts": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RosterDraftResponse"
+                }
+              }
+            },
+            "description": "RosterDraftResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        },
+        "summary": "Upload a roster file (multipart field `file`)",
+        "tags": [
+          "rosters"
+        ]
+      }
+    },
+    "/api/v1/rosters/drafts/{draft_id}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Delete a roster draft",
+        "tags": [
+          "rosters"
+        ]
+      },
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RosterDraftResponse"
+                }
+              }
+            },
+            "description": "RosterDraftResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Fetch a roster draft",
+        "tags": [
+          "rosters"
+        ]
+      }
+    },
+    "/api/v1/rosters/drafts/{draft_id}/preview": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RosterUpdatePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Roster update preview"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Preview a roster update against current students",
+        "tags": [
+          "rosters"
+        ]
+      }
+    },
+    "/api/v1/session": {
+      "get": {
+        "description": "Host-checked; no Bearer required. The token is injected into the WebView memory by the shell, or fetched here by the browser workspace.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "The session token"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidHost"
+          }
+        },
+        "security": [],
+        "summary": "Bootstrap: issue the session token to a same-origin page",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/solve": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoreSolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateClassResponse"
+                }
+              }
+            },
+            "description": "GenerateClassResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanNotFound"
+                }
+              }
+            },
+            "description": "Heuristic exhaustion"
+          }
+        },
+        "summary": "Alias of POST /api/v1/classes/generate (raw CoreSolveRequest)",
+        "tags": [
+          "classes"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "variables": {
+        "port": {
+          "default": "8765"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "description": "Health, catalogs, session bootstrap, static assets",
+      "name": "system"
+    },
+    {
+      "description": "Seating plan generation",
+      "name": "classes"
+    },
+    {
+      "description": "Roster upload/preview drafts",
+      "name": "rosters"
+    },
+    {
+      "description": "Command-driven seating editor drafts",
+      "name": "editing"
+    },
+    {
+      "description": "Classroom layout drafts",
+      "name": "layouts"
+    },
+    {
+      "description": "Plan export (8 formats)",
+      "name": "exports"
+    },
+    {
+      "description": "Project files: history, privacy, bundle, migration, rotation",
+      "name": "projects"
+    }
+  ]
+}
