@@ -15,6 +15,7 @@ members = [
     "app/src-tauri",
     "xtask",
     "crates/seattrellis-schema",
+    "crates/seattrellis-rules",
 ]
 default-members = [
     "native/seattrellis_core",
