@@ -68,6 +68,13 @@ from seattrellis.web.keys import (
     export_prepared_state_key,
 )
 
+# Absolute path to the Streamlit app: AppTest resolves relative paths against
+# the *calling file* (streamlit >= 1.61), so "src/..." would resolve under
+# tests/ and fail; an absolute path is unambiguous across versions.
+STREAMLIT_APP_PATH = str(
+    Path(__file__).resolve().parent.parent / "src" / "seattrellis" / "web" / "app.py"
+)
+
 
 def test_web_workflow_generates_candidates_with_preset_overlay_and_history(tmp_path) -> None:
     result = workflow.solve_for_web(
@@ -723,7 +730,7 @@ def test_streamlit_app_smoke() -> None:
 def test_teacher_workspace_survives_advanced_tools_and_can_start_over() -> None:
     streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app = streamlit_testing.AppTest.from_file(STREAMLIT_APP_PATH)
     app.run(timeout=10)
     _control_by_key(app.text_input, TEACHER_CLASS_NAME_INPUT).set_value("Class 7 A")
     roster_path = Path("tests/fixtures/students.csv")
@@ -1668,7 +1675,7 @@ def _control_by_key(controls, key: str):
 def _advanced_app(streamlit_testing):
     """Open the legacy Quick and Project workspaces for their AppTest coverage."""
 
-    app = streamlit_testing.AppTest.from_file("src/seattrellis/web/app.py")
+    app = streamlit_testing.AppTest.from_file(STREAMLIT_APP_PATH)
     app.run(timeout=10)
     _control_by_key(app.radio, APP_WORKSPACE_SELECT).set_value("advanced")
     app.run(timeout=10)

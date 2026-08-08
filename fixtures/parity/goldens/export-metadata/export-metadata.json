@@ -25,9 +25,8 @@
     "stdout": "Export written to <gold_dir>/export.pdf"
   },
   "png": {
-    "bytes": 15207,
+    "content_embeds_generation_timestamp": true,
     "exit_code": 0,
-    "sha256": "a26c4b55021eb767924b7aab396a97778bf3be246f2408044b3674719d59e55b",
     "stderr": "",
     "stdout": "Export written to <gold_dir>/export.png"
   },

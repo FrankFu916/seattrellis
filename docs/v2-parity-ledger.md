@@ -551,12 +551,16 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
   质量门槛一致；时间戳字段规范化）。
 - 可重放：`python scripts/gen_parity_fixtures.py verify` 在临时目录重生成
   全部 inputs+goldens 并逐字节比对（CI `parity-oracle` job 固定 Python 3.12）。
-- 确定性预算：solve golden 使用 `--time-limit 300`，保证 fallback 的
+- 确定性预算：solve golden 使用 `--time-limit 1800`，保证 fallback 的
   `attempts = max(40, n*12)` 全部完成，不受墙钟截止影响（M0-03 发现：
-  3s 预算下大 case 的 attempt 数随运行波动，golden 不稳定）。
-- 导出 golden 契约：PNG/Excel 字节稳定，记录 sha256；SVG/HTML/print-html/
-  PDF/DOCX/PPTX 在内容中嵌入「生成时间」时间戳（M0-03 发现），不记录
-  sha256，字节稳定性列为 M5-04 导出 parity 项。
+  短预算下大 case 的 attempt 数随运行波动，golden 不稳定；300s 在慢 CI
+  runner 上仍会命中截止，故取 1800s；`verify` 对截止命中的运行显式
+  SKIP 警告而非误报 DIFF）。
+- 导出 golden 契约：**没有任何导出格式字节稳定**——文本格式内容嵌入
+  「生成时间」时间戳、PDF/DOCX/PPTX 携带时间戳、xlsx zip 存储文件 mtime
+  （2s 粒度）、PNG deflate 流依赖平台 zlib 版本（M0-03 发现）。golden
+  只记录语义契约（exit code、规范化输出、文本格式行数）；字节稳定性
+  列为 M5-04 导出 parity 项。
 - candidates golden 仅覆盖 n≤40（n=50/60/80 的候选集引擎是 M4-03 工作）。
 
 ### 差分 harness（M0-03）

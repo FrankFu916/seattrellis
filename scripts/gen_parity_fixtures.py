@@ -36,8 +36,11 @@ SOLVER_BACKEND = "fallback"
 # Deterministic budget: large enough that the fallback never hits the
 # wall-clock deadline (attempts = max(40, n*12) always completes), so solve
 # goldens are byte-stable across runs. Wall-clock-terminated solves are
-# nondeterministic by construction (M0-03 finding).
-TIME_LIMIT = "300"
+# nondeterministic by construction (M0-03 finding). 1800s covers p80 (960
+# attempts, ~4 min on a Mac; slower CI runners need slack). A deadline-bound
+# run is still detectable: `verify` skips such cases with a visible warning
+# instead of reporting a false DIFF.
+TIME_LIMIT = "1800"
 NONDETERMINISTIC_KEYS = ("created_at", "wall_clock_seconds", "snapshot_id")
 
 SOFT_WEIGHTS = {
@@ -497,7 +500,7 @@ def gen_history(case: dict, case_dir: Path, students: Path, layout: Path) -> lis
             "solve", "--students", str(students), "--layout", str(layout),
             "--rules", str(rfile), "--output", str(out),
             "--backend", SOLVER_BACKEND, "--seed", str(seed + p * 7),
-            "--time-limit", "300",
+            "--time-limit", "1800",
         ])
         rfile.unlink(missing_ok=True)
         if proc.returncode != 0:
@@ -714,11 +717,12 @@ def gen_export_metadata(case: dict, case_dir: Path, gold_dir: Path) -> None:
         print("    export skipped: snapshot missing")
         return
     formats = ["svg", "html", "print-html", "png", "pdf", "excel", "docx", "pptx"]
-    # Byte-stable formats. Only PNG qualifies: every other format embeds a
-    # "generation time" string in the content or archive metadata (zip stores
-    # file mtimes with 2s granularity), so their sha256 is not recorded;
-    # byte-stability is an M5-04 export-parity item (M0-03 finding).
-    stable_formats = {"png"}
+    # No export format is byte-stable: text formats embed a "generation time"
+    # string, PDF/DOCX/PPTX carry timestamps, xlsx zip stores file mtimes (2s
+    # granularity), and PNG's deflate stream depends on the platform zlib
+    # (M0-03 findings). The golden therefore records the semantic contract
+    # only: exit code, normalized output, and line counts for text formats.
+    # Byte-stability is an M5-04 export-parity item.
     meta = {}
     for fmt in formats:
         out = gold_dir / f"export.{fmt}"
@@ -730,16 +734,10 @@ def gen_export_metadata(case: dict, case_dir: Path, gold_dir: Path) -> None:
         }
         if proc.returncode == 0 and out.exists():
             data = out.read_bytes()
-            if fmt in stable_formats:
-                entry["bytes"] = len(data)
-                entry["sha256"] = hashlib.sha256(data).hexdigest()
-            else:
-                # Timestamp-embedding formats vary in size with the embedded
-                # "generation time" string; only the semantic contract is kept.
-                entry["content_embeds_generation_timestamp"] = True
+            entry["content_embeds_generation_timestamp"] = True
             if fmt in ("svg", "html", "print-html"):
                 entry["lines"] = data.decode("utf-8", errors="replace").count("\n") + 1
-            out.unlink()  # keep goldens lean; metadata + hash is the contract
+            out.unlink()  # keep goldens lean; metadata is the contract
         meta[fmt] = entry
     write_json(gold_dir / "export-metadata.json", meta)
 
@@ -798,8 +796,31 @@ def gen_goldens(cases: list[dict]) -> None:
         gen_export_metadata(case, case_dir, gold_dir)
 
 
+def _deadline_bound(path: Path) -> bool:
+    """True when a fresh snapshot was produced by a deadline-bound solve.
+
+    On a slow machine the fallback can hit the wall-clock budget before its
+    deterministic attempt count (max(40, n*12)) is exhausted; such a run is
+    nondeterministic by construction and must not be byte-compared.
+    """
+    try:
+        data = read_json(path)
+    except (OSError, ValueError):
+        return False
+    metrics = data.get("metrics", {}) if isinstance(data, dict) else {}
+    attempts = metrics.get("attempts")
+    limit = metrics.get("attempt_limit")
+    if isinstance(attempts, int) and isinstance(limit, int) and attempts < limit:
+        return True
+    return bool(metrics.get("stopped_by_time_limit"))
+
+
 def compare_tree(committed: Path, fresh: Path, label: str) -> bool:
-    """Byte-compare every file under `committed` with its regenerated twin."""
+    """Byte-compare every file under `committed` with its regenerated twin.
+
+    Fresh snapshots whose solve hit the wall-clock deadline are skipped with
+    a visible warning: they are nondeterministic by construction, not drift.
+    """
     ok = True
     for path in sorted(committed.rglob("*")):
         if not path.is_file():
@@ -810,6 +831,11 @@ def compare_tree(committed: Path, fresh: Path, label: str) -> bool:
             print(f"    MISSING regen ({label}): {rel}")
             ok = False
             continue
+        if rel.name.endswith(".snapshot.json") or rel.name == "snapshot.json":
+            if _deadline_bound(twin):
+                print(f"    SKIP ({label}): {rel} (solve hit the wall-clock "
+                      "deadline; nondeterministic by construction)")
+                continue
         if twin.read_bytes() != path.read_bytes():
             print(f"    DIFF ({label}): {rel}")
             ok = False

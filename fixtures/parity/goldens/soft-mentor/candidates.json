@@ -673,7 +673,7 @@
           "solver_backend_effective": "fallback",
           "solver_backend_requested": "fallback",
           "stopped_by_time_limit": false,
-          "time_limit_seconds": 300.0
+          "time_limit_seconds": 1800.0
         },
         "objective_value": 11917.0,
         "rules": {
@@ -1686,7 +1686,7 @@
           "solver_backend_effective": "fallback",
           "solver_backend_requested": "fallback",
           "stopped_by_time_limit": false,
-          "time_limit_seconds": 300.0
+          "time_limit_seconds": 1800.0
         },
         "objective_value": 11908.0,
         "rules": {
@@ -2699,7 +2699,7 @@
           "solver_backend_effective": "fallback",
           "solver_backend_requested": "fallback",
           "stopped_by_time_limit": false,
-          "time_limit_seconds": 300.0
+          "time_limit_seconds": 1800.0
         },
         "objective_value": 11765.0,
         "rules": {

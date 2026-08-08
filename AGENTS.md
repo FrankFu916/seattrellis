@@ -65,9 +65,10 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 ```
 
 - 41 个 case（34 合法 + 7 invalid），`MANIFEST.json` 含逐文件 SHA-256；确定性预算为
-  `--time-limit 300`（墙钟截止的 solve 不稳定，3s 预算会产出不可重放的 golden）。
-- 导出 golden：PNG/Excel 字节稳定记录 sha256；其余格式内容嵌「生成时间」时间戳，字节
-  稳定性是 M5-04 项。candidates golden 仅 n≤40（M4-03 补大班候选引擎）。
+  `--time-limit 1800`（墙钟截止的 solve 不稳定，短预算会产出不可重放的 golden；
+  verify 对截止命中的运行显式 SKIP）。
+- 导出 golden：**无任何格式字节稳定**（时间戳嵌入/zlib/zip mtime），只记录语义契约，
+  字节稳定性是 M5-04 项。candidates golden 仅 n≤40（M4-03 补大班候选引擎）。
 - 已知 Rust 差距（diff harness 暴露）：无时间预算（M3-04）、不校验重复学生 key、
   忽略未知规则字段、CLI 无法表达坏邻接布局——均纳入 M2/M3 修复清单。
 
