@@ -20,8 +20,19 @@ use std::process::ExitCode;
 
 mod spec;
 
+use schemars::JsonSchema;
+use seattrellis_schema::dto::classroom_layout::ClassroomLayout;
+use seattrellis_schema::dto::student_roster::StudentRoster;
+use seattrellis_schema::{ArtifactEnvelope, ArtifactKind};
+
 const OPENAPI_OUT: &str = "docs/api-v1-openapi.json";
 const TS_OUT: &str = "clients/web/src/api/generated.ts";
+/// Generated v2 artifact schemas (M2-02): one file per kind, describing the
+/// full envelope document for that artifact.
+const SCHEMA_ARTIFACTS: &[(&str, ArtifactKind)] = &[
+    ("student-roster", ArtifactKind::StudentRoster),
+    ("classroom-layout", ArtifactKind::ClassroomLayout),
+];
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -33,6 +44,38 @@ fn repo_root() -> PathBuf {
 fn write_artifact(relative: &str, content: &str) -> Result<(), String> {
     let path = repo_root().join(relative);
     fs::write(&path, content).map_err(|error| format!("cannot write {}: {error}", path.display()))
+}
+
+/// Generate all v2 artifact JSON Schemas (one file per kind).
+fn schema_artifacts() -> Vec<(String, String)> {
+    SCHEMA_ARTIFACTS
+        .iter()
+        .map(|(slug, kind)| {
+            let schema = match kind {
+                ArtifactKind::StudentRoster => {
+                    schema_for_envelope::<StudentRoster>(kind)
+                }
+                ArtifactKind::ClassroomLayout => {
+                    schema_for_envelope::<ClassroomLayout>(kind)
+                }
+                _ => unreachable!("schema artifacts are listed explicitly"),
+            };
+            (
+                format!("schemas/{slug}.v2.schema.json"),
+                serde_json::to_string_pretty(&schema).expect("schema serializes") + "\n",
+            )
+        })
+        .collect()
+}
+
+/// Build the envelope schema for a typed payload via schemars.
+fn schema_for_envelope<T: JsonSchema>(kind: &ArtifactKind) -> serde_json::Value {
+    let root = schemars::schema_for!(ArtifactEnvelope<T>);
+    let mut value = serde_json::to_value(root).expect("schema converts");
+    // Record the artifact kind in the schema title so generated files are
+    // self-describing and drift-checkable.
+    value["title"] = serde_json::Value::String(format!("SeatTrellis v2 artifact: {kind:?}"));
+    value
 }
 
 /// The committed OpenAPI document (pretty JSON).
@@ -278,10 +321,13 @@ fn check_drift() -> Vec<String> {
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp).expect("temp dir");
 
-    let artifacts = [
+    let mut artifacts: Vec<(&str, String)> = vec![
         (OPENAPI_OUT, openapi_document()),
         (TS_OUT, typescript_client()),
     ];
+    for (relative, content) in schema_artifacts() {
+        artifacts.push((Box::leak(relative.into_boxed_str()), content));
+    }
     let mut drifted = Vec::new();
     for (relative, content) in artifacts {
         let committed = root.join(relative);
@@ -332,6 +378,23 @@ fn main() -> ExitCode {
                     }
                 }
             }
+            Some("schemas") => {
+                let mut failures = 0;
+                for (relative, content) in schema_artifacts() {
+                    match write_artifact(&relative, &content) {
+                        Ok(()) => println!("wrote {relative}"),
+                        Err(message) => {
+                            eprintln!("{message}");
+                            failures += 1;
+                        }
+                    }
+                }
+                if failures == 0 {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::FAILURE
+                }
+            }
             Some("check") => {
                 let drifted = check_drift();
                 if drifted.is_empty() {
@@ -354,5 +417,59 @@ fn main() -> ExitCode {
             eprintln!("unknown xtask command; expected `contract`");
             ExitCode::from(2)
         }
+    }}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every generated artifact schema must itself validate against the
+    /// draft-07 metaschema (M2-02 exit gate: metaschema 校验).
+    #[test]
+    fn generated_schemas_validate_against_the_metaschema() {
+        // Vendored copy of https://json-schema.org/draft-07/schema so the
+        // check runs offline in CI.
+        let metaschema: serde_json::Value = serde_json::from_str(include_str!(
+            "../fixtures/draft-07-metaschema.json"
+        ))
+        .expect("vendored metaschema parses");
+        let validator = jsonschema::validator_for(&metaschema).expect("metaschema is valid");
+        for (relative, content) in schema_artifacts() {
+            let document: serde_json::Value =
+                serde_json::from_str(&content).expect("generated schema parses");
+            let result = validator.validate(&document);
+            assert!(
+                result.is_ok(),
+                "{relative} is not a valid draft-07 schema: {}",
+                result.err().map(|error| error.to_string()).unwrap_or_default(),
+            );
+        }
+    }
+
+    /// The generated schemas must reject a document with an unknown field in
+    /// the payload (the strict-parse contract, expressed in the schema).
+    #[test]
+    fn generated_student_roster_schema_rejects_unknown_fields() {
+        let (_, content) = schema_artifacts()
+            .into_iter()
+            .find(|(name, _)| name == "schemas/student-roster.v2.schema.json")
+            .expect("student roster schema is generated");
+        let schema: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        let good = serde_json::json!({
+            "kind": "student_roster",
+            "schema_version": 2,
+            "data": { "students": [ { "student_id": "S1", "name": "Alice" } ] }
+        });
+        assert!(validator.validate(&good).is_ok());
+        let bad = serde_json::json!({
+            "kind": "student_roster",
+            "schema_version": 2,
+            "data": { "students": [ { "student_id": "S1", "mystery": 1 } ] }
+        });
+        assert!(
+            validator.validate(&bad).is_err(),
+            "unknown payload fields must be rejected by the generated schema"
+        );
     }
 }
