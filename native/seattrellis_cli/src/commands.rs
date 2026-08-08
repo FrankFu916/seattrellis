@@ -11,6 +11,7 @@ use std::path::Path;
 
 use seattrellis_core::{
     solve_problem_json, validate_solve_request_json, CoreSolveRequest, CoreSolveResponse,
+    SolveStatus,
 };
 
 use crate::render::SeatingGrid;
@@ -51,7 +52,9 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
     Ok(())
 }
 
-pub fn run_solve(args: &SolveArgs) -> Result<(), String> {
+/// Run the solver and return the frozen v2 `SolveStatus` so the caller
+/// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+pub fn run_solve(args: &SolveArgs) -> Result<SolveStatus, String> {
     let styler = Styler::stdout();
     let problem_text = read_text(&args.problem)?;
     let mut problem: serde_json::Value = serde_json::from_str(&problem_text)
@@ -104,6 +107,7 @@ pub fn run_solve(args: &SolveArgs) -> Result<(), String> {
         styler.bold("students seated"),
         styler.cyan(&response.assignment.len().to_string())
     );
+    println!("{}: {}", styler.bold("status"), styler.cyan(response.status.as_str()));
 
     if let Some(output) = &args.output {
         let pretty = serde_json::to_string_pretty(&response)
@@ -115,7 +119,7 @@ pub fn run_solve(args: &SolveArgs) -> Result<(), String> {
             output.display()
         );
     }
-    Ok(())
+    Ok(response.status)
 }
 
 pub fn run_export(args: &ExportArgs) -> Result<(), String> {

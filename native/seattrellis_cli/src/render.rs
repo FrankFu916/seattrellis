@@ -738,6 +738,7 @@ mod tests {
         CoreSolveResponse {
             api_version: 2,
             feasible: true,
+            status: seattrellis_core::SolveStatus::Solved,
             assignment: vec![[0, 0], [1, 1], [2, 2], [3, 3]],
             attempts_used: 4,
             hard_constraints_satisfied: true,

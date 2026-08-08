@@ -14,6 +14,8 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use seattrellis_core::{classify_solve_error, SolveStatus};
+
 use crate::style::Styler;
 use crate::usage::render_usage;
 
@@ -237,6 +239,21 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
     }
 }
 
+/// Frozen CLI v2 exit codes (plan §四.1 / M1-03):
+/// Solved 0, InvalidInput 2, ProvenInfeasible 3, Timeout 4, Unknown 5,
+/// InternalError 70, user cancel 130.
+fn exit_code_for(status: SolveStatus) -> u8 {
+    match status {
+        SolveStatus::Solved => 0,
+        SolveStatus::InvalidInput => 2,
+        SolveStatus::ProvenInfeasible => 3,
+        SolveStatus::Timeout => 4,
+        SolveStatus::Unknown => 5,
+        SolveStatus::Cancelled => 130,
+        SolveStatus::InternalError => 70,
+    }
+}
+
 fn run_command(command: Command) -> ExitCode {
     match command {
         Command::Help => {
@@ -258,15 +275,16 @@ fn run_command(command: Command) -> ExitCode {
             Err(message) => {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::FAILURE
+                // validate only ever judges input: InvalidInput (frozen 2).
+                ExitCode::from(2)
             }
         },
         Command::Solve(args) => match commands::run_solve(&args) {
-            Ok(()) => ExitCode::SUCCESS,
+            Ok(status) => ExitCode::from(exit_code_for(status)),
             Err(message) => {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::FAILURE
+                ExitCode::from(exit_code_for(classify_solve_error(&message)))
             }
         },
         Command::Export(args) => match commands::run_export(&args) {
@@ -274,7 +292,9 @@ fn run_command(command: Command) -> ExitCode {
             Err(message) => {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::FAILURE
+                // Export failures are not part of the frozen solve table;
+                // keep them internal (70) until an export status contract lands.
+                ExitCode::from(70)
             }
         },
     }
@@ -461,5 +481,35 @@ mod tests {
         ];
         let error = parse_args(&args).unwrap_err();
         assert!(error.contains("not valid UTF-8"), "unexpected error: {error}");
+    }
+
+    // ------------------------------------------------------------------
+    // M1-03: frozen CLI exit-code table (plan §四.1)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn exit_code_table_is_frozen() {
+        let cases = [
+            (SolveStatus::Solved, 0),
+            (SolveStatus::InvalidInput, 2),
+            (SolveStatus::ProvenInfeasible, 3),
+            (SolveStatus::Timeout, 4),
+            (SolveStatus::Unknown, 5),
+            (SolveStatus::Cancelled, 130),
+            (SolveStatus::InternalError, 70),
+        ];
+        for (status, expected) in cases {
+            assert_eq!(exit_code_for(status), expected, "status {status:?}");
+        }
+    }
+
+    #[test]
+    fn solve_error_classification_drives_exit_codes() {
+        // Invalid input must exit 2, never 1 or 70.
+        assert_eq!(exit_code_for(classify_solve_error("unsupported api_version 99")), 2);
+        assert_eq!(exit_code_for(classify_solve_error("native solve requires at least one seat")), 2);
+        assert_eq!(exit_code_for(classify_solve_error("Duplicate student identifiers: STU001")), 2);
+        // Internal faults exit 70.
+        assert_eq!(exit_code_for(classify_solve_error("solver panicked while ranking")), 70);
     }
 }
