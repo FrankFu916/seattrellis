@@ -721,17 +721,15 @@ def gen_export_metadata(case: dict, case_dir: Path, gold_dir: Path) -> None:
     # string, PDF/DOCX/PPTX carry timestamps, xlsx zip stores file mtimes (2s
     # granularity), and PNG's deflate stream depends on the platform zlib
     # (M0-03 findings). The golden therefore records the semantic contract
-    # only: exit code, normalized output, and line counts for text formats.
-    # Byte-stability is an M5-04 export-parity item.
+    # only: exit code and line counts for text formats. stderr/stdout are
+    # deliberately NOT recorded: they vary across platforms (e.g. CJK font
+    # fallback warnings on headless Linux). Byte-stability is an M5-04
+    # export-parity item.
     meta = {}
     for fmt in formats:
         out = gold_dir / f"export.{fmt}"
         proc = run_cli(["export", "--snapshot", str(snap), "--format", fmt, "--output", str(out)])
-        entry = {
-            "exit_code": proc.returncode,
-            "stderr": normalize_paths(proc.stderr.strip()[:200], case_dir, gold_dir),
-            "stdout": normalize_paths(proc.stdout.strip()[:200], case_dir, gold_dir),
-        }
+        entry = {"exit_code": proc.returncode}
         if proc.returncode == 0 and out.exists():
             data = out.read_bytes()
             entry["content_embeds_generation_timestamp"] = True
