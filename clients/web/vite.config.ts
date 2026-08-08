@@ -15,7 +15,9 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8765",
-        changeOrigin: false,
+        // M1-05: the backend validates the Host header against its loopback
+        // address; the dev proxy must rewrite the host to match.
+        changeOrigin: true,
       },
     },
   },
