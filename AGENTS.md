@@ -73,6 +73,19 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 - 已知 Rust 差距（diff harness 暴露）：无时间预算（M3-04）、不校验重复学生 key、
   忽略未知规则字段、CLI 无法表达坏邻接布局——均纳入 M2/M3 修复清单。
 
+## M1 里程碑状态（2026-08-08）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| M1-01 统一 workspace | ✅ 合并 | 根 Cargo.toml、单一 lockfile、MSRV 1.88、PyO3 隔离出 default-members |
+| M1-03 SolveOutcome | ✅ 合并 | 七状态 enum + CLI 退出码表 + server status 字段（详见上文） |
+| M1-04 axum | ✅ 合并 | 适配层 `app/src/http.rs`，52 路由测试零改动；413/并发 64/优雅停机 |
+| M1-05 安全边界 | ✅ 合并 | token/Host/Origin/Bearer/CSP（详见上文） |
+| M1-06 契约生成链 | ⏳ 进行中 | xtask + OpenAPI/TS codegen + CI drift |
+| M1-02 crate 拆分 | ⏳ 最后做 | 7 个单体 → domain/rules/solver/planning/storage/export/application |
+
+M1 Exit Gate 核查：workspace 统一 ✅ / PyO3 隔离 ✅ / 未认证、DNS rebinding、恶意 Origin、超大 body 全部拒绝并有测试 ✅ / 退出无残留 ✅。
+
 ## 已知陷阱
 
 - `app/src-tauri/rust-toolchain.toml` 锁定 1.88.0（Tauri 依赖要求），其余 crate 声明 MSRV 1.83——两者不一致是已知问题，按计划 M1 统一为 1.88。
