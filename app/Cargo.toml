@@ -9,6 +9,13 @@ description = "SeatTrellis desktop backend core: loopback HTTP server + native s
 [dependencies]
 # Native cost-ranked greedy solver (JSON in/out).
 seattrellis_core = { path = "../native/seattrellis_core" }
+# M1-04: replace the hand-rolled HTTP/1.1 parser with a maintained, fuzzed
+# stack (axum/hyper/tokio). axum features: default = http1 + tokio rt; we
+# build responses manually so no json/ws features are needed.
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+# Bounded concurrency for the loopback API (plan M1-04 exit gate).
+tower = { version = "0.5", features = ["limit", "util"] }
 serde_json = "1"
 # serde derive for the export domain request types (ExportDraftRequest shape).
 serde = { version = "1", features = ["derive"] }

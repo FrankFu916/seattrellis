@@ -3,10 +3,13 @@
 //! Serves the compiled React workbench (`web_static/`) and exposes the native
 //! endpoints the workbench's teacher flow needs end-to-end: roster upload &
 //! preview, class generation (which also creates an editable draft), the
-//! command-driven seating editor, export, and the static catalogs. The server
-//! is deliberately dependency-free beyond `seattrellis_core` and `serde_json`:
-//! a hand-rolled, minimal HTTP/1.1 server keeps the release binary small and
-//! the surface auditable.
+//! command-driven seating editor, export, and the static catalogs.
+//!
+//! The HTTP transport is axum/hyper/tokio (M1-04): [`crate::http`] adapts
+//! every request into the legacy [`Request`] shape and dispatches through
+//! [`route`], so the business layer and its tests are unchanged. Bounded
+//! concurrency, 64 MiB body limit (413) and graceful shutdown come from the
+//! maintained stack instead of a hand-rolled parser.
 //!
 //! Security posture (from-zero standards):
 //! - Binds loopback only (`127.0.0.1`); never exposes a LAN address.
@@ -15,17 +18,17 @@
 //!   percent-encoded escapes are rejected, and canonical paths are re-checked.
 //! - Errors are coarse (`404 not found`) and never leak internal paths.
 //! - No unwrap/expect on the request path; all failures become HTTP errors.
+//! - Session/token/Host checks are the M1-05 milestone (not yet landed).
 
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Read, Write};
-use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
+use std::io;
+use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use serde_json::{json, Value};
 
@@ -34,29 +37,6 @@ use seattrellis_core::cost::{
     classify_seat_position, detect_neighbor_relation_types, student_pair_key,
 };
 use seattrellis_core::CoreSolveRequest;
-
-/// Status-code -> reason text table for the responses we emit.
-const STATUS_TEXT: &[(u16, &str)] = &[
-    (100, "Continue"),
-    (200, "OK"),
-    (204, "No Content"),
-    (400, "Bad Request"),
-    (404, "Not Found"),
-    (405, "Method Not Allowed"),
-    (409, "Conflict"),
-    (411, "Length Required"),
-    (413, "Payload Too Large"),
-    (422, "Unprocessable Entity"),
-    (500, "Internal Server Error"),
-    (501, "Not Implemented"),
-];
-
-/// Maximum size of the request head (request line + headers), in bytes.
-const MAX_HEAD_BYTES: usize = 64 * 1024;
-/// Maximum accepted request body size, in bytes (64 MiB).
-const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
-/// Idle read/write timeout per connection.
-const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Compiled React workbench location resolved at build time. Used as a
 /// fallback so the binary serves assets regardless of the launch directory.
@@ -69,7 +49,7 @@ const EMBEDDED_WEB_STATIC: &str = "<embedded>/src/seattrellis/web_static";
 /// Original solve request bodies, keyed by editor draft id. The export route
 /// needs the request that produced a draft so it can reconstruct the full
 /// renderable plan (request + current assignment) after edits.
-type SolveRequestStore = Mutex<HashMap<String, Value>>;
+pub(crate) type SolveRequestStore = Mutex<HashMap<String, Value>>;
 
 /// Errors surfaced by [`resolve_web_root`] and [`Server::bind`].
 #[derive(Debug)]
@@ -120,6 +100,8 @@ pub struct Server {
     web_root: Arc<PathBuf>,
     editor_store: Arc<EditorDraftStore>,
     solve_requests: Arc<SolveRequestStore>,
+    /// Set by the shell (Tauri exit) to stop the accept loop gracefully.
+    shutdown: Arc<AtomicBool>,
 }
 
 impl Server {
@@ -134,6 +116,7 @@ impl Server {
             web_root: Arc::new(config.web_root.clone()),
             editor_store: Arc::new(editing::new_draft_store()),
             solve_requests: Arc::new(Mutex::new(HashMap::new())),
+            shutdown: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -142,24 +125,43 @@ impl Server {
         self.local_addr
     }
 
-    /// Accept connections forever, handling each on its own thread.
+    /// Ask the accept loop to stop (used by the Tauri shell on exit).
+    pub fn request_shutdown(&self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    /// The shutdown flag, for shells that need to set it from a handler
+    /// without holding the `Server` (e.g. a Tauri exit callback).
+    pub fn shutdown_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.shutdown)
+    }
+
+    /// Serve the loopback API until a shutdown signal arrives (Ctrl-C/SIGTERM
+    /// or [`Server::request_shutdown`]). Blocking facade over the tokio
+    /// runtime; axum/hyper handle connections (M1-04).
     pub fn serve(&self) -> io::Result<()> {
-        for stream in self.listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    let web_root = Arc::clone(&self.web_root);
-                    let editor_store = Arc::clone(&self.editor_store);
-                    let solve_requests = Arc::clone(&self.solve_requests);
-                    let _ = thread::Builder::new()
-                        .name("seattrellis-conn".to_string())
-                        .spawn(move || {
-                            handle_connection(stream, web_root, editor_store, solve_requests);
-                        });
-                }
-                Err(error) => eprintln!("[seattrellis] accept error: {error}"),
-            }
-        }
-        Ok(())
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(self.serve_async())
+    }
+
+    async fn serve_async(&self) -> io::Result<()> {
+        // The std listener was bound in blocking mode; tokio requires the
+        // non-blocking flag before registering the fd with the reactor.
+        let listener_std = self.listener.try_clone()?;
+        listener_std.set_nonblocking(true)?;
+        let listener = tokio::net::TcpListener::from_std(listener_std)?;
+        let state = crate::http::AppState {
+            web_root: Arc::clone(&self.web_root),
+            editor_store: Arc::clone(&self.editor_store),
+            solve_requests: Arc::clone(&self.solve_requests),
+            shutdown: Arc::clone(&self.shutdown),
+        };
+        let router = crate::http::build_router(state);
+        axum::serve(listener, router)
+            .with_graceful_shutdown(crate::http::shutdown_signal(Arc::clone(&self.shutdown)))
+            .await
     }
 }
 
@@ -205,152 +207,17 @@ pub fn resolve_web_root() -> Result<PathBuf, ServerError> {
 }
 
 // ---------------------------------------------------------------------------
-// Connection handling
+// Legacy request/response shapes
 // ---------------------------------------------------------------------------
 
-/// Read one request from a client and respond with one response, then close.
-/// Uses a `Connection: close` model: one request per connection keeps the
-/// hand-rolled parser simple and is entirely adequate for a single-user app.
-fn handle_connection(
-    stream: TcpStream,
-    web_root: Arc<PathBuf>,
-    editor_store: Arc<EditorDraftStore>,
-    solve_requests: Arc<SolveRequestStore>,
-) {
-    let _ = stream.set_read_timeout(Some(CONNECTION_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(CONNECTION_TIMEOUT));
-    let _ = stream.set_nodelay(true);
-
-    // Split the stream so we can emit `100 Continue` while still reading.
-    let mut write_stream = match stream.try_clone() {
-        Ok(clone) => clone,
-        Err(_) => return,
-    };
-    let mut reader = BufReader::new(stream);
-
-    let request = match read_request(&mut reader, &mut write_stream) {
-        Ok(Some(request)) => request,
-        Ok(None) => return, // clean EOF (client closed)
-        Err(status) => {
-            let response = plain_response(status, "bad request");
-            let _ = write_response(&mut write_stream, &response);
-            return;
-        }
-    };
-
-    let response = route(&request, &web_root, &editor_store, &solve_requests);
-    let _ = write_response(&mut write_stream, &response);
-}
-
-/// A parsed HTTP/1.1 request (head + body). The head's `Content-Length` /
-/// `Expect` / `Transfer-Encoding` headers are consumed during parsing.
-struct Request {
-    method: String,
-    path: String,
+/// A parsed HTTP/1.1 request (head + body). The axum adapter (crate::http)
+/// fills this from the hyper request; the dispatcher and handlers consume it.
+pub(crate) struct Request {
+    pub(crate) method: String,
+    pub(crate) path: String,
     /// The request's `Content-Type` header, if any (needed for multipart).
-    content_type: Option<String>,
-    body: Vec<u8>,
-}
-
-/// Parse a request head + body from the reader. Returns `None` on clean EOF.
-/// On malformed input returns the HTTP status that should be replied with.
-fn read_request(
-    reader: &mut BufReader<TcpStream>,
-    write_stream: &mut TcpStream,
-) -> Result<Option<Request>, u16> {
-    let mut line = String::new();
-    let mut head_bytes = 0usize;
-
-    // Request line, skipping stray blank lines (e.g. keep-alive remnants).
-    let request_line;
-    loop {
-        line.clear();
-        let n = reader.read_line(&mut line).map_err(|_| 400u16)?;
-        if n == 0 {
-            return Ok(None);
-        }
-        head_bytes += line.len();
-        if head_bytes > MAX_HEAD_BYTES {
-            return Err(413u16);
-        }
-        let trimmed = trim_line(&line);
-        if !trimmed.is_empty() {
-            request_line = trimmed.to_string();
-            break;
-        }
-    }
-
-    let mut parts = request_line.split_whitespace();
-    let method = parts.next().ok_or(400u16)?.to_ascii_uppercase();
-    let path = parts.next().ok_or(400u16)?.to_string();
-    let _version = parts.next().ok_or(400u16)?.to_string();
-    if parts.next().is_some() {
-        return Err(400u16);
-    }
-
-    // Headers until the blank line.
-    let mut headers: HashMap<String, String> = HashMap::new();
-    loop {
-        line.clear();
-        let n = reader.read_line(&mut line).map_err(|_| 400u16)?;
-        head_bytes += line.len();
-        if head_bytes > MAX_HEAD_BYTES {
-            return Err(413u16);
-        }
-        if n == 0 {
-            return Err(400u16); // EOF mid-head
-        }
-        let trimmed = trim_line(&line);
-        if trimmed.is_empty() {
-            break;
-        }
-        if let Some((key, value)) = trimmed.split_once(':') {
-            headers.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
-        }
-    }
-
-    // Honour `Expect: 100-continue` so curl (and any large POST) works.
-    if headers
-        .get("expect")
-        .is_some_and(|value| value.to_ascii_lowercase().contains("100-continue"))
-    {
-        let _ = write_stream.write_all(b"HTTP/1.1 100 Continue\r\n\r\n");
-        let _ = write_stream.flush();
-    }
-
-    let body = if method == "POST" {
-        let transfer_encoding = headers
-            .get("transfer-encoding")
-            .map(|value| value.to_ascii_lowercase());
-        if transfer_encoding.is_some_and(|value| value != "identity") {
-            return Err(501u16);
-        }
-        let content_length = match headers.get("content-length") {
-            Some(value) => value.parse::<usize>().map_err(|_| 400u16)?,
-            None => 0,
-        };
-        if content_length > MAX_BODY_BYTES {
-            return Err(411u16);
-        }
-        let mut body = vec![0u8; content_length];
-        if content_length > 0 {
-            reader.read_exact(&mut body).map_err(|_| 400u16)?;
-        }
-        body
-    } else {
-        Vec::new()
-    };
-
-    Ok(Some(Request {
-        method,
-        path,
-        content_type: headers.get("content-type").cloned(),
-        body,
-    }))
-}
-
-fn trim_line(line: &str) -> &str {
-    line.trim_end_matches(['\r', '\n'])
+    pub(crate) content_type: Option<String>,
+    pub(crate) body: Vec<u8>,
 }
 
 // ---------------------------------------------------------------------------
@@ -359,15 +226,15 @@ fn trim_line(line: &str) -> &str {
 
 /// A minimal response: status code, optional content type, optional
 /// `Content-Disposition`, and the raw body.
-struct Response {
-    status: u16,
-    content_type: Option<&'static str>,
-    content_disposition: Option<String>,
-    body: Vec<u8>,
+pub(crate) struct Response {
+    pub(crate) status: u16,
+    pub(crate) content_type: Option<&'static str>,
+    pub(crate) content_disposition: Option<String>,
+    pub(crate) body: Vec<u8>,
 }
 
 impl Response {
-    fn json(status: u16, value: serde_json::Value) -> Response {
+    pub(crate) fn json(status: u16, value: serde_json::Value) -> Response {
         let body = serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec());
         Response {
             status,
@@ -410,7 +277,7 @@ fn path_segments(path: &str) -> Vec<&str> {
 }
 
 /// Dispatch a parsed request to the matching handler.
-fn route(
+pub(crate) fn route(
     request: &Request,
     web_root: &Path,
     editor_store: &EditorDraftStore,
@@ -2592,33 +2459,6 @@ fn content_type_for(path: &Path) -> &'static str {
         Some("txt") => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
     }
-}
-
-/// Serialise a response onto the wire.
-fn write_response(stream: &mut TcpStream, response: &Response) -> io::Result<()> {
-    let status_text = STATUS_TEXT
-        .iter()
-        .find(|(status, _)| *status == response.status)
-        .map(|(_, text)| *text)
-        .unwrap_or("Unknown");
-
-    let mut head = format!("HTTP/1.1 {} {}\r\n", response.status, status_text);
-    head.push_str("Server: seattrellis-backend\r\n");
-    head.push_str("Connection: close\r\n");
-    if let Some(content_type) = response.content_type {
-        head.push_str(&format!("Content-Type: {content_type}\r\n"));
-    }
-    if let Some(disposition) = &response.content_disposition {
-        head.push_str(&format!("Content-Disposition: {disposition}\r\n"));
-    }
-    head.push_str("X-Content-Type-Options: nosniff\r\n");
-    head.push_str("Cache-Control: no-store\r\n");
-    head.push_str(&format!("Content-Length: {}\r\n", response.body.len()));
-    head.push_str("\r\n");
-
-    stream.write_all(head.as_bytes())?;
-    stream.write_all(&response.body)?;
-    stream.flush()
 }
 
 /// Monotonic-ish unique id for editor drafts (time prefix + atomic counter).

@@ -9,6 +9,7 @@
 
 pub mod editing;
 mod embedded_web;
+pub mod http;
 pub mod export;
 pub mod goal_rules;
 pub mod layouts;
