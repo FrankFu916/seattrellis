@@ -79,4 +79,5 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 - `scripts/rust_python_diff.py` 做差分；**任何 Python error 都不能记为 INFEASIBLE**（M0-03 已冻结此语义），mismatch 必须非零退出。
 - `outputs/`、`dist/`、`site/`、`node_modules/`、`target/` 是构建产物。**禁止提交真实学生数据/名单/成绩**（README 明确要求）。
 - 本地 loopback API 目前无 session/token/Host 校验（P0 风险，M1-05 修复）；新增写路径时不要绕过安全中间件设计。
+- **M1-04 已落地**：HTTP 层为 axum/hyper/tokio（`app/src/http.rs` 适配层 → `server::route` 分发，52 个路由测试原样通过）；body 限制 64MiB（413，旧 411 怪癖已废弃）、并发上限 64、SIGINT/SIGTERM/Tauri 退出均可优雅停机；multipart 解析与路径防护逻辑保留。`Server::serve` 仍是阻塞签名（内部 tokio runtime）。
 - 新文件、新命令或行为变更后，检查是否需要同步更新 `docs/` 与 parity ledger，CI 会跑 `scripts/check_repository_hygiene.py` 等检查。
