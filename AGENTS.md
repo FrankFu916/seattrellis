@@ -81,8 +81,21 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 | M1-03 SolveOutcome | ✅ 合并 | 七状态 enum + CLI 退出码表 + server status 字段（详见上文） |
 | M1-04 axum | ✅ 合并 | 适配层 `app/src/http.rs`，52 路由测试零改动；413/并发 64/优雅停机 |
 | M1-05 安全边界 | ✅ 合并 | token/Host/Origin/Bearer/CSP（详见上文） |
-| M1-06 契约生成链 | ⏳ 进行中 | xtask + OpenAPI/TS codegen + CI drift |
+| M1-06 契约生成链 | ✅ 合并 | xtask + OpenAPI/TS codegen + CI drift |
 | M1-02 crate 拆分 | ⏳ 最后做 | 7 个单体 → domain/rules/solver/planning/storage/export/application |
+
+## M2 里程碑状态（2026-08-08）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| M2-01 Artifact Registry | ✅ | `crates/seattrellis-schema`：v2 envelope {kind, schema_version, data, extensions} + 12 种 artifact kind + 严格解析（未知字段拒绝） |
+| M2-02 Rust 生成 JSON Schema | ✅ | `xtask contract schemas` → `schemas/*.v2.schema.json`，metaschema 校验 + CI drift |
+| M2-03 v1→v2 migration graph | ✅ | typed 步骤 + lossless 契约 + 源/目标 SHA-256；未知旧字段阻断迁移 |
+| M2-04 事务性仓库 | ✅ 核心 | `app/src/transaction.rs` journaled 多文件事务 + 故障注入测试（接入 batch apply 为后续） |
+| M2-05 Bundle Manifest v2 | ✅ | 每文件 size/sha256/kind/version + 路径安全校验（zip corpus 为后续） |
+| M2-06 统一 privacy policy | ✅ | Safe/Unsafe/Indeterminate + 敏感字段单一来源（敏感键与 Python oracle 对齐） |
+
+待办 follow-up：transaction 接入 migration batch/project restore；zip-bomb/symlink corpus；其余 artifact DTO（RuleSet/Snapshot/Project…）。
 
 M1 Exit Gate 核查：workspace 统一 ✅ / PyO3 隔离 ✅ / 未认证、DNS rebinding、恶意 Origin、超大 body 全部拒绝并有测试 ✅ / 退出无残留 ✅。
 
