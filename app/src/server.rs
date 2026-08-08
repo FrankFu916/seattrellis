@@ -697,14 +697,28 @@ fn generate_response(
     let response = match seattrellis_core::solve_problem(&request) {
         Ok(response) => response,
         // Domain messages (capacity, unsupported api_version, ...) are fine to
-        // return verbatim; the JSON parse errors above are kept coarse.
-        Err(message) => return json_error(400, &message),
+        // return verbatim; the JSON parse errors above are kept coarse. The
+        // frozen SolveStatus classifies them (M1-03).
+        Err(message) => {
+            return Response::json(
+                400,
+                json!({
+                    "error": "invalid_solve_request",
+                    "status": seattrellis_core::classify_solve_error(&message),
+                    "message": message,
+                }),
+            );
+        }
     };
     if !response.feasible {
+        // Heuristic exhaustion is a normal domain result: carry the honest
+        // frozen status (`Unknown`, never ProvenInfeasible) alongside the
+        // legacy 409 shape the workbench understands (M1-03).
         return Response::json(
             409,
             json!({
                 "error": "plan_not_found",
+                "status": response.status,
                 "message": "No seating plan was found with the current room and rules.",
             }),
         );
@@ -3354,6 +3368,25 @@ mod tests {
         assert_eq!(response.status, 409);
         let value = body_json(&response);
         assert_eq!(value["error"], "plan_not_found");
+        // M1-03: the frozen SolveStatus rides along; greedy exhaustion is
+        // `Unknown`, never `ProvenInfeasible`.
+        assert_eq!(value["status"], "Unknown");
+    }
+
+    #[test]
+    fn solve_invalid_request_carries_frozen_status() {
+        let root = test_web_root();
+        // Unsupported api_version is a validation failure: 400 + InvalidInput.
+        let problem = json!({
+            "api_version": 99,
+            "student_count": 2,
+            "seat_positions": [[1.0,1.0],[2.0,1.0]]
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
+        assert_eq!(response.status, 400);
+        let value = body_json(&response);
+        assert_eq!(value["status"], "InvalidInput");
     }
 
     #[test]
@@ -3378,7 +3411,10 @@ mod tests {
         let body = serde_json::to_vec(&problem).unwrap();
         let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
         assert_eq!(response.status, 400);
-        assert!(body_json(&response)["error"].as_str().unwrap().contains("cannot seat more students"));
+        let value = body_json(&response);
+        assert_eq!(value["error"], "invalid_solve_request");
+        assert_eq!(value["status"], "InvalidInput");
+        assert!(value["message"].as_str().unwrap().contains("cannot seat more students"));
     }
 
     #[test]

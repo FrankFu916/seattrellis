@@ -432,10 +432,75 @@ pub struct CoreSolveRequest {
     pub pair_history: Option<PairHistory>,
 }
 
+/// Frozen v2 SolveStatus vocabulary (plan §四.1, M1-03). Serialized with
+/// PascalCase so the wire values match the contract text verbatim
+/// (`Solved`, `ProvenInfeasible`, `Timeout`, `Unknown`, `InvalidInput`,
+/// `Cancelled`, `InternalError`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "PascalCase")]
+pub enum SolveStatus {
+    Solved,
+    ProvenInfeasible,
+    Timeout,
+    /// Default: honest status for legacy wire data and heuristic exhaustion.
+    #[default]
+    Unknown,
+    InvalidInput,
+    Cancelled,
+    InternalError,
+}
+
+impl SolveStatus {
+    /// The frozen wire spelling (identical to `serde` PascalCase output).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SolveStatus::Solved => "Solved",
+            SolveStatus::ProvenInfeasible => "ProvenInfeasible",
+            SolveStatus::Timeout => "Timeout",
+            SolveStatus::Unknown => "Unknown",
+            SolveStatus::InvalidInput => "InvalidInput",
+            SolveStatus::Cancelled => "Cancelled",
+            SolveStatus::InternalError => "InternalError",
+        }
+    }
+}
+
+/// Classify a solver/domain error message onto the frozen vocabulary.
+///
+/// The core reports validation failures as `Err(String)`; callers (CLI,
+/// server) use this to distinguish `InvalidInput` from `InternalError`.
+/// Heuristic exhaustion is never classified as `ProvenInfeasible` here:
+/// without a sound proof the honest status is `Unknown` (M1-03).
+pub fn classify_solve_error(message: &str) -> SolveStatus {
+    let low = message.to_ascii_lowercase();
+    const INVALID_TOKENS: [&str; 11] = [
+        "invalid",
+        "unknown",
+        "require",
+        "duplicate",
+        "missing",
+        "not enough",
+        "at least",
+        "cannot seat",
+        "more students",
+        "unrecognized",
+        "unsupported",
+    ];
+    if INVALID_TOKENS.iter().any(|token| low.contains(token)) {
+        SolveStatus::InvalidInput
+    } else {
+        SolveStatus::InternalError
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CoreSolveResponse {
     pub api_version: u32,
     pub feasible: bool,
+    /// Frozen v2 SolveStatus (M1-03). Greedy exhaustion is `Unknown`, never
+    /// `ProvenInfeasible` (no sound proof exists until M3).
+    #[serde(default)]
+    pub status: SolveStatus,
     /// ``[student_index, seat_index]`` pairs; empty when infeasible.
     pub assignment: Vec<[usize; 2]>,
     pub attempts_used: usize,
@@ -569,6 +634,7 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
         return Ok(CoreSolveResponse {
             api_version: NATIVE_API_VERSION,
             feasible: true,
+            status: SolveStatus::Solved,
             assignment: pairs,
             attempts_used,
             hard_constraints_satisfied: true,
@@ -579,6 +645,9 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     Ok(CoreSolveResponse {
         api_version: NATIVE_API_VERSION,
         feasible: false,
+        // Heuristic exhaustion with no sound proof: honest status is
+        // Unknown, never ProvenInfeasible (M1-03 / plan §四.1).
+        status: SolveStatus::Unknown,
         assignment: Vec::new(),
         attempts_used: attempts,
         hard_constraints_satisfied: false,
@@ -1075,9 +1144,9 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 #[cfg(test)]
 mod tests {
     use super::{
-        assignment_is_unique, evaluate_problem_json, resolve_group_rules, seat_distance,
-        solve_problem_json, validate_solve_request_json, CoreEvaluationResponse,
-        CoreSolveRequest, CoreSolveResponse, NATIVE_API_VERSION,
+        assignment_is_unique, classify_solve_error, evaluate_problem_json, resolve_group_rules,
+        seat_distance, solve_problem_json, validate_solve_request_json, CoreEvaluationResponse,
+        CoreSolveRequest, CoreSolveResponse, SolveStatus, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -1643,5 +1712,129 @@ mod tests {
             serde_json::from_str(&response_json).expect("response should be valid JSON");
         assert!(!response.feasible, "A and B are pinned apart but must sit together");
         assert!(response.assignment.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // M1-03: frozen SolveStatus contract (plan §四.1)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn solved_reports_solved_status() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[1.0, 1.0], [1.0, 2.0]],
+            "seed": 0
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should be valid");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+        assert_eq!(response.status, SolveStatus::Solved);
+        assert!(response.feasible);
+
+        // The wire value must be the frozen PascalCase spelling.
+        let value: serde_json::Value = serde_json::from_str(&response_json).unwrap();
+        assert_eq!(value["status"], "Solved");
+    }
+
+    /// Greedy exhaustion with no sound proof must be `Unknown`, never
+    /// `ProvenInfeasible` (M1-03 P0 fix).
+    #[test]
+    fn greedy_exhaustion_reports_unknown_status() {
+        // 2x2 grid, every seat pair forbidden from adjacency: the request
+        // passes static validation but no complete assignment exists, so all
+        // greedy attempts fail.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 4,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
+            "edges": [[0, 1], [2, 3], [0, 2], [1, 3]],
+            "cannot_be_adjacent": [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]],
+            "seed": 7
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should be valid");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+        assert!(!response.feasible);
+        assert_eq!(response.status, SolveStatus::Unknown);
+        assert_ne!(response.status, SolveStatus::ProvenInfeasible);
+
+        let value: serde_json::Value = serde_json::from_str(&response_json).unwrap();
+        assert_eq!(value["status"], "Unknown");
+    }
+
+    #[test]
+    fn validation_errors_are_err_and_classify_as_invalid_input() {
+        let request = r#"{
+            "api_version": 99,
+            "student_count": 2,
+            "seat_positions": [[1.0, 1.0], [1.0, 2.0]]
+        }"#;
+        let err = solve_problem_json(request).expect_err("unsupported api_version must fail");
+        assert_eq!(classify_solve_error(&err), SolveStatus::InvalidInput);
+    }
+
+    #[test]
+    fn classify_solve_error_distinguishes_input_from_internal() {
+        for message in [
+            "unsupported api_version 99",
+            "native solve requires at least one seat",
+            "native solve cannot seat more students than available seats",
+            "Duplicate student identifiers: STU001",
+            "unknown rule kind",
+        ] {
+            assert_eq!(
+                classify_solve_error(message),
+                SolveStatus::InvalidInput,
+                "message {message:?} should be InvalidInput",
+            );
+        }
+        for message in [
+            "solver panicked while ranking candidates",
+            "could not serialize the response",
+            "internal store is poisoned",
+        ] {
+            assert_eq!(
+                classify_solve_error(message),
+                SolveStatus::InternalError,
+                "message {message:?} should be InternalError",
+            );
+        }
+    }
+
+    /// The status vocabulary is frozen: every variant serializes to exactly
+    /// the plan's spelling, and deserialization round-trips.
+    #[test]
+    fn solve_status_vocabulary_is_frozen_on_the_wire() {
+        let cases = [
+            (SolveStatus::Solved, "Solved"),
+            (SolveStatus::ProvenInfeasible, "ProvenInfeasible"),
+            (SolveStatus::Timeout, "Timeout"),
+            (SolveStatus::Unknown, "Unknown"),
+            (SolveStatus::InvalidInput, "InvalidInput"),
+            (SolveStatus::Cancelled, "Cancelled"),
+            (SolveStatus::InternalError, "InternalError"),
+        ];
+        for (status, wire) in cases {
+            let encoded = serde_json::to_string(&status).unwrap();
+            assert_eq!(encoded, format!("\"{wire}\""));
+            let decoded: SolveStatus = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(decoded, status);
+        }
+    }
+
+    /// Responses without a `status` field (pre-M1-03 wire data) must
+    /// deserialize with the honest default `Unknown`.
+    #[test]
+    fn legacy_response_without_status_defaults_to_unknown() {
+        let legacy = r#"{
+            "api_version": 2,
+            "feasible": true,
+            "assignment": [[0, 0]],
+            "attempts_used": 1,
+            "hard_constraints_satisfied": true
+        }"#;
+        let response: CoreSolveResponse = serde_json::from_str(legacy).unwrap();
+        assert_eq!(response.status, SolveStatus::Unknown);
     }
 }
