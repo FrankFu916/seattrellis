@@ -4,5 +4,6 @@
 //! v1→v2 migration step can be a field-preserving transform (M2-03). All
 //! DTOs parse strictly: unknown fields are rejected, never ignored.
 
+pub mod bundle_manifest;
 pub mod classroom_layout;
 pub mod student_roster;

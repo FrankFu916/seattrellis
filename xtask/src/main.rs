@@ -21,6 +21,7 @@ use std::process::ExitCode;
 mod spec;
 
 use schemars::JsonSchema;
+use seattrellis_schema::dto::bundle_manifest::ProjectBundleManifest;
 use seattrellis_schema::dto::classroom_layout::ClassroomLayout;
 use seattrellis_schema::dto::student_roster::StudentRoster;
 use seattrellis_schema::{ArtifactEnvelope, ArtifactKind};
@@ -32,6 +33,7 @@ const TS_OUT: &str = "clients/web/src/api/generated.ts";
 const SCHEMA_ARTIFACTS: &[(&str, ArtifactKind)] = &[
     ("student-roster", ArtifactKind::StudentRoster),
     ("classroom-layout", ArtifactKind::ClassroomLayout),
+    ("project-bundle-manifest", ArtifactKind::ProjectBundleManifest),
 ];
 
 fn repo_root() -> PathBuf {
@@ -57,6 +59,9 @@ fn schema_artifacts() -> Vec<(String, String)> {
                 }
                 ArtifactKind::ClassroomLayout => {
                     schema_for_envelope::<ClassroomLayout>(kind)
+                }
+                ArtifactKind::ProjectBundleManifest => {
+                    schema_for_envelope::<ProjectBundleManifest>(kind)
                 }
                 _ => unreachable!("schema artifacts are listed explicitly"),
             };
