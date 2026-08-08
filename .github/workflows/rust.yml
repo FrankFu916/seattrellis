@@ -42,6 +42,18 @@ jobs:
       - name: Clippy (app)
         run: cargo clippy --all-targets -p seattrellis_app -- -D warnings
 
+  contract-drift:
+    # M1-06: the OpenAPI document and the generated TypeScript client must
+    # never diverge from the declarative spec (xtask/src/spec.rs). Regenerate
+    # into a temp dir and compare with the committed artifacts.
+    name: Contract artifacts / drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check generated contract artifacts are up to date
+        run: cargo run -p xtask -- contract check
+
   msrv:
     name: Rust core / 1.88 MSRV
     runs-on: ubuntu-latest

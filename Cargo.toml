@@ -13,6 +13,7 @@ members = [
     "native/seattrellis_native",
     "app",
     "app/src-tauri",
+    "xtask",
 ]
 default-members = [
     "native/seattrellis_core",
