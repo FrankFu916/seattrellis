@@ -39,6 +39,10 @@ pub fn run() {
     // The backend thread is joined on app exit: the shell requests a graceful
     // shutdown (M1-04 exit gate: no residual port or thread after exit) and
     // waits for the accept loop to drain instead of dropping it mid-request.
+    // M1-05: the 256-bit session token is injected into the WebView's JS
+    // memory at page load (never the URL, logs or disk); the workbench sends
+    // it as `Authorization: Bearer` on every /api/* call.
+    let session_token = server.session_token().to_string();
     let shutdown_flag = server.shutdown_flag();
     let backend_thread = thread::Builder::new()
         .name("seattrellis-backend".to_string())
@@ -58,6 +62,9 @@ pub fn run() {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(external))
                 .title("SeatTrellis")
                 .inner_size(1280.0, 800.0)
+                .initialization_script(format!(
+                    "window.__SEATTRELLIS_SESSION__ = '{session_token}';"
+                ))
                 .build()?;
             Ok(())
         })

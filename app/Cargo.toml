@@ -16,6 +16,8 @@ axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 # Bounded concurrency for the loopback API (plan M1-04 exit gate).
 tower = { version = "0.5", features = ["limit", "util"] }
+# CSPRNG for the 256-bit loopback session token (M1-05).
+getrandom = "0.3"
 serde_json = "1"
 # serde derive for the export domain request types (ExportDraftRequest shape).
 serde = { version = "1", features = ["derive"] }

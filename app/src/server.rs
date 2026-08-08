@@ -102,6 +102,9 @@ pub struct Server {
     solve_requests: Arc<SolveRequestStore>,
     /// Set by the shell (Tauri exit) to stop the accept loop gracefully.
     shutdown: Arc<AtomicBool>,
+    /// 256-bit random session token (M1-05). Required as `Bearer` on every
+    /// `/api/*` request; injected into the WebView memory by the shell.
+    session_token: String,
 }
 
 impl Server {
@@ -117,12 +120,18 @@ impl Server {
             editor_store: Arc::new(editing::new_draft_store()),
             solve_requests: Arc::new(Mutex::new(HashMap::new())),
             shutdown: Arc::new(AtomicBool::new(false)),
+            session_token: generate_session_token(),
         })
     }
 
     /// The actual bound address (useful when port 0 auto-assigns).
     pub fn addr(&self) -> SocketAddr {
         self.local_addr
+    }
+
+    /// The 256-bit session token; shells inject it into the WebView memory.
+    pub fn session_token(&self) -> &str {
+        &self.session_token
     }
 
     /// Ask the accept loop to stop (used by the Tauri shell on exit).
@@ -157,12 +166,22 @@ impl Server {
             editor_store: Arc::clone(&self.editor_store),
             solve_requests: Arc::clone(&self.solve_requests),
             shutdown: Arc::clone(&self.shutdown),
+            session_token: Arc::new(self.session_token.clone()),
+            bound_host: self.local_addr.ip().to_string(),
+            bound_port: self.local_addr.port(),
         };
         let router = crate::http::build_router(state);
         axum::serve(listener, router)
             .with_graceful_shutdown(crate::http::shutdown_signal(Arc::clone(&self.shutdown)))
             .await
     }
+}
+
+/// Generate the 256-bit loopback session token (32 CSPRNG bytes, hex).
+fn generate_session_token() -> String {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("the OS entropy source must be available");
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Locate a complete workbench build (`index.html` present) from, in order:

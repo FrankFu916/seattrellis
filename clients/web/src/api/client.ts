@@ -50,7 +50,7 @@ async function fetchJson<T>(
 
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
-  const sessionToken = readDesktopSessionToken();
+  const sessionToken = await ensureSessionToken();
   if (sessionToken) {
     headers.set("Authorization", `Bearer ${sessionToken}`);
   }
@@ -297,7 +297,7 @@ export async function downloadProjectGroupRegister(
   locale: "zh" | "en" = "zh",
 ): Promise<{ blob: Blob; filename: string }> {
   const headers = new Headers({ "Content-Type": "application/json" });
-  const sessionToken = readDesktopSessionToken();
+  const sessionToken = await ensureSessionToken();
   if (sessionToken) {
     headers.set("Authorization", `Bearer ${sessionToken}`);
   }
@@ -360,7 +360,7 @@ export async function downloadProjectBundle(
   includeOutputs = true,
 ): Promise<{ blob: Blob; filename: string }> {
   const headers = new Headers({ "Content-Type": "application/json" });
-  const sessionToken = readDesktopSessionToken();
+  const sessionToken = await ensureSessionToken();
   if (sessionToken) {
     headers.set("Authorization", `Bearer ${sessionToken}`);
   }
@@ -551,7 +551,7 @@ export async function exportDraft(
   request: ExportDraftRequest,
 ): Promise<{ blob: Blob; filename: string }> {
   const headers = new Headers({ "Content-Type": "application/json" });
-  const sessionToken = readDesktopSessionToken();
+  const sessionToken = await ensureSessionToken();
   if (sessionToken) {
     headers.set("Authorization", `Bearer ${sessionToken}`);
   }
@@ -576,6 +576,15 @@ function readDesktopSessionToken(): string | null {
     return null;
   }
   if (cachedDesktopSessionToken !== undefined) {
+    return cachedDesktopSessionToken;
+  }
+
+  // The Tauri shell injects the token into the JS context at page load
+  // (window.__SEATTRELLIS_SESSION__), so it never touches the URL or disk.
+  const injected = (window as { __SEATTRELLIS_SESSION__?: unknown })
+    .__SEATTRELLIS_SESSION__;
+  if (typeof injected === "string" && injected) {
+    cachedDesktopSessionToken = injected;
     return cachedDesktopSessionToken;
   }
 
@@ -607,4 +616,45 @@ function readDesktopSessionToken(): string | null {
     cachedDesktopSessionToken = null;
   }
   return cachedDesktopSessionToken;
+}
+
+// Single-flight bootstrap for the browser workspace: when no token was
+// handed over (Tauri injection or URL), fetch it from the loopback server's
+// /api/v1/session endpoint (which is Host-checked and needs no token itself).
+let sessionBootstrapPromise: Promise<string | null> | null = null;
+
+async function ensureSessionToken(): Promise<string | null> {
+  const known = readDesktopSessionToken();
+  if (known) {
+    return known;
+  }
+  if (!sessionBootstrapPromise) {
+    sessionBootstrapPromise = (async () => {
+      try {
+        const response = await fetch(`${API_ROOT}/session`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) {
+          return null;
+        }
+        const data = (await response.json()) as { session_token?: string };
+        const token = data.session_token ?? null;
+        if (token) {
+          cachedDesktopSessionToken = token;
+          try {
+            window.sessionStorage.setItem(
+              "seattrellis.desktop.session",
+              token,
+            );
+          } catch {
+            // In-memory copy suffices for this window.
+          }
+        }
+        return token;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return sessionBootstrapPromise;
 }
