@@ -20,6 +20,7 @@ pub mod rotation;
 pub mod room_templates;
 pub mod roster;
 pub mod server;
+pub mod transaction;
 
 pub use editing::{
     apply_command, apply_command_in_store, build_editor_state, create_draft, fetch_state,
