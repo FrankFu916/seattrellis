@@ -657,7 +657,7 @@ fn effective_layout(request: &CoreSolveRequest) -> Layout {
         .iter()
         .enumerate()
         .map(|(index, position)| Seat {
-            seat_id: format!("seat_{}", index),
+            seat_id: format!("seat_{index}"),
             row: position[1].round() as i32,
             col: position[0].round() as i32,
             x: Some(position[0]),

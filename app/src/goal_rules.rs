@@ -274,7 +274,7 @@ mod tests {
         for canonical in GOAL_IDS {
             let base = goal_rules(canonical).unwrap();
             assert_eq!(goal_rules(&canonical.to_uppercase()).unwrap(), base);
-            assert_eq!(goal_rules(&format!("  {}  ", canonical)).unwrap(), base);
+            assert_eq!(goal_rules(&format!("  {canonical}  ")).unwrap(), base);
             assert_eq!(
                 goal_rules(&canonical.replace('-', "_")).unwrap(),
                 base,

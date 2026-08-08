@@ -25,7 +25,7 @@ entire matrix after every small change.
 - [ ] Install the minimal package in a clean Python 3.11 environment and run
       `python -m pytest tests/test_minimal_install.py`.
 - [ ] Install `.[all,dev]` and run the complete test suite.
-- [ ] Run `cargo test --manifest-path native/Cargo.toml`.
+- [ ] Run `cargo test --locked`.
 - [ ] Build the optional native wheel and run its Python/Rust differential
       contract tests. The native wheel remains an experimental CI artifact
       until it has a separate public distribution decision.

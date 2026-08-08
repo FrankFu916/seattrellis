@@ -33,7 +33,7 @@ it is not a release-wheel command.
 Rust-only checks:
 
 ```bash
-cargo test --manifest-path native/Cargo.toml
+cargo test --locked -p seattrellis_native
 ```
 
 In v1.4 the `native` backend still delegates search to the Python fallback

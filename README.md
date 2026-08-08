@@ -32,8 +32,8 @@ seattrellis export --snapshot outputs/daily.snapshot.json --format html
 资源会在构建时嵌入 Rust App，因此复制二进制到没有源码的目录也可以启动。
 
 ```bash
-cargo build --release --locked --manifest-path app/Cargo.toml
-app/target/release/seattrellis_app --open-browser
+cargo build --release --locked
+target/release/seattrellis_app --open-browser
 ```
 
 当前 Rust CLI 约 1.6 MiB，嵌入工作台的 App 约 2.7 MiB，Tauri 壳约 9 MiB（开发机

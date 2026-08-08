@@ -114,19 +114,18 @@ jobs:
         run: python scripts/smoke_cli.py --optional auto --time-limit 3
 
   rust-msrv:
-    name: Rust workspace / 1.83 MSRV
+    name: Rust workspace / 1.88 MSRV
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Install minimum supported Rust
-        uses: dtolnay/rust-toolchain@1.83
+        uses: dtolnay/rust-toolchain@1.88
       - name: Test the Rust core
-        run: cargo test --locked --manifest-path native/Cargo.toml -p seattrellis_core
+        run: cargo test --locked -p seattrellis_core
       - name: Check the Python extension crate
         run: >-
           cargo check --locked
-          --manifest-path native/Cargo.toml
           -p seattrellis_native
           --features extension-module
 

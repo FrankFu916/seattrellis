@@ -374,8 +374,7 @@ pub fn parse_roster_csv(bytes: &[u8]) -> Result<RosterDraft, String> {
     for (index, record) in records.iter().skip(1).enumerate() {
         if raw_rows.len() >= MAX_ROSTER_ROWS {
             return Err(format!(
-                "Roster has more than the allowed {} data rows.",
-                MAX_ROSTER_ROWS
+                "Roster has more than the allowed {MAX_ROSTER_ROWS} data rows."
             ));
         }
         if record.len() > MAX_ROSTER_COLUMNS {
@@ -440,8 +439,7 @@ pub fn parse_roster_csv(bytes: &[u8]) -> Result<RosterDraft, String> {
         promoted.extend(raw_rows);
         if promoted.len() > MAX_ROSTER_ROWS {
             return Err(format!(
-                "Roster has more than the allowed {} data rows.",
-                MAX_ROSTER_ROWS
+                "Roster has more than the allowed {MAX_ROSTER_ROWS} data rows."
             ));
         }
         promoted

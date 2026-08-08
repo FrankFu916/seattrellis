@@ -8,7 +8,7 @@ SeatTrellis 的测试分为五层：单元测试、应用级 smoke、浏览器 E
 ```bash
 python -m pytest
 python -m compileall -q src/seattrellis scripts/benchmark_solver.py scripts/smoke_cli.py
-cargo test --locked --manifest-path native/Cargo.toml
+cargo test --locked
 python scripts/check_repository_hygiene.py
 mkdocs build --strict
 ```

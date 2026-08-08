@@ -32,24 +32,24 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Test the core
-        run: cargo test --locked --manifest-path native/Cargo.toml -p seattrellis_core
+        run: cargo test --locked -p seattrellis_core
       - name: Test the CLI
-        run: cargo test --locked --manifest-path native/Cargo.toml -p seattrellis_cli
+        run: cargo test --locked -p seattrellis_cli
       - name: Test the desktop app server
-        run: cargo test --manifest-path app/Cargo.toml
+        run: cargo test --locked -p seattrellis_app
       - name: Clippy (core + CLI)
-        run: cargo clippy --all-targets --manifest-path native/Cargo.toml -p seattrellis_core -p seattrellis_cli -- -D warnings
+        run: cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
       - name: Clippy (app)
-        run: cargo clippy --all-targets --manifest-path app/Cargo.toml -- -D warnings
+        run: cargo clippy --all-targets -p seattrellis_app -- -D warnings
 
   msrv:
-    name: Rust core / 1.83 MSRV
+    name: Rust core / 1.88 MSRV
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.83
+      - uses: dtolnay/rust-toolchain@1.88
       - name: Test the core at MSRV
-        run: cargo test --locked --manifest-path native/Cargo.toml -p seattrellis_core
+        run: cargo test --locked -p seattrellis_core
 
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}
@@ -63,24 +63,24 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Build the CLI
-        run: cargo build --release --locked --manifest-path native/Cargo.toml -p seattrellis_cli
+        run: cargo build --release --locked -p seattrellis_cli
       - name: Build the App server
-        run: cargo build --release --locked --manifest-path app/Cargo.toml
+        run: cargo build --release --locked -p seattrellis_app
       - name: Upload CLI binary
         uses: actions/upload-artifact@v7
         with:
           name: seattrellis-cli-${{ matrix.os }}
           path: |
-            native/target/release/seattrellis_cli
-            native/target/release/seattrellis_cli.exe
+            target/release/seattrellis_cli
+            target/release/seattrellis_cli.exe
           if-no-files-found: error
       - name: Upload App server binary
         uses: actions/upload-artifact@v7
         with:
           name: seattrellis-app-${{ matrix.os }}
           path: |
-            app/target/release/seattrellis_app
-            app/target/release/seattrellis_app.exe
+            target/release/seattrellis_app
+            target/release/seattrellis_app.exe
           if-no-files-found: error
 
   publish-assets:
