@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 784375,
+  "soft": {
+    "randomize": {
+      "enabled": true,
+      "weight": 1
+    }
+  }
+}

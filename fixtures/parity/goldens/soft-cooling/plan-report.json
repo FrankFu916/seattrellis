@@ -1,0 +1,188 @@
+{
+  "candidate_count": 3,
+  "candidates": [
+    {
+      "advantages": [
+        "plan diversity: high (87.5)",
+        "vision preference: high (87.5)"
+      ],
+      "candidate_id": "candidate_01",
+      "costs": [
+        "stability: low (10.0)",
+        "avoid repeated neighbors: medium (59.1)"
+      ],
+      "dimension_scores": {
+        "avoid_recent_neighbors_score": 59.14,
+        "diversity_score": 87.5,
+        "fair_rotation_score": null,
+        "height_preference_score": 68.8,
+        "mentor_pairing_score": null,
+        "score_balance_score": null,
+        "score_distribution_score": null,
+        "score_position_score": null,
+        "stability_score": 10.0,
+        "vision_preference_score": 87.5
+      },
+      "explanations": [
+        {
+          "dimension": "diversity_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 87.5
+        },
+        {
+          "dimension": "vision_preference_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 87.5
+        },
+        {
+          "dimension": "stability_score",
+          "kind": "trade_off",
+          "rating": "low",
+          "score": 10.0
+        },
+        {
+          "dimension": "avoid_recent_neighbors_score",
+          "kind": "trade_off",
+          "rating": "medium",
+          "score": 59.14
+        }
+      ],
+      "hard_constraint_checked_count": 3,
+      "hard_constraint_violation_count": 0,
+      "hard_constraints_satisfied": true,
+      "history_comparison": {
+        "avoid_recent_neighbors": "improved",
+        "fair_rotation": "not_available"
+      },
+      "score_delta_from_recommended": -2.16,
+      "total_score": 79.0
+    },
+    {
+      "advantages": [
+        "plan diversity: high (92.5)",
+        "vision preference: high (83.3)"
+      ],
+      "candidate_id": "candidate_02",
+      "costs": [
+        "stability: low (10.0)",
+        "avoid repeated neighbors: medium (61.1)"
+      ],
+      "dimension_scores": {
+        "avoid_recent_neighbors_score": 61.11,
+        "diversity_score": 92.5,
+        "fair_rotation_score": null,
+        "height_preference_score": 70.46,
+        "mentor_pairing_score": null,
+        "score_balance_score": null,
+        "score_distribution_score": null,
+        "score_position_score": null,
+        "stability_score": 10.0,
+        "vision_preference_score": 83.33
+      },
+      "explanations": [
+        {
+          "dimension": "diversity_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 92.5
+        },
+        {
+          "dimension": "vision_preference_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 83.33
+        },
+        {
+          "dimension": "stability_score",
+          "kind": "trade_off",
+          "rating": "low",
+          "score": 10.0
+        },
+        {
+          "dimension": "avoid_recent_neighbors_score",
+          "kind": "trade_off",
+          "rating": "medium",
+          "score": 61.11
+        }
+      ],
+      "hard_constraint_checked_count": 3,
+      "hard_constraint_violation_count": 0,
+      "hard_constraints_satisfied": true,
+      "history_comparison": {
+        "avoid_recent_neighbors": "improved",
+        "fair_rotation": "not_available"
+      },
+      "score_delta_from_recommended": -4.55,
+      "total_score": 76.61
+    },
+    {
+      "advantages": [
+        "plan diversity: high (95.0)",
+        "vision preference: high (91.7)"
+      ],
+      "candidate_id": "candidate_03",
+      "costs": [
+        "stability: low (0.0)",
+        "avoid repeated neighbors: medium (55.6)"
+      ],
+      "dimension_scores": {
+        "avoid_recent_neighbors_score": 55.56,
+        "diversity_score": 95.0,
+        "fair_rotation_score": null,
+        "height_preference_score": 66.39,
+        "mentor_pairing_score": null,
+        "score_balance_score": null,
+        "score_distribution_score": null,
+        "score_position_score": null,
+        "stability_score": 0.0,
+        "vision_preference_score": 91.67
+      },
+      "explanations": [
+        {
+          "dimension": "diversity_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 95.0
+        },
+        {
+          "dimension": "vision_preference_score",
+          "kind": "strength",
+          "rating": "high",
+          "score": 91.67
+        },
+        {
+          "dimension": "stability_score",
+          "kind": "trade_off",
+          "rating": "low",
+          "score": 0.0
+        },
+        {
+          "dimension": "avoid_recent_neighbors_score",
+          "kind": "trade_off",
+          "rating": "medium",
+          "score": 55.56
+        }
+      ],
+      "hard_constraint_checked_count": 3,
+      "hard_constraint_violation_count": 0,
+      "hard_constraints_satisfied": true,
+      "history_comparison": {
+        "avoid_recent_neighbors": "improved",
+        "fair_rotation": "not_available"
+      },
+      "score_delta_from_recommended": 0.0,
+      "total_score": 81.16
+    }
+  ],
+  "kind": "plan_comparison_report",
+  "metadata": {
+    "history_baseline": "Latest historical snapshot scored against the snapshots before it.",
+    "recommendation_method": "Highest weighted total among hard-constraint-satisfying candidates; ties are resolved by candidate_id.",
+    "recommendation_method_code": "highest_valid_weighted_total"
+  },
+  "recommended_candidate_id": "candidate_03",
+  "schema_version": "0.2.2",
+  "warnings": []
+}

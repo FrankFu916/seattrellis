@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 743365,
+  "soft": {
+    "avoid_recent_neighbors": {
+      "enabled": true,
+      "weight": 10
+    }
+  }
+}

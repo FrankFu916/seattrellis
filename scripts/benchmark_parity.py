@@ -316,6 +316,35 @@ def build_problem_meta(
     }
 
 
+def classify_python_error(message: str) -> str:
+    """Map a Python failure message onto the frozen v2 SolveStatus vocabulary.
+
+    M0-03 (plan §四.1): a Python error is never recorded as INFEASIBLE.
+    Heuristic exhaustion without a proof is UNKNOWN (not PROVEN_INFEASIBLE);
+    wall-clock exhaustion is TIMEOUT; input validation failures are
+    INVALID_INPUT; anything else is INTERNAL_ERROR.
+    """
+    low = message.lower()
+    if "this is not proof" in low or "time limit" in low:
+        return "TIMEOUT"
+    if "no feasible seating plan" in low:
+        return "UNKNOWN"
+    if any(
+        token in low
+        for token in (
+            "validation",
+            "required",
+            "not enough",
+            "unknown",
+            "duplicate",
+            "invalid",
+            "unrecognized",
+        )
+    ):
+        return "INVALID_INPUT"
+    return "INTERNAL_ERROR"
+
+
 def solve_reference(
     compiled: Any,
     students: list[Student],
@@ -328,6 +357,9 @@ def solve_reference(
 
     ``SeatTrellisSolveError`` (infeasible or timed out) is captured into
     ``diagnostics`` so every case still emits a well-formed reference record.
+
+    ``status`` carries the v2 SolveStatus classification (M0-03); ``feasible``
+    and legacy ``solver_status`` are kept for v1-compatible consumers.
     """
 
     started = time.monotonic()
@@ -342,9 +374,11 @@ def solve_reference(
         )
     except SeatTrellisSolveError as exc:
         elapsed = time.monotonic() - started
+        status = classify_python_error(str(exc))
         return {
             "feasible": False,
-            "solver_status": "INFEASIBLE",
+            "solver_status": status,
+            "status": status,
             "total_cost": None,
             "assignment": {},
             "assignment_by_index": [],
@@ -352,7 +386,7 @@ def solve_reference(
             "solver_backend": SOLVER_BACKEND,
             "attempts": None,
             "attempt_limit": None,
-            "stopped_by_time_limit": None,
+            "stopped_by_time_limit": status == "TIMEOUT",
             "diagnostics": [str(exc)],
         }
 
@@ -367,10 +401,12 @@ def solve_reference(
         for assignment in solution.assignments
     ]
     assignment_by_index.sort(key=lambda pair: pair[0])
+    feasible = solution.solver_status == "FEASIBLE"
 
     return {
-        "feasible": solution.solver_status == "FEASIBLE",
+        "feasible": feasible,
         "solver_status": solution.solver_status,
+        "status": "SOLVED" if feasible else "UNKNOWN",
         "total_cost": solution.objective_value,
         "assignment": solution.assignment_map,
         "assignment_by_index": assignment_by_index,

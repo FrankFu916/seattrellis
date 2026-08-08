@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 97630,
+  "soft": {
+    "score_balance": {
+      "enabled": true,
+      "weight": 1
+    }
+  }
+}

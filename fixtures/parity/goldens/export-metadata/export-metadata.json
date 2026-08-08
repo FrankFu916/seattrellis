@@ -1,0 +1,53 @@
+{
+  "docx": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.docx"
+  },
+  "excel": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.excel"
+  },
+  "html": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "lines": 28,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.html"
+  },
+  "pdf": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.pdf"
+  },
+  "png": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.png"
+  },
+  "pptx": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.pptx"
+  },
+  "print-html": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "lines": 37,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.print-html"
+  },
+  "svg": {
+    "content_embeds_generation_timestamp": true,
+    "exit_code": 0,
+    "lines": 49,
+    "stderr": "",
+    "stdout": "Export written to <gold_dir>/export.svg"
+  }
+}

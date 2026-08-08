@@ -1,0 +1,18 @@
+{
+  "adjacency": {
+    "custom_edges": [],
+    "include_diagonal": false,
+    "include_horizontal": true,
+    "include_vertical": true,
+    "max_col_delta": 1,
+    "max_distance": null,
+    "max_row_delta": 1,
+    "use_xy_distance": true
+  },
+  "layout_id": "invalid-empty-layout",
+  "metadata": {
+    "platform": "front"
+  },
+  "name": "Parity invalid-empty-layout",
+  "seats": []
+}

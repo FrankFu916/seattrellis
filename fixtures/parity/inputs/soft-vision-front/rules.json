@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 515418,
+  "soft": {
+    "vision_front": {
+      "enabled": true,
+      "weight": 20
+    }
+  }
+}

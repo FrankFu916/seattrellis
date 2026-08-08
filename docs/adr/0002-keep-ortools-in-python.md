@@ -1,7 +1,11 @@
 # ADR-0002：v1.x 保留 Python OR-Tools 后端
 
-- 状态：接受
+- 状态：接受（已被 ADR-0004 supersede，2026-08-08）
 - 日期：2026-07-06
+
+> **superseded**：ADR-0004 规定 OR-Tools 不进入 v2 生产运行时；本 ADR 的
+> "保留 Python OR-Tools 后端"作为产品运行时的决策不再适用。OR-Tools 仅
+> 作为 Python oracle 的对照参考保留到 v2 Python retirement。
 
 ## 背景
 

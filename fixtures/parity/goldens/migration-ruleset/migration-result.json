@@ -1,0 +1,103 @@
+{
+  "artifact": "ruleset",
+  "dry_run": {
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "ruleset schema_version 1 is valid; no files written"
+  },
+  "migrate": {
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "ruleset schema_version 1 written to <gold_dir>/migrated-ruleset.json"
+  },
+  "output": {
+    "groups": [],
+    "hard": {
+      "cannot_be_adjacent": [],
+      "fixed_seats": [
+        {
+          "seat_id": "R1C1",
+          "student": "STU001"
+        }
+      ],
+      "min_distance": [],
+      "must_be_adjacent": []
+    },
+    "schema_version": 1,
+    "seed": 256499,
+    "soft": {
+      "avoid_recent_neighbors": {
+        "enabled": false,
+        "lookback": 4,
+        "max_recent_count": 1,
+        "relation_types": [
+          "desk_mate",
+          "adjacent_any"
+        ],
+        "weight": 10,
+        "within_distance": 2
+      },
+      "cooling": {
+        "cooling_period": 3,
+        "enabled": false,
+        "relation_types": [
+          "desk_mate",
+          "adjacent_any"
+        ],
+        "weight": 5,
+        "within_distance": 2
+      },
+      "fair_rotation": {
+        "avoid_repeating_categories": [
+          "front",
+          "back",
+          "side",
+          "corner",
+          "near_window",
+          "near_door",
+          "near_ac"
+        ],
+        "enabled": false,
+        "lookback": 4,
+        "weight": 10
+      },
+      "height_back": {
+        "enabled": true,
+        "weight": 1
+      },
+      "mentor_pairing": {
+        "avoid_recent_repeats": true,
+        "enabled": false,
+        "history_lookback": 4,
+        "learner_percentile": 0.25,
+        "mentor_percentile": 0.75,
+        "relation": "desk_mate",
+        "weight": 1
+      },
+      "randomize": {
+        "enabled": true,
+        "weight": 1
+      },
+      "score_balance": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_distribution": {
+        "enabled": false,
+        "scope": "row",
+        "weight": 1
+      },
+      "score_position": {
+        "direction": "high_front",
+        "enabled": false,
+        "weight": 1
+      },
+      "vision_front": {
+        "enabled": true,
+        "weight": 20
+      }
+    }
+  },
+  "output_exists": true,
+  "source_basename": "rules.json"
+}

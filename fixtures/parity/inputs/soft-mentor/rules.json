@@ -1,0 +1,10 @@
+{
+  "hard": {},
+  "seed": 877454,
+  "soft": {
+    "mentor_pairing": {
+      "enabled": true,
+      "weight": 10
+    }
+  }
+}

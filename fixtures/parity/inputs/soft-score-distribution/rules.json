@@ -1,0 +1,11 @@
+{
+  "hard": {},
+  "seed": 544197,
+  "soft": {
+    "score_distribution": {
+      "enabled": true,
+      "scope": "row",
+      "weight": 1
+    }
+  }
+}

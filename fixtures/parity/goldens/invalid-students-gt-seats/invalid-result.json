@@ -1,0 +1,7 @@
+{
+  "command": "solve",
+  "exit_code": 1,
+  "invalid_kind": "students_gt_seats",
+  "stderr_head": "Error: Input validation failed.\n\nSummary:\n- students: 25\n- enabled seats: 20\n- hard constraints: 0\n\nErrors:\n- Not enough enabled seats: 25 students but only 20 enabled seats.",
+  "stdout": ""
+}

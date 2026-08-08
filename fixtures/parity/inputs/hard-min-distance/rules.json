@@ -1,0 +1,24 @@
+{
+  "hard": {
+    "min_distance": [
+      {
+        "distance": 2,
+        "metric": "euclidean",
+        "students": [
+          "STU006",
+          "STU007"
+        ]
+      },
+      {
+        "distance": 1,
+        "metric": "graph",
+        "students": [
+          "STU008",
+          "STU009"
+        ]
+      }
+    ]
+  },
+  "seed": 336643,
+  "soft": {}
+}

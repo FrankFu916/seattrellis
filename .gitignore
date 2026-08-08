@@ -27,3 +27,5 @@ node_modules/
 .workbuddy/
 .idea/
 .vscode/
+.reasonix/
+.zcode/

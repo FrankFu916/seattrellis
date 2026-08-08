@@ -1,0 +1,21 @@
+{
+  "hard": {
+    "fixed_seats": [
+      {
+        "seat_id": "R1C1",
+        "student": "STU001"
+      }
+    ]
+  },
+  "seed": 673216,
+  "soft": {
+    "height_back": {
+      "enabled": true,
+      "weight": 1
+    },
+    "vision_front": {
+      "enabled": true,
+      "weight": 20
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "command": "solve",
+  "exit_code": 1,
+  "invalid_kind": "dup_student_id",
+  "stderr_head": "Error: Invalid students file: <case_dir>/students.csv\nRow 3: column \"student_id\" is duplicated: STU001",
+  "stdout": ""
+}
