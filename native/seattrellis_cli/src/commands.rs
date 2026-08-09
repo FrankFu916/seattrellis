@@ -77,6 +77,9 @@ pub fn run_solve(args: &SolveArgs) -> Result<SolveStatus, String> {
     if let Some(seed) = args.seed {
         problem["seed"] = serde_json::Value::from(seed);
     }
+    if let Some(seconds) = args.time_limit {
+        problem["time_limit_seconds"] = serde_json::Value::from(seconds);
+    }
     let request_json = serde_json::to_string(&problem)
         .map_err(|error| format!("could not re-encode the problem: {error}"))?;
 
