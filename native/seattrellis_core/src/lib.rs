@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::cost::{avoid_recent_neighbors_cost, individual_cost, normalize_edge};
+use crate::cost::{
+    avoid_recent_neighbors_cost, classify_seat_position, detect_neighbor_relation_types,
+    individual_cost, normalize_edge,
+};
 use crate::models::{
     effective_neighbor_rule, Layout, PairHistory, RuleSet, Seat, SeatHistory, Student,
 };
@@ -983,6 +986,187 @@ pub fn audit_report_json(
     });
     serde_json::to_string(&report)
         .map_err(|error| format!("could not serialize audit report: {error}"))
+}
+
+/// Fairness report over historical snapshots (mirrors
+/// `history.build_fairness_report`): per-category totals and per-category
+/// min/max/spread across students. The request supplies the students and
+/// layout used to classify seat positions; snapshots are the frontend shape
+/// (`{assignments: [{student_key, seat_id}]}`).
+pub fn history_report_json(request_json: &str, snapshots_json: &str) -> Result<String, String> {
+    let request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)?;
+    let layout = effective_layout(&request);
+    let snapshots: Vec<Value> = serde_json::from_str(snapshots_json)
+        .map_err(|error| format!("invalid snapshots document: {error}"))?;
+    let seat_by_id: HashMap<&str, &Seat> = layout
+        .seats
+        .iter()
+        .map(|seat| (seat.seat_id.as_str(), seat))
+        .collect();
+
+    // student key -> category -> count.
+    let mut per_student: HashMap<&str, HashMap<String, u64>> = HashMap::new();
+    for snapshot in &snapshots {
+        let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) else {
+            continue;
+        };
+        for assignment in assignments {
+            let (Some(student), Some(seat_id)) = (
+                assignment.get("student_key").and_then(Value::as_str),
+                assignment.get("seat_id").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            let Some(seat) = seat_by_id.get(seat_id) else {
+                continue;
+            };
+            for category in classify_seat_position(seat, &layout) {
+                *per_student.entry(student).or_default().entry(category).or_default() += 1;
+            }
+        }
+    }
+
+    let mut totals: HashMap<String, u64> = HashMap::new();
+    let mut spread: HashMap<String, (u64, u64)> = HashMap::new();
+    for counts in per_student.values() {
+        for (category, count) in counts {
+            *totals.entry(category.clone()).or_default() += *count;
+            let entry = spread.entry(category.clone()).or_insert((*count, *count));
+            entry.0 = entry.0.min(*count);
+            entry.1 = entry.1.max(*count);
+        }
+    }
+    let mut category_spread = serde_json::Map::new();
+    for (category, (min, max)) in spread {
+        category_spread.insert(category, json!({ "min": min, "max": max, "spread": max - min }));
+    }
+
+    let report = json!({
+        "history_count": snapshots.len(),
+        "student_count": per_student.len(),
+        "category_totals": totals,
+        "summary": { "category_spread": category_spread, "warning_count": 0 },
+        "warnings": [],
+    });
+    serde_json::to_string(&report)
+        .map_err(|error| format!("could not serialize history report: {error}"))
+}
+
+/// Pair-history report (mirrors `history.build_pair_history_report`): total
+/// pairs, repeated pairs, max occurrences and per-relation totals, plus the
+/// top repeated pairs (anonymized as `student-N`).
+pub fn pair_report_json(
+    request_json: &str,
+    snapshots_json: &str,
+    top: usize,
+    within_distance: i32,
+) -> Result<String, String> {
+    let request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)?;
+    let layout = effective_layout(&request);
+    let snapshots: Vec<Value> = serde_json::from_str(snapshots_json)
+        .map_err(|error| format!("invalid snapshots document: {error}"))?;
+    let seat_by_id: HashMap<&str, &Seat> = layout
+        .seats
+        .iter()
+        .map(|seat| (seat.seat_id.as_str(), seat))
+        .collect();
+
+    // pair key -> occurrences and relation totals.
+    let mut occurrences: HashMap<(String, String), u64> = HashMap::new();
+    let mut relation_totals: HashMap<String, u64> = HashMap::new();
+    for snapshot in &snapshots {
+        let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) else {
+            continue;
+        };
+        let mut known: Vec<(&str, &Seat)> = Vec::new();
+        for assignment in assignments {
+            let (Some(student), Some(seat_id)) = (
+                assignment.get("student_key").and_then(Value::as_str),
+                assignment.get("seat_id").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            let Some(seat) = seat_by_id.get(seat_id) else {
+                continue;
+            };
+            known.push((student, seat));
+        }
+        for first in 0..known.len() {
+            for second in (first + 1)..known.len() {
+                let (first_key, first_seat) = known[first];
+                let (second_key, second_seat) = known[second];
+                let relations = detect_neighbor_relation_types(
+                    first_seat,
+                    second_seat,
+                    &layout,
+                    None,
+                    within_distance,
+                );
+                if relations.is_empty() {
+                    continue;
+                }
+                let (first, second) = if first_key <= second_key {
+                    (first_key.to_string(), second_key.to_string())
+                } else {
+                    (second_key.to_string(), first_key.to_string())
+                };
+                *occurrences.entry((first, second)).or_default() += 1;
+                for relation in relations {
+                    *relation_totals.entry(relation).or_default() += 1;
+                }
+            }
+        }
+    }
+
+    let mut ranked: Vec<((String, String), u64)> = occurrences.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let repeated = ranked.iter().filter(|(_, count)| *count > 1).count();
+    let max_occurrences = ranked.first().map(|(_, count)| *count).unwrap_or(0);
+
+    let mut student_index: HashMap<String, usize> = HashMap::new();
+    let mut pairs: Vec<Value> = Vec::new();
+    for (pair, count) in ranked.iter().take(top.max(1)) {
+        let (first, second) = pair.clone();
+        let first_ref = if let Some(index) = student_index.get(&first) {
+            format!("student-{index}")
+        } else {
+            let index = student_index.len() + 1;
+            student_index.insert(first.clone(), index);
+            format!("student-{index}")
+        };
+        let second_ref = if let Some(index) = student_index.get(&second) {
+            format!("student-{index}")
+        } else {
+            let index = student_index.len() + 1;
+            student_index.insert(second.clone(), index);
+            format!("student-{index}")
+        };
+        pairs.push(json!({
+            "student_a": first_ref,
+            "student_b": second_ref,
+            "total_occurrences": count,
+            "recent_occurrences": count,
+        }));
+    }
+
+    let report = json!({
+        "history_count": snapshots.len(),
+        "student_count": 0,
+        "pair_count": ranked.len(),
+        "within_distance_metric": "chebyshev",
+        "within_distance": within_distance,
+        "relation_totals": relation_totals,
+        "repeated_pair_count": repeated,
+        "max_occurrences": max_occurrences,
+        "top_pairs": pairs,
+        "summary": { "warning_count": 0 },
+    });
+    serde_json::to_string(&report)
+        .map_err(|error| format!("could not serialize pair report: {error}"))
 }
 
 /// Candidate set generation (plan §6.3): repeated seeded solves with exact
@@ -2213,13 +2397,15 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
     use super::{
         assignment_is_unique, assigned_students_meet_distance, build_candidate_domains,
         build_cost_context, build_graph_distance_matrix, build_index_adjacency,
         classify_solve_error, full_solution_total_cost, greedy_attempt, local_search,
         evaluate_problem_json, hard_search_with_budget, maximum_candidate_matching,
         resolve_group_rules, seat_distance, solve_problem_json, HARD_SEARCH_NODE_BUDGET,
-        audit_report_json, generate_candidates_json, precheck_report_json,
+        audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
+        precheck_report_json,
         validate_assignment,
         validate_solve_request_json,
         SplitMix64,
@@ -3480,5 +3666,63 @@ mod tests {
             assert!(!assignments.contains(&assignment), "candidates must be distinct");
             assignments.push(assignment);
         }
+    }
+    #[test]
+    fn history_report_counts_categories_without_student_data() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0,0.0],[1.0,0.0]],
+            "edges": [[0,1]],
+            "students": [{"key":"S1","display_name":"Alice"},{"key":"S2","display_name":"Bob"}],
+            "layout": {"layout_id": "l", "name": "l", "seats": [
+                {"seat_id": "R1C1", "row": 1, "col": 1, "x": 0.0, "y": 0.0, "zone": "front", "enabled": true},
+                {"seat_id": "R1C2", "row": 1, "col": 2, "x": 1.0, "y": 0.0, "zone": "front", "enabled": true}
+            ], "adjacency": {"edges": [["R1C1","R1C2"]]}}
+        }"#;
+        let snapshots = r#"[
+            {"assignments": [{"student_key":"S1","seat_id":"R1C1"},{"student_key":"S2","seat_id":"R1C2"}]},
+            {"assignments": [{"student_key":"S1","seat_id":"R1C2"},{"student_key":"S2","seat_id":"R1C1"}]}
+        ]"#;
+        let report: Value = serde_json::from_str(&history_report_json(request, snapshots).unwrap()).unwrap();
+        assert_eq!(report["history_count"], 2);
+        assert_eq!(report["student_count"], 2);
+        // Both students sat in the front zone in both periods.
+        assert!(report["category_totals"]["front"].as_u64().unwrap() >= 4);
+        // No raw identifiers in the report.
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains("Alice") && !serialized.contains("S1"));
+    }
+
+    #[test]
+    fn pair_report_counts_repeated_pairs_and_relations() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0]],
+            "edges": [[0,1],[1,2]],
+            "students": [{"key":"S1"},{"key":"S2"},{"key":"S3"}],
+            "layout": {"layout_id": "l", "name": "l", "seats": [
+                {"seat_id": "R1C1", "row": 1, "col": 1, "x": 0.0, "y": 0.0, "zone": "front", "enabled": true},
+                {"seat_id": "R1C2", "row": 1, "col": 2, "x": 1.0, "y": 0.0, "zone": "front", "enabled": true},
+                {"seat_id": "R1C3", "row": 1, "col": 3, "x": 2.0, "y": 0.0, "zone": "front", "enabled": true}
+            ], "adjacency": {"edges": [["R1C1","R1C2"],["R1C2","R1C3"]]}}
+        }"#;
+        // S1-S2 sit adjacent in both periods: repeated pair with occurrences 2.
+        let snapshots = r#"[
+            {"assignments": [{"student_key":"S1","seat_id":"R1C1"},{"student_key":"S2","seat_id":"R1C2"},{"student_key":"S3","seat_id":"R1C3"}]},
+            {"assignments": [{"student_key":"S1","seat_id":"R1C1"},{"student_key":"S2","seat_id":"R1C2"},{"student_key":"S3","seat_id":"R1C3"}]}
+        ]"#;
+        let report: Value = serde_json::from_str(&pair_report_json(request, snapshots, 10, 2).unwrap()).unwrap();
+        assert_eq!(report["history_count"], 2);
+        assert!(report["pair_count"].as_u64().unwrap() >= 1);
+        assert!(report["repeated_pair_count"].as_u64().unwrap() >= 1);
+        assert_eq!(report["max_occurrences"], 2);
+        // Top pair is anonymized.
+        let top = report["top_pairs"][0].clone();
+        assert!(top["student_a"].as_str().unwrap().starts_with("student-"));
+        assert_eq!(top["total_occurrences"], 2);
+        // Desk-mate relations were counted.
+        assert!(report["relation_totals"]["desk_mate"].as_u64().unwrap() >= 2);
     }
 }

@@ -88,6 +88,20 @@ pub struct CandidatesArgs {
     pub count: usize,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct HistoryReportArgs {
+    pub problem: PathBuf,
+    pub history: Vec<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PairReportArgs {
+    pub problem: PathBuf,
+    pub history: Vec<PathBuf>,
+    pub top: usize,
+    pub within_distance: i32,
+}
+
 #[derive(Debug, PartialEq)]
 enum Command {
     Help,
@@ -96,6 +110,8 @@ enum Command {
     Precheck(PrecheckArgs),
     Audit(AuditArgs),
     Candidates(CandidatesArgs),
+    HistoryReport(HistoryReportArgs),
+    PairReport(PairReportArgs),
     Solve(SolveArgs),
     Export(ExportArgs),
 }
@@ -287,6 +303,76 @@ fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
     }))
 }
 
+fn parse_history_report(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag { name: "--problem", takes_value: true },
+        Flag { name: "--history", takes_value: true },
+        Flag { name: "--help", takes_value: false },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?
+        .ok_or("history-report requires --problem <file>")?;
+    let history = parsed
+        .iter()
+        .filter(|(name, _)| name == "--history")
+        .filter_map(|(_, value)| value.clone())
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    if history.is_empty() {
+        return Err("history-report requires at least one --history <snapshot.json>".to_string());
+    }
+    Ok(Command::HistoryReport(HistoryReportArgs {
+        problem: PathBuf::from(problem),
+        history,
+    }))
+}
+
+fn parse_pair_report(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag { name: "--problem", takes_value: true },
+        Flag { name: "--history", takes_value: true },
+        Flag { name: "--top", takes_value: true },
+        Flag { name: "--within-distance", takes_value: true },
+        Flag { name: "--help", takes_value: false },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?
+        .ok_or("pair-report requires --problem <file>")?;
+    let history = parsed
+        .iter()
+        .filter(|(name, _)| name == "--history")
+        .filter_map(|(_, value)| value.clone())
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    if history.is_empty() {
+        return Err("pair-report requires at least one --history <snapshot.json>".to_string());
+    }
+    let top = match flag_value(&parsed, "--top")? {
+        Some(raw) => raw
+            .parse::<usize>()
+            .map_err(|error| format!("invalid --top '{raw}': {error}"))?,
+        None => 10,
+    };
+    let within_distance = match flag_value(&parsed, "--within-distance")? {
+        Some(raw) => raw
+            .parse::<i32>()
+            .map_err(|error| format!("invalid --within-distance '{raw}': {error}"))?,
+        None => 2,
+    };
+    Ok(Command::PairReport(PairReportArgs {
+        problem: PathBuf::from(problem),
+        history,
+        top,
+        within_distance,
+    }))
+}
+
 fn parse_export(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag { name: "--problem", takes_value: true },
@@ -337,6 +423,8 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "precheck" => parse_precheck(&text[1..]),
         "audit" => parse_audit(&text[1..]),
         "candidates" => parse_candidates(&text[1..]),
+        "history-report" => parse_history_report(&text[1..]),
+        "pair-report" => parse_pair_report(&text[1..]),
         "solve" => parse_solve(&text[1..]),
         "export" => parse_export(&text[1..]),
         other => Err(format!("unknown command '{other}'")),
@@ -401,6 +489,22 @@ fn run_command(command: Command) -> ExitCode {
             }
         },
         Command::Audit(args) => match commands::run_audit(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::HistoryReport(args) => match commands::run_history_report(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::PairReport(args) => match commands::run_pair_report(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 let styler = Styler::stderr();

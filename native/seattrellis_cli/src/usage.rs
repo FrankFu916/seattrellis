@@ -27,6 +27,10 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("     Audit a solved plan: hard-rule status + soft breakdown.\n    ");
     out.push_str(&styler.cyan("candidates"));
     out.push_str("  Generate a diverse candidate set.\n    ");
+    out.push_str(&styler.cyan("history-report"));
+    out.push_str("  Summarize historical seating snapshots.\n    ");
+    out.push_str(&styler.cyan("pair-report"));
+    out.push_str("     Summarize historical desk-mate / neighbor pairs.\n    ");
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));
@@ -77,6 +81,35 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n      ");
     out.push_str(&styler.bold("--count"));
     out.push_str(" <n>        Candidate set size (1-20, default 5).\n\n");
+
+    out.push_str(&styler.bold("HISTORY-REPORT:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("history-report"));
+    out.push_str(" --problem <problem.json> --history <snapshot.json>...\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--problem"));
+    out.push_str(" <file>   Solve-request JSON providing students + layout. Required.\n      ");
+    out.push_str(&styler.bold("--history"));
+    out.push_str(" <file>  Snapshot JSON (repeatable). Required.\n\n");
+
+    out.push_str(&styler.bold("PAIR-REPORT:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("pair-report"));
+    out.push_str(" --problem <problem.json> --history <snapshot.json>... [--top <n>]\n");
+    out.push_str("                           [--within-distance <n>]\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--problem"));
+    out.push_str(" <file>   Solve-request JSON providing students + layout. Required.\n      ");
+    out.push_str(&styler.bold("--history"));
+    out.push_str(" <file>  Snapshot JSON (repeatable). Required.\n      ");
+    out.push_str(&styler.bold("--top"));
+    out.push_str(" <n>        High-frequency pairs to display (default 10).\n      ");
+    out.push_str(&styler.bold("--within-distance"));
+    out.push_str(" <n>  Chebyshev distance threshold (default 2).\n\n");
 
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");
@@ -136,6 +169,8 @@ mod tests {
         assert!(text.contains("PRECHECK:"));
         assert!(text.contains("AUDIT:"));
         assert!(text.contains("CANDIDATES:"));
+        assert!(text.contains("HISTORY-REPORT:"));
+        assert!(text.contains("PAIR-REPORT:"));
         assert!(text.contains("SOLVE:"));
         assert!(text.contains("EXPORT:"));
         assert!(text.contains("EXIT STATUS:"));
@@ -143,6 +178,8 @@ mod tests {
         assert!(text.contains("precheck"));
         assert!(text.contains("audit"));
         assert!(text.contains("candidates"));
+        assert!(text.contains("history-report"));
+        assert!(text.contains("pair-report"));
         assert!(text.contains("export"));
     }
 
