@@ -46,10 +46,7 @@ pub fn generate_class(
             .and_then(Value::as_str)
             .unwrap_or("daily-rotation")
             .to_string();
-        match frontend_class_request_to_core(raw_request) {
-            Ok(value) => (value, goal_id),
-            Err(error) => return Err(error),
-        }
+        (frontend_class_request_to_core(raw_request)?, goal_id)
     } else {
         (raw_request.clone(), "daily-rotation".to_string())
     };
