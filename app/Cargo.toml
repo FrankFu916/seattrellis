@@ -27,11 +27,8 @@ seattrellis-export = { path = "../crates/seattrellis-export" }
 seattrellis-domain = { path = "../crates/seattrellis-domain" }
 # M1-02: application layer (use-case orchestration) moved out.
 seattrellis-application = { path = "../crates/seattrellis-application" }
-# Zip archive I/O for project bundles (pack/restore). zip's own `deflate`
-# feature enables flate2 (rust_backend) + crc32fast — both already in the tree
-# for PNG export — and additionally pulls zopfli (compiled but unused since we
-# compress with Deflated/flate2). aes/bzip2/lzma/zstd stay disabled.
-zip = { version = "2", default-features = false, features = ["deflate"] }
+# M1-02: roster/projects/migration/rotation/transaction moved out (zip dep follows).
+seattrellis-io = { path = "../crates/seattrellis-io" }
 
 [lib]
 name = "seattrellis_app"
