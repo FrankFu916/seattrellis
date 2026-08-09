@@ -3317,7 +3317,7 @@ mod tests {
     /// Copy the repo's example project (plus every referenced file) into a fresh
     /// temporary directory, returning `(dir, copied project path)`.
     fn example_project_copy(tag: &str) -> (PathBuf, PathBuf) {
-        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
         let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
             "seattrellis_projects_test_{}_{}_{}",
@@ -3601,7 +3601,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
 
         // Real referenced files so reference checks pass and batch apply is ready.
-        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
         for name in ["students.csv", "classroom.json", "rules_multi_candidate.json"] {
             fs::copy(examples.join(name), dir.join(name)).unwrap();
         }

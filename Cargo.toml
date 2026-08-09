@@ -20,6 +20,7 @@ members = [
     "crates/seattrellis-domain",
     "crates/seattrellis-application",
     "crates/seattrellis-io",
+    "crates/seattrellis-server",
 ]
 default-members = [
     "native/seattrellis_core",

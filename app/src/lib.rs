@@ -1,15 +1,9 @@
-//! SeatTrellis desktop backend core.
+//! SeatTrellis desktop backend core (M1-02).
 //!
-//! A loopback-only HTTP server that serves the compiled React workbench
-//! (`src/seattrellis/web_static/`) and exposes the native solve endpoint. This
-//! is the guaranteed-to-build backend that a future Tauri shell can wrap; the
-//! server itself has no Python/Node dependency.
-//!
-//! See [`server`] for the HTTP implementation and routes.
-
-mod embedded_web;
-pub mod http;
-pub mod server;
+//! Thin facade crate: re-exports the split crates so the Tauri shell and the
+//! binary entry point keep a single import path. All real code lives in
+//! `seattrellis-server` / `seattrellis-application` / `seattrellis-domain` /
+//! `seattrellis-io` / `seattrellis-export`.
 
 pub use seattrellis_domain::editing::{
     apply_command, apply_command_in_store, build_editor_state, create_draft, fetch_state,
@@ -35,4 +29,4 @@ pub use seattrellis_io::rotation::{
     group_register_save_json, rotation_load_json, rotation_save_json, GROUP_REGISTER_FILE,
     ROTATION_PLAN_FILE,
 };
-pub use server::{resolve_web_root, Server, ServerConfig, ServerError};
+pub use seattrellis_server::server::{resolve_web_root, Server, ServerConfig, ServerError};

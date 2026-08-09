@@ -15,7 +15,7 @@ fn main() {
     let manifest_dir = PathBuf::from(
         env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo"),
     );
-    let web_root = manifest_dir.join("../src/seattrellis/web_static");
+    let web_root = manifest_dir.join("../../src/seattrellis/web_static");
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
 
     let mut files = Vec::new();

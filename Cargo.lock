@@ -2944,7 +2944,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "seattrellis_app"
+name = "seattrellis-server"
 version = "0.1.0"
 dependencies = [
  "axum",
@@ -2958,6 +2958,15 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower",
+]
+
+[[package]]
+name = "seattrellis_app"
+version = "0.1.0"
+dependencies = [
+ "seattrellis-domain",
+ "seattrellis-io",
+ "seattrellis-server",
 ]
 
 [[package]]
@@ -2981,7 +2990,7 @@ dependencies = [
 name = "seattrellis_desktop"
 version = "0.1.0"
 dependencies = [
- "seattrellis_app",
+ "seattrellis-server",
  "serde",
  "serde_json",
  "tauri",

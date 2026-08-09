@@ -7,7 +7,7 @@
 
 use std::process::ExitCode;
 
-use seattrellis_app::server::{resolve_web_root, Server, ServerConfig};
+use seattrellis_server::server::{resolve_web_root, Server, ServerConfig};
 
 /// Default loopback port, matching the Python workspace convention.
 const DEFAULT_PORT: u16 = 8765;

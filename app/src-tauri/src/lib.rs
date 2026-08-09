@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use seattrellis_app::server::{resolve_web_root, Server, ServerConfig};
+use seattrellis_server::server::{resolve_web_root, Server, ServerConfig};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 /// Bind the backend, spawn its accept loop on a background thread, then open

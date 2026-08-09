@@ -4,30 +4,11 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SeatTrellis desktop backend core: loopback HTTP server + native solve, no Python/Node."
+description = "SeatTrellis desktop backend: thin facade over the split crates (M1-02), loopback HTTP server + native solve, no Python/Node."
 
 [dependencies]
-# Native cost-ranked greedy solver (JSON in/out).
-seattrellis_core = { path = "../native/seattrellis_core" }
-# M1-04: replace the hand-rolled HTTP/1.1 parser with a maintained, fuzzed
-# stack (axum/hyper/tokio). axum features: default = http1 + tokio rt; we
-# build responses manually so no json/ws features are needed.
-axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
-# Bounded concurrency for the loopback API (plan M1-04 exit gate).
-tower = { version = "0.5", features = ["limit", "util"] }
-# CSPRNG for the 256-bit loopback session token (M1-05).
-getrandom = "0.3"
-serde_json = "1"
-# serde derive for the export domain request types (ExportDraftRequest shape).
-serde = { version = "1", features = ["derive"] }
-# M1-02: export/render moved out of the app crate.
-seattrellis-export = { path = "../crates/seattrellis-export" }
-# M1-02: domain layer (editing / room_templates / goal_rules) moved out.
+seattrellis-server = { path = "../crates/seattrellis-server" }
 seattrellis-domain = { path = "../crates/seattrellis-domain" }
-# M1-02: application layer (use-case orchestration) moved out.
-seattrellis-application = { path = "../crates/seattrellis-application" }
-# M1-02: roster/projects/migration/rotation/transaction moved out (zip dep follows).
 seattrellis-io = { path = "../crates/seattrellis-io" }
 
 [lib]
@@ -37,5 +18,3 @@ path = "src/lib.rs"
 [[bin]]
 name = "seattrellis_app"
 path = "src/main.rs"
-
-
