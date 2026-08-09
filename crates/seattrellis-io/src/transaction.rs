@@ -1306,6 +1306,7 @@ fn canonical_directory(path: &Path, label: &str) -> Result<PathBuf, String> {
 }
 
 fn prepare_journal_dir(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
     let existed = path.exists();
     fs::create_dir_all(path)
         .map_err(|error| format!("cannot create journal dir {}: {error}", path.display()))?;
