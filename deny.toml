@@ -20,6 +20,14 @@ ignore = [
     "RUSTSEC-2024-0418",
     "RUSTSEC-2024-0419",
     "RUSTSEC-2024-0420",
+    # unic-* (unicode character property tables, transitive) are unmaintained
+    # but stable data crates with no successor; RUSTSEC-2025-0098/0100 are the
+    # same family (unicode-ident / unicode-bidi style data crates).
+    "RUSTSEC-2025-0075",
+    "RUSTSEC-2025-0080",
+    "RUSTSEC-2025-0081",
+    "RUSTSEC-2025-0098",
+    "RUSTSEC-2025-0100",
 ]
 
 [bans]
