@@ -7,6 +7,7 @@
 //!
 //! See [`server`] for the HTTP implementation and routes.
 
+pub mod application;
 pub mod editing;
 mod embedded_web;
 pub mod http;
