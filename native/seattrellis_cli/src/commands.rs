@@ -10,13 +10,13 @@
 use std::path::Path;
 
 use seattrellis_core::{
-    audit_report_json, precheck_report_json, solve_problem_json, validate_solve_request_json,
-    CoreSolveRequest, CoreSolveResponse, SolveStatus,
+    audit_report_json, generate_candidates_json, precheck_report_json, solve_problem_json,
+    validate_solve_request_json, CoreSolveRequest, CoreSolveResponse, SolveStatus,
 };
 
 use crate::render::SeatingGrid;
 use crate::style::Styler;
-use crate::{AuditArgs, ExportArgs, ExportFormat, PrecheckArgs, SolveArgs};
+use crate::{AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, PrecheckArgs, SolveArgs};
 use crate::ValidateArgs;
 
 pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
@@ -54,6 +54,15 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
 
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
 /// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+/// Generate a diverse candidate set and print the JSON report (plan §6.3).
+pub fn run_candidates(args: &CandidatesArgs) -> Result<(), String> {
+    let problem_text = read_text(&args.problem)?;
+    let report = generate_candidates_json(&problem_text, args.count)
+        .map_err(|error| format!("candidate generation failed: {error}"))?;
+    println!("{report}");
+    Ok(())
+}
+
 /// Run the solution audit and print the JSON report (plan §6.5).
 pub fn run_audit(args: &AuditArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
