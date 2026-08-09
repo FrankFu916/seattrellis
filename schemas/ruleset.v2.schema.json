@@ -1,0 +1,632 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "AvoidRecentNeighborsRule": {
+      "additionalProperties": false,
+      "description": "Penalize recent desk-mate / neighbor pairings.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "lookback": {
+          "default": 4,
+          "format": "int32",
+          "type": "integer"
+        },
+        "max_recent_count": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        },
+        "relation_types": {
+          "default": [
+            "desk_mate",
+            "adjacent_any"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "weight": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        },
+        "within_distance": {
+          "default": 2,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "CoolingRule": {
+      "additionalProperties": false,
+      "description": "Cooling period between repeated assignments (strict recent-neighbor form).",
+      "properties": {
+        "cooling_period": {
+          "default": 3,
+          "format": "int32",
+          "type": "integer"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "relation_types": {
+          "default": [
+            "desk_mate",
+            "adjacent_any"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "weight": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        },
+        "within_distance": {
+          "default": 2,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "DistanceMetric": {
+      "enum": [
+        "euclidean",
+        "graph"
+      ],
+      "type": "string"
+    },
+    "FairRotationRule": {
+      "additionalProperties": false,
+      "description": "Fair-rotation: avoid repeating seat position categories.",
+      "properties": {
+        "avoid_repeating_categories": {
+          "default": [
+            "front",
+            "back",
+            "side",
+            "corner",
+            "near_window",
+            "near_door",
+            "near_ac"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "lookback": {
+          "default": 4,
+          "format": "int32",
+          "type": "integer"
+        },
+        "weight": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "FixedSeatRule": {
+      "additionalProperties": false,
+      "description": "Pin one student to one seat.",
+      "properties": {
+        "seat_id": {
+          "type": "string"
+        },
+        "student": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "student",
+        "seat_id"
+      ],
+      "type": "object"
+    },
+    "GroupRule": {
+      "additionalProperties": false,
+      "description": "A named hard group rule: `separate` keeps every member pair apart,\n`together` requires every member pair to be adjacent.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "separate": {
+          "default": false,
+          "type": "boolean"
+        },
+        "students": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "together": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "HardRules": {
+      "additionalProperties": false,
+      "description": "Hard constraints: fixed seats and pairwise adjacency/distance rules.",
+      "properties": {
+        "cannot_be_adjacent": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PairRule"
+          },
+          "type": "array"
+        },
+        "fixed_seats": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FixedSeatRule"
+          },
+          "type": "array"
+        },
+        "min_distance": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MinDistanceRule"
+          },
+          "type": "array"
+        },
+        "must_be_adjacent": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PairRule"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "MentorPairingRule": {
+      "additionalProperties": false,
+      "description": "Pair high- and low-ranked students through a soft proximity goal.",
+      "properties": {
+        "avoid_recent_repeats": {
+          "default": true,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "history_lookback": {
+          "default": 4,
+          "format": "int32",
+          "type": "integer"
+        },
+        "learner_percentile": {
+          "default": 0.25,
+          "format": "double",
+          "type": "number"
+        },
+        "mentor_percentile": {
+          "default": 0.75,
+          "format": "double",
+          "type": "number"
+        },
+        "relation": {
+          "$ref": "#/$defs/MentorRelation",
+          "default": "desk_mate"
+        },
+        "weight": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "MentorRelation": {
+      "enum": [
+        "desk_mate",
+        "adjacent_any"
+      ],
+      "type": "string"
+    },
+    "MinDistanceRule": {
+      "additionalProperties": false,
+      "description": "Minimum graph/Euclidean distance between two students.",
+      "properties": {
+        "distance": {
+          "format": "double",
+          "type": "number"
+        },
+        "metric": {
+          "$ref": "#/$defs/DistanceMetric",
+          "default": "euclidean"
+        },
+        "students": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "students",
+        "distance"
+      ],
+      "type": "object"
+    },
+    "PairRule": {
+      "additionalProperties": false,
+      "description": "A pairwise student constraint (keys).",
+      "properties": {
+        "students": {
+          "description": "Exactly two student references.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "students"
+      ],
+      "type": "object"
+    },
+    "RuleSetArtifact": {
+      "additionalProperties": false,
+      "description": "The v2 rule-set artifact (`kind = \"ruleset\"`). Every field mirrors the\nPython model; defaults match Python's `default_factory` values.",
+      "properties": {
+        "groups": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GroupRule"
+          },
+          "type": "array"
+        },
+        "hard": {
+          "$ref": "#/$defs/HardRules",
+          "default": {
+            "cannot_be_adjacent": [],
+            "fixed_seats": [],
+            "min_distance": [],
+            "must_be_adjacent": []
+          }
+        },
+        "schema_version": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "seed": {
+          "default": 42,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "soft": {
+          "$ref": "#/$defs/SoftRules",
+          "default": {
+            "avoid_recent_neighbors": {
+              "enabled": false,
+              "lookback": 4,
+              "max_recent_count": 1,
+              "relation_types": [
+                "desk_mate",
+                "adjacent_any"
+              ],
+              "weight": 1,
+              "within_distance": 2
+            },
+            "cooling": {
+              "cooling_period": 3,
+              "enabled": false,
+              "relation_types": [
+                "desk_mate",
+                "adjacent_any"
+              ],
+              "weight": 1,
+              "within_distance": 2
+            },
+            "fair_rotation": {
+              "avoid_repeating_categories": [
+                "front",
+                "back",
+                "side",
+                "corner",
+                "near_window",
+                "near_door",
+                "near_ac"
+              ],
+              "enabled": false,
+              "lookback": 4,
+              "weight": 1
+            },
+            "height_back": {
+              "enabled": true,
+              "weight": 1
+            },
+            "mentor_pairing": {
+              "avoid_recent_repeats": true,
+              "enabled": false,
+              "history_lookback": 4,
+              "learner_percentile": 0.25,
+              "mentor_percentile": 0.75,
+              "relation": "desk_mate",
+              "weight": 1
+            },
+            "randomize": {
+              "enabled": true,
+              "weight": 1
+            },
+            "score_balance": {
+              "enabled": false,
+              "weight": 0
+            },
+            "score_distribution": {
+              "enabled": false,
+              "scope": "row",
+              "weight": 1
+            },
+            "score_position": {
+              "direction": "high_front",
+              "enabled": false,
+              "weight": 1
+            },
+            "vision_front": {
+              "enabled": true,
+              "weight": 20
+            }
+          }
+        }
+      },
+      "type": "object"
+    },
+    "ScoreDirection": {
+      "enum": [
+        "high_front",
+        "high_back"
+      ],
+      "type": "string"
+    },
+    "ScoreDistributionRule": {
+      "additionalProperties": false,
+      "description": "Balance score-rank means across physical rows or named seat groups.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScoreScope",
+          "default": "row"
+        },
+        "weight": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ScorePositionRule": {
+      "additionalProperties": false,
+      "description": "Place score ranks toward the front or back.",
+      "properties": {
+        "direction": {
+          "$ref": "#/$defs/ScoreDirection",
+          "default": "high_front"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ScoreScope": {
+      "enum": [
+        "row",
+        "group"
+      ],
+      "type": "string"
+    },
+    "SoftRules": {
+      "additionalProperties": false,
+      "description": "Soft objectives. Defaults mirror Python's `SoftRules` factories\n(vision_front/height_back/randomize enabled; the rest disabled).",
+      "properties": {
+        "avoid_recent_neighbors": {
+          "$ref": "#/$defs/AvoidRecentNeighborsRule",
+          "default": {
+            "enabled": false,
+            "lookback": 4,
+            "max_recent_count": 1,
+            "relation_types": [
+              "desk_mate",
+              "adjacent_any"
+            ],
+            "weight": 1,
+            "within_distance": 2
+          }
+        },
+        "cooling": {
+          "$ref": "#/$defs/CoolingRule",
+          "default": {
+            "cooling_period": 3,
+            "enabled": false,
+            "relation_types": [
+              "desk_mate",
+              "adjacent_any"
+            ],
+            "weight": 1,
+            "within_distance": 2
+          }
+        },
+        "fair_rotation": {
+          "$ref": "#/$defs/FairRotationRule",
+          "default": {
+            "avoid_repeating_categories": [
+              "front",
+              "back",
+              "side",
+              "corner",
+              "near_window",
+              "near_door",
+              "near_ac"
+            ],
+            "enabled": false,
+            "lookback": 4,
+            "weight": 1
+          }
+        },
+        "height_back": {
+          "$ref": "#/$defs/WeightedRule",
+          "default": {
+            "enabled": true,
+            "weight": 1
+          }
+        },
+        "mentor_pairing": {
+          "$ref": "#/$defs/MentorPairingRule",
+          "default": {
+            "avoid_recent_repeats": true,
+            "enabled": false,
+            "history_lookback": 4,
+            "learner_percentile": 0.25,
+            "mentor_percentile": 0.75,
+            "relation": "desk_mate",
+            "weight": 1
+          }
+        },
+        "randomize": {
+          "$ref": "#/$defs/WeightedRule",
+          "default": {
+            "enabled": true,
+            "weight": 1
+          }
+        },
+        "score_balance": {
+          "$ref": "#/$defs/WeightedRule",
+          "default": {
+            "enabled": false,
+            "weight": 0
+          }
+        },
+        "score_distribution": {
+          "$ref": "#/$defs/ScoreDistributionRule",
+          "default": {
+            "enabled": false,
+            "scope": "row",
+            "weight": 1
+          }
+        },
+        "score_position": {
+          "$ref": "#/$defs/ScorePositionRule",
+          "default": {
+            "direction": "high_front",
+            "enabled": false,
+            "weight": 1
+          }
+        },
+        "vision_front": {
+          "$ref": "#/$defs/WeightedRule",
+          "default": {
+            "enabled": true,
+            "weight": 20
+          }
+        }
+      },
+      "type": "object"
+    },
+    "WeightedRule": {
+      "additionalProperties": false,
+      "description": "An enabled flag + non-negative weight shared by most soft rules.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/RuleSetArtifact",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: RuleSet",
+  "type": "object"
+}

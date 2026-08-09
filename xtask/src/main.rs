@@ -23,6 +23,9 @@ mod spec;
 use schemars::JsonSchema;
 use seattrellis_schema::dto::bundle_manifest::ProjectBundleManifest;
 use seattrellis_schema::dto::classroom_layout::ClassroomLayout;
+use seattrellis_schema::dto::project::SeatTrellisProjectArtifact;
+use seattrellis_schema::dto::rule_set::RuleSetArtifact;
+use seattrellis_schema::dto::snapshot::SeatingSnapshotArtifact;
 use seattrellis_schema::dto::student_roster::StudentRoster;
 use seattrellis_schema::{ArtifactEnvelope, ArtifactKind};
 
@@ -36,6 +39,9 @@ const RULES_TS_OUT: &str = "clients/web/src/api/ruleRegistry.generated.ts";
 const SCHEMA_ARTIFACTS: &[(&str, ArtifactKind)] = &[
     ("student-roster", ArtifactKind::StudentRoster),
     ("classroom-layout", ArtifactKind::ClassroomLayout),
+    ("ruleset", ArtifactKind::RuleSet),
+    ("snapshot", ArtifactKind::SeatingSnapshot),
+    ("project", ArtifactKind::Project),
     ("project-bundle-manifest", ArtifactKind::ProjectBundleManifest),
 ];
 
@@ -89,6 +95,11 @@ fn schema_artifacts() -> Vec<(String, String)> {
                 ArtifactKind::ClassroomLayout => {
                     schema_for_envelope::<ClassroomLayout>(kind)
                 }
+                ArtifactKind::RuleSet => schema_for_envelope::<RuleSetArtifact>(kind),
+                ArtifactKind::SeatingSnapshot => {
+                    schema_for_envelope::<SeatingSnapshotArtifact>(kind)
+                }
+                ArtifactKind::Project => schema_for_envelope::<SeatTrellisProjectArtifact>(kind),
                 ArtifactKind::ProjectBundleManifest => {
                     schema_for_envelope::<ProjectBundleManifest>(kind)
                 }
