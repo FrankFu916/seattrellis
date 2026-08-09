@@ -2,11 +2,12 @@
 //! the Python `RuleSet` model (models/rules.py) field-for-field so artifact
 //! round-trips are lossless. Strict parsing: unknown fields are rejected.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The v2 rule-set artifact (`kind = "ruleset"`). Every field mirrors the
 /// Python model; defaults match Python's `default_factory` values.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RuleSetArtifact {
     #[serde(default = "default_schema_version")]
@@ -30,7 +31,7 @@ fn default_seed() -> u64 {
 }
 
 /// Hard constraints: fixed seats and pairwise adjacency/distance rules.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HardRules {
     #[serde(default)]
@@ -44,7 +45,7 @@ pub struct HardRules {
 }
 
 /// Pin one student to one seat.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FixedSeatRule {
     pub student: String,
@@ -52,7 +53,7 @@ pub struct FixedSeatRule {
 }
 
 /// A pairwise student constraint (keys).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PairRule {
     /// Exactly two student references.
@@ -60,7 +61,7 @@ pub struct PairRule {
 }
 
 /// Minimum graph/Euclidean distance between two students.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MinDistanceRule {
     pub students: [String; 2],
@@ -73,7 +74,7 @@ fn default_metric() -> DistanceMetric {
     DistanceMetric::Euclidean
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum DistanceMetric {
     #[serde(rename = "euclidean")]
     Euclidean,
@@ -83,7 +84,7 @@ pub enum DistanceMetric {
 
 /// A named hard group rule: `separate` keeps every member pair apart,
 /// `together` requires every member pair to be adjacent.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GroupRule {
     pub name: String,
@@ -97,7 +98,7 @@ pub struct GroupRule {
 
 /// Soft objectives. Defaults mirror Python's `SoftRules` factories
 /// (vision_front/height_back/randomize enabled; the rest disabled).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SoftRules {
     #[serde(default = "default_vision_front")]
@@ -152,7 +153,7 @@ fn default_randomize() -> WeightedRule {
 }
 
 /// An enabled flag + non-negative weight shared by most soft rules.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WeightedRule {
     #[serde(default)]
@@ -166,7 +167,7 @@ fn default_weight() -> i32 {
 }
 
 /// Place score ranks toward the front or back.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ScorePositionRule {
     #[serde(default)]
@@ -191,7 +192,7 @@ fn default_direction() -> ScoreDirection {
     ScoreDirection::HighFront
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ScoreDirection {
     #[serde(rename = "high_front")]
     HighFront,
@@ -200,7 +201,7 @@ pub enum ScoreDirection {
 }
 
 /// Balance score-rank means across physical rows or named seat groups.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ScoreDistributionRule {
     #[serde(default)]
@@ -225,7 +226,7 @@ fn default_scope() -> ScoreScope {
     ScoreScope::Row
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ScoreScope {
     #[serde(rename = "row")]
     Row,
@@ -234,7 +235,7 @@ pub enum ScoreScope {
 }
 
 /// Pair high- and low-ranked students through a soft proximity goal.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MentorPairingRule {
     #[serde(default)]
@@ -287,7 +288,7 @@ fn default_lookback() -> i32 {
     4
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum MentorRelation {
     #[serde(rename = "desk_mate")]
     DeskMate,
@@ -296,7 +297,7 @@ pub enum MentorRelation {
 }
 
 /// Fair-rotation: avoid repeating seat position categories.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FairRotationRule {
     #[serde(default)]
@@ -333,7 +334,7 @@ fn default_categories() -> Vec<String> {
 }
 
 /// Penalize recent desk-mate / neighbor pairings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AvoidRecentNeighborsRule {
     #[serde(default)]
@@ -376,7 +377,7 @@ fn default_within_distance() -> i32 {
 }
 
 /// Cooling period between repeated assignments (strict recent-neighbor form).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CoolingRule {
     #[serde(default)]

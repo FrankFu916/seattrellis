@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "ExportFormat": {
+      "enum": [
+        "html",
+        "excel",
+        "png"
+      ],
+      "type": "string"
+    },
+    "SeatTrellisProjectArtifact": {
+      "additionalProperties": false,
+      "description": "The v2 project artifact (`kind = \"seattrellis_project\"`): references to\nthe sibling students/layout/rules files plus defaults for generation and\nexport. Relative paths are validated by callers against the workspace\nroot (mirrors Python's relative-path validation).",
+      "properties": {
+        "default_candidate": {
+          "default": "recommended",
+          "type": "string"
+        },
+        "default_candidates": {
+          "default": 5,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "default_export_format": {
+          "$ref": "#/$defs/ExportFormat",
+          "default": "html"
+        },
+        "history_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "default": "seattrellis_project",
+          "type": "string"
+        },
+        "layout": {
+          "type": "string"
+        },
+        "name": {
+          "default": "SeatTrellis Project",
+          "type": "string"
+        },
+        "outputs_dir": {
+          "default": "outputs",
+          "type": "string"
+        },
+        "rules": {
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "students": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "students",
+        "layout",
+        "rules"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/SeatTrellisProjectArtifact",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: Project",
+  "type": "object"
+}
