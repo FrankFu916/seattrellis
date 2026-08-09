@@ -23,8 +23,6 @@ allow = [
     "Unicode-3.0",
 ]
 confidence-threshold = 0.8
-unlicensed = "deny"
-allow-osi-fsf-free = "neither"
 
 [sources]
 unknown-registry = "deny"
