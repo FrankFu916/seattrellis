@@ -985,6 +985,124 @@ pub fn audit_report_json(
         .map_err(|error| format!("could not serialize audit report: {error}"))
 }
 
+/// Candidate set generation (plan §6.3): repeated seeded solves with exact
+/// assignment exclusion, so candidates are not just different seeds of the
+/// same plan. Every candidate is hard-validated before it enters the set;
+/// the report carries per-candidate seed, cost, and assignment distance to
+/// the recommended plan plus reproducibility metadata.
+///
+/// `candidate_count` caps the set (1..=20); `attempt_limit` bounds the
+/// generation loop. Mirrors the Python `candidates.generate_candidate_set`
+/// strategy (seeded repeated solve + exclusion).
+pub fn generate_candidates_json(
+    request_json: &str,
+    candidate_count: usize,
+) -> Result<String, String> {
+    let mut request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)?;
+    let base_seed = request.seed;
+    let count = candidate_count.clamp(1, 20);
+    let attempt_limit = count * 12 + 8;
+
+    let mut candidates: Vec<Value> = Vec::new();
+    let mut seen: Vec<Vec<usize>> = Vec::new();
+    let mut failed_attempts = 0;
+
+    for attempt_index in 0..attempt_limit {
+        if candidates.len() >= count {
+            break;
+        }
+        request.seed = request.seed.wrapping_add(attempt_index as u64);
+        let Ok(response) = solve_problem(&request) else {
+            failed_attempts += 1;
+            continue;
+        };
+        if !response.feasible {
+            failed_attempts += 1;
+            continue;
+        }
+        let mut assignment: Vec<usize> = vec![0; request.student_count];
+        for [student, seat] in &response.assignment {
+            assignment[*student] = *seat;
+        }
+        if seen.iter().any(|existing| existing == &assignment) {
+            failed_attempts += 1;
+            continue;
+        }
+        seen.push(assignment.clone());
+
+        // Assignment distance to the recommended (first) plan: seats where
+        // the two assignments differ, normalized by the student count.
+        let distance_to_best = seen
+            .first()
+            .map(|best| {
+                best.iter()
+                    .zip(assignment.iter())
+                    .filter(|(a, b)| a != b)
+                    .count() as f64
+                    / request.student_count.max(1) as f64
+            })
+            .unwrap_or(0.0);
+
+        candidates.push(json!({
+            "candidate_id": format!("candidate_{:02}", candidates.len() + 1),
+            "seed": request.seed,
+            "attempts_used": response.attempts_used,
+            "total_cost": response.total_cost,
+            "hard_constraints_satisfied": response.hard_constraints_satisfied,
+            "distance_to_best": distance_to_best,
+            "assignment": response.assignment,
+        }));
+    }
+
+    if candidates.is_empty() {
+        return Err(
+            "candidate generation did not produce any feasible plan".to_string(),
+        );
+    }
+    let mut warnings: Vec<String> = Vec::new();
+    if candidates.len() < count {
+        warnings.push(format!(
+            "requested {count} candidates but generated {} distinct feasible plans",
+            candidates.len()
+        ));
+    }
+    if failed_attempts > 0 {
+        warnings.push(format!(
+            "{failed_attempts} generation attempts did not produce an additional distinct feasible plan"
+        ));
+    }
+
+    // Recommend the lowest-cost plan (mirrors Python's
+    // refresh_recommendation); ties break toward the first candidate.
+    let recommended = candidates
+        .iter()
+        .min_by(|left, right| {
+            let left_cost = left["total_cost"].as_f64().unwrap_or(f64::INFINITY);
+            let right_cost = right["total_cost"].as_f64().unwrap_or(f64::INFINITY);
+            left_cost
+                .partial_cmp(&right_cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .and_then(|candidate| candidate["candidate_id"].as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let report = json!({
+        "api_version": NATIVE_API_VERSION,
+        "candidate_count": candidates.len(),
+        "requested_candidate_count": count,
+        "base_seed": base_seed,
+        "generation_method": "seeded repeated solve with exact-assignment exclusion",
+        "recommended_candidate_id": recommended,
+        "candidates": candidates,
+        "warnings": warnings,
+    });
+    serde_json::to_string(&report)
+        .map_err(|error| format!("could not serialize candidate report: {error}"))
+}
+
 /// Map a student->seat probe to `student key -> seat id`, the shape the soft
 /// objective evaluator consumes.
 fn assignment_by_key(
@@ -2101,7 +2219,8 @@ mod tests {
         classify_solve_error, full_solution_total_cost, greedy_attempt, local_search,
         evaluate_problem_json, hard_search_with_budget, maximum_candidate_matching,
         resolve_group_rules, seat_distance, solve_problem_json, HARD_SEARCH_NODE_BUDGET,
-        audit_report_json, precheck_report_json, validate_assignment,
+        audit_report_json, generate_candidates_json, precheck_report_json,
+        validate_assignment,
         validate_solve_request_json,
         SplitMix64,
         CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome,
@@ -3321,5 +3440,45 @@ mod tests {
         let assignment: Vec<[usize; 2]> = vec![[0, 0], [1, 1]];
         let error = audit_report_json(request, &assignment).unwrap_err();
         assert!(error.contains("violates a hard rule"), "{error}");
+    }
+    #[test]
+    fn candidate_set_is_diverse_and_fully_validated() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 10,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0],[0.0,1.0],[1.0,1.0],[2.0,1.0],[3.0,1.0],[0.0,2.0],[1.0,2.0],[2.0,2.0],[3.0,2.0]],
+            "edges": [[0,1],[1,2],[2,3],[4,5],[5,6],[6,7],[8,9],[9,10],[10,11],[0,4],[1,5],[2,6],[3,7],[4,8],[5,9],[6,10],[7,11]],
+            "students": [
+                {"key":"s0","score":100.0},{"key":"s1","score":10.0},{"key":"s2","score":95.0},{"key":"s3","score":15.0},
+                {"key":"s4","score":90.0},{"key":"s5","score":20.0},{"key":"s6","score":85.0},{"key":"s7","score":25.0},
+                {"key":"s8","score":80.0},{"key":"s9","score":30.0}
+            ],
+            "rules": {"seed": 42, "soft": {"score_balance": {"enabled": true, "weight": 5}}},
+            "seed": 42
+        }"#;
+        let report: serde_json::Value = serde_json::from_str(
+            &generate_candidates_json(request, 3).unwrap(),
+        )
+        .unwrap();
+
+        let candidates = report["candidates"].as_array().unwrap();
+        assert_eq!(candidates.len(), 3, "requested 3 candidates");
+        assert_eq!(report["requested_candidate_count"], 3);
+        assert!(report["recommended_candidate_id"].is_string());
+        assert_eq!(report["base_seed"], 42);
+        assert_eq!(report["generation_method"], "seeded repeated solve with exact-assignment exclusion");
+
+        // Every candidate is distinct, hard-validated, and carries the
+        // reproducibility + diversity metadata.
+        let mut assignments: Vec<Vec<[usize; 2]>> = Vec::new();
+        for candidate in candidates {
+            assert_eq!(candidate["hard_constraints_satisfied"], true);
+            assert!(candidate["seed"].is_u64());
+            assert!(candidate["total_cost"].is_number());
+            assert!(candidate["distance_to_best"].is_number());
+            let assignment: Vec<[usize; 2]> = serde_json::from_value(candidate["assignment"].clone()).unwrap();
+            assert!(!assignments.contains(&assignment), "candidates must be distinct");
+            assignments.push(assignment);
+        }
     }
 }

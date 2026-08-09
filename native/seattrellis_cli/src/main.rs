@@ -82,6 +82,12 @@ pub struct AuditArgs {
     pub solution: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct CandidatesArgs {
+    pub problem: PathBuf,
+    pub count: usize,
+}
+
 #[derive(Debug, PartialEq)]
 enum Command {
     Help,
@@ -89,6 +95,7 @@ enum Command {
     Validate(ValidateArgs),
     Precheck(PrecheckArgs),
     Audit(AuditArgs),
+    Candidates(CandidatesArgs),
     Solve(SolveArgs),
     Export(ExportArgs),
 }
@@ -256,6 +263,30 @@ fn parse_audit(tokens: &[String]) -> Result<Command, String> {
     }))
 }
 
+fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag { name: "--problem", takes_value: true },
+        Flag { name: "--count", takes_value: true },
+        Flag { name: "--help", takes_value: false },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?
+        .ok_or("candidates requires --problem <file>")?;
+    let count = match flag_value(&parsed, "--count")? {
+        Some(raw) => raw
+            .parse::<usize>()
+            .map_err(|error| format!("invalid --count '{raw}': {error}"))?,
+        None => 5,
+    };
+    Ok(Command::Candidates(CandidatesArgs {
+        problem: PathBuf::from(problem),
+        count,
+    }))
+}
+
 fn parse_export(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag { name: "--problem", takes_value: true },
@@ -305,6 +336,7 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "validate" => parse_validate(&text[1..]),
         "precheck" => parse_precheck(&text[1..]),
         "audit" => parse_audit(&text[1..]),
+        "candidates" => parse_candidates(&text[1..]),
         "solve" => parse_solve(&text[1..]),
         "export" => parse_export(&text[1..]),
         other => Err(format!("unknown command '{other}'")),
@@ -357,6 +389,14 @@ fn run_command(command: Command) -> ExitCode {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
                 // Precheck only judges input: InvalidInput (frozen 2).
+                ExitCode::from(2)
+            }
+        },
+        Command::Candidates(args) => match commands::run_candidates(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
                 ExitCode::from(2)
             }
         },

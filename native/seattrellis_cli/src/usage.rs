@@ -25,6 +25,8 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("  Report candidate seat domains and infeasibility reasons.\n    ");
     out.push_str(&styler.cyan("audit"));
     out.push_str("     Audit a solved plan: hard-rule status + soft breakdown.\n    ");
+    out.push_str(&styler.cyan("candidates"));
+    out.push_str("  Generate a diverse candidate set.\n    ");
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));
@@ -63,6 +65,18 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" <file>   The solve-request JSON used for solve. Required.\n      ");
     out.push_str(&styler.bold("--solution"));
     out.push_str(" <file>  The solve result JSON (CoreSolveResponse). Required.\n\n");
+
+    out.push_str(&styler.bold("CANDIDATES:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("candidates"));
+    out.push_str(" --problem <problem.json> [--count <n>]\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--problem"));
+    out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n      ");
+    out.push_str(&styler.bold("--count"));
+    out.push_str(" <n>        Candidate set size (1-20, default 5).\n\n");
 
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");
@@ -121,12 +135,14 @@ mod tests {
         assert!(text.contains("COMMANDS:"));
         assert!(text.contains("PRECHECK:"));
         assert!(text.contains("AUDIT:"));
+        assert!(text.contains("CANDIDATES:"));
         assert!(text.contains("SOLVE:"));
         assert!(text.contains("EXPORT:"));
         assert!(text.contains("EXIT STATUS:"));
         assert!(text.contains("solve"));
         assert!(text.contains("precheck"));
         assert!(text.contains("audit"));
+        assert!(text.contains("candidates"));
         assert!(text.contains("export"));
     }
 
