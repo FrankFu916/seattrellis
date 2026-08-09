@@ -21,6 +21,8 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("\n    ");
     out.push_str(&styler.cyan("validate"));
     out.push_str(" Check a solve-request JSON without running the search.\n    ");
+    out.push_str(&styler.cyan("precheck"));
+    out.push_str("  Report candidate seat domains and infeasibility reasons.\n    ");
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));
@@ -33,6 +35,16 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("validate"));
+    out.push_str(" --problem <problem.json>\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--problem"));
+    out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n\n");
+
+    out.push_str(&styler.bold("PRECHECK:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("precheck"));
     out.push_str(" --problem <problem.json>\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
@@ -91,10 +103,12 @@ mod tests {
         let text = render_usage(&Styler::for_stream(false));
         assert!(text.contains("USAGE:"));
         assert!(text.contains("COMMANDS:"));
+        assert!(text.contains("PRECHECK:"));
         assert!(text.contains("SOLVE:"));
         assert!(text.contains("EXPORT:"));
         assert!(text.contains("EXIT STATUS:"));
         assert!(text.contains("solve"));
+        assert!(text.contains("precheck"));
         assert!(text.contains("export"));
     }
 

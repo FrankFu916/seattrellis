@@ -4,6 +4,7 @@ pub mod objectives;
 pub mod rng;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::cost::{avoid_recent_neighbors_cost, individual_cost, normalize_edge};
@@ -734,6 +735,82 @@ pub fn solve_problem_json(request_json: &str) -> Result<String, String> {
     let response = solve_problem(&request)?;
     serde_json::to_string(&response)
         .map_err(|error| format!("could not serialize native solve response: {error}"))
+}
+
+/// Feasibility precheck report (M3-06, plan §6.1 layer 2 + §6.5): candidate
+/// seat domains with per-seat exclusion reasons, the most constrained
+/// student, and the global matching size. The UI consumes this to explain
+/// *why* a problem is hard or infeasible before/without running a search.
+///
+/// The report never runs the solver; `precheck` is `"clean"` when static
+/// conflicts, empty domains, and matching all pass — that is a diagnostic,
+/// not a feasibility proof (the hard search decides that).
+pub fn precheck_report_json(request_json: &str) -> Result<String, String> {
+    let request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)?;
+    let resolved = resolve_group_rules(&request)?;
+    let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let domains = build_candidate_domains(&request, &resolved, &adjacency, &graph_distances);
+    let matching_size = maximum_candidate_matching(&domains);
+
+    let (precheck, reason): (&str, Option<String>) =
+        if let Some(empty) = domains.iter().find(|domain| domain.seats.is_empty()) {
+            let why = empty
+                .excluded
+                .first()
+                .map(|(seat, reason)| format!("seat {seat}: {reason}"))
+                .unwrap_or_else(|| "no legal seat".to_string());
+            ("infeasible", Some(format!("student {} has no legal seat ({why})", empty.student)))
+        } else if matching_size < request.student_count {
+            (
+                "infeasible",
+                Some(format!(
+                    "matching seats {} of {} students",
+                    matching_size, request.student_count
+                )),
+            )
+        } else {
+            ("clean", None)
+        };
+
+    let most_constrained = domains
+        .iter()
+        .min_by_key(|domain| (domain.seats.len(), domain.student))
+        .map(|domain| {
+            json!({
+                "student": domain.student,
+                "candidate_count": domain.seats.len(),
+            })
+        });
+
+    let students: Vec<Value> = domains
+        .iter()
+        .map(|domain| {
+            json!({
+                "student": domain.student,
+                "candidate_count": domain.seats.len(),
+                "seats": domain.seats,
+                "excluded": domain.excluded.iter().map(|(seat, reason)| {
+                    json!({ "seat": seat, "reason": reason })
+                }).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+
+    let report = json!({
+        "api_version": NATIVE_API_VERSION,
+        "precheck": precheck,
+        "infeasible_reason": reason,
+        "student_count": request.student_count,
+        "seat_count": request.seat_positions.len(),
+        "matching_size": matching_size,
+        "most_constrained_student": most_constrained,
+        "students": students,
+    });
+    serde_json::to_string(&report)
+        .map_err(|error| format!("could not serialize precheck report: {error}"))
 }
 
 /// Validate a solve request without spending the solver's attempt budget.
@@ -1732,8 +1809,9 @@ mod tests {
         build_graph_distance_matrix, build_index_adjacency, classify_solve_error,
         evaluate_problem_json, hard_search, hard_search_with_budget,
         maximum_candidate_matching, resolve_group_rules, seat_distance, solve_problem_json,
-        validate_assignment, validate_solve_request_json, CoreEvaluationResponse,
-        CoreSolveRequest, CoreSolveResponse, SearchOutcome, SolveStatus, NATIVE_API_VERSION,
+        precheck_report_json, validate_assignment, validate_solve_request_json,
+        CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome,
+        SolveStatus, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -2731,5 +2809,52 @@ mod tests {
         // Seats 0 and 2 are not adjacent: a legal pairing passes.
         validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0, 2])
             .expect("non-adjacent pairing must pass");
+    }
+    #[test]
+    fn precheck_report_lists_domains_and_reasons() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+            "edges": [[0, 1], [1, 2], [2, 3]],
+            "fixed_seats": [[0, 0]],
+            "must_be_adjacent": [[0, 1]]
+        }"#;
+        let report: serde_json::Value =
+            serde_json::from_str(&precheck_report_json(request).unwrap()).unwrap();
+        assert_eq!(report["precheck"], "clean");
+        assert!(report["infeasible_reason"].is_null());
+        assert_eq!(report["matching_size"], 3);
+        assert_eq!(report["students"][0]["candidate_count"], 1);
+        assert_eq!(report["students"][0]["seats"][0], 0);
+        assert_eq!(report["students"][1]["candidate_count"], 1);
+        assert_eq!(report["students"][1]["seats"][0], 1);
+        // The exclusion reason names the pair rule.
+        let excluded = &report["students"][1]["excluded"];
+        assert!(
+            excluded
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["reason"].as_str().unwrap().contains("adjacent")),
+            "excluded reasons: {excluded}"
+        );
+    }
+
+    #[test]
+    fn precheck_report_flags_empty_domain_with_reason() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 1], [1, 2]],
+            "fixed_seats": [[0, 0]],
+            "min_distance": [{"students": [0, 1], "distance": 3.0, "metric": "graph"}]
+        }"#;
+        let report: serde_json::Value =
+            serde_json::from_str(&precheck_report_json(request).unwrap()).unwrap();
+        assert_eq!(report["precheck"], "infeasible");
+        let reason = report["infeasible_reason"].as_str().unwrap();
+        assert!(reason.contains("student 1 has no legal seat"), "{reason}");
     }
 }

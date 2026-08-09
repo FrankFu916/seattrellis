@@ -10,13 +10,13 @@
 use std::path::Path;
 
 use seattrellis_core::{
-    solve_problem_json, validate_solve_request_json, CoreSolveRequest, CoreSolveResponse,
-    SolveStatus,
+    precheck_report_json, solve_problem_json, validate_solve_request_json, CoreSolveRequest,
+    CoreSolveResponse, SolveStatus,
 };
 
 use crate::render::SeatingGrid;
 use crate::style::Styler;
-use crate::{ExportArgs, ExportFormat, SolveArgs};
+use crate::{ExportArgs, ExportFormat, PrecheckArgs, SolveArgs};
 use crate::ValidateArgs;
 
 pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
@@ -54,6 +54,15 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
 
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
 /// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+/// Run the feasibility precheck and print the JSON report (M3-06).
+pub fn run_precheck(args: &PrecheckArgs) -> Result<(), String> {
+    let problem_text = read_text(&args.problem)?;
+    let report = precheck_report_json(&problem_text)
+        .map_err(|error| format!("'{}' is invalid: {error}", args.problem.display()))?;
+    println!("{report}");
+    Ok(())
+}
+
 pub fn run_solve(args: &SolveArgs) -> Result<SolveStatus, String> {
     let styler = Styler::stdout();
     let problem_text = read_text(&args.problem)?;
