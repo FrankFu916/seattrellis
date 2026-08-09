@@ -67,7 +67,7 @@ Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）目前仅 
 | `project-info` | cli.py:713-721 → `project_info` service.py:1053 | 无 | Rust CLI `project-info`（PR #103） | `RUST_PARITY_PENDING` |
 | `project-validate` | cli.py:723-732 → `project_validate` service.py:1062 | `--strict` | Rust CLI `project-validate`（PR #103） | `RUST_PARITY_PENDING` |
 | `project-solve` | cli.py:734-764 → `project_solve` service.py:1080 | `--candidates/--seed/--report` | Rust CLI `project-solve`/`project-export`（PR #103）；无候选集参数 | `RUST_PARITY_PENDING` |
-| `project-rotate` | cli.py:766-788 → `project_rotate` service.py:1118 | `--periods/--label` | 无对应（旋转生成 Python-only） | `PYTHON_ONLY` |
+| `project-rotate` | cli.py:766-788 → `project_rotate` service.py:1118 | `--periods/--label` | 无对应（旋转生成 Python-only） | `RUST_PARITY_PENDING` |
 | `project-edit` | cli.py:790-842 → `project_edit` service.py:1154 | `--snapshot/--operation/...` | 无对应 | `PYTHON_ONLY` |
 | `project-repair` | cli.py:844-922 → `project_repair` service.py:1181 | `--affected-student/...` | 无对应 | `PYTHON_ONLY` |
 | `project-export` | cli.py:924-945 → `project_export` service.py:1225 | `--format/--candidate` | 无对应 CLI（app `POST /exports` 部分覆盖，见 §12） | `PYTHON_ONLY` |
@@ -115,7 +115,7 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 |---|---|---|---|
 | `compute_solve`（内存模型求解，候选 1–20 + recommended） | service.py:107；service_types.py:181/:199 | app `POST /classes/generate`（server.rs:430，room_templates.rs:317/331 + goal_rules.rs:32 + editing.rs:868）；core `solve_problem`（lib.rs:530） | `RUST_PARTIAL`（候选集多解生成、recommended 选择、计划比较报告未确认对等） |
 | `solve` / `solve_with_report`（文件级 + 报告） | service.py:537/:569 | Rust CLI `solve --problem` 存在，形态不同；无文件级工作流 | `RUST_PARTIAL` |
-| `project_solve`（项目级） | service.py:1080 | 无对应 | `PYTHON_ONLY` |
+| `project_solve`（项目级） | service.py:1080 | 无对应 | `RUST_PARITY_PENDING` |
 | `generate_class_plan`（class 工作流入口） | application/class_workflow.py:105 | app `classes/generate` 已接线 | `RUST_PARITY_PENDING` |
 | `SolveInput`/`SolveOutput` | service_types.py:181/:199 | CoreSolveRequest/Response（lib.rs:398/:436）为求解子集 | `RUST_PARTIAL` |
 
@@ -123,10 +123,10 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 
 | 用例 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
-| `compute_rotation_plan`（逐期顺序求解） | service.py:178-285 | **无生成器**；app rotation.rs 仅保存/读取/呈现（rotation.rs:290-410） | `PYTHON_ONLY` |
-| `format_rotation_summary` | service.py:273 | 无对应 | `PYTHON_ONLY` |
-| `generate_rotation_plan`（文件级） | service.py:647 | 无对应 | `PYTHON_ONLY` |
-| `project_rotate` | service.py:1118 | 无对应 | `PYTHON_ONLY` |
+| `compute_rotation_plan`（逐期顺序求解） | service.py:178-285 | **无生成器**；app rotation.rs 仅保存/读取/呈现（rotation.rs:290-410） | `RUST_PARITY_PENDING` |
+| `format_rotation_summary` | service.py:273 | 无对应 | `RUST_PARITY_PENDING` |
+| `generate_rotation_plan`（文件级） | service.py:647 | 无对应 | `RUST_PARITY_PENDING` |
+| `project_rotate` | service.py:1118 | 无对应 | `RUST_PARITY_PENDING` |
 | rotation 保存/加载/group-register | —（handlers.py:622/:693/:748/:781） | app rotation.rs:290-410 + server.rs:503-517 全接线 | `RUST_PARITY_PENDING` |
 
 ### 2.3 rules / validate / teacher goals
@@ -135,7 +135,7 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 |---|---|---|---|
 | `compute_validate` / `ValidateInput` | service.py:287；service_types.py:248 | core `evaluate_problem`（lib.rs:107）等价；hard rule 判定 Rust 已镜像（§7） | `RUST_PARITY_PENDING` |
 | `run_validate`（文件级，含 preset/history 警告） | service.py:944 | Rust CLI `validate` 无 preset/history 警告语义 | `RUST_PARTIAL` |
-| `project_validate` | service.py:1062 | 无对应 | `PYTHON_ONLY` |
+| `project_validate` | service.py:1062 | 无对应 | `RUST_PARITY_PENDING` |
 | `list_teacher_goals` / `get_teacher_goal` / `resolve_teacher_goal` | application/teacher_goals.py:98/:104/:117 | app goal_rules.rs 仅 4 个 goal（`GOAL_IDS` goal_rules.rs:14-19），Python 15 个 preset 中 11 个无对应；goal JSON 不含 hard/groups | `RUST_PARTIAL` |
 
 ### 2.4 candidates（候选集）
@@ -152,27 +152,27 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 | 用例 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
 | `compute_edit` / `edit_snapshot` / `project_edit` | service.py:294/:764/:1154 | app editing 协议端点存在（editing.rs:856/:884），文件级无 | `RUST_PARTIAL` |
-| `compute_repair` / `repair_snapshot` / `project_repair` | service.py:336/:807/:1181 | **无对应**（受约束重解） | `PYTHON_ONLY` |
+| `compute_repair` / `repair_snapshot` / `project_repair` | service.py:336/:807/:1181 | **无对应**（受约束重解） | `RUST_PARITY_PENDING` |
 | `EditorDraftStore` / `LayoutDraftStore` / `RosterDraftStore` | api/drafts.py:45、api/layouts.py:34、api/rosters.py:48 | app editing.rs/layouts.rs/roster.rs 对应 store | `RUST_PARITY_PENDING` |
 
 ### 2.6 history / pair history（见 §9 详细条目）
 
 | 用例 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
-| `compute_history_report` / `run_history_report` | service.py:473/:969 | 无对应（app 仅文件目录浏览 projects.rs:451-483） | `PYTHON_ONLY` |
-| `compute_pair_report` / `run_pair_report` | service.py:480/:990 | 无对应 | `PYTHON_ONLY` |
-| `compute_project_info` / `project_info` | service.py:499/:1053 | 无对应 | `PYTHON_ONLY` |
+| `compute_history_report` / `run_history_report` | service.py:473/:969 | 无对应（app 仅文件目录浏览 projects.rs:451-483） | `RUST_PARITY_PENDING` |
+| `compute_pair_report` / `run_pair_report` | service.py:480/:990 | 无对应 | `RUST_PARITY_PENDING` |
+| `compute_project_info` / `project_info` | service.py:499/:1053 | 无对应 | `RUST_PARITY_PENDING` |
 
 ### 2.7 project（项目工作区）
 
 | 用例 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
 | `init_demo` / `project_init` | service.py:1023/:1029 | 无对应 | `PYTHON_ONLY` |
-| `project_info` / `project_validate` | service.py:1053/:1062 | 无对应 | `PYTHON_ONLY` |
+| `project_info` / `project_validate` | service.py:1053/:1062 | 无对应 | `RUST_PARITY_PENDING` |
 | `run_doctor`（环境诊断） | service.py:861 | 无对应 | `PYTHON_ONLY` |
 | project 历史/产物浏览 | handlers.py:228/:259 | app projects.rs:332/:481 + server.rs:470-475 | `RUST_PARITY_PENDING` |
-| 产物对比（artifacts/compare） | handlers.py:298 | **无对应端点**（前端依赖，Rust 404） | `PYTHON_ONLY` |
-| 产物恢复（artifacts/restore） | handlers.py:380 | **无对应端点** | `PYTHON_ONLY` |
+| 产物对比（artifacts/compare） | handlers.py:298 | **无对应端点**（前端依赖，Rust 404） | `RUST_PARITY_PENDING` |
+| 产物恢复（artifacts/restore） | handlers.py:380 | **无对应端点** | `RUST_PARITY_PENDING` |
 | 隐私扫描 / 打包 / 恢复 | handlers.py:1432/:1474/:1496 | app projects.rs:706/:947/:1013 + server.rs:476-484 | `RUST_PARITY_PENDING` |
 
 ### 2.8 migration（见 §13 详细条目）
@@ -360,7 +360,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 - **历史公平 / 近期邻座 / 冷却 / 多期轮换**均已覆盖（上表）；类别枚举 `models/history.py:10-20`（10 类座位位置）、关系类型枚举 `models/history.py:23-29`（6 种邻座关系），Rust 侧对应存在。
 - **gender 无任何规则/目标**：Python 与 Rust 两侧均无（`gender` 仅是学生数据字段，models/student.py:46；Rust Student 甚至无此字段）。若 v2 需要性别相关目标，属从零设计，不属于 parity 缺口。
-- 评分层（各 soft 的 0-100 归一化 PlanScore、`diversity_score`、`stability_score`）**无 Rust 对应** → `PYTHON_ONLY`（见 §2.4、§10）。
+- 评分层（各 soft 的 0-100 归一化 PlanScore、`diversity_score`、`stability_score`）**无 Rust 对应** → `RUST_PARITY_PENDING`（见 §2.4、§10）。
 - app goal 覆盖：`goal_rules.rs` 仅 4 个 goal、6 个 soft 规则权重；`score_position`/`score_distribution`/`mentor_pairing`/`cooling` 固定 disabled（goal_rules.rs:70-112）；Python 15 个 preset 中 11 个在 app 无对应 → `RUST_PARTIAL`（见 §2.3）。
 
 ---
@@ -371,11 +371,11 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 |---|---|---|---|
 | 数据结构：`SeatHistoryRecord`/`StudentSeatHistory`/`SeatHistory` | models/history.py:54/:73/:176 | core models.rs:581/:588/:619（打分 DTO 子集） | `RUST_PARITY_PENDING` |
 | 数据结构：`PairHistoryRecord`/`StudentPairHistory`/`PairHistory` | models/history.py:93/:117/:151 | core models.rs:638/:653/:697 | `RUST_PARITY_PENDING` |
-| 构建：`load_history_snapshots`/`build_seat_history`/`build_pair_history` | history.py:45/:65/:135 | 无独立模块（app 仅文件目录浏览 projects.rs:451-483） | `PYTHON_ONLY` |
+| 构建：`load_history_snapshots`/`build_seat_history`/`build_pair_history` | history.py:45/:65/:135 | 无独立模块（app 仅文件目录浏览 projects.rs:451-483） | `RUST_PARITY_PENDING` |
 | 关系检测 `detect_neighbor_relation_types` / `student_pair_key` | history.py:237/:276 | cost.rs:329-386/:448（求解用） | `RUST_PARITY_PENDING` |
 | 成本：`avoid_recent_neighbors_cost`/`fair_rotation_cost`/`classify_seat_position` | history.py:348/:449/:409 | cost.rs:281/:124/:185 | `RUST_PARITY_PENDING` |
-| 报告：`build_fairness_report`、`compute_history_report`、`compute_pair_report` | history.py:381；service.py:473/:480 | **无对应**（docs/rust-migration.md:73 明确属待办） | `PYTHON_ONLY` |
-| 报告：`run_history_report`/`run_pair_report`（CLI） | service.py:969/:990 | 无对应 | `PYTHON_ONLY` |
+| 报告：`build_fairness_report`、`compute_history_report`、`compute_pair_report` | history.py:381；service.py:473/:480 | **无对应**（docs/rust-migration.md:73 明确属待办） | `RUST_PARITY_PENDING` |
+| 报告：`run_history_report`/`run_pair_report`（CLI） | service.py:969/:990 | 无对应 | `RUST_PARITY_PENDING` |
 
 ---
 
@@ -386,8 +386,8 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | 候选生成（1–20，seed 支持） | service.py:107-175；models.py:185（API 限制 ge=1, le=20） | core `solve_problem`（单解）；多候选路径未确认 | `RUST_PARTIAL` |
 | recommended 选择 | service.py（compute_solve） | 未确认 | `RUST_PARTIAL` |
 | PlanScore / ScoreBreakdown（7 维度 + rule_scores + hard_constraint_summary） | scoring.py:280-636 | 无对应（Rust 只有成本总和） | `PYTHON_ONLY` |
-| `diversity_score`（候选间换座比例） | scoring.py:82-130 | 无对应 | `PYTHON_ONLY` |
-| `stability_score`（与最近历史同座比例） | scoring.py:480-502 | 无对应 | `PYTHON_ONLY` |
+| `diversity_score`（候选间换座比例） | scoring.py:82-130 | 无对应 | `RUST_PARITY_PENDING` |
+| `stability_score`（与最近历史同座比例） | scoring.py:480-502 | 无对应 | `RUST_PARITY_PENDING` |
 | 计划比较报告（plan-comparison-report） | candidate_report.py:77；schema 0.2.2 | 无对应 | `PYTHON_ONLY` |
 | `hard_constraint_summary`（完整性+硬规则复核） | scoring.py:99-112 | lib.rs:107-166（`evaluate_problem` 等价） | `RUST_PARITY_PENDING` |
 
@@ -400,7 +400,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | Editing 协议端点（GET draft / POST commands / DELETE） | http.py:721/:729/:741 | editing.rs:856/:884；server.rs:446-451 | `RUST_PARITY_PENDING` |
 | `EditorDraftStore`（create/state/snapshot/dispatch/delete/clear） | api/drafts.py:45-190 | editing.rs `EditorDraftStore`（:831） | `RUST_PARITY_PENDING` |
 | 文件级编辑 `edit_snapshot` / `project_edit`（CLI） | service.py:764/:1154 | 无对应 CLI | `PYTHON_ONLY` |
-| 受约束重解 `compute_repair` / `repair_snapshot` / `project_repair`（锁 + affected + 变更轨迹） | service.py:336/:807/:1181 | **无对应**（app 无 repair 端点/服务） | `PYTHON_ONLY` |
+| 受约束重解 `compute_repair` / `repair_snapshot` / `project_repair`（锁 + affected + 变更轨迹） | service.py:336/:807/:1181 | **无对应**（app 无 repair 端点/服务） | `RUST_PARITY_PENDING` |
 | 锁状态 `lock_state_from_snapshot` / `EditingSession` | editing.py:86-99 | editing.rs 对应 | `RUST_PARITY_PENDING` |
 
 ---
