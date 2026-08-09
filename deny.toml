@@ -23,6 +23,8 @@ allow = [
     "Unicode-3.0",
     # Weak copyleft in the Tauri/dom_query dependency tree.
     "MPL-2.0",
+    # LLVM/rustc toolchain crates carry the exception clause.
+    "Apache-2.0 WITH LLVM-exception",
 ]
 confidence-threshold = 0.8
 
