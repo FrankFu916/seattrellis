@@ -584,8 +584,8 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 ## 19. 2026-08-09 acceptance-fix round（post-audit 整改）
 
 外部验收审查（§17）后的一轮整改，含审查指出的问题修复与若干契约变更。
-所有条目以本 commit 为证据起点；升级 `RUST_VERIFIED` 仍需要 §17.4 的
-golden 证据。
+所有条目以 merge commit `732dac2`（PR #104，分支 `codex/m2-m3-acceptance-fixes`）
+为证据起点；升级 `RUST_VERIFIED` 仍需要 §17.4 的 golden 证据。
 
 ### 19.1 已修复并纳入本 commit
 
