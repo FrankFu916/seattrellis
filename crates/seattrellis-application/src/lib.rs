@@ -5,6 +5,7 @@
 
 pub mod class_generation;
 pub mod export;
+pub mod rotation;
 
 use std::collections::HashMap;
 use std::sync::Mutex;

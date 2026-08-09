@@ -353,6 +353,39 @@ fn generate_response(
     }
 }
 
+/// `POST /api/v1/classes/rotation`: thin transport adapter - the
+/// orchestration lives in [`seattrellis_application::rotation`] (M2 parity,
+/// ledger A.1: the rotation-generation main flow the workbench depends on).
+fn rotation_generate_response(
+    body: &[u8],
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+) -> Response {
+    if body.is_empty() {
+        return json_error(400, "empty request body");
+    }
+    let raw_request: Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return json_error(400, "request body is not valid JSON"),
+    };
+    match seattrellis_application::rotation::generate_rotation_plan(
+        &raw_request,
+        editor_store,
+        solve_requests,
+    ) {
+        Ok(outcome) => Response::json(
+            200,
+            json!({
+                "class_name": outcome.class_name,
+                "warnings": outcome.warnings,
+                "rotation_plan": outcome.plan,
+                "editor": outcome.editor,
+            }),
+        ),
+        Err(error) => app_error_response(error),
+    }
+}
+
 /// `POST /api/v1/exports`: thin transport adapter - the orchestration lives
 /// in [`seattrellis_application::export`].
 fn export_response(
@@ -399,6 +432,9 @@ pub(crate) fn route(
         ("POST", ["api", "v1", "classes", "generate"])
         | ("POST", ["api", "v1", "solve"]) => {
             generate_response(&request.body, editor_store, solve_requests)
+        }
+        ("POST", ["api", "v1", "classes", "rotation"]) => {
+            rotation_generate_response(&request.body, editor_store, solve_requests)
         }
         ("POST", ["api", "v1", "rosters", "drafts"]) => {
             roster_upload_response(&request.body, request.content_type.as_deref())
@@ -2095,6 +2131,119 @@ mod tests {
     }
 
     /// An unknown room template id on the frontend path is a 422.
+
+    #[test]
+    fn rotation_generate_creates_multi_period_plan() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Physics Rotation",
+                "students": [
+                    {"student_id": "S1", "name": "Alice", "score": 93},
+                    {"student_id": "S2", "name": "Bob", "score": 81},
+                    {"student_id": "S3", "name": "Carol", "score": 75}
+                ],
+                "room": {"template_id": "standard-30"},
+                "goal": {"goal_id": "daily-rotation"}
+            },
+            "period_count": 3,
+            "period_labels": ["Week 1", "Week 2", "Week 3"],
+            "options": {"seed": 42}
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/rotation", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+
+        // RotationPlan shape: three labelled periods, each with assignments.
+        let plan = &value["rotation_plan"];
+        assert_eq!(plan["kind"], "rotation_plan");
+        assert_eq!(plan["name"], "Physics Rotation");
+        let periods = plan["periods"].as_array().unwrap();
+        assert_eq!(periods.len(), 3);
+        assert_eq!(periods[0]["label"], "Week 1");
+        assert_eq!(periods[2]["label"], "Week 3");
+        for period in periods {
+            let assignments = period["snapshot"]["assignments"].as_array().unwrap();
+            assert_eq!(assignments.len(), 3, "every period seats all students");
+            assert!(period["snapshot"]["solver_status"].is_string());
+        }
+        assert_eq!(plan["base_history_count"], 0);
+        assert_eq!(plan["metadata"]["period_count"], 3);
+        assert_eq!(plan["metadata"]["backend"], "native");
+        // Fairness + pair summaries are present and count the periods.
+        assert_eq!(plan["fairness_summary"]["history_count"], 3);
+        assert_eq!(plan["pair_repeat_summary"]["history_count"], 3);
+
+        // The response carries a first-period editor draft the workbench can
+        // open immediately.
+        let editor = &value["editor"];
+        assert!(editor["draft_id"].as_str().is_some());
+        assert_eq!(editor["students"].as_array().unwrap().len(), 3);
+        assert!(
+            value["class_name"].as_str().is_some_and(|name| !name.is_empty()),
+            "class_name: {}",
+            value["class_name"]
+        );
+        assert_eq!(value["warnings"], json!([]));
+    }
+
+    #[test]
+    fn rotation_generate_rejects_unknown_room() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "students": [{"student_id": "S1", "name": "Alice"}],
+                "room": {"template_id": "standard-99"},
+                "goal": {"goal_id": "daily-rotation"}
+            },
+            "period_count": 2
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/rotation", &body), &root);
+        assert_eq!(response.status, 422, "body: {}", String::from_utf8_lossy(&response.body));
+    }
+
+    #[test]
+    fn rotation_generate_uses_base_history_snapshots() {
+        let root = test_web_root();
+        let problem = json!({
+            "draft": {
+                "name": "Rotation With History",
+                "students": [
+                    {"student_id": "S1", "name": "Alice"},
+                    {"student_id": "S2", "name": "Bob"}
+                ],
+                "room": {"template_id": "standard-30"},
+                "goal": {"goal_id": "daily-rotation"},
+                "history_snapshots": [{
+                    "assignments": [
+                        {"student_key": "S1", "seat_id": "R1C1"},
+                        {"student_key": "S2", "seat_id": "R1C2"}
+                    ]
+                }]
+            },
+            "period_count": 2,
+            "options": {"seed": 7}
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_one(&request("POST", "/api/v1/classes/rotation", &body), &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let plan = &body_json(&response)["rotation_plan"];
+        assert_eq!(plan["base_history_count"], 1, "one base snapshot");
+        assert_eq!(plan["fairness_summary"]["history_count"], 3, "base + 2 generated periods");
+    }
+
     #[test]
     fn generate_frontend_class_request_unknown_room_is_422() {
         let root = test_web_root();

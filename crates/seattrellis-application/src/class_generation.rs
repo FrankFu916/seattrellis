@@ -136,7 +136,7 @@ pub fn generate_class(
 /// `true` when the body is a React workbench `GenerateClassRequest`, i.e. it
 /// carries a `draft` object whose `room` selects a room template (`template_id`)
 /// or an explicit custom layout (`layout`).
-fn is_frontend_class_request(value: &Value) -> bool {
+pub(crate) fn is_frontend_class_request(value: &Value) -> bool {
     if value
         .pointer("/draft/room/template_id")
         .and_then(Value::as_str)
@@ -161,7 +161,7 @@ fn is_frontend_class_request(value: &Value) -> bool {
 /// Returns a `422` response naming the missing piece when the draft is
 /// malformed (`invalid_class_draft`), the room template is unknown
 /// (`room_not_found`) or the goal is unknown (`unknown_goal`).
-fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
+pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
     let draft = value
         .get("draft")
         .and_then(Value::as_object)
@@ -440,7 +440,7 @@ fn resolve_student_pair(
 /// The core student key for a `draft.students` entry (mirrors
 /// [`core_student_value`]: `student_id` if present, else `name`, falling back
 /// to the already-mapped `key` when the record is core-shaped).
-fn core_student_key(student: &Value) -> Option<&str> {
+pub(crate) fn core_student_key(student: &Value) -> Option<&str> {
     let student_id = student.get("student_id").and_then(Value::as_str).unwrap_or("");
     let name = student.get("name").and_then(Value::as_str).unwrap_or("");
     if !student_id.is_empty() {
@@ -594,7 +594,7 @@ pub fn build_history_json(
 
 /// Default solve seed when the frontend sends no `options.seed` (matches the
 /// rule-set default in `goal_rules.rs` / the core `RuleSet` model).
-const DEFAULT_SEED: u64 = 42;
+pub(crate) const DEFAULT_SEED: u64 = 42;
 
 /// Map one React `draft.students` entry onto the core `Student` JSON shape.
 /// Absent or `null` fields are omitted so they deserialize to the core
@@ -640,7 +640,7 @@ fn core_student_value(student: &Value) -> Value {
 
 /// Student keys for an editor draft: the solve request's `students` `key`,
 /// falling back to `student-N` for placeholder/padded students.
-fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
+pub(crate) fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
     (0..request.student_count)
         .map(|index| {
             request
@@ -657,7 +657,7 @@ fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
 /// Seat specs for an editor draft: prefer the layout's authoritative
 /// row/col/enabled per seat; otherwise derive grid coordinates from the raw
 /// `seat_positions` (mirrors `render::seat_row_col`).
-fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
+pub(crate) fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
     request
         .seat_positions
         .iter()
@@ -682,7 +682,7 @@ fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
 
 /// The seat id the editor draft uses for a seat index: the layout's `seat_id`
 /// when present, else `seat-N`.
-fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
+pub(crate) fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
     request
         .layout
         .as_ref()
@@ -698,7 +698,7 @@ fn fallback_coordinates(position: &[f64; 2]) -> (i32, i32, bool) {
 /// `POST /api/v1/rosters/drafts`: parse a multipart `file` field and store the
 static DRAFT_SEQ: AtomicU64 = AtomicU64::new(0);
 
-fn new_draft_id() -> String {
+pub(crate) fn new_draft_id() -> String {
     let nanos = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
