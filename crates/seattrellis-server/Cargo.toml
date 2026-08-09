@@ -1,0 +1,20 @@
+[package]
+name = "seattrellis-server"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Loopback HTTP transport: routes, axum adapter and embedded workbench assets (M1-02 crate split)."
+
+[dependencies]
+seattrellis_core = { path = "../../native/seattrellis_core" }
+seattrellis-domain = { path = "../seattrellis-domain" }
+seattrellis-export = { path = "../seattrellis-export" }
+seattrellis-application = { path = "../seattrellis-application" }
+seattrellis-io = { path = "../seattrellis-io" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+tower = { version = "0.5", features = ["limit", "util"] }
+getrandom = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

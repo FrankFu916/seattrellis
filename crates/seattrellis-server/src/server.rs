@@ -647,14 +647,14 @@ fn roster_upload_response(body: &[u8], content_type: Option<&str>) -> Response {
     if file_bytes.is_empty() {
         return json_error(422, "uploaded roster file is empty");
     }
-    match crate::roster::upload_draft_json(file_bytes) {
+    match seattrellis_io::roster::upload_draft_json(file_bytes) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => json_error(422, &message),
     }
 }
 
 fn roster_get_response(draft_id: &str) -> Response {
-    match crate::roster::get_draft_json(draft_id) {
+    match seattrellis_io::roster::get_draft_json(draft_id) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(_) => json_error(404, "roster draft was not found"),
     }
@@ -665,7 +665,7 @@ fn roster_preview_response(draft_id: &str, body: &[u8]) -> Response {
         Ok(text) => text,
         Err(_) => return json_error(400, "request body is not valid UTF-8"),
     };
-    match crate::roster::preview_update_json(draft_id, body_str) {
+    match seattrellis_io::roster::preview_update_json(draft_id, body_str) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) if message.contains("not found") => {
             json_error(404, "roster draft was not found")
@@ -675,7 +675,7 @@ fn roster_preview_response(draft_id: &str, body: &[u8]) -> Response {
 }
 
 fn roster_delete_response(draft_id: &str) -> Response {
-    if crate::roster::delete_draft(draft_id) {
+    if seattrellis_io::roster::delete_draft(draft_id) {
         Response {
             status: 204,
             content_type: None,
@@ -748,7 +748,7 @@ fn layout_create_response(body: &[u8]) -> Response {
         Ok(text) => text,
         Err(_) => return json_error(400, "request body is not valid UTF-8"),
     };
-    match crate::layouts::create_layout_draft_json(body_str) {
+    match seattrellis_domain::layouts::create_layout_draft_json(body_str) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) if message.contains("poisoned") => json_error(500, &message),
         Err(message) => json_error(422, &message),
@@ -757,7 +757,7 @@ fn layout_create_response(body: &[u8]) -> Response {
 
 /// `GET /api/v1/layouts/drafts/{id}`: fetch the current layout state.
 fn layout_get_response(draft_id: &str) -> Response {
-    match crate::layouts::get_layout_state_json(draft_id) {
+    match seattrellis_domain::layouts::get_layout_state_json(draft_id) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) if message.contains("poisoned") => json_error(500, &message),
         Err(_) => json_error(404, "layout draft was not found"),
@@ -772,7 +772,7 @@ fn layout_command_response(draft_id: &str, body: &[u8]) -> Response {
         Ok(text) => text,
         Err(_) => return json_error(400, "command body is not valid UTF-8"),
     };
-    match crate::layouts::dispatch_layout_command_json(draft_id, body_str) {
+    match seattrellis_domain::layouts::dispatch_layout_command_json(draft_id, body_str) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => {
             let status = if message.contains("poisoned") {
@@ -797,7 +797,7 @@ fn layout_command_response(draft_id: &str, body: &[u8]) -> Response {
 /// strict solver layout. Unknown drafts are 404; a draft that cannot compile
 /// (e.g. no seats left) is 422.
 fn layout_compiled_response(draft_id: &str) -> Response {
-    match crate::layouts::compile_layout_draft_json(draft_id) {
+    match seattrellis_domain::layouts::compile_layout_draft_json(draft_id) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) if message.contains("poisoned") => json_error(500, &message),
         Err(message) if message.contains("unknown layout draft") => json_error(404, &message),
@@ -808,7 +808,7 @@ fn layout_compiled_response(draft_id: &str) -> Response {
 /// `DELETE /api/v1/layouts/drafts/{id}`: remove a layout draft (204), or 404
 /// when it never existed.
 fn layout_delete_response(draft_id: &str) -> Response {
-    if crate::layouts::delete_layout_draft(draft_id) {
+    if seattrellis_domain::layouts::delete_layout_draft(draft_id) {
         Response {
             status: 204,
             content_type: None,
@@ -841,7 +841,7 @@ fn projects_recent_response(query: Option<&str>) -> Response {
             }
         },
     };
-    match crate::projects::list_projects_json(&root, limit) {
+    match seattrellis_io::projects::list_projects_json(&root, limit) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => json_error(422, &message),
     }
@@ -874,7 +874,7 @@ fn project_history_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    project_result_response(crate::projects::project_history_json(&project_path))
+    project_result_response(seattrellis_io::projects::project_history_json(&project_path))
 }
 
 /// `POST /api/v1/projects/privacy`: scan a project for sensitive fields
@@ -889,7 +889,7 @@ fn project_privacy_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    project_result_response(crate::projects::project_privacy_json(&project_path))
+    project_result_response(seattrellis_io::projects::project_privacy_json(&project_path))
 }
 
 /// `POST /api/v1/projects/bundle`: pack a project into a self-contained
@@ -905,10 +905,10 @@ fn project_bundle_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    match crate::projects::pack_project_json(&project_path) {
+    match seattrellis_io::projects::pack_project_json(&project_path) {
         Ok(bytes) => {
             record_recent(&project_path);
-            let filename = crate::projects::default_bundle_name(&project_path)
+            let filename = seattrellis_io::projects::default_bundle_name(&project_path)
                 .unwrap_or_else(|_| "project.seattrellis.zip".to_string());
             Response {
                 status: 200,
@@ -964,7 +964,7 @@ fn project_restore_response(body: &[u8], content_type: Option<&str>) -> Response
         })
         .unwrap_or(false);
 
-    match crate::projects::restore_project_bundle(bundle, &output_dir, overwrite) {
+    match seattrellis_io::projects::restore_project_bundle(bundle, &output_dir, overwrite) {
         Ok(project_path) => {
             let project_path_str = project_path.to_string_lossy().into_owned();
             record_recent(&project_path_str);
@@ -988,7 +988,7 @@ fn project_restore_response(body: &[u8], content_type: Option<&str>) -> Response
 /// Record a recently-accessed project under its display name.
 fn record_recent(project_path: &str) {
     let name = project_recent_name(project_path);
-    crate::projects::record_recent_project(project_path, &name);
+    seattrellis_io::projects::record_recent_project(project_path, &name);
 }
 
 /// A display name for a project file, derived from its filename stem.
@@ -1049,7 +1049,7 @@ fn migration_preview_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    match crate::migration::migration_preview_json(&project_path) {
+    match seattrellis_io::migration::migration_preview_json(&project_path) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
     }
@@ -1071,7 +1071,7 @@ fn migration_apply_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    match crate::migration::migration_apply_json(&project_path, in_place) {
+    match seattrellis_io::migration::migration_apply_json(&project_path, in_place) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
     }
@@ -1091,7 +1091,7 @@ fn migration_reference_checks_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    match crate::migration::migration_reference_checks_json(&project_path) {
+    match seattrellis_io::migration::migration_reference_checks_json(&project_path) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
     }
@@ -1109,7 +1109,7 @@ fn migration_batch_preview_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let paths: Vec<String> = paths.iter().map(|path| resolve_request_path(path)).collect();
-    match crate::migration::migration_batch_preview_json(&paths) {
+    match seattrellis_io::migration::migration_batch_preview_json(&paths) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
     }
@@ -1131,7 +1131,7 @@ fn migration_batch_apply_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let paths: Vec<String> = paths.iter().map(|path| resolve_request_path(path)).collect();
-    match crate::migration::migration_batch_apply_json(&paths, in_place) {
+    match seattrellis_io::migration::migration_batch_apply_json(&paths, in_place) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
     }
@@ -1155,7 +1155,7 @@ fn migration_restore_response(body: &[u8]) -> Response {
     };
     let backup_path = resolve_request_path(&backup_path);
     let source_path = resolve_request_path(&source_path);
-    match crate::migration::migration_restore_json(&backup_path, &source_path) {
+    match seattrellis_io::migration::migration_restore_json(&backup_path, &source_path) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
     }
@@ -1197,7 +1197,7 @@ fn rotation_save_response(body: &[u8]) -> Response {
     };
     let project_path = resolve_request_path(&project_path);
     let plan_json = rotation_plan.to_string();
-    match crate::rotation::rotation_save_json(&project_path, &plan_json) {
+    match seattrellis_io::rotation::rotation_save_json(&project_path, &plan_json) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => rotation_error_response(&message),
     }
@@ -1217,7 +1217,7 @@ fn rotation_load_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    match crate::rotation::rotation_load_json(&project_path) {
+    match seattrellis_io::rotation::rotation_load_json(&project_path) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => rotation_error_response(&message),
     }
@@ -1247,7 +1247,7 @@ fn rotation_register_download_response(body: &[u8]) -> Response {
     };
     let project_path = resolve_request_path(&project_path);
     if format_name.eq_ignore_ascii_case("csv") {
-        match crate::rotation::group_register_csv_json(&project_path, period_index) {
+        match seattrellis_io::rotation::group_register_csv_json(&project_path, period_index) {
             Ok(bytes) => Response {
                 status: 200,
                 content_type: Some("text/csv; charset=utf-8"),
@@ -1257,7 +1257,7 @@ fn rotation_register_download_response(body: &[u8]) -> Response {
             Err(message) => rotation_error_response(&message),
         }
     } else if format_name.eq_ignore_ascii_case("html") {
-        match crate::rotation::group_register_html_json(&project_path, period_index) {
+        match seattrellis_io::rotation::group_register_html_json(&project_path, period_index) {
             Ok(bytes) => Response {
                 status: 200,
                 content_type: Some("text/html; charset=utf-8"),
@@ -1288,7 +1288,7 @@ fn rotation_register_preview_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    match crate::rotation::group_register_preview_json(&project_path, period_index) {
+    match seattrellis_io::rotation::group_register_preview_json(&project_path, period_index) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => rotation_error_response(&message),
     }
@@ -1329,7 +1329,7 @@ fn rotation_register_save_response(body: &[u8], content_type: Option<&str>) -> R
             None => return json_error(422, "upload is missing a 'groups' field"),
         };
         let project_path = resolve_request_path(&project_path);
-        return match crate::rotation::group_register_save_json(&project_path, &groups_json) {
+        return match seattrellis_io::rotation::group_register_save_json(&project_path, &groups_json) {
             Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
             Err(message) => rotation_error_response(&message),
         };
@@ -1347,7 +1347,7 @@ fn rotation_register_save_response(body: &[u8], content_type: Option<&str>) -> R
     };
     let project_path = resolve_request_path(&project_path);
     let groups_json = groups.to_string();
-    match crate::rotation::group_register_save_json(&project_path, &groups_json) {
+    match seattrellis_io::rotation::group_register_save_json(&project_path, &groups_json) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => rotation_error_response(&message),
     }
@@ -3317,7 +3317,7 @@ mod tests {
     /// Copy the repo's example project (plus every referenced file) into a fresh
     /// temporary directory, returning `(dir, copied project path)`.
     fn example_project_copy(tag: &str) -> (PathBuf, PathBuf) {
-        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
         let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
             "seattrellis_projects_test_{}_{}_{}",
@@ -3601,7 +3601,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
 
         // Real referenced files so reference checks pass and batch apply is ready.
-        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
         for name in ["students.csv", "classroom.json", "rules_multi_candidate.json"] {
             fs::copy(examples.join(name), dir.join(name)).unwrap();
         }

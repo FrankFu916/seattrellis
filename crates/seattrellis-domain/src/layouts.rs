@@ -17,7 +17,7 @@
 //!   and dispatches on each operation's `kind` + `payload`.
 //! * [`CompiledLayoutResponse`] serializes the strict solver `Layout` shape
 //!   (`layout_id` / `name` / `seats` / `adjacency`) — the same shape
-//!   `app/src/room_templates.rs` emits for the native solver.
+//!   `crate::room_templates` emits for the native solver.
 //!
 //! # Semantics
 //!
@@ -34,7 +34,7 @@
 //! # Concurrency
 //!
 //! [`LayoutDraft`] is `Send + Sync`, and [`LayoutDraftStore`] (a
-//! `Mutex<HashMap<..>>`, matching `app/src/editing.rs`) is provided so a
+//! `Mutex<HashMap<..>>`, matching `seattrellis_domain::editing`) is provided so a
 //! thread-per-connection server can share drafts safely. The JSON entry points
 //! below dispatch through an in-process global store; the `*_in_store`
 //! variants accept an explicit store for testing and embedding.
@@ -819,7 +819,7 @@ fn build_draft_from_request(value: &JsonValue) -> Result<LayoutDraft, String> {
     }
 
     let (draft_rows, draft_columns, cells) = if let Some(template_id) = &template_id {
-        let grid = seattrellis_domain::room_templates::room_template_grid(template_id)?;
+        let grid = crate::room_templates::room_template_grid(template_id)?;
         (
             grid.rows,
             grid.grid_columns,
@@ -840,7 +840,7 @@ fn build_draft_from_request(value: &JsonValue) -> Result<LayoutDraft, String> {
 
 /// Map a template's full layout (every cell, including disabled aisles) onto
 /// editor cells.
-fn cells_from_template_layout(layout: &seattrellis_domain::room_templates::Layout) -> HashMap<(i32, i32), LayoutCell> {
+fn cells_from_template_layout(layout: &crate::room_templates::Layout) -> HashMap<(i32, i32), LayoutCell> {
     let mut cells = HashMap::new();
     for seat in &layout.seats {
         let kind = if seat.enabled {
