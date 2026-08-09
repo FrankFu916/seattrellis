@@ -11,15 +11,15 @@ use std::path::{Path, PathBuf};
 
 use seattrellis_core::{
     audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
-    precheck_report_json, solve_problem_json, validate_solve_request_json, CoreSolveRequest,
-    CoreSolveResponse, SolveStatus,
+    precheck_report_json, repair_json, solve_problem_json, validate_solve_request_json,
+    CoreSolveRequest, CoreSolveResponse, SolveStatus,
 };
 
 use crate::render::SeatingGrid;
 use crate::style::Styler;
 use crate::{
     AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, HistoryReportArgs, PairReportArgs,
-    PrecheckArgs, SolveArgs,
+    PrecheckArgs, RepairArgs, SolveArgs,
 };
 use crate::ValidateArgs;
 
@@ -58,6 +58,28 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
 
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
 /// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+/// Re-solve a snapshot while preserving requested anchors (D.11 repair).
+pub fn run_repair(args: &RepairArgs) -> Result<(), String> {
+    let problem_text = read_text(&args.problem)?;
+    let snapshot_text = read_text(&args.snapshot)?;
+    let repaired = repair_json(
+        &problem_text,
+        &snapshot_text,
+        &args.affected,
+        &args.locked_students,
+        &args.locked_seats,
+    )
+    .map_err(|error| format!("repair failed: {error}"))?;
+    if let Some(output) = &args.output {
+        std::fs::write(output, &repaired)
+            .map_err(|error| format!("could not write {}: {error}", output.display()))?;
+        println!("wrote repaired snapshot to '{}'", output.display());
+    } else {
+        println!("{repaired}");
+    }
+    Ok(())
+}
+
 /// Summarize historical seating snapshots (fairness report, ledger B.5).
 pub fn run_history_report(args: &HistoryReportArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;

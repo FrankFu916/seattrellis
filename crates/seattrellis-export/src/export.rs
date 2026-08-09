@@ -248,13 +248,16 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
 
     let grid = SeatingGrid::build(&request.request, &request.response)?;
 
-    // Public template — or explicit anonymization — hides every student name,
-    // leaving a per-seat placeholder so the layout stays readable.
+    // Privacy options (C.8): the public template — or explicit anonymization
+    // — hides every student name; the detail line (height/vision) only shows
+    // when the matching show_* option is set. hide_scores / hide_notes /
+    // hide_special_needs have nothing to hide in this renderer: it never
+    // draws scores, notes or needs, so those exports cannot leak them.
     let hide_names = template == ExportTemplate::Public || request.privacy.anonymize;
     let grid = if hide_names {
         anonymize_grid(&grid, &request.locale)
     } else {
-        grid
+        filter_detail_grid(&grid, request.privacy.show_height, request.privacy.show_vision)
     };
 
     match format {
@@ -295,6 +298,46 @@ fn validate_page_scale(raw: f64) -> Result<f64, String> {
     Ok(raw)
 }
 
+/// Keep only the detail line parts the privacy options allow: the raw grid
+/// carries height + vision; `show_height`/`show_vision` decide what survives.
+fn filter_detail_grid(grid: &SeatingGrid, show_height: bool, show_vision: bool) -> SeatingGrid {
+    if show_height && show_vision {
+        return grid.clone();
+    }
+    let mut filtered = SeatingGrid {
+        title: grid.title.clone(),
+        subtitle: grid.subtitle.clone(),
+        min_row: grid.min_row,
+        max_row: grid.max_row,
+        min_col: grid.min_col,
+        max_col: grid.max_col,
+        cells: Vec::with_capacity(grid.cells.len()),
+    };
+    for cell in &grid.cells {
+        let detail = match &cell.detail {
+            None => None,
+            Some(detail) if show_height && !show_vision => detail
+                .split("  ")
+                .find(|part| part.ends_with(" cm"))
+                .map(str::to_string),
+            Some(detail) if show_vision && !show_height => detail
+                .split("  ")
+                .find(|part| part.starts_with("vision"))
+                .map(str::to_string),
+            Some(_) => None,
+        };
+        filtered.cells.push(GridCell {
+            row: cell.row,
+            col: cell.col,
+            seat_index: cell.seat_index,
+            student: cell.student.clone(),
+            detail,
+            enabled: cell.enabled,
+        });
+    }
+    filtered
+}
+
 /// Copy of the grid with every occupied seat's label replaced by a locale-aware
 /// placeholder. The renderers draw whatever labels the grid carries, so this is
 /// the single place public/anonymized exports differ from teacher exports.
@@ -318,6 +361,8 @@ fn anonymize_grid(grid: &SeatingGrid, locale: &str) -> SeatingGrid {
                 col: cell.col,
                 seat_index: cell.seat_index,
                 student: cell.student.as_ref().map(|_| placeholder.to_string()),
+                // Anonymized exports never carry detail lines either.
+                detail: None,
                 enabled: cell.enabled,
             })
             .collect(),
@@ -547,5 +592,42 @@ mod tests {
         let svg = String::from_utf8(bytes).unwrap();
         assert!(svg.starts_with("<svg "));
         assert!(svg.contains("Alice"));
+    }
+    #[test]
+    fn detail_line_follows_show_height_and_show_vision() {
+        let request_json = r#"{
+            "format": "svg",
+            "template": "teacher",
+            "privacy": {
+                "hide_scores": false, "hide_notes": false, "hide_special_needs": false,
+                "anonymize": false, "show_height": true, "show_vision": true
+            },
+            "orientation": "portrait", "page_scale": 1.0, "locale": "zh", "show_student_ids": true,
+            "request": {
+                "api_version": 2, "student_count": 1,
+                "seat_positions": [[0.0, 0.0]],
+                "students": [{"key": "S1", "display_name": "Alice", "height_cm": 160.0, "vision": "0.8"}]
+            },
+            "response": {
+                "api_version": 2, "feasible": true, "assignment": [[0, 0]],
+                "attempts_used": 1, "hard_constraints_satisfied": true
+            }
+        }"#;
+        // Both options on: the SVG carries the detail line.
+        let svg = String::from_utf8(render_export(&parse_export_request(request_json).unwrap()).unwrap()).unwrap();
+        assert!(svg.contains("160 cm"), "height detail missing: {svg}");
+        assert!(svg.contains("vision 0.8"), "vision detail missing: {svg}");
+
+        // Only height: the vision part is filtered out.
+        let height_only = request_json.replace("\"show_vision\": true", "\"show_vision\": false");
+        let svg = String::from_utf8(render_export(&parse_export_request(&height_only).unwrap()).unwrap()).unwrap();
+        assert!(svg.contains("160 cm"), "height detail missing: {svg}");
+        assert!(!svg.contains("vision"), "vision must be filtered: {svg}");
+
+        // Anonymized: neither the name nor the detail survives.
+        let anonymized = request_json.replace("\"anonymize\": false", "\"anonymize\": true");
+        let svg = String::from_utf8(render_export(&parse_export_request(&anonymized).unwrap()).unwrap()).unwrap();
+        assert!(!svg.contains("Alice"), "name must be hidden: {svg}");
+        assert!(!svg.contains("160 cm"), "detail must be hidden: {svg}");
     }
 }

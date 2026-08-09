@@ -95,6 +95,16 @@ pub struct HistoryReportArgs {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct RepairArgs {
+    pub problem: PathBuf,
+    pub snapshot: PathBuf,
+    pub affected: Vec<String>,
+    pub locked_students: Vec<String>,
+    pub locked_seats: Vec<String>,
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct PairReportArgs {
     pub problem: PathBuf,
     pub history: Vec<PathBuf>,
@@ -112,6 +122,7 @@ enum Command {
     Candidates(CandidatesArgs),
     HistoryReport(HistoryReportArgs),
     PairReport(PairReportArgs),
+    Repair(RepairArgs),
     Solve(SolveArgs),
     Export(ExportArgs),
 }
@@ -373,6 +384,50 @@ fn parse_pair_report(tokens: &[String]) -> Result<Command, String> {
     }))
 }
 
+fn parse_repair(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag { name: "--problem", takes_value: true },
+        Flag { name: "--snapshot", takes_value: true },
+        Flag { name: "--affected", takes_value: true },
+        Flag { name: "--lock-student", takes_value: true },
+        Flag { name: "--lock-seat", takes_value: true },
+        Flag { name: "--output", takes_value: true },
+        Flag { name: "--help", takes_value: false },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?
+        .ok_or("repair requires --problem <file>")?;
+    let snapshot = flag_value(&parsed, "--snapshot")?
+        .ok_or("repair requires --snapshot <file>")?;
+    let affected = parsed
+        .iter()
+        .filter(|(name, _)| name == "--affected")
+        .filter_map(|(_, value)| value.clone())
+        .collect();
+    let locked_students = parsed
+        .iter()
+        .filter(|(name, _)| name == "--lock-student")
+        .filter_map(|(_, value)| value.clone())
+        .collect();
+    let locked_seats = parsed
+        .iter()
+        .filter(|(name, _)| name == "--lock-seat")
+        .filter_map(|(_, value)| value.clone())
+        .collect();
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    Ok(Command::Repair(RepairArgs {
+        problem: PathBuf::from(problem),
+        snapshot: PathBuf::from(snapshot),
+        affected,
+        locked_students,
+        locked_seats,
+        output,
+    }))
+}
+
 fn parse_export(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag { name: "--problem", takes_value: true },
@@ -425,6 +480,7 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "candidates" => parse_candidates(&text[1..]),
         "history-report" => parse_history_report(&text[1..]),
         "pair-report" => parse_pair_report(&text[1..]),
+        "repair" => parse_repair(&text[1..]),
         "solve" => parse_solve(&text[1..]),
         "export" => parse_export(&text[1..]),
         other => Err(format!("unknown command '{other}'")),
@@ -505,6 +561,14 @@ fn run_command(command: Command) -> ExitCode {
             }
         },
         Command::PairReport(args) => match commands::run_pair_report(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::Repair(args) => match commands::run_repair(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 let styler = Styler::stderr();

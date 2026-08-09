@@ -988,6 +988,235 @@ pub fn audit_report_json(
         .map_err(|error| format!("could not serialize audit report: {error}"))
 }
 
+/// Re-solve a snapshot while preserving requested local anchors (M2 parity,
+/// ledger D.11 / plan §5.4 local repair), mirroring Python's
+/// `compute_repair`:
+///
+/// - `locked_students` keep their current seat (fixed);
+/// - `locked_seats` keep their current occupant fixed (an empty locked seat
+///   is rejected — the Python reserve-empty-seat variant is a known gap);
+/// - `affected_students` bounds the re-solve scope: those students plus
+///   everyone connected by a hard pair rule are movable, everyone else is
+///   fixed; without `affected_students` only the locks are fixed and the
+///   rest may re-arrange globally.
+///
+/// Returns the repaired snapshot document (`assignments` + `solver_status`)
+/// plus a short summary of moved/unseated students.
+pub fn repair_json(
+    request_json: &str,
+    snapshot_json: &str,
+    affected_students: &[String],
+    locked_students: &[String],
+    locked_seats: &[String],
+) -> Result<String, String> {
+    let mut request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)?;
+    let snapshot: Value = serde_json::from_str(snapshot_json)
+        .map_err(|error| format!("invalid snapshot document: {error}"))?;
+
+    // Current assignment: student key -> seat id (and reverse).
+    let mut seat_by_student: HashMap<String, String> = HashMap::new();
+    let mut student_by_seat: HashMap<String, String> = HashMap::new();
+    if let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) {
+        for assignment in assignments {
+            let (Some(student), Some(seat)) = (
+                assignment.get("student_key").and_then(Value::as_str),
+                assignment.get("seat_id").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            seat_by_student.insert(student.to_string(), seat.to_string());
+            student_by_seat.insert(seat.to_string(), student.to_string());
+        }
+    }
+
+    // Student keys -> indices from the request.
+    let students = effective_students(&request);
+    let index_by_key: HashMap<&str, usize> = students
+        .iter()
+        .enumerate()
+        .map(|(index, student)| (student.key.as_str(), index))
+        .collect();
+    let seat_index_by_id: HashMap<&str, usize> = request
+        .layout
+        .as_ref()
+        .map(|layout| {
+            layout
+                .seats
+                .iter()
+                .enumerate()
+                .map(|(index, seat)| (seat.seat_id.as_str(), index))
+                .collect::<HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+
+    // Validate the anchor sets.
+    let unknown_affected: Vec<&str> = affected_students
+        .iter()
+        .map(String::as_str)
+        .filter(|key| !index_by_key.contains_key(key))
+        .collect();
+    if !unknown_affected.is_empty() {
+        return Err(format!(
+            "Affected students are unknown: {}.",
+            unknown_affected.join(", ")
+        ));
+    }
+    for student in locked_students {
+        if !index_by_key.contains_key(student.as_str()) {
+            return Err(format!("Locked student is unknown: {student}."));
+        }
+        if !seat_by_student.contains_key(student) {
+            return Err(format!(
+                "Locked students must have a current seat before re-solving: {student}."
+            ));
+        }
+    }
+    for seat in locked_seats {
+        if !seat_index_by_id.contains_key(seat.as_str()) {
+            return Err(format!("Locked seat is unknown: {seat}."));
+        }
+        if !student_by_seat.contains_key(seat) {
+            return Err(format!(
+                "Locked seat must be occupied before re-solving: {seat}."
+            ));
+        }
+    }
+    for student in affected_students {
+        if locked_students.contains(student) {
+            return Err(format!("Affected students cannot also be locked: {student}."));
+        }
+        if let Some(seat) = seat_by_student.get(student) {
+            if locked_seats.contains(seat) {
+                return Err(format!(
+                    "Affected students occupy locked seats: {student}."
+                ));
+            }
+        }
+    }
+
+    // Fixed set: locked students + locked-seat occupants + (when a local
+    // scope is requested) every student outside the affected closure.
+    let mut fixed_students: Vec<usize> = Vec::new();
+    for student in locked_students {
+        let index = index_by_key[student.as_str()];
+        if !fixed_students.contains(&index) {
+            fixed_students.push(index);
+        }
+    }
+    for seat in locked_seats {
+        let occupant = student_by_seat[seat.as_str()].clone();
+        let index = index_by_key[occupant.as_str()];
+        if !fixed_students.contains(&index) {
+            fixed_students.push(index);
+        }
+    }
+    if !affected_students.is_empty() {
+        let mut affected_indices: Vec<usize> = affected_students
+            .iter()
+            .map(|student| index_by_key[student.as_str()])
+            .collect();
+        // One-hop closure via hard pair rules.
+        let pair_rules: Vec<[usize; 2]> = request
+            .must_be_adjacent
+            .iter()
+            .chain(request.cannot_be_adjacent.iter())
+            .copied()
+            .collect();
+        let mut grew = true;
+        while grew {
+            grew = false;
+            for pair in &pair_rules {
+                if affected_indices.contains(&pair[0]) && !affected_indices.contains(&pair[1]) {
+                    affected_indices.push(pair[1]);
+                    grew = true;
+                }
+                if affected_indices.contains(&pair[1]) && !affected_indices.contains(&pair[0]) {
+                    affected_indices.push(pair[0]);
+                    grew = true;
+                }
+            }
+        }
+        for index in 0..request.student_count {
+            if !affected_indices.contains(&index) && !fixed_students.contains(&index) {
+                fixed_students.push(index);
+            }
+        }
+    }
+
+    // Express the anchors as fixed seats in the re-solve request.
+    let mut fixed_seats: Vec<[usize; 2]> = Vec::new();
+    for index in fixed_students {
+        let student_key = students[index].key.clone();
+        let seat_id = seat_by_student
+            .get(&student_key)
+            .ok_or_else(|| format!("Student has no current seat: {student_key}."))?;
+        let seat_index = seat_index_by_id
+            .get(seat_id.as_str())
+            .ok_or_else(|| format!("Current seat is unknown: {seat_id}."))?;
+        fixed_seats.push([index, *seat_index]);
+    }
+    request.fixed_seats = fixed_seats;
+
+    let response = solve_problem(&request)?;
+    if !response.feasible {
+        return Err(format!(
+            "Repair solve did not find a legal seating (status {}).",
+            response.status.as_str()
+        ));
+    }
+
+    // Build the repaired snapshot (frontend shape) + summary.
+    let seat_ids: Vec<String> = (0..request.seat_positions.len())
+        .map(|index| {
+            request
+                .layout
+                .as_ref()
+                .and_then(|layout| layout.seats.get(index))
+                .map(|seat| seat.seat_id.clone())
+                .unwrap_or_else(|| format!("seat-{}", index + 1))
+        })
+        .collect();
+    let mut assignments: Vec<Value> = Vec::new();
+    let mut moved = 0;
+    let mut unseated = 0;
+    for [student, seat] in &response.assignment {
+        let student_key = students[*student].key.clone();
+        let seat_id = seat_ids[*seat].clone();
+        let display_name = students[*student]
+            .display_name
+            .clone()
+            .unwrap_or_else(|| student_key.clone());
+        if let Some(previous) = seat_by_student.get(&student_key) {
+            if previous != &seat_id {
+                moved += 1;
+            }
+        } else {
+            unseated += 1;
+        }
+        assignments.push(json!({
+            "student_key": student_key,
+            "student_name": display_name,
+            "seat_id": seat_id,
+        }));
+    }
+
+    let repaired = json!({
+        "assignments": assignments,
+        "solver_status": response.status.as_str(),
+        "seed": request.seed,
+        "summary": {
+            "moved_students": moved,
+            "unseated_students": unseated,
+            "locked_students": locked_students.len(),
+            "locked_seats": locked_seats.len(),
+        },
+    });
+    serde_json::to_string(&repaired)
+        .map_err(|error| format!("could not serialize repair result: {error}"))
+}
+
 /// Fairness report over historical snapshots (mirrors
 /// `history.build_fairness_report`): per-category totals and per-category
 /// min/max/spread across students. The request supplies the students and
@@ -2405,7 +2634,7 @@ mod tests {
         evaluate_problem_json, hard_search_with_budget, maximum_candidate_matching,
         resolve_group_rules, seat_distance, solve_problem_json, HARD_SEARCH_NODE_BUDGET,
         audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
-        precheck_report_json,
+        precheck_report_json, repair_json,
         validate_assignment,
         validate_solve_request_json,
         SplitMix64,
@@ -3724,5 +3953,79 @@ mod tests {
         assert_eq!(top["total_occurrences"], 2);
         // Desk-mate relations were counted.
         assert!(report["relation_totals"]["desk_mate"].as_u64().unwrap() >= 2);
+    }
+    #[test]
+    fn repair_keeps_locked_student_seated() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 4,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0]],
+            "edges": [[0,1],[1,2],[2,3]],
+            "students": [
+                {"key":"S1","display_name":"Alice"},{"key":"S2"},
+                {"key":"S3"},{"key":"S4"}
+            ],
+            "layout": {"layout_id":"l","name":"l","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C3","row":1,"col":3,"x":2.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C4","row":1,"col":4,"x":3.0,"y":0.0,"zone":"front","enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R1C2","R1C3"],["R1C3","R1C4"]]}}
+        }"#;
+        let snapshot = r#"{
+            "assignments": [
+                {"student_key":"S1","student_name":"Alice","seat_id":"R1C1"},
+                {"student_key":"S2","student_name":"Bob","seat_id":"R1C2"},
+                {"student_key":"S3","student_name":"Carol","seat_id":"R1C3"},
+                {"student_key":"S4","student_name":"Dan","seat_id":"R1C4"}
+            ],
+            "solver_status": "FEASIBLE"
+        }"#;
+        // Lock S1 in place; everything else may re-arrange.
+        let repaired = repair_json(request, snapshot, &[], &["S1".to_string()], &[])
+            .expect("repair should succeed");
+        let value: Value = serde_json::from_str(&repaired).unwrap();
+        let assignments = value["assignments"].as_array().unwrap();
+        assert_eq!(assignments.len(), 4);
+        let s1 = assignments
+            .iter()
+            .find(|a| a["student_key"] == "S1")
+            .unwrap();
+        assert_eq!(s1["seat_id"], "R1C1", "locked student must keep its seat");
+        assert!(value["summary"]["moved_students"].as_u64().is_some());
+    }
+
+    #[test]
+    fn repair_rejects_invalid_anchor_combinations() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0,0.0],[1.0,0.0]],
+            "edges": [[0,1]],
+            "students": [{"key":"S1"},{"key":"S2"}],
+            "layout": {"layout_id":"l","name":"l","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"zone":"front","enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"]]}}
+        }"#;
+        let snapshot = r#"{
+            "assignments": [
+                {"student_key":"S1","seat_id":"R1C1"},
+                {"student_key":"S2","seat_id":"R1C2"}
+            ]
+        }"#;
+
+        // Locking an unknown student is an error.
+        let err = repair_json(request, snapshot, &[], &["S9".to_string()], &[]).unwrap_err();
+        assert!(err.contains("unknown"), "{err}");
+
+        // Affected and locked cannot overlap.
+        let err = repair_json(request, snapshot, &["S1".to_string()], &["S1".to_string()], &[])
+            .unwrap_err();
+        assert!(err.contains("cannot also be locked"), "{err}");
+
+        // A locked seat must be known.
+        let err = repair_json(request, snapshot, &[], &[], &["R1C9".to_string()]).unwrap_err();
+        assert!(err.contains("unknown"), "{err}");
     }
 }

@@ -26,11 +26,14 @@ pub struct GridCell {
     pub col: i32,
     pub seat_index: usize,
     pub student: Option<String>,
+    /// Optional per-student detail line (height / vision), rendered under
+    /// the name when the privacy options ask for it (C.8).
+    pub detail: Option<String>,
     pub enabled: bool,
 }
 
 /// The full classroom grid recovered from a problem + solved assignment.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SeatingGrid {
     pub title: String,
     pub subtitle: String,
@@ -70,11 +73,16 @@ impl SeatingGrid {
             max_row = max_row.max(row);
             min_col = min_col.min(col);
             max_col = max_col.max(col);
+            let detail = request
+                .students
+                .get(seat_index)
+                .and_then(student_detail);
             cells.push(GridCell {
                 row,
                 col,
                 seat_index,
                 student: student_by_seat.get(&seat_index).cloned(),
+                detail,
                 enabled,
             });
         }
@@ -128,6 +136,25 @@ fn seat_row_col(
 
 /// The display label for a student: `display_name`, else `key`, else
 /// "Student N" — never empty.
+/// Per-student detail line: height and/or vision, ASCII-only so the PDF
+/// renderer can draw it (CJK is a M5-04 render-parity item).
+fn student_detail(student: &seattrellis_core::models::Student) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(height) = student.height_cm {
+        if height.is_finite() && height > 0.0 {
+            parts.push(format!("{} cm", height.round()));
+        }
+    }
+    if let Some(vision) = student.vision.as_deref().filter(|vision| !vision.is_empty()) {
+        parts.push(format!("vision {vision}"));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("  "))
+    }
+}
+
 fn student_label(request: &CoreSolveRequest, index: usize) -> String {
     if !request.students.is_empty() {
         if let Some(student) = request.students.get(index) {
@@ -267,6 +294,13 @@ pub fn render_svg(grid: &SeatingGrid) -> String {
                         "  <text x=\"{center_x}\" y=\"{center_y}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"sans-serif\" font-size=\"{size}\" fill=\"#1c2733\">{}</text>\n",
                         escape_text(name)
                     ));
+                    if let Some(detail) = &cell.detail {
+                        out.push_str(&format!(
+                            "  <text x=\"{center_x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#7b8ea8\">{}</text>\n",
+                            y + CELL_H - 20.0,
+                            escape_text(detail)
+                        ));
+                    }
                     out.push_str(&format!(
                         "  <text x=\"{center_x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#7b8ea8\">{}</text>\n",
                         y + CELL_H - 9.0,
@@ -322,6 +356,7 @@ pub fn render_html(grid: &SeatingGrid) -> String {
     out.push_str("  td { width: 92px; height: 54px; text-align: center; vertical-align: middle; border-radius: 7px; font-size: 12px; }\n");
     out.push_str("  td.seat { background: #e8f0fe; border: 1px solid #4a7fd4; }\n");
     out.push_str("  td.seat .name { font-weight: 600; }\n");
+    out.push_str("  td.seat .detail { display: block; font-size: 9px; color: #7b8ea8; }\n");
     out.push_str("  td.seat .num { display: block; font-size: 9px; color: #7b8ea8; margin-top: 2px; }\n");
     out.push_str("  td.empty { background: #f7f8f9; border: 1px dashed #cfd8e2; color: #9aa7b5; font-size: 10px; }\n");
     out.push_str("  td.void { border: none; }\n");
@@ -337,8 +372,13 @@ pub fn render_html(grid: &SeatingGrid) -> String {
             match grid.cell_at(row, col) {
                 Some(cell) => match &cell.student {
                     Some(name) => {
+                        let detail = cell
+                            .detail
+                            .as_ref()
+                            .map(|detail| format!("<span class=\"detail\">{}</span>", escape_text(detail)))
+                            .unwrap_or_default();
                         out.push_str(&format!(
-                            "    <td class=\"seat\"><span class=\"name\">{}</span><span class=\"num\">{}</span></td>\n",
+                            "    <td class=\"seat\"><span class=\"name\">{}</span>{detail}<span class=\"num\">{}</span></td>\n",
                             escape_text(name),
                             cell.seat_index + 1
                         ));
@@ -676,6 +716,15 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
                             center_y - size * 0.35,
                         ));
                     }
+                    if let Some(detail) = cell.detail.as_deref().and_then(pdf_text) {
+                        // ASCII detail line (height/vision) under the name.
+                        ops.push_str(&text_op_centered(
+                            detail,
+                            7.0,
+                            center_x,
+                            center_y + 9.0 * scale,
+                        ));
+                    }
                     let num = (cell.seat_index + 1).to_string();
                     ops.push_str(&text_op_centered(&num, 7.0, center_x, inner_y + 9.0));
                 } else {
@@ -778,6 +827,7 @@ mod tests {
             cannot_be_adjacent: Vec::new(),
             min_distance: Vec::new(),
             seed: 0,
+            time_limit_seconds: None,
             students: vec![
                 Student { key: "S1".into(), display_name: Some("Alice".into()), ..Student::default() },
                 Student { key: "S2".into(), display_name: Some("Bob".into()), ..Student::default() },
