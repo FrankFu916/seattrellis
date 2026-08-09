@@ -21,6 +21,8 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+    # Weak copyleft in the Tauri/dom_query dependency tree.
+    "MPL-2.0",
 ]
 confidence-threshold = 0.8
 
