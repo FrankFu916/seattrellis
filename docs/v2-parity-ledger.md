@@ -56,17 +56,17 @@ Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）目前仅 
 | `validate` | cli.py:341-367 → `run_validate` service.py:944 | `--strict` | Rust CLI `validate` 存在（core `evaluate_problem` 已验证），但无 preset/history 警告语义 | `RUST_PARTIAL` |
 | `export` | cli.py:369-449 → `export` service.py:696 | 8 格式、template、6 隐私开关、page/locale | Rust CLI `export` 仅 svg/html/png/pdf | `RUST_PARTIAL` |
 | `edit` | cli.py:451-505 → `edit_snapshot` service.py:764 | 9 种操作 kind、`--operations-file/--strict` | Rust CLI 无；app server 有 editing 协议端点（§11） | `PYTHON_ONLY` |
-| `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | 无对应 | `PYTHON_ONLY` |
-| `history-report` | cli.py:593-611 → `run_history_report` service.py:969 | `--history(-dir)` | 无对应（app 仅目录浏览，无统计报告） | `PYTHON_ONLY` |
-| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | 无对应 | `PYTHON_ONLY` |
+| `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | Rust CLI `repair`（--problem --snapshot --lock-student/--lock-seat/--affected，PR #103）；空座位锁为已知差距 | `RUST_PARITY_PENDING` |
+| `history-report` | cli.py:593-611 → `run_history_report` service.py:969 | `--history(-dir)` | Rust CLI `history-report`（PR #102） | `RUST_PARITY_PENDING` |
+| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | Rust CLI `pair-report`（PR #102） | `RUST_PARITY_PENDING` |
 | `project-init` | cli.py:637-658 → `project_init` service.py:1029 | 默认项目文件 `seattrellis.project.json` | 无对应 CLI；app projects.rs 可读 | `PYTHON_ONLY` |
 | `project-list` | cli.py:660-673 → `project_bundle.list_recent_projects` | `--root/--limit` | app `GET /projects/recent`（server.rs:470） | `RUST_PARITY_PENDING` |
 | `project-privacy` | cli.py:675-684 → `project_bundle.scan_project_privacy` | `--include-outputs` | app `POST /projects/privacy`（server.rs:476） | `RUST_PARITY_PENDING` |
 | `project-pack` | cli.py:686-699 → `project_bundle.pack_project` | 输出 `.seattrellis.zip` | app `POST /projects/bundle`（server.rs:479，格式 v1 双向对齐） | `RUST_PARITY_PENDING` |
 | `project-restore` | cli.py:701-711 → `project_bundle.restore_project_bundle` | `--bundle/--output-dir/--force` | app `POST /projects/restore`（server.rs:482） | `RUST_PARITY_PENDING` |
-| `project-info` | cli.py:713-721 → `project_info` service.py:1053 | 无 | 无对应 | `PYTHON_ONLY` |
-| `project-validate` | cli.py:723-732 → `project_validate` service.py:1062 | `--strict` | 无对应 | `PYTHON_ONLY` |
-| `project-solve` | cli.py:734-764 → `project_solve` service.py:1080 | `--candidates/--seed/--report` | 无对应 CLI（app `classes/generate` 部分覆盖，见 §2） | `PYTHON_ONLY` |
+| `project-info` | cli.py:713-721 → `project_info` service.py:1053 | 无 | Rust CLI `project-info`（PR #103） | `RUST_PARITY_PENDING` |
+| `project-validate` | cli.py:723-732 → `project_validate` service.py:1062 | `--strict` | Rust CLI `project-validate`（PR #103） | `RUST_PARITY_PENDING` |
+| `project-solve` | cli.py:734-764 → `project_solve` service.py:1080 | `--candidates/--seed/--report` | Rust CLI `project-solve`/`project-export`（PR #103）；无候选集参数 | `RUST_PARITY_PENDING` |
 | `project-rotate` | cli.py:766-788 → `project_rotate` service.py:1118 | `--periods/--label` | 无对应（旋转生成 Python-only） | `PYTHON_ONLY` |
 | `project-edit` | cli.py:790-842 → `project_edit` service.py:1154 | `--snapshot/--operation/...` | 无对应 | `PYTHON_ONLY` |
 | `project-repair` | cli.py:844-922 → `project_repair` service.py:1181 | `--affected-student/...` | 无对应 | `PYTHON_ONLY` |
