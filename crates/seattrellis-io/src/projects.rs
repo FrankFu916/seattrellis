@@ -1689,4 +1689,62 @@ mod tests {
         assert_eq!(iso_from_epoch_secs(1_752_900_000), "2025-07-19T04:40:00+00:00");
         assert_eq!(iso_from_epoch_secs(1_780_272_000), "2026-06-01T00:00:00+00:00");
     }
+    #[test]
+    fn restore_rejects_zip_bomb_expansion() {
+        // A bundle whose uncompressed payload exceeds the total cap (500MB)
+        // must be rejected *before* extraction: six 100MB files would expand
+        // to 600MB on disk. The payload is all zeros so the archive itself
+        // is tiny — the classic zip-bomb shape.
+        let dest = temp_root("restore-zipbomb");
+        let manifest = simple_manifest(
+            &["a1.bin", "a2.bin", "a3.bin", "a4.bin", "a5.bin", "a6.bin"],
+            "a1.bin",
+        );
+        let zeros = vec![0u8; 100 * 1024 * 1024];
+        let zeros_ref: &[u8] = &zeros;
+        let mut entries: Vec<(&str, &[u8], u32)> = vec![("manifest.json", &manifest, 0o100644)];
+        for index in 1..=6 {
+            entries.push((Box::leak(format!("a{index}.bin").into_boxed_str()), zeros_ref, 0o100644));
+        }
+        let zip = make_zip(&entries);
+        let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
+        assert!(err.contains("too large"), "got: {err}");
+        assert!(!dest.exists() || fs::read_dir(dest).map(|mut it| it.next().is_none()).unwrap_or(true),
+            "nothing may be extracted from a rejected bundle");
+    }
+
+    #[test]
+    fn restore_rejects_symlink_to_absolute_target() {
+        // A symlink whose target escapes the staging directory must be
+        // rejected even though the entry name itself looks safe.
+        let dest = temp_root("restore-symlink-abs");
+        let zip = make_zip_with_symlink(
+            &simple_manifest(&["link"], "link"),
+            "link",
+            "/etc/passwd",
+        );
+        let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
+        assert!(err.contains("symlink"), "got: {err}");
+    }
+
+    #[test]
+    fn restore_rejects_duplicate_entries() {
+        let dest = temp_root("restore-dup");
+        // Two entries with the same normalized name must be rejected.
+        let manifest = simple_manifest(&["a.txt"], "a.txt");
+        // A "./a.txt" entry is rejected by the path-safety layer (defense in
+        // depth); if it ever slipped through, the duplicate check would catch
+        // it. Either defense must stop the restore.
+        let zip = make_zip(&[
+            ("manifest.json", &manifest, 0o100644),
+            ("a.txt", b"first", 0o100644),
+            ("./a.txt", b"second", 0o100644),
+        ]);
+        let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
+        assert!(
+            err.contains("Unsafe") || err.contains("duplicate"),
+            "got: {err}"
+        );
+    }
+
 }

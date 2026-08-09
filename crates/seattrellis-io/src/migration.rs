@@ -38,6 +38,8 @@ use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
+
+use crate::transaction::{recover_leftover_transactions, FileTransaction};
 use serde_json::{json, Map, Value};
 
 /// Wire `api_version` reported by every migration response.
@@ -965,18 +967,6 @@ fn migration_batch_preview_inner(project_paths: &[String]) -> Result<BatchRespon
 }
 
 /// Best-effort rollback of artifacts written before a batch failure.
-fn rollback_batch(applied: &[MigrationResponse], in_place: bool) {
-    for result in applied.iter().rev() {
-        if in_place {
-            if let Some(backup) = &result.backup_path {
-                let _ = restore_backup(Path::new(backup), Path::new(&result.source_path), false);
-            }
-        } else if let Some(output) = &result.output_path {
-            let _ = fs::remove_file(Path::new(output));
-        }
-    }
-}
-
 /// Preview several project migrations together.
 pub fn migration_batch_preview_json(project_paths: &[String]) -> Result<String, String> {
     let response = migration_batch_preview_inner(project_paths)?;
@@ -984,25 +974,111 @@ pub fn migration_batch_preview_json(project_paths: &[String]) -> Result<String, 
         .map_err(|error| format!("could not serialize migration batch preview: {error}"))
 }
 
-/// Apply several project migrations, rolling back on a mid-batch failure.
+/// A planned migration write: the artifact response plus the `(target,
+/// contents)` pair a transaction would stage.
+type PlannedWrite = (MigrationResponse, PathBuf, Vec<u8>);
+
+/// A computed migration: the response plus the optional `(target, contents)`
+/// write it would perform (None only for dry runs).
+type ComputedMigration = (MigrationResponse, Option<(PathBuf, Vec<u8>)>);
+
+/// Compute a migration without writing anything: returns the response plus
+/// the `(target, contents)` pair that an atomic transaction would write
+/// (M2-04 follow-up: batch apply stages these through [`FileTransaction`]).
+fn migrate_contents(source: &Path, in_place: bool) -> Result<ComputedMigration, String> {
+    if !source.is_file() {
+        return Err(format!(
+            "The selected project artifact does not exist: {}",
+            source.display()
+        ));
+    }
+    let original = read_json_file(source)?;
+    let kind = detect_artifact(&original, &source.display().to_string())?;
+    let overlay = normalized_overlay(&original, kind);
+    let merged = merge_normalized(&original, &overlay);
+    let (change_count, changes) = change_summary(&original, &merged);
+
+    let output_path = if in_place {
+        Some(source.to_path_buf())
+    } else {
+        Some(resolve_output_path(source)?)
+    };
+    let reference_checks = if kind == ArtifactKind::Project {
+        compute_reference_checks(&original, source)
+    } else {
+        Vec::new()
+    };
+    let schema_version = merged.get("schema_version").cloned().unwrap_or(Value::Null);
+
+    let response = MigrationResponse {
+        api_version: API_VERSION,
+        project_path: source.display().to_string(),
+        source_path: source.display().to_string(),
+        artifact: kind.label().to_string(),
+        schema_version,
+        output_path: output_path.as_ref().map(|path| path.display().to_string()),
+        backup_path: None, // backups are the transaction's job in batch mode
+        dry_run: false,
+        before_valid: true,
+        after_valid: None,
+        rollback_available: true,
+        change_count,
+        changes,
+        reference_checks,
+    };
+    let written = match output_path {
+        Some(path) => {
+            let bytes = serde_json::to_vec(&merged).map_err(|error| {
+                format!(
+                    "could not serialize migrated artifact for {}: {error}",
+                    source.display()
+                )
+            })?;
+            Some((path, bytes))
+        }
+        None => None,
+    };
+    Ok((response, written))
+}
+
+/// Apply several project migrations as one journaled multi-file transaction
+/// (M2-04): every migrated artifact is staged first, then committed
+/// atomically. A mid-batch failure rolls the whole batch back; a crashed
+/// process leaves a journal that `recover_leftover_transactions` repairs on
+/// the next batch.
 pub fn migration_batch_apply_json(project_paths: &[String], in_place: bool) -> Result<String, String> {
     validate_batch_paths(project_paths)?;
     let preview = migration_batch_preview_inner(project_paths)?;
     if !preview.ready {
         return Err("Review the migration reference checks before writing this batch.".to_string());
     }
-    let mut applied = Vec::with_capacity(project_paths.len());
+
+    // Compute every migration first; nothing touches disk until staging.
+    let mut planned: Vec<PlannedWrite> = Vec::new();
     for project_path in project_paths {
-        match migrate_internal(Path::new(project_path), in_place, false) {
-            Ok(response) => applied.push(response),
-            Err(error) => {
-                rollback_batch(&applied, in_place);
-                return Err(format!(
-                    "The migration batch was not completed; earlier changes were rolled back: {error}"
-                ));
-            }
+        let (response, written) = migrate_contents(Path::new(project_path), in_place)?;
+        match written {
+            Some((target, contents)) => planned.push((response, target, contents)),
+            None => return Err("internal error: batch migration produced no output".to_string()),
         }
     }
+
+    // Journaled transaction: stage all targets, validate everything, commit.
+    // Because nothing is replaced until every step validates, a failure here
+    // leaves the batch untouched (no partial writes to roll back).
+    let journal_dir = std::env::temp_dir().join("seattrellis-migration-journal");
+    recover_leftover_transactions(&journal_dir)?;
+    let mut transaction = FileTransaction::begin(&journal_dir)?;
+    for (_, target, contents) in &planned {
+        transaction.stage(target, contents).map_err(|error| {
+            format!("The migration batch was not completed; no changes were written: {error}")
+        })?;
+    }
+    transaction.commit(validate_written_artifact).map_err(|error| {
+        format!("The migration batch was not completed; no changes were written: {error}")
+    })?;
+
+    let applied: Vec<MigrationResponse> = planned.into_iter().map(|(response, _, _)| response).collect();
     let response = BatchResponse {
         api_version: API_VERSION,
         projects: applied,
@@ -1066,6 +1142,7 @@ pub fn migration_restore_json(backup_path: &str, destination: &str) -> Result<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transaction::recover_leftover_transactions;
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -1421,16 +1498,56 @@ mod tests {
         fs::set_permissions(&dir_b, fs::Permissions::from_mode(0o755)).unwrap();
 
         let error = result.unwrap_err();
-        assert!(error.contains("rolled back"), "unexpected: {error}");
-        // The first project was rolled back to its pre-migration content.
+        assert!(error.contains("no changes were written"), "unexpected: {error}");
+        // Nothing was written: the transaction never committed, so the first
+        // project is untouched and no backup was created.
         assert_eq!(
             parse_json(&fs::read_to_string(dir_a.join("project.json")).unwrap()),
             parse_json(&original_a)
         );
-        // The backup created for the first project is retained for recovery.
-        assert!(dir_a.join("project.json.bak").is_file());
+        assert!(!dir_a.join("project.json.bak").is_file());
         // The second project was never modified.
         assert_eq!(fs::read_to_string(dir_b.join("project.json")).unwrap(), PROJECT_FIXTURE);
+    }
+
+    #[test]
+    fn batch_apply_recovers_a_crashed_journal() {
+        let root = TestDir::new("batch_recover");
+        let dir_a = root.path().join("a");
+        let dir_b = root.path().join("b");
+        fs::create_dir_all(&dir_a).unwrap();
+        fs::create_dir_all(&dir_b).unwrap();
+        for dir in [&dir_a, &dir_b] {
+            fs::write(dir.join("project.json"), PROJECT_FIXTURE).unwrap();
+        }
+        let original_a = fs::read_to_string(dir_a.join("project.json")).unwrap();
+
+        // Simulate a crash mid-transaction: stage both targets, replace the
+        // first, then abandon the transaction without committing.
+        let journal_dir = root.path().join("journal");
+        let mut transaction = FileTransaction::begin(&journal_dir).unwrap();
+        let target_a = dir_a.join("project.json");
+        let target_b = dir_b.join("project.json");
+        transaction.stage(&target_a, b"{\"schema_version\": 1}").unwrap();
+        transaction.stage(&target_b, b"{\"schema_version\": 1}").unwrap();
+        transaction.commit(|_| Ok(())).unwrap();
+
+        // Simulate a crash between staging and commit of a second batch:
+        // begin again, stage (creating temps + journal), then drop without
+        // commit while a backup exists from the first commit.
+        let mut crashed = FileTransaction::begin(&journal_dir).unwrap();
+        crashed.stage(&target_a, b"{\"schema_version\": 1, \"partial\": true}").unwrap();
+        // Simulate a crash: forget the transaction so no rollback runs and
+        // the journal + temps survive on disk, exactly like a killed process.
+        std::mem::forget(crashed);
+
+        // Recovery finds the leftover journal; the target is untouched.
+        let recovered = recover_leftover_transactions(&journal_dir).unwrap();
+        assert!(recovered >= 1, "expected a leftover journal to be recovered");
+        assert_eq!(
+            parse_json(&fs::read_to_string(&target_a).unwrap()),
+            parse_json(&original_a)
+        );
     }
 
     #[test]
