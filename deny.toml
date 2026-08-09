@@ -1,0 +1,31 @@
+# SeatTrellis cargo-deny policy (M2 E.18): fail on advisories, two unmatched
+# licenses, and unknown registries. Dependency versions come from the shared
+# workspace lockfile (M1-01); the target list mirrors what CI builds.
+[advisories]
+version = 2
+yanked = "deny"
+
+[bans]
+multiple-versions = "warn"
+skip = [
+    # schemars 1.x pins an older serde_inline; both are transitive and used.
+    { name = "serde_inline", version = "0.1" },
+]
+
+[licenses]
+version = 2
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+unlicensed = "deny"
+allow-osi-fsf-free = "neither"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

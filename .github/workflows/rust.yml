@@ -54,6 +54,25 @@ jobs:
       - name: Check generated contract artifacts are up to date
         run: cargo run -p xtask -- contract check
 
+  fmt:
+    name: cargo fmt --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check formatting
+        run: cargo fmt --check
+
+  dependency-audit:
+    name: Dependency audit (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check all
+
   msrv:
     name: Rust core / 1.88 MSRV
     runs-on: ubuntu-latest
