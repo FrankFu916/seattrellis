@@ -4,11 +4,23 @@
 [advisories]
 version = 2
 yanked = "deny"
-# gtk-rs GTK3 bindings carry a family of unmaintained advisories
-# (RUSTSEC-2024-0411..0420): they are pinned transitively by the Tauri 2
-# Linux stack (tauri/tao/wry) and have no patched GTK3 successor. Downgrade
-# to warn so the audit still surfaces them without blocking the build.
-unmaintained = "warn"
+ignore = [
+    # gtk-rs GTK3 bindings carry a family of unmaintained advisories; they
+    # are pinned transitively by the Tauri 2 Linux stack (tauri/tao/wry) and
+    # have no patched GTK3 successor. The desktop shell targets macOS and
+    # Windows in practice.
+    "RUSTSEC-2024-0370",
+    "RUSTSEC-2024-0411",
+    "RUSTSEC-2024-0412",
+    "RUSTSEC-2024-0413",
+    "RUSTSEC-2024-0414",
+    "RUSTSEC-2024-0415",
+    "RUSTSEC-2024-0416",
+    "RUSTSEC-2024-0417",
+    "RUSTSEC-2024-0418",
+    "RUSTSEC-2024-0419",
+    "RUSTSEC-2024-0420",
+]
 
 [bans]
 multiple-versions = "warn"
