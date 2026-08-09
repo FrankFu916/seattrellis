@@ -16,6 +16,7 @@ members = [
     "xtask",
     "crates/seattrellis-schema",
     "crates/seattrellis-rules",
+    "crates/seattrellis-export",
 ]
 default-members = [
     "native/seattrellis_core",

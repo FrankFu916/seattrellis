@@ -3,7 +3,7 @@
 //! This is the app-side counterpart of the workbench's "export" flow. The
 //! frontend sends an `ExportDraftRequest` (see `clients/web/src/api/types.ts`);
 //! this module parses that shape, recovers the renderable seat grid from the
-//! solved plan ([`SeatingGrid::build`] in `crate::render`, a mirror of the CLI's
+//! solved plan ([`SeatingGrid::build`] in `seattrellis_export::render`, a mirror of the CLI's
 //! renderer), and dispatches to the matching render function.
 //!
 //! # Entry point
