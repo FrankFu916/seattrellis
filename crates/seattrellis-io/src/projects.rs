@@ -1103,6 +1103,291 @@ pub fn restore_project_json(bundle_bytes: &[u8], output_dir: &str) -> Result<Str
     serde_json::to_string(&value).map_err(|e| format!("Could not serialize restore response: {e}"))
 }
 
+// ---------------------------------------------------------------------------
+// Artifact compare + restore (M2 parity, ledger A.2/A.3)
+// ---------------------------------------------------------------------------
+
+/// The comparable view of a project artifact: kind, metadata and the
+/// assignment map, extracted from a snapshot / candidate_set / rotation_plan
+/// document (mirrors Python's `_snapshot_for_artifact`).
+struct ArtifactSnapshotView {
+    kind: String,
+    created_at: Option<String>,
+    /// (student_key, seat_id) pairs, ordered as in the document.
+    assignments: Vec<(String, String)>,
+    student_count: usize,
+    enabled_seat_count: usize,
+    layout: Option<Value>,
+    rules: Option<Value>,
+    solver_status: Option<String>,
+}
+
+/// Extract the snapshot view from any supported artifact document.
+fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
+    let bytes = read_file_capped(path, MAX_BUNDLE_FILE_BYTES)?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Invalid JSON in {}: {e}", path.display()))?;
+    let kind = artifact_kind(&value);
+    let created_at = value
+        .get("created_at")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    // Locate the inner snapshot document by kind.
+    let snapshot: &Value = match kind.as_str() {
+        "candidate_set" => {
+            let recommended = value
+                .get("recommended_candidate_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            value
+                .get("candidates")
+                .and_then(Value::as_array)
+                .and_then(|candidates| {
+                    candidates.iter().find(|candidate| {
+                        candidate.get("candidate_id").and_then(Value::as_str)
+                            == Some(recommended)
+                    })
+                })
+                .or_else(|| {
+                    value
+                        .get("candidates")
+                        .and_then(Value::as_array)
+                        .and_then(|candidates| candidates.first())
+                })
+                .and_then(|candidate| candidate.get("snapshot"))
+                .ok_or_else(|| format!("Candidate set has no snapshot: {}", path.display()))?
+        }
+        "rotation_plan" => value
+            .get("periods")
+            .and_then(Value::as_array)
+            .and_then(|periods| periods.first())
+            .and_then(|period| period.get("snapshot"))
+            .ok_or_else(|| format!("Rotation plan has no period snapshot: {}", path.display()))?,
+        "snapshot" => &value,
+        _ => {
+            return Err(format!(
+                "Unsupported project artifact kind for comparison: {kind}"
+            ))
+        }
+    };
+
+    let mut assignments: Vec<(String, String)> = Vec::new();
+    if let Some(list) = snapshot.get("assignments").and_then(Value::as_array) {
+        for assignment in list {
+            if let (Some(student), Some(seat)) = (
+                assignment.get("student_key").and_then(Value::as_str),
+                assignment.get("seat_id").and_then(Value::as_str),
+            ) {
+                assignments.push((student.to_string(), seat.to_string()));
+            }
+        }
+    }
+    let student_count = snapshot
+        .get("students")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+    let enabled_seat_count = snapshot
+        .get("layout")
+        .and_then(|layout| layout.get("seats"))
+        .and_then(Value::as_array)
+        .map(|seats| {
+            seats
+                .iter()
+                .filter(|seat| seat.get("enabled").and_then(Value::as_bool).unwrap_or(true))
+                .count()
+        })
+        .unwrap_or(0);
+    let solver_status = snapshot
+        .get("solver_status")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    Ok(ArtifactSnapshotView {
+        kind,
+        created_at,
+        assignments,
+        student_count,
+        enabled_seat_count,
+        layout: snapshot.get("layout").cloned(),
+        rules: snapshot.get("rules").cloned(),
+        solver_status,
+    })
+}
+
+/// Compare two project artifacts (ledger A.2): summaries plus an
+/// assignment/roster/layout/rules diff. Never returns student data — only
+/// anonymized `student-N` references and seat ids.
+pub fn compare_artifacts_json(
+    project_path: &str,
+    artifact_path: &str,
+    compare_to_path: &str,
+) -> Result<String, String> {
+    let _ = resolve_project(Path::new(project_path), false)?;
+    let left_path = Path::new(artifact_path);
+    let right_path = Path::new(compare_to_path);
+    if left_path == right_path {
+        return Err("An artifact cannot be compared with itself.".to_string());
+    }
+    let left = artifact_snapshot_view(left_path)?;
+    let right = artifact_snapshot_view(right_path)?;
+
+    let summary = |view: &ArtifactSnapshotView, path: &Path| {
+        json!({
+            "name": path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            "path": path.to_string_lossy(),
+            "kind": view.kind,
+            "created_at": view.created_at,
+            "student_count": view.student_count,
+            "assignment_count": view.assignments.len(),
+            "enabled_seat_count": view.enabled_seat_count,
+            "solver_status": view.solver_status,
+        })
+    };
+
+    let left_map: std::collections::HashMap<&str, &str> = left
+        .assignments
+        .iter()
+        .map(|(student, seat)| (student.as_str(), seat.as_str()))
+        .collect();
+    let right_map: std::collections::HashMap<&str, &str> = right
+        .assignments
+        .iter()
+        .map(|(student, seat)| (student.as_str(), seat.as_str()))
+        .collect();
+    let mut all_students: Vec<&str> = left_map
+        .keys()
+        .chain(right_map.keys())
+        .copied()
+        .collect();
+    all_students.sort_unstable();
+    all_students.dedup();
+
+    let mut assignment_changes = 0;
+    let mut roster_added = 0;
+    let mut roster_removed = 0;
+    let mut details: Vec<Value> = Vec::new();
+    for (index, student) in all_students.iter().enumerate() {
+        let before = left_map.get(student).copied();
+        let after = right_map.get(student).copied();
+        if before == after {
+            continue;
+        }
+        assignment_changes += 1;
+        if before.is_none() {
+            roster_added += 1;
+        }
+        if after.is_none() {
+            roster_removed += 1;
+        }
+        let change = if before.is_none() {
+            "seated"
+        } else if after.is_none() {
+            "unseated"
+        } else {
+            "moved"
+        };
+        details.push(json!({
+            "student_ref": format!("student-{}", index + 1),
+            "change": change,
+            "before_seat_id": before,
+            "after_seat_id": after,
+        }));
+    }
+
+    let diff = json!({
+        "assignment_changes": assignment_changes,
+        "roster_added": roster_added,
+        "roster_removed": roster_removed,
+        "layout_changed": left.layout != right.layout,
+        "rules_changed": left.rules != right.rules,
+        "solver_status_changed": left.solver_status != right.solver_status,
+        "assignment_details": details,
+    });
+
+    let response = json!({
+        "api_version": "1",
+        "left": summary(&left, left_path),
+        "right": summary(&right, right_path),
+        "diff": diff,
+    });
+    serde_json::to_string(&response).map_err(|e| format!("Could not serialize compare response: {e}"))
+}
+
+/// Restore an artifact as a new output snapshot without overwriting history
+/// (ledger A.3). Rotation plans are rejected (pick a period snapshot first),
+/// mirroring Python.
+pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<String, String> {
+    let (_, paths) = resolve_project(Path::new(project_path), false)?;
+    let source_path = Path::new(artifact_path);
+    let view = artifact_snapshot_view(source_path)?;
+    if view.kind == "rotation_plan" {
+        return Err(
+            "Select a snapshot or candidate set inside a rotation plan before restoring it."
+                .to_string(),
+        );
+    }
+    fs::create_dir_all(&paths.outputs_dir)
+        .map_err(|e| format!("Could not create outputs directory: {e}"))?;
+
+    // Rebuild the snapshot document with restoration metadata.
+    let bytes = read_file_capped(source_path, MAX_BUNDLE_FILE_BYTES)?;
+    let mut document: Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Invalid JSON in {}: {e}", source_path.display()))?;
+    let source_name = source_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if let Some(metadata) = document
+        .get_mut("metadata")
+        .and_then(Value::as_object_mut)
+    {
+        metadata.insert("restored_from".to_string(), json!(source_name));
+    } else if let Some(object) = document.as_object_mut() {
+        object.insert(
+            "metadata".to_string(),
+            json!({ "restored_from": source_name }),
+        );
+    }
+    if let Some(object) = document.as_object_mut() {
+        object.insert(
+            "restored_at".to_string(),
+            json!(std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0)),
+        );
+    }
+
+    // restored-{stem}.snapshot.json, never overwriting an existing file.
+    let stem = source_path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "artifact".to_string());
+    let clean_stem = stem.strip_suffix(".snapshot").unwrap_or(&stem);
+    let mut target = paths.outputs_dir.join(format!("restored-{clean_stem}.snapshot.json"));
+    let mut index = 2;
+    while target.exists() {
+        target = paths
+            .outputs_dir
+            .join(format!("restored-{clean_stem}-{index}.snapshot.json"));
+        index += 1;
+    }
+    fs::write(&target, serde_json::to_vec(&document).map_err(|e| {
+        format!("Could not serialize restored artifact: {e}")
+    })?)
+    .map_err(|e| format!("Could not write restored artifact {}: {e}", target.display()))?;
+
+    let response = json!({
+        "api_version": "1",
+        "project_path": paths.project_file.to_string_lossy(),
+        "source_artifact": source_path.to_string_lossy(),
+        "restored_artifact": target.to_string_lossy(),
+    });
+    serde_json::to_string(&response).map_err(|e| format!("Could not serialize restore response: {e}"))
+}
+
 fn read_manifest(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Manifest, String> {
     let mut file = archive
         .by_name("manifest.json")
@@ -1747,4 +2032,177 @@ mod tests {
         );
     }
 
+    // ---- M2 parity: artifact compare + restore (ledger A.2/A.3) ----
+
+    const SNAPSHOT_A: &str = r#"{
+        "kind": "snapshot",
+        "created_at": "2026-08-09T00:00:00Z",
+        "students": [
+            {"student_id": "S1", "name": "Alice"},
+            {"student_id": "S2", "name": "Bob"}
+        ],
+        "layout": {"layout_id": "l", "seats": [
+            {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+            {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+        ]},
+        "rules": {"seed": 42},
+        "assignments": [
+            {"student_key": "S1", "student_name": "Alice", "seat_id": "R1C1"},
+            {"student_key": "S2", "student_name": "Bob", "seat_id": "R1C2"}
+        ],
+        "solver_status": "FEASIBLE"
+    }"#;
+
+    const SNAPSHOT_B: &str = r#"{
+        "kind": "snapshot",
+        "created_at": "2026-08-09T01:00:00Z",
+        "students": [
+            {"student_id": "S1", "name": "Alice"},
+            {"student_id": "S2", "name": "Bob"}
+        ],
+        "layout": {"layout_id": "l", "seats": [
+            {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+            {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+        ]},
+        "rules": {"seed": 7},
+        "assignments": [
+            {"student_key": "S1", "student_name": "Alice", "seat_id": "R1C2"},
+            {"student_key": "S3", "student_name": "Carol", "seat_id": "R1C1"}
+        ],
+        "solver_status": "OPTIMAL"
+    }"#;
+
+    #[test]
+    fn compare_artifacts_reports_assignment_and_roster_diff() {
+        let root = temp_root("compare");
+        fs::write(root.join("project.json"), r#"{
+            "kind": "seattrellis_project",
+            "name": "Demo",
+            "students": "students.csv",
+            "layout": "classroom.json",
+            "rules": "rules.json",
+            "outputs_dir": "outputs"
+        }"#).unwrap();
+        fs::write(root.join("a.json"), SNAPSHOT_A).unwrap();
+        fs::write(root.join("b.json"), SNAPSHOT_B).unwrap();
+
+        let result = compare_artifacts_json(
+            root.join("project.json").to_str().unwrap(),
+            root.join("a.json").to_str().unwrap(),
+            root.join("b.json").to_str().unwrap(),
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(value["left"]["kind"], "snapshot");
+        assert_eq!(value["left"]["student_count"], 2);
+        assert_eq!(value["right"]["assignment_count"], 2);
+        let diff = &value["diff"];
+        // S1 moved R1C1->R1C2, S2 unseated, S3 seated: 3 assignment changes,
+        // 1 roster added, 1 roster removed.
+        assert_eq!(diff["assignment_changes"], 3);
+        assert_eq!(diff["roster_added"], 1);
+        assert_eq!(diff["roster_removed"], 1);
+        assert_eq!(diff["layout_changed"], false);
+        assert_eq!(diff["rules_changed"], true);
+        assert_eq!(diff["solver_status_changed"], true);
+        let details = diff["assignment_details"].as_array().unwrap();
+        assert!(details.iter().any(|d| d["change"] == "moved"));
+        assert!(details.iter().any(|d| d["change"] == "seated"));
+        assert!(details.iter().any(|d| d["change"] == "unseated"));
+        // No raw student identifiers leak into the diff.
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(!serialized.contains("Alice") && !serialized.contains("Carol"));
+    }
+
+    #[test]
+    fn compare_rejects_self_comparison() {
+        let root = temp_root("compare-self");
+        fs::write(root.join("project.json"), r#"{
+            "kind": "seattrellis_project",
+            "students": "students.csv",
+            "layout": "classroom.json",
+            "rules": "rules.json"
+        }"#).unwrap();
+        fs::write(root.join("a.json"), SNAPSHOT_A).unwrap();
+        let err = compare_artifacts_json(
+            root.join("project.json").to_str().unwrap(),
+            root.join("a.json").to_str().unwrap(),
+            root.join("a.json").to_str().unwrap(),
+        )
+        .unwrap_err();
+        assert!(err.contains("compared with itself"), "{err}");
+    }
+
+    #[test]
+    fn restore_artifact_writes_output_snapshot_with_metadata() {
+        let root = temp_root("restore-artifact");
+        fs::write(root.join("project.json"), r#"{
+            "kind": "seattrellis_project",
+            "name": "Demo",
+            "students": "students.csv",
+            "layout": "classroom.json",
+            "rules": "rules.json",
+            "outputs_dir": "outputs"
+        }"#).unwrap();
+        fs::write(root.join("plan.snapshot.json"), SNAPSHOT_A).unwrap();
+
+        let result = restore_artifact_json(
+            root.join("project.json").to_str().unwrap(),
+            root.join("plan.snapshot.json").to_str().unwrap(),
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&result).unwrap();
+        let restored = value["restored_artifact"].as_str().unwrap();
+        assert!(restored.ends_with("restored-plan.snapshot.json"), "{restored}");
+        assert!(Path::new(restored).is_file());
+
+        let document: Value =
+            serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
+        assert_eq!(document["metadata"]["restored_from"], "plan.snapshot.json");
+        assert!(document["restored_at"].is_number());
+        // The assignment content survived.
+        assert_eq!(document["assignments"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn restore_rejects_rotation_plan_and_never_overwrites() {
+        let root = temp_root("restore-rot");
+        fs::write(root.join("project.json"), r#"{
+            "kind": "seattrellis_project",
+            "students": "students.csv",
+            "layout": "classroom.json",
+            "rules": "rules.json",
+            "outputs_dir": "outputs"
+        }"#).unwrap();
+        fs::write(root.join("rot.json"), r#"{
+            "kind": "rotation_plan",
+            "periods": [{"period": 1, "label": "P1", "snapshot": {"assignments": []}}]
+        }"#).unwrap();
+        let err = restore_artifact_json(
+            root.join("project.json").to_str().unwrap(),
+            root.join("rot.json").to_str().unwrap(),
+        )
+        .unwrap_err();
+        assert!(err.contains("rotation plan"), "{err}");
+
+        // Restoring the same snapshot twice yields two distinct files.
+        fs::write(root.join("plan.snapshot.json"), SNAPSHOT_A).unwrap();
+        let first = restore_artifact_json(
+            root.join("project.json").to_str().unwrap(),
+            root.join("plan.snapshot.json").to_str().unwrap(),
+        )
+        .unwrap();
+        let second = restore_artifact_json(
+            root.join("project.json").to_str().unwrap(),
+            root.join("plan.snapshot.json").to_str().unwrap(),
+        )
+        .unwrap();
+        let first_path: Value = serde_json::from_str(&first).unwrap();
+        let second_path: Value = serde_json::from_str(&second).unwrap();
+        assert_ne!(
+            first_path["restored_artifact"],
+            second_path["restored_artifact"],
+            "restore must never overwrite an existing snapshot"
+        );
+    }
 }
