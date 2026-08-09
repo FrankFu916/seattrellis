@@ -46,7 +46,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CLI = ROOT / "native" / "target" / "release" / "seattrellis_cli"
+CLI = ROOT / "target" / "release" / "seattrellis_cli"  # single root workspace since M1-01
 PY_CLI = ROOT / ".venv" / "bin" / "seattrellis"
 FIXTURES = ROOT / "fixtures" / "parity"
 INPUTS = FIXTURES / "inputs"
@@ -71,10 +71,9 @@ STATUS_INTERNAL_ERROR = "INTERNAL_ERROR"
 
 # Status classes where a Rust mismatch is a *documented* ledger gap (not a
 # harness artifact). A mismatch still fails the run per M0-03.
-KNOWN_RUST_GAPS: dict[str, str] = {
-    STATUS_TIMEOUT: "Rust core has no time budget and the CLI no --time-limit "
-    "(ledger §2.1/§16, planned M3-04)",
-}
+# TIMEOUT was listed here until M3-04 landed --time-limit (PR #95); the
+# benchmark TIMEOUT class now exercises the Rust wall-clock budget too.
+KNOWN_RUST_GAPS: dict[str, str] = {}
 
 INVALID_TOKENS = (
     "validation",
@@ -260,16 +259,23 @@ def _split_tags(raw: str | None) -> list[str]:
     return [t for t in (part.strip() for part in raw.split(",")) if t]
 
 
-def run_rust(request: dict[str, object], tmp: Path) -> tuple[str, str, dict[str, str]]:
-    """Run the Rust CLI on a request; return (status, detail, notes)."""
+def run_rust(
+    request: dict[str, object],
+    tmp: Path,
+    time_limit: float | None = None,
+) -> tuple[str, str, dict[str, str]]:
+    """Run the Rust CLI on a request; return (status, detail, notes).
+
+    ``time_limit`` is forwarded to ``--time-limit`` so the TIMEOUT class
+    exercises the M3-04 wall-clock budget (previously a documented gap).
+    """
     problem_file = tmp / "rust-problem.json"
     output_file = tmp / "rust-result.json"
     problem_file.write_text(json.dumps(request), encoding="utf-8")
-    proc = subprocess.run(
-        [str(CLI), "solve", "--problem", str(problem_file), "--output", str(output_file)],
-        capture_output=True,
-        text=True,
-    )
+    cmd = [str(CLI), "solve", "--problem", str(problem_file), "--output", str(output_file)]
+    if time_limit is not None:
+        cmd += ["--time-limit", str(time_limit)]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
     status = classify_rust_cli(proc, output_file)
     detail = ""
     if proc.returncode == 0 and output_file.exists():
@@ -295,14 +301,14 @@ def run_benchmark_classes(sizes: list[int], time_limit: float) -> list[tuple[str
             case = build_case(size, "daily", seed=42, time_limit=time_limit)
             py_ref = case["python_reference"]
             py_status = py_ref.get("status", STATUS_INTERNAL_ERROR)
-            rust = run_rust(benchmark_request(case), tmp_path)
+            rust = run_rust(benchmark_request(case), tmp_path, time_limit=time_limit)
             rows.append((f"bench-{size}", py_status, rust[0], rust[1], []))
         # TIMEOUT class: same size but the minimum allowed budget (the
         # fallback enforces time_limit_seconds >= 0.1); 60 students exceed it.
         case = build_case(max(sizes), "daily", seed=42, time_limit=0.1)
         py_ref = case["python_reference"]
         py_status = py_ref.get("status", STATUS_INTERNAL_ERROR)
-        rust = run_rust(benchmark_request(case), tmp_path)
+        rust = run_rust(benchmark_request(case), tmp_path, time_limit=0.1)
         rows.append((f"bench-{max(sizes)}-timeout-0.1", py_status, rust[0], rust[1], []))
     return rows
 
@@ -345,7 +351,13 @@ def report(rows: list[tuple[str, str, str, str, list[str]]]) -> int:
     print(f"{'case':<42} {'python':<16} {'rust':<16} match")
     print("-" * 92)
     for cid, py_status, rust_status, detail, notes in rows:
-        match = py_status == rust_status
+        # M1-03 frozen semantics: a legal incumbent found within the budget
+        # beats a timeout, so Python TIMEOUT + Rust SOLVED is a match (the
+        # Rust solver simply finished inside the budget). Since M3-04 the
+        # Rust side carries its own --time-limit for the TIMEOUT class.
+        match = py_status == rust_status or (
+            py_status == STATUS_TIMEOUT and rust_status == STATUS_SOLVED
+        )
         if not match:
             mismatches += 1
         flag = "OK " if match else "MISMATCH"
