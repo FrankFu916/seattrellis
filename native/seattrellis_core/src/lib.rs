@@ -678,7 +678,19 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
         }
     }
 
-    if let Some((assignment, total_cost, best_attempts)) = best {
+    if let Some((assignment, _total_cost, best_attempts)) = best {
+        // Soft optimization (plan §6.2): hill-climb on the greedy best; the
+        // result still passes the independent validation gate below.
+        let assignment = local_search(
+            request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            &assignment,
+            &ctx,
+            &mut rng,
+        );
+        let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
         // Independent validation gate (M3-05): a solver bug must surface as
         // InternalError, never as a silently "feasible" result.
         validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
@@ -713,7 +725,17 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     );
     match outcome {
         SearchOutcome::Found(assignment) => {
-            // Independent validation gate (M3-05), same as the greedy path.
+            // Soft optimization (plan §6.2), then the same independent
+            // validation gate as the greedy path (M3-05).
+            let assignment = local_search(
+                request,
+                &resolved,
+                &adjacency,
+                &graph_distances,
+                &assignment,
+                &ctx,
+                &mut rng,
+            );
             validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
             let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
             let pairs: Vec<[usize; 2]> = assignment
@@ -1066,6 +1088,116 @@ fn full_solution_total_cost(
     cost += evaluate_soft_objectives(&assignment_by_key, &ctx.objective_context, &ctx.rules)
         .total_cost();
     cost
+}
+
+/// Local search budget: candidate moves per optimization run (plan §6.2).
+const LOCAL_SEARCH_ITERATIONS: usize = 2_000;
+
+/// Stop after this many consecutive non-improving moves (stagnation
+/// detection, plan §6.2).
+const LOCAL_SEARCH_STAGNATION_LIMIT: usize = 250;
+
+/// Soft optimization (plan §6.2): hill-climbing local search on top of a
+/// legal assignment. Swaps two students' seats or moves a student to an
+/// empty seat; every candidate move is re-validated against the hard rules
+/// before acceptance, so hard correctness is never broken. Moves are sampled
+/// with the shared deterministic RNG — same seed, same result.
+///
+/// Only strictly-improving moves are accepted; after `STAGNATION_LIMIT`
+/// consecutive failures the search stops. Returns the best assignment found
+/// (may be the input itself).
+fn local_search(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &[usize],
+    ctx: &CostContext,
+    rng: &mut SplitMix64,
+) -> Vec<usize> {
+    let mut current = assignment.to_vec();
+    let mut current_cost = full_solution_total_cost(&current, adjacency, ctx);
+    let mut stagnation = 0;
+
+    for _ in 0..LOCAL_SEARCH_ITERATIONS {
+        let candidate = random_neighbor(&current, ctx, rng);
+        let Ok(probe) = validate_candidate_move(
+            request,
+            resolved,
+            adjacency,
+            graph_distances,
+            candidate,
+        ) else {
+            continue;
+        };
+        let candidate_cost = full_solution_total_cost(&probe, adjacency, ctx);
+        if candidate_cost < current_cost {
+            current = probe;
+            current_cost = candidate_cost;
+            stagnation = 0;
+        } else {
+            stagnation += 1;
+            if stagnation >= LOCAL_SEARCH_STAGNATION_LIMIT {
+                break;
+            }
+        }
+    }
+    current
+}
+
+/// A candidate neighbor assignment: either a swap of two students' seats or
+/// a move of one student into an empty seat (sampled deterministically).
+fn random_neighbor(
+    assignment: &[usize],
+    ctx: &CostContext,
+    rng: &mut SplitMix64,
+) -> Vec<usize> {
+    let mut neighbor = assignment.to_vec();
+    let seat_count = ctx.layout.seats.len();
+    let swap = rng.next_usize(2) == 0;
+    if swap {
+        let first = rng.next_usize(neighbor.len());
+        let second = rng.next_usize(neighbor.len() - 1);
+        let second = if second >= first { second + 1 } else { second };
+        neighbor.swap(first, second);
+    } else {
+        // Move one student into a seat that is currently empty.
+        let student = rng.next_usize(neighbor.len());
+        let mut empty_seats: Vec<usize> = (0..seat_count)
+            .filter(|seat| !neighbor.contains(seat))
+            .collect();
+        if let Some(seat) = empty_seats.pop() {
+            neighbor[student] = seat;
+        } else {
+            let first = rng.next_usize(neighbor.len());
+            let second = rng.next_usize(neighbor.len() - 1);
+            let second = if second >= first { second + 1 } else { second };
+            neighbor.swap(first, second);
+        }
+    }
+    neighbor
+}
+
+/// Validate a candidate neighbor: every hard rule must still hold. Returns
+/// the probe assignment on success, the violating rule description on
+/// failure.
+fn validate_candidate_move(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    candidate: Vec<usize>,
+) -> Result<Vec<usize>, String> {
+    let probe: Vec<Option<usize>> = candidate.iter().map(|&seat| Some(seat)).collect();
+    if !solve_partial_assignment_valid(request, resolved, &probe, adjacency, graph_distances) {
+        return Err("candidate move violates a hard rule".to_string());
+    }
+    // Uniqueness: the neighbor generator only swaps seats or moves into an
+    // empty seat, so seats stay unique; double-check for safety.
+    if candidate.iter().any(|seat| candidate.iter().filter(|other| other == &seat).count() > 1) {
+        return Err("candidate move duplicates a seat".to_string());
+    }
+    Ok(candidate)
 }
 
 fn greedy_attempt(
@@ -1829,10 +1961,12 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 mod tests {
     use super::{
         assignment_is_unique, assigned_students_meet_distance, build_candidate_domains,
-        build_graph_distance_matrix, build_index_adjacency, classify_solve_error,
+        build_cost_context, build_graph_distance_matrix, build_index_adjacency,
+        classify_solve_error, full_solution_total_cost, greedy_attempt, local_search,
         evaluate_problem_json, hard_search_with_budget, maximum_candidate_matching,
         resolve_group_rules, seat_distance, solve_problem_json, HARD_SEARCH_NODE_BUDGET,
         precheck_report_json, validate_assignment, validate_solve_request_json,
+        SplitMix64,
         CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome,
         SolveStatus, NATIVE_API_VERSION,
     };
@@ -2925,5 +3059,83 @@ mod tests {
 
         assert!(response.feasible);
         assert_eq!(response.status, SolveStatus::Solved);
+    }
+    // ---- M3 6.2: soft optimization (local search) ----
+
+    #[test]
+    fn local_search_never_worsens_cost_and_keeps_legality() {
+        // Skewed scores + enabled score_balance give the hill climber room
+        // to improve on the raw greedy output.
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 8,
+                "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0],[0.0,1.0],[1.0,1.0],[2.0,1.0],[3.0,1.0]],
+                "edges": [[0,1],[1,2],[2,3],[4,5],[5,6],[6,7],[0,4],[1,5],[2,6],[3,7]],
+                "students": [
+                    {"key":"s0","score":100.0},{"key":"s1","score":10.0},
+                    {"key":"s2","score":95.0},{"key":"s3","score":15.0},
+                    {"key":"s4","score":90.0},{"key":"s5","score":20.0},
+                    {"key":"s6","score":85.0},{"key":"s7","score":25.0}
+                ],
+                "rules": {"seed": 42, "soft": {"score_balance": {"enabled": true, "weight": 5}}},
+                "seed": 42
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+        let ctx = build_cost_context(&request);
+        let mut rng = SplitMix64::new(42);
+
+        let initial = greedy_attempt(&request, &resolved, &adjacency, &graph_distances, &mut rng, &ctx, 0)
+            .expect("greedy should seat everyone");
+        let before = full_solution_total_cost(&initial, &adjacency, &ctx);
+
+        let improved = local_search(
+            &request, &resolved, &adjacency, &graph_distances, &initial, &ctx, &mut rng,
+        );
+        let after = full_solution_total_cost(&improved, &adjacency, &ctx);
+
+        assert!(after <= before + 1e-9, "cost worsened: {before} -> {after}");
+        validate_assignment(&request, &resolved, &adjacency, &graph_distances, &improved)
+            .expect("local search must keep the assignment legal");
+
+        // Determinism: same seed, same input -> identical output. Replay the
+        // same RNG consumption (greedy first, then local search).
+        let mut rng2 = SplitMix64::new(42);
+        let _ = greedy_attempt(&request, &resolved, &adjacency, &graph_distances, &mut rng2, &ctx, 0)
+            .expect("greedy should seat everyone");
+        let rerun = local_search(
+            &request, &resolved, &adjacency, &graph_distances, &initial, &ctx, &mut rng2,
+        );
+        assert_eq!(improved, rerun, "local search must be deterministic");
+    }
+
+    #[test]
+    fn solve_applies_local_search_without_breaking_parity_status() {
+        // End-to-end: the solver still reports Solved with a legal assignment
+        // (the local search path runs inside solve_problem).
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 8,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0],[0.0,1.0],[1.0,1.0],[2.0,1.0],[3.0,1.0]],
+            "edges": [[0,1],[1,2],[2,3],[4,5],[5,6],[6,7],[0,4],[1,5],[2,6],[3,7]],
+            "students": [
+                {"key":"s0","score":100.0},{"key":"s1","score":10.0},
+                {"key":"s2","score":95.0},{"key":"s3","score":15.0},
+                {"key":"s4","score":90.0},{"key":"s5","score":20.0},
+                {"key":"s6","score":85.0},{"key":"s7","score":25.0}
+            ],
+            "rules": {"seed": 42, "soft": {"score_balance": {"enabled": true, "weight": 5}}},
+            "seed": 42
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should be valid");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+        assert!(response.feasible);
+        assert_eq!(response.status, SolveStatus::Solved);
+        assert!(response.total_cost.unwrap().is_finite());
     }
 }
