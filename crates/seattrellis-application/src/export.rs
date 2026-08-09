@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use crate::application::{AppError, SolveRequestStore};
+use crate::{AppError, SolveRequestStore};
 use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of an export request: the rendered bytes plus the content

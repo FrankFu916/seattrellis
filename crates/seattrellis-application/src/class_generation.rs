@@ -10,7 +10,7 @@ use std::time::SystemTime;
 
 use serde_json::{json, Value};
 
-use crate::application::{AppError, SolveRequestStore};
+use crate::{AppError, SolveRequestStore};
 use seattrellis_domain::editing::{self, EditorDraftStore, EditorSeatSpec};
 use seattrellis_core::cost::{
     classify_seat_position, detect_neighbor_relation_types, student_pair_key,
@@ -481,7 +481,7 @@ fn deep_merge_value(target: &mut Value, patch: &Value) {
 ///
 /// Snapshot assignments that reference a student outside the current roster or
 /// an unknown seat are skipped, exactly like Python's missing-student handling.
-pub(crate) fn build_history_json(
+pub fn build_history_json(
     students: &[Value],
     grid: &seattrellis_domain::room_templates::RoomGrid,
     snapshots: &[Value],

@@ -2885,6 +2885,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
+name = "seattrellis-application"
+version = "0.1.0"
+dependencies = [
+ "seattrellis-domain",
+ "seattrellis-export",
+ "seattrellis_core",
+ "serde_json",
+]
+
+[[package]]
 name = "seattrellis-domain"
 version = "0.1.0"
 dependencies = [
@@ -2930,6 +2940,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "getrandom 0.3.4",
+ "seattrellis-application",
  "seattrellis-domain",
  "seattrellis-export",
  "seattrellis_core",
