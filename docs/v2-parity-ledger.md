@@ -498,14 +498,14 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 ## 16. 差距总览（迁移工作清单来源）
 
-### A. 前端阻断（§3.2，3 个 Python-only 端点）
-1. `POST /api/v1/classes/rotation` — 轮转生成主流程（App.tsx:739），Rust 后端 404。
-2. `POST /api/v1/projects/artifacts/compare` — 项目产物对比。
-3. `POST /api/v1/projects/artifacts/restore` — 项目产物恢复。
+### A. 前端阻断（§3.2，3 个 Python-only 端点）— 全部关闭
+1. `POST /api/v1/classes/rotation` — ✅ 已实现（PR 971ecf4）：逐期求解 + 公平/邻座摘要 + 首期 editor。
+2. `POST /api/v1/projects/artifacts/compare` — ✅ 已实现（PR #101）：摘要 + assignment/roster/layout/rules diff，匿名化输出。
+3. `POST /api/v1/projects/artifacts/restore` — ✅ 已实现（PR #101）：输出 restored-*.snapshot.json，不覆盖、rotation 拒绝。
 
 ### B. 生成能力（§2.2/§2.6/§10）
 4. Rotation 计划生成器（逐期顺序求解 + 公平性惩罚）— Python-only。
-5. History/pair 统计报告（history-report/pair-report/fairness report）— Python-only。
+5. History/pair 统计报告（history-report/pair-report/fairness report）— ✅ CLI 已实现（PR #102）：`history-report`/`pair-report`，匿名化 top pairs。
 6. 候选集多解生成 / recommended / diversity / stability / PlanScore 评分层 — Python-only。
 
 ### C. 语义缺口（§8/§12）
