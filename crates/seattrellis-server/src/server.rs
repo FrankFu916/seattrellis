@@ -286,9 +286,19 @@ fn path_segments(path: &str) -> Vec<&str> {
 /// Map an application-layer error onto an HTTP response (M1-02). The
 /// `invalid_solve_request` code carries the frozen SolveStatus (M1-03).
 fn app_error_response(error: seattrellis_application::AppError) -> Response {
+    let suggested_action = match error.status {
+        400 | 422 => "review_input",
+        404 => "choose_existing_resource",
+        _ => "retry_or_report",
+    };
     let mut body = json!({
         "error": error.code,
+        "code": error.code,
+        "message_key": format!("error.{}", error.code),
         "message": error.message,
+        "relevant_entity": null,
+        "recoverable": error.status < 500,
+        "suggested_action": suggested_action,
     });
     if error.code == "invalid_solve_request" {
         body["status"] = json!(seattrellis_core::classify_solve_error(
@@ -296,6 +306,34 @@ fn app_error_response(error: seattrellis_application::AppError) -> Response {
         ));
     }
     Response::json(error.status, body)
+}
+
+/// `POST /api/v2/solve`: the stable, side-effect-free solver contract. All
+/// valid solver termination states are serialized as HTTP 200 domain results;
+/// only malformed/invalid requests and internal failures use HTTP errors.
+fn solve_v2_response(body: &[u8]) -> Response {
+    if body.is_empty() {
+        return app_error_response(seattrellis_application::AppError::solve_invalid_input(
+            "empty request body",
+        ));
+    }
+    let request: seattrellis_core::CoreSolveRequest = match serde_json::from_slice(body) {
+        Ok(request) => request,
+        Err(_) => {
+            return app_error_response(seattrellis_application::AppError::solve_invalid_input(
+                "request body is not a valid solve problem",
+            ))
+        }
+    };
+    match seattrellis_application::class_generation::solve_core(&request) {
+        Ok(outcome) => match serde_json::to_value(outcome) {
+            Ok(value) => Response::json(200, value),
+            Err(error) => app_error_response(seattrellis_application::AppError::internal(format!(
+                "could not serialize solve response: {error}"
+            ))),
+        },
+        Err(error) => app_error_response(error),
+    }
 }
 
 /// `POST /api/v1/classes/generate` (and `/api/v1/solve`): thin transport
@@ -320,17 +358,36 @@ fn generate_response(
         Ok(outcome) => {
             if !outcome.feasible {
                 return Response::json(
-                    409,
+                    200,
                     json!({
-                        "error": "plan_not_found",
                         "status": outcome.status,
-                        "message": "No seating plan was found with the current room and rules.",
+                        "feasible": false,
+                        "class_name": outcome.class_name,
+                        "goal": {
+                            "goal_id": outcome.goal_id,
+                            "title": "日常轮换",
+                            "description": "兼顾视力和身高需求，减少近期重复邻座，并适度轮换位置。",
+                            "preset_name": null,
+                        },
+                        "warnings": [],
+                        "recommended_candidate_id": null,
+                        "candidates": [],
+                        "editor": null,
+                        "message_key": "solve.plan_not_found",
+                        "recoverable": true,
+                        "suggested_action": "review_constraints",
                     }),
                 );
             }
+
+            let (Some(draft_id), Some(editor)) = (outcome.draft_id, outcome.editor) else {
+                return json_error(500, "solved result is missing its editable draft");
+            };
             Response::json(
                 200,
                 json!({
+                    "status": outcome.status,
+                    "feasible": true,
                     "class_name": outcome.class_name,
                     "goal": {
                         "goal_id": outcome.goal_id,
@@ -339,13 +396,13 @@ fn generate_response(
                         "preset_name": null,
                     },
                     "warnings": [],
-                    "recommended_candidate_id": outcome.draft_id,
+                    "recommended_candidate_id": draft_id,
                     "candidates": [{
-                        "candidate_id": outcome.draft_id,
+                        "candidate_id": draft_id,
                         "recommended": true,
-                        "total_score": outcome.total_score,
+                        "total_score": outcome.total_score.unwrap_or(0.0),
                     }],
-                    "editor": outcome.editor,
+                    "editor": editor,
                 }),
             )
         }
@@ -373,15 +430,40 @@ fn rotation_generate_response(
         editor_store,
         solve_requests,
     ) {
-        Ok(outcome) => Response::json(
-            200,
-            json!({
-                "class_name": outcome.class_name,
-                "warnings": outcome.warnings,
-                "rotation_plan": outcome.plan,
-                "editor": outcome.editor,
-            }),
-        ),
+        Ok(outcome) => {
+            if !outcome.feasible {
+                return Response::json(
+                    200,
+                    json!({
+                        "status": outcome.status,
+                        "feasible": false,
+                        "class_name": outcome.class_name,
+                        "warnings": outcome.warnings,
+                        "rotation_plan": null,
+                        "editor": null,
+                        "failed_period": outcome.failed_period,
+                        "message_key": "solve.rotation_plan_not_found",
+                        "recoverable": true,
+                        "suggested_action": "review_constraints",
+                    }),
+                );
+            }
+            let (Some(plan), Some(editor)) = (outcome.plan, outcome.editor) else {
+                return json_error(500, "solved rotation is missing its plan or editor");
+            };
+            Response::json(
+                200,
+                json!({
+                    "status": outcome.status,
+                    "feasible": true,
+                    "class_name": outcome.class_name,
+                    "warnings": outcome.warnings,
+                    "rotation_plan": plan,
+                    "editor": editor,
+                    "failed_period": null,
+                }),
+            )
+        }
         Err(error) => app_error_response(error),
     }
 }
@@ -429,6 +511,7 @@ pub(crate) fn route(
     match (request.method.as_str(), segments.as_slice()) {
         ("GET", ["api", "v1", "health"]) => health_response(),
         ("GET", ["api", "v1", "catalogs"]) => catalogs_response(),
+        ("POST", ["api", "v2", "solve"]) => solve_v2_response(&request.body),
         ("POST", ["api", "v1", "classes", "generate"]) | ("POST", ["api", "v1", "solve"]) => {
             generate_response(&request.body, editor_store, solve_requests)
         }
@@ -449,7 +532,7 @@ pub(crate) fn route(
             editing_fetch_response(draft_id, editor_store)
         }
         ("POST", ["api", "v1", "editing", "drafts", draft_id, "commands"]) => {
-            editing_command_response(draft_id, &request.body, editor_store)
+            editing_command_response(draft_id, &request.body, editor_store, solve_requests)
         }
         ("POST", ["api", "v1", "exports"]) => {
             export_response(&request.body, editor_store, solve_requests)
@@ -652,10 +735,10 @@ fn localized(zh: &str, en: &str) -> Value {
 ///    a `CoreSolveRequest` via [`seattrellis_domain::room_templates::room_template_grid`]
 ///    and [`seattrellis_domain::goal_rules::goal_rules`] before solving.
 ///
-/// Returns the frontend `GenerateClassResponse` shape (`class_name`, `goal`,
-/// `warnings`, `recommended_candidate_id`, `candidates`, `editor`). When the
-/// solver reports the plan infeasible, the response is `409 plan_not_found`;
-/// an unknown room template or goal on the frontend path is `422`.
+/// Returns the frontend `GenerateClassResponse` domain-result shape. A solved
+/// response includes candidates and an editor draft; `ProvenInfeasible`,
+/// `Timeout` and `Unknown` remain HTTP 200 results with no draft. An unknown
+/// room template or goal on the frontend path is a request error (`422`).
 /// parsed roster, returning the `RosterDraftResponse`.
 fn roster_upload_response(body: &[u8], content_type: Option<&str>) -> Response {
     let Some(content_type) = content_type else {
@@ -728,6 +811,7 @@ fn editing_command_response(
     draft_id: &str,
     body: &[u8],
     editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
 ) -> Response {
     let envelope: editing::EditorCommandEnvelope = match serde_json::from_slice(body) {
         Ok(envelope) => envelope,
@@ -739,7 +823,22 @@ fn editing_command_response(
         return json_error(409, "The editor command targets a different draft.");
     }
     match editing::apply_command_in_store(editor_store, &envelope) {
-        Ok(state) => Response::json(200, serde_json::to_value(state).unwrap_or(json!({}))),
+        Ok(state) => {
+            let mut value = serde_json::to_value(&state).unwrap_or(json!({}));
+            // Surface the hard-rule state of the resulting edit (plan §5.4):
+            // an invalid intermediate edit stays an editable state, but it is
+            // explicitly marked and cannot be exported as a solved plan.
+            if let Ok(validation) = seattrellis_application::export::editor_validation_report(
+                draft_id,
+                &state,
+                solve_requests,
+            ) {
+                if let Some(object) = value.as_object_mut() {
+                    object.insert("validation".to_string(), validation);
+                }
+            }
+            Response::json(200, value)
+        }
         Err(message) => {
             let status = if message.contains("unknown editor draft") {
                 404
@@ -2765,7 +2864,7 @@ mod tests {
     }
 
     #[test]
-    fn solve_constraint_infeasible_is_409() {
+    fn solve_constraint_failure_is_a_normal_domain_result() {
         let root = test_web_root();
         // Two students that must sit adjacent, but the graph has no edges at
         // all, so the greedy cannot satisfy the adjacency requirement.
@@ -2777,12 +2876,69 @@ mod tests {
         });
         let body = serde_json::to_vec(&problem).unwrap();
         let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
-        assert_eq!(response.status, 409);
+        assert_eq!(response.status, 200);
         let value = body_json(&response);
-        assert_eq!(value["error"], "plan_not_found");
-        // M1-03: the frozen SolveStatus rides along; greedy exhaustion is
-        // `Unknown`, never `ProvenInfeasible`.
-        assert_eq!(value["status"], "Unknown");
+        assert_eq!(value["feasible"], false);
+        assert!(value["editor"].is_null());
+        assert!(value["recommended_candidate_id"].is_null());
+        assert!(value["candidates"].as_array().is_some_and(Vec::is_empty));
+        assert_eq!(value["message_key"], "solve.plan_not_found");
+        assert!(matches!(
+            value["status"].as_str(),
+            Some("ProvenInfeasible" | "Timeout" | "Unknown" | "Cancelled")
+        ));
+    }
+
+    #[test]
+    fn v2_solve_returns_domain_status_without_creating_transport_errors() {
+        let root = test_web_root();
+        let problem = json!({
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[1.0, 1.0], [2.0, 1.0]],
+            "must_be_adjacent": [[0, 1]]
+        });
+        let response = route_one(
+            &request(
+                "POST",
+                "/api/v2/solve",
+                &serde_json::to_vec(&problem).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(response.status, 200);
+        let value = body_json(&response);
+        assert_eq!(value["feasible"], false);
+        assert!(value["assignment"].as_array().is_some_and(Vec::is_empty));
+        assert!(matches!(
+            value["status"].as_str(),
+            Some("ProvenInfeasible" | "Timeout" | "Unknown" | "Cancelled")
+        ));
+    }
+
+    #[test]
+    fn v2_solve_invalid_input_uses_the_structured_error_envelope() {
+        let root = test_web_root();
+        let problem = json!({
+            "api_version": 99,
+            "student_count": 1,
+            "seat_positions": [[1.0, 1.0]]
+        });
+        let response = route_one(
+            &request(
+                "POST",
+                "/api/v2/solve",
+                &serde_json::to_vec(&problem).unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(response.status, 400);
+        let value = body_json(&response);
+        assert_eq!(value["code"], "invalid_solve_request");
+        assert_eq!(value["status"], "InvalidInput");
+        assert_eq!(value["recoverable"], true);
+        assert_eq!(value["suggested_action"], "review_input");
+        assert!(value["message_key"].as_str().is_some());
     }
 
     #[test]
@@ -3337,6 +3493,84 @@ mod tests {
             &solve_requests,
         );
         assert_eq!(export.status, 404);
+    }
+
+    #[test]
+    fn export_rejects_an_edit_that_breaks_the_original_hard_rules() {
+        let root = test_web_root();
+        let editor_store = editing::new_draft_store();
+        let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
+        let problem = json!({
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "fixed_seats": [[0, 0]],
+            "students": [{"key": "A"}, {"key": "B"}]
+        });
+        let generated = route(
+            &request(
+                "POST",
+                "/api/v1/classes/generate",
+                &serde_json::to_vec(&problem).unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(generated.status, 200);
+        let draft_id = body_json(&generated)["editor"]["draft_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // The editing protocol maintains uniqueness but intentionally does not
+        // own solver hard-rule semantics. Export must therefore revalidate.
+        let swap = json!({
+            "kind": "seattrellis_editor_command",
+            "protocol_version": "1.0",
+            "command_id": "break-fixed-seat",
+            "draft_id": draft_id,
+            "base_revision": 0,
+            "action": "apply",
+            "operations": [{
+                "kind": "swap_students",
+                "payload": {"first_student": "A", "second_student": "B"}
+            }]
+        });
+        let edited = route(
+            &request(
+                "POST",
+                &format!("/api/v1/editing/drafts/{draft_id}/commands"),
+                &serde_json::to_vec(&swap).unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(edited.status, 200);
+
+        let export_body = json!({
+            "draft_id": draft_id,
+            "format": "svg",
+            "template": "teacher",
+            "privacy": {},
+            "orientation": "portrait",
+            "page_scale": 1.0,
+            "locale": "zh",
+            "show_student_ids": true
+        });
+        let export = route(
+            &request(
+                "POST",
+                "/api/v1/exports",
+                &serde_json::to_vec(&export_body).unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(export.status, 422);
+        assert_eq!(body_json(&export)["error"], "invalid_export_assignment");
     }
 
     #[test]

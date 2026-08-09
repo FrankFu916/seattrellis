@@ -75,6 +75,20 @@ STATUS_INTERNAL_ERROR = "INTERNAL_ERROR"
 # benchmark TIMEOUT class now exercises the Rust wall-clock budget too.
 KNOWN_RUST_GAPS: dict[str, str] = {}
 
+# Case-level documented corpus gaps (case id -> ledger reference). These are
+# real equivalence gaps, not harness artifacts: for each of them the Python
+# load/resolver rejected the original input, so the harness sent a DEGRADED
+# request (unknown rule kinds / bad adjacency references dropped) that the
+# Rust core legitimately solves. The comparison is therefore not
+# apples-to-apples and each case carries an explicit ledger reference.
+# Without `--allow-documented-gaps` the run still fails on them (M0-03);
+# with the flag (used by CI) only NEW mismatches fail the run.
+DOCUMENTED_CORPUS_GAPS: dict[str, str] = {
+    "invalid-unknown-rule": "ledger 附 M0: unknown rule kinds dropped by the degraded request; core serde ignores unknown fields",
+    "invalid-unknown-soft-objective": "ledger 附 M0: unknown soft objectives dropped by the degraded request",
+    "invalid-bad-adjacency-ref": "ledger 附 M0: CLI cannot express a bad-adjacency layout; degraded request solves",
+}
+
 INVALID_TOKENS = (
     "validation",
     "required",
@@ -346,8 +360,9 @@ def run_fixture_classes() -> list[tuple[str, str, str, str, list[str]]]:
 
 # --- reporting --------------------------------------------------------------
 
-def report(rows: list[tuple[str, str, str, str, list[str]]]) -> int:
+def report(rows: list[tuple[str, str, str, str, list[str]]], allow_documented: bool = False) -> int:
     mismatches = 0
+    documented = 0
     print(f"{'case':<42} {'python':<16} {'rust':<16} match")
     print("-" * 92)
     for cid, py_status, rust_status, detail, notes in rows:
@@ -370,8 +385,20 @@ def report(rows: list[tuple[str, str, str, str, list[str]]]) -> int:
             print(f"    documented gap: {KNOWN_RUST_GAPS[py_status]}")
         if not match and rust_status in KNOWN_RUST_GAPS:
             print(f"    documented gap: {KNOWN_RUST_GAPS[rust_status]}")
+        if not match and cid in DOCUMENTED_CORPUS_GAPS:
+            documented += 1
+            print(f"    documented corpus gap: {DOCUMENTED_CORPUS_GAPS[cid]}")
     print("-" * 92)
-    print(f"cases: {len(rows)}  mismatches: {mismatches}")
+    new_mismatches = mismatches - documented
+    print(
+        f"cases: {len(rows)}  mismatches: {mismatches} "
+        f"(documented: {documented}, new: {new_mismatches})"
+    )
+    if allow_documented:
+        # CI mode: exactly the documented corpus gaps are tolerated; any
+        # other mismatch still fails the run.
+        return 1 if new_mismatches else 0
+    # Strict mode (default, M0-03): any mismatch fails the run.
     return 1 if mismatches else 0
 
 
@@ -380,6 +407,12 @@ def main() -> int:
     parser.add_argument("--sizes", default="40,50,60")
     parser.add_argument("--time-limit", type=float, default=3.0)
     parser.add_argument("--fixtures", action="store_true", help="run the fixtures/parity status classes")
+    parser.add_argument(
+        "--allow-documented-gaps",
+        action="store_true",
+        help="CI mode: tolerate exactly the case-level documented corpus gaps "
+        "(DOCUMENTED_CORPUS_GAPS); any new mismatch still fails the run",
+    )
     args = parser.parse_args()
 
     if not PY_CLI.exists():
@@ -390,7 +423,7 @@ def main() -> int:
     else:
         sizes = [int(item) for item in args.sizes.split(",")]
         rows = run_benchmark_classes(sizes, args.time_limit)
-    return report(rows)
+    return report(rows, allow_documented=args.allow_documented_gaps)
 
 
 if __name__ == "__main__":

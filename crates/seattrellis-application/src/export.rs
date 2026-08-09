@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 use crate::{AppError, SolveRequestStore};
+use seattrellis_core::{CoreSolveRequest, CoreSolveResponse, SolveStatus};
 use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of an export request: the rendered bytes plus the content
@@ -46,7 +47,7 @@ pub fn export_draft(
         Ok(state) => state,
         Err(_) => return Err(AppError::not_found("editor draft was not found")),
     };
-    let response_value = export_response_value(&request_value, &state);
+    let response_value = export_response_value(&request_value, &state)?;
 
     let mut export_json = value.clone();
     if let Some(object) = export_json.as_object_mut() {
@@ -77,9 +78,76 @@ pub fn export_draft(
     })
 }
 
-/// Reconstruct the `CoreSolveResponse`-shaped JSON for export from the current
-/// editor state, so exports reflect manual adjustments, not the original solve.
-pub(crate) fn export_response_value(request_value: &Value, state: &editing::EditorState) -> Value {
+/// Revalidate an editor state against the originating solve request and return
+/// a UI-consumable report. An invalid intermediate edit remains an editor
+/// state (so undo/redo still works), but it is explicitly marked and cannot be
+/// exported as a solved plan.
+pub fn editor_validation_report(
+    draft_id: &str,
+    state: &editing::EditorState,
+    solve_requests: &SolveRequestStore,
+) -> Result<Value, AppError> {
+    let request_value = match solve_requests.lock() {
+        Ok(guard) => guard
+            .get(draft_id)
+            .cloned()
+            .ok_or_else(|| AppError::internal("editor draft has no originating solve request"))?,
+        Err(_) => return Err(AppError::internal("solve request store is poisoned")),
+    };
+    let (request, response) = editor_solve_response(&request_value, state)?;
+    match seattrellis_core::validate_solve_response(&request, &response) {
+        Ok(()) => Ok(json!({
+            "valid": true,
+            "hard_constraints_satisfied": true,
+            "violations": [],
+        })),
+        Err(message) => {
+            let rule_id = if message.contains("hard rule") {
+                "hard_constraints"
+            } else {
+                "assignment.integrity"
+            };
+            Ok(json!({
+                "valid": false,
+                "hard_constraints_satisfied": false,
+                "violations": [{
+                    "rule_id": rule_id,
+                    "entity": null,
+                    "reason": message,
+                    "witness": null,
+                    "suggested_action": "undo_or_adjust",
+                    "message_key": "validation.editor_assignment_invalid",
+                }],
+            }))
+        }
+    }
+}
+
+/// Reconstruct and independently validate the current editor assignment before
+/// export. Manual edits are allowed to change the original solution, but they
+/// must never bypass the original request's hard rules.
+pub(crate) fn export_response_value(
+    request_value: &Value,
+    state: &editing::EditorState,
+) -> Result<Value, AppError> {
+    let (request, response) = editor_solve_response(request_value, state)?;
+    seattrellis_core::validate_solve_response(&request, &response).map_err(|message| {
+        AppError::unprocessable(
+            "invalid_export_assignment",
+            format!("the edited plan cannot be exported: {message}"),
+        )
+    })?;
+    serde_json::to_value(response)
+        .map_err(|error| AppError::internal(format!("could not encode export response: {error}")))
+}
+
+fn editor_solve_response(
+    request_value: &Value,
+    state: &editing::EditorState,
+) -> Result<(CoreSolveRequest, CoreSolveResponse), AppError> {
+    let request: CoreSolveRequest = serde_json::from_value(request_value.clone())
+        .map_err(|_| AppError::internal("stored solve request is not a valid CoreSolveRequest"))?;
+
     // student key -> index, using the same fallback keys as the draft builder.
     let students = request_value.get("students").and_then(Value::as_array);
     let student_count = request_value
@@ -131,12 +199,124 @@ pub(crate) fn export_response_value(request_value: &Value, state: &editing::Edit
         }
     }
 
-    json!({
-        "api_version": 2,
-        "feasible": true,
-        "assignment": assignment,
-        "attempts_used": 1,
-        "hard_constraints_satisfied": true,
-        "total_cost": null,
-    })
+    let response = CoreSolveResponse {
+        api_version: 2,
+        feasible: true,
+        status: SolveStatus::Solved,
+        assignment,
+        attempts_used: 1,
+        hard_constraints_satisfied: true,
+        total_cost: None,
+    };
+    Ok((request, response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use seattrellis_domain::editing::{EditorSeatState, EditorState, EditorStudentState};
+
+    fn editor_state(first_seat: &str, second_seat: &str) -> EditorState {
+        EditorState {
+            kind: "seattrellis_editor_state".to_string(),
+            protocol_version: "1.0".to_string(),
+            draft_id: "draft-1".to_string(),
+            revision: 1,
+            candidate_id: Some("candidate-1".to_string()),
+            undo_depth: 0,
+            redo_depth: 0,
+            students: vec![
+                EditorStudentState {
+                    student_key: "S1".to_string(),
+                    display_name: "S1".to_string(),
+                    seat_id: Some(first_seat.to_string()),
+                    locked: false,
+                },
+                EditorStudentState {
+                    student_key: "S2".to_string(),
+                    display_name: "S2".to_string(),
+                    seat_id: Some(second_seat.to_string()),
+                    locked: false,
+                },
+            ],
+            seats: vec![
+                EditorSeatState {
+                    seat_id: "A1".to_string(),
+                    row: 1,
+                    col: 1,
+                    enabled: true,
+                    student_key: Some("S1".to_string()),
+                    locked: false,
+                },
+                EditorSeatState {
+                    seat_id: "A2".to_string(),
+                    row: 1,
+                    col: 2,
+                    enabled: true,
+                    student_key: Some("S2".to_string()),
+                    locked: false,
+                },
+            ],
+        }
+    }
+
+    fn fixed_request() -> Value {
+        json!({
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "fixed_seats": [[0, 0]],
+            "students": [{"key": "S1"}, {"key": "S2"}],
+            "layout": {
+                "name": "Room",
+                "seats": [
+                    {"seat_id": "A1", "row": 1, "col": 1, "enabled": true},
+                    {"seat_id": "A2", "row": 1, "col": 2, "enabled": true}
+                ]
+            }
+        })
+    }
+
+    #[test]
+    fn export_response_marks_only_a_validated_assignment_solved() {
+        let response = export_response_value(&fixed_request(), &editor_state("A1", "A2"))
+            .expect("fixed seat is preserved");
+        assert_eq!(response["status"], "Solved");
+        assert_eq!(response["feasible"], true);
+        assert_eq!(response["hard_constraints_satisfied"], true);
+    }
+
+    #[test]
+    fn export_response_rejects_manual_hard_rule_violation() {
+        let error = export_response_value(&fixed_request(), &editor_state("A2", "A1"))
+            .expect_err("moving a fixed student must block export");
+        assert_eq!(error.status, 422);
+        assert_eq!(error.code, "invalid_export_assignment");
+        assert!(error.message.contains("hard rule"), "{}", error.message);
+    }
+
+    #[test]
+    fn export_response_rejects_incomplete_editor_state() {
+        let mut state = editor_state("A1", "A2");
+        state.students[1].seat_id = None;
+        let error = export_response_value(&fixed_request(), &state)
+            .expect_err("an unseated student must block export");
+        assert_eq!(error.status, 422);
+        assert!(error.message.contains("assignment"), "{}", error.message);
+    }
+
+    #[test]
+    fn editor_validation_report_marks_hard_rule_violations_without_hiding_state() {
+        let requests =
+            SolveRequestStore::new(HashMap::from([("draft-1".to_string(), fixed_request())]));
+        let report = editor_validation_report("draft-1", &editor_state("A2", "A1"), &requests)
+            .expect("validation report should be produced");
+        assert_eq!(report["valid"], false);
+        assert_eq!(report["hard_constraints_satisfied"], false);
+        assert_eq!(report["violations"][0]["rule_id"], "hard_constraints");
+        assert_eq!(
+            report["violations"][0]["message_key"],
+            "validation.editor_assignment_invalid"
+        );
+    }
 }

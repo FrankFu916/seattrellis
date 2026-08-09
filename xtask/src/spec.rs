@@ -95,9 +95,8 @@ fn paths() -> Value {
                     { "$ref": "#/components/schemas/GenerateClassRequest" }
                 ] } } } },
                 "responses": {
-                    "200": { "description": "GenerateClassResponse with candidates + editor draft", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateClassResponse" } } } },
+                    "200": { "description": "Normal solver domain result; Solved carries candidates/editor, other statuses do not", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateClassResponse" } } } },
                     "400": { "$ref": "#/components/responses/InvalidInput" },
-                    "409": { "description": "Heuristic exhaustion (status: Unknown)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanNotFound" } } } },
                     "422": { "$ref": "#/components/responses/Unprocessable" },
                     "500": { "$ref": "#/components/responses/InternalError" }
                 }
@@ -110,8 +109,20 @@ fn paths() -> Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoreSolveRequest" } } } },
                 "responses": {
                     "200": { "description": "GenerateClassResponse", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateClassResponse" } } } },
+                    "400": { "$ref": "#/components/responses/InvalidInput" }
+                }
+            }
+        },
+        "/api/v2/solve": {
+            "post": {
+                "tags": ["classes"],
+                "summary": "Side-effect-free v2 solve contract",
+                "description": "Solved, ProvenInfeasible, Timeout, Unknown and Cancelled are normal HTTP 200 domain results. Invalid input and internal failures use the structured error envelope.",
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoreSolveRequest" } } } },
+                "responses": {
+                    "200": { "description": "CoreSolveResponse", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoreSolveResponse" } } } },
                     "400": { "$ref": "#/components/responses/InvalidInput" },
-                    "409": { "description": "Heuristic exhaustion", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanNotFound" } } } }
+                    "500": { "$ref": "#/components/responses/InternalError" }
                 }
             }
         },
@@ -364,34 +375,49 @@ fn paths() -> Value {
                 "responses": { "200": { "description": "Save result" }, "400": { "$ref": "#/components/responses/InvalidInput" } }
             }
         },
-        // Documented gaps: the React client calls these, the Rust server 404s
-        // them today (Python-only; see docs/v2-parity-ledger.md §3.2).
         "/api/v1/classes/rotation": {
             "post": {
                 "tags": ["classes"],
                 "summary": "Generate a multi-period rotation plan",
-                "x-implemented": false,
-                "description": "NOT IMPLEMENTED in the Rust server (Python-only). Rotation \
-    generation is M4-04 work.",
-                "responses": { "404": { "$ref": "#/components/responses/NotFound" } }
+                "x-implemented": true,
+                "description": "Workbench request (draft.students + draft.room + draft.goal) plus rotation options. Sequentially solve each period; solver failure for a period is a normal HTTP 200 domain result.",
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateRotationRequest" } } } },
+                "responses": {
+                    "200": { "description": "Normal rotation solver result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateRotationResponse" } } } },
+                    "400": { "$ref": "#/components/responses/InvalidInput" },
+                    "422": { "$ref": "#/components/responses/Unprocessable" },
+                    "500": { "$ref": "#/components/responses/InternalError" }
+                }
             }
         },
         "/api/v1/projects/artifacts/compare": {
             "post": {
                 "tags": ["projects"],
                 "summary": "Compare two project artifacts",
-                "x-implemented": false,
-                "description": "NOT IMPLEMENTED in the Rust server (Python-only).",
-                "responses": { "404": { "$ref": "#/components/responses/NotFound" } }
+                "x-implemented": true,
+                "description": "Semantic diff of two artifact documents (M2 parity, ledger A.3): normalized schema fields, additions/removals, change count and a verdict.",
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "project_path": { "type": "string" }, "artifact_path": { "type": "string" }, "compare_to_path": { "type": "string" } }, "required": ["project_path", "artifact_path", "compare_to_path"] } } } },
+                "responses": {
+                    "200": { "description": "Comparison report", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+                    "400": { "$ref": "#/components/responses/InvalidInput" },
+                    "404": { "$ref": "#/components/responses/NotFound" },
+                    "422": { "$ref": "#/components/responses/Unprocessable" }
+                }
             }
         },
         "/api/v1/projects/artifacts/restore": {
             "post": {
                 "tags": ["projects"],
                 "summary": "Restore a project artifact",
-                "x-implemented": false,
-                "description": "NOT IMPLEMENTED in the Rust server (Python-only).",
-                "responses": { "404": { "$ref": "#/components/responses/NotFound" } }
+                "x-implemented": true,
+                "description": "Restore an artifact (backup/snapshot/candidate/rotation) as a new output snapshot with restore provenance (M2 parity, ledger A.3).",
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "project_path": { "type": "string" }, "artifact_path": { "type": "string" } }, "required": ["project_path", "artifact_path"] } } } },
+                "responses": {
+                    "200": { "description": "Restore result", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+                    "400": { "$ref": "#/components/responses/InvalidInput" },
+                    "404": { "$ref": "#/components/responses/NotFound" },
+                    "422": { "$ref": "#/components/responses/Unprocessable" }
+                }
             }
         }
     })
@@ -466,9 +492,24 @@ fn schemas() -> Value {
                 "rules": { "type": "object" },
                 "layout": { "type": "object" },
                 "history": { "type": "object" },
-                "pair_history": { "type": "object" }
+                "pair_history": { "type": "object" },
+                "time_limit_seconds": { "type": "number", "exclusiveMinimum": 0 }
             },
             "additionalProperties": true
+        },
+        "CoreSolveResponse": {
+            "type": "object",
+            "required": ["api_version", "feasible", "status", "assignment", "attempts_used", "hard_constraints_satisfied", "total_cost"],
+            "properties": {
+                "api_version": { "type": "integer" },
+                "feasible": { "type": "boolean" },
+                "status": { "$ref": "#/components/schemas/SolveStatus" },
+                "assignment": { "type": "array", "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 } },
+                "attempts_used": { "type": "integer", "minimum": 0 },
+                "hard_constraints_satisfied": { "type": "boolean" },
+                "total_cost": { "type": "number", "nullable": true }
+            },
+            "additionalProperties": false
         },
         "GenerateClassRequest": {
             "type": "object",
@@ -488,37 +529,115 @@ fn schemas() -> Value {
             },
             "additionalProperties": true
         },
-        "GenerateClassResponse": {
+        "GenerateRotationRequest": {
             "type": "object",
-            "required": ["class_name", "goal", "warnings", "recommended_candidate_id", "candidates", "editor"],
+            "required": ["draft"],
             "properties": {
+                "draft": {
+                    "type": "object",
+                    "required": ["students", "room", "goal"],
+                    "properties": {
+                        "students": { "type": "array", "items": { "type": "object" } },
+                        "room": { "type": "object", "properties": { "template_id": { "type": "string" }, "layout": { "type": "object" } } },
+                        "goal": { "type": "object", "properties": { "goal_id": { "type": "string" }, "rules_overlay": { "type": "object" }, "hard_rules": { "type": "object" }, "custom": { "type": "object" } } },
+                        "history_snapshots": { "type": "array", "items": { "type": "object" } }
+                    }
+                },
+                "options": { "type": "object", "properties": { "seed": { "type": "integer" } } },
+                "period_count": { "type": "integer", "minimum": 1, "maximum": 20, "default": 4 },
+                "period_labels": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": true
+        },
+        "SolveStatus": {
+            "type": "string",
+            "enum": ["Solved", "ProvenInfeasible", "Timeout", "Unknown", "InvalidInput", "Cancelled", "InternalError"]
+        },
+        "CandidateSummary": {
+            "type": "object",
+            "required": ["candidate_id", "recommended", "total_score"],
+            "properties": {
+                "candidate_id": { "type": "string" },
+                "recommended": { "type": "boolean" },
+                "total_score": { "type": "number" }
+            },
+            "additionalProperties": false
+        },
+        "GenerateClassSolvedResponse": {
+            "type": "object",
+            "required": ["status", "feasible", "class_name", "goal", "warnings", "recommended_candidate_id", "candidates", "editor"],
+            "properties": {
+                "status": { "type": "string", "enum": ["Solved"] },
+                "feasible": { "type": "boolean", "enum": [true] },
                 "class_name": { "type": "string" },
-                "goal": { "type": "string" },
+                "goal": { "type": "object", "additionalProperties": true },
                 "warnings": { "type": "array", "items": { "type": "string" } },
                 "recommended_candidate_id": { "type": "string" },
-                "candidates": { "type": "array", "items": {
-                    "type": "object",
-                    "required": ["candidate_id", "recommended", "total_score"],
-                    "properties": {
-                        "candidate_id": { "type": "string" },
-                        "recommended": { "type": "boolean" },
-                        "total_score": { "type": "number" }
-                    },
-                    "additionalProperties": true
-                } },
+                "candidates": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/CandidateSummary" } },
                 "editor": { "$ref": "#/components/schemas/EditorState" }
             },
             "additionalProperties": true
         },
-        "PlanNotFound": {
+        "GenerateClassUnsolvedResponse": {
             "type": "object",
-            "required": ["error", "status", "message"],
+            "required": ["status", "feasible", "class_name", "goal", "warnings", "recommended_candidate_id", "candidates", "editor", "message_key", "recoverable", "suggested_action"],
             "properties": {
-                "error": { "type": "string", "const": "plan_not_found" },
-                "status": { "type": "string", "enum": ["Solved", "ProvenInfeasible", "Timeout", "Unknown", "InvalidInput", "Cancelled", "InternalError"] },
-                "message": { "type": "string" }
+                "status": { "type": "string", "enum": ["ProvenInfeasible", "Timeout", "Unknown", "Cancelled"] },
+                "feasible": { "type": "boolean", "enum": [false] },
+                "class_name": { "type": "string" },
+                "goal": { "type": "object", "additionalProperties": true },
+                "warnings": { "type": "array", "items": { "type": "string" } },
+                "recommended_candidate_id": { "type": "string", "nullable": true },
+                "candidates": { "type": "array", "maxItems": 0, "items": { "$ref": "#/components/schemas/CandidateSummary" } },
+                "editor": { "type": "object", "nullable": true },
+                "message_key": { "type": "string" },
+                "recoverable": { "type": "boolean" },
+                "suggested_action": { "type": "string" }
             },
             "additionalProperties": false
+        },
+        "GenerateClassResponse": {
+            "oneOf": [
+                { "$ref": "#/components/schemas/GenerateClassSolvedResponse" },
+                { "$ref": "#/components/schemas/GenerateClassUnsolvedResponse" }
+            ]
+        },
+        "GenerateRotationSolvedResponse": {
+            "type": "object",
+            "required": ["status", "feasible", "class_name", "warnings", "rotation_plan", "editor", "failed_period"],
+            "properties": {
+                "status": { "type": "string", "enum": ["Solved"] },
+                "feasible": { "type": "boolean", "enum": [true] },
+                "class_name": { "type": "string" },
+                "warnings": { "type": "array", "items": { "type": "string" } },
+                "rotation_plan": { "type": "object", "additionalProperties": true },
+                "editor": { "$ref": "#/components/schemas/EditorState" },
+                "failed_period": { "type": "integer", "nullable": true }
+            },
+            "additionalProperties": true
+        },
+        "GenerateRotationUnsolvedResponse": {
+            "type": "object",
+            "required": ["status", "feasible", "class_name", "warnings", "rotation_plan", "editor", "failed_period", "message_key", "recoverable", "suggested_action"],
+            "properties": {
+                "status": { "type": "string", "enum": ["ProvenInfeasible", "Timeout", "Unknown", "Cancelled"] },
+                "feasible": { "type": "boolean", "enum": [false] },
+                "class_name": { "type": "string" },
+                "warnings": { "type": "array", "items": { "type": "string" } },
+                "rotation_plan": { "type": "object", "nullable": true },
+                "editor": { "type": "object", "nullable": true },
+                "failed_period": { "type": "integer", "minimum": 1 },
+                "message_key": { "type": "string" },
+                "recoverable": { "type": "boolean" },
+                "suggested_action": { "type": "string" }
+            },
+            "additionalProperties": false
+        },
+        "GenerateRotationResponse": {
+            "oneOf": [
+                { "$ref": "#/components/schemas/GenerateRotationSolvedResponse" },
+                { "$ref": "#/components/schemas/GenerateRotationUnsolvedResponse" }
+            ]
         },
         "EditorState": {
             "type": "object",

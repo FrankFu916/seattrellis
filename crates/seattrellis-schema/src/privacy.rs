@@ -22,6 +22,22 @@ pub enum PrivacyVerdict {
     Indeterminate,
 }
 
+/// Privacy decisions must fail closed when a verdict is absent (for example,
+/// while reading an older manifest that predates the three-state policy).
+impl Default for PrivacyVerdict {
+    fn default() -> Self {
+        Self::Indeterminate
+    }
+}
+
+impl PrivacyVerdict {
+    /// Public sharing is allowed only after a complete scan proves the input
+    /// safe. `Unsafe` and `Indeterminate` are both deliberately false.
+    pub const fn is_safe_for_public_sharing(self) -> bool {
+        matches!(self, Self::Safe)
+    }
+}
+
 /// One sensitive field found during a scan, with its JSON path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PrivacyFinding {
@@ -31,10 +47,11 @@ pub struct PrivacyFinding {
     pub key: String,
 }
 
-/// Field names considered sensitive, mirrored from the Python oracle's
-/// `_SENSITIVE_KEYS` (src/seattrellis/project_bundle.py:27) plus the
-/// `*_name` suffix rule. Educational privacy: grades, notes, special needs,
-/// height, vision; identity: ids, names, email, phone.
+/// Field names considered sensitive. This starts with the Python oracle's
+/// `_SENSITIVE_KEYS` (src/seattrellis/project_bundle.py:27), adds the actual v2
+/// roster spellings (`height_cm`, `needs`), and keeps the `*_name` suffix rule.
+/// Educational privacy: grades, notes, special needs, height, vision;
+/// identity: ids, names, email, phone.
 const SENSITIVE_KEYS: &[&str] = &[
     "student_id",
     "student_key",
@@ -46,7 +63,9 @@ const SENSITIVE_KEYS: &[&str] = &[
     "special_needs",
     "special_need",
     "height",
+    "height_cm",
     "vision",
+    "needs",
     "email",
     "phone",
     "name",
@@ -55,8 +74,43 @@ const SENSITIVE_KEYS: &[&str] = &[
 /// Whether a key is sensitive. Any key ending in `_name` is sensitive
 /// (mirrors `normalized.endswith("_name")` in the Python oracle).
 pub fn is_sensitive_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase();
+    // CSV headers commonly contain surrounding whitespace or use spaces and
+    // hyphens where the durable JSON field uses underscores. Keep this
+    // normalization in the central policy so every scanner makes the same
+    // decision.
+    let normalized = key
+        .trim()
+        .trim_start_matches('\u{feff}')
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['-', ' '], "_");
     SENSITIVE_KEYS.contains(&normalized.as_str()) || normalized.ends_with("_name")
+}
+
+/// Combine complete per-input verdicts into one fail-closed verdict.
+///
+/// A single incomplete input makes the aggregate `Indeterminate`, even when
+/// another input was already known to be unsafe: the aggregate scan did not
+/// cover the whole input set. An empty input set is likewise not proof of
+/// safety.
+pub fn aggregate_verdicts(verdicts: impl IntoIterator<Item = PrivacyVerdict>) -> PrivacyVerdict {
+    let mut saw_input = false;
+    let mut saw_unsafe = false;
+    for verdict in verdicts {
+        saw_input = true;
+        match verdict {
+            PrivacyVerdict::Indeterminate => return PrivacyVerdict::Indeterminate,
+            PrivacyVerdict::Unsafe => saw_unsafe = true,
+            PrivacyVerdict::Safe => {}
+        }
+    }
+    if !saw_input {
+        PrivacyVerdict::Indeterminate
+    } else if saw_unsafe {
+        PrivacyVerdict::Unsafe
+    } else {
+        PrivacyVerdict::Safe
+    }
 }
 
 /// Scan a JSON document for sensitive fields. Completes on any parseable
@@ -99,13 +153,20 @@ fn walk(value: &Value, path: &str, findings: &mut Vec<PrivacyFinding>) {
 /// Classify a scan result. The verdict is `Indeterminate` unless the scan
 /// actually completed over the whole document.
 pub fn classify_scan(completed: bool, findings: &[PrivacyFinding]) -> PrivacyVerdict {
+    classify_findings(completed, !findings.is_empty())
+}
+
+/// Classify any scanner's result using the shared fail-closed policy. This is
+/// used by non-JSON scanners (for example CSV headers) that do not naturally
+/// produce JSON-pointer [`PrivacyFinding`] values.
+pub const fn classify_findings(completed: bool, has_sensitive_findings: bool) -> PrivacyVerdict {
     if !completed {
         return PrivacyVerdict::Indeterminate;
     }
-    if findings.is_empty() {
-        PrivacyVerdict::Safe
-    } else {
+    if has_sensitive_findings {
         PrivacyVerdict::Unsafe
+    } else {
+        PrivacyVerdict::Safe
     }
 }
 
@@ -126,7 +187,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sensitive_key_list_matches_the_oracle() {
+    fn sensitive_key_list_covers_the_oracle_and_v2_roster() {
         for key in [
             "student_id",
             "student_key",
@@ -138,7 +199,9 @@ mod tests {
             "special_needs",
             "special_need",
             "height",
+            "height_cm",
             "vision",
+            "needs",
             "email",
             "phone",
             "name",
@@ -160,11 +223,20 @@ mod tests {
     }
 
     #[test]
+    fn key_normalization_is_shared_by_json_and_tabular_scanners() {
+        assert!(is_sensitive_key(" Height-Cm "));
+        assert!(is_sensitive_key("special needs"));
+        assert!(is_sensitive_key("NEEDS"));
+        assert!(is_sensitive_key("\u{feff}student_id"));
+    }
+
+    #[test]
     fn scan_finds_nested_sensitive_fields_with_paths() {
         let document = serde_json::json!({
             "students": [
                 { "student_id": "STU001", "name": "Alice", "score": 92.5,
-                  "notes": "quiet", "attributes": { "vision": "0.8" } },
+                  "height_cm": 168, "needs": ["front"], "notes": "quiet",
+                  "attributes": { "vision": "0.8" } },
                 { "student_id": "STU002", "tags": ["leader"] }
             ],
             "layout": { "seats": [ { "seat_id": "R1C1", "row": 1 } ] }
@@ -174,6 +246,8 @@ mod tests {
         assert!(keys.contains(&"student_id"));
         assert!(keys.contains(&"name"));
         assert!(keys.contains(&"score"));
+        assert!(keys.contains(&"height_cm"));
+        assert!(keys.contains(&"needs"));
         assert!(keys.contains(&"notes"));
         assert!(keys.contains(&"vision"));
         assert!(!keys.contains(&"row"));
@@ -207,5 +281,26 @@ mod tests {
             serde_json::to_string(&PrivacyVerdict::Safe).unwrap(),
             "\"Safe\""
         );
+    }
+
+    #[test]
+    fn aggregate_verdict_is_fail_closed() {
+        assert_eq!(aggregate_verdicts([]), PrivacyVerdict::Indeterminate);
+        assert_eq!(
+            aggregate_verdicts([PrivacyVerdict::Safe, PrivacyVerdict::Safe]),
+            PrivacyVerdict::Safe
+        );
+        assert_eq!(
+            aggregate_verdicts([PrivacyVerdict::Safe, PrivacyVerdict::Unsafe]),
+            PrivacyVerdict::Unsafe
+        );
+        assert_eq!(
+            aggregate_verdicts([PrivacyVerdict::Unsafe, PrivacyVerdict::Indeterminate]),
+            PrivacyVerdict::Indeterminate
+        );
+        assert_eq!(PrivacyVerdict::default(), PrivacyVerdict::Indeterminate);
+        assert!(PrivacyVerdict::Safe.is_safe_for_public_sharing());
+        assert!(!PrivacyVerdict::Unsafe.is_safe_for_public_sharing());
+        assert!(!PrivacyVerdict::Indeterminate.is_safe_for_public_sharing());
     }
 }

@@ -39,7 +39,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
-use crate::transaction::{recover_leftover_transactions, FileTransaction};
+use crate::transaction::{recover_leftover_transactions_with_roots, FileTransaction};
 use serde_json::{json, Map, Value};
 
 /// Wire `api_version` reported by every migration response.
@@ -140,6 +140,9 @@ struct BatchResponse {
     projects: Vec<MigrationResponse>,
     shared_references: Vec<SharedReference>,
     ready: bool,
+    /// Non-fatal post-commit notices (e.g. a journal cleanup that was
+    /// deferred to the next recovery pass). The batch is still applied.
+    warnings: Vec<String>,
 }
 
 /// Standalone reference-check report with actionable guidance.
@@ -989,6 +992,7 @@ fn migration_batch_preview_inner(project_paths: &[String]) -> Result<BatchRespon
         projects: previews,
         shared_references,
         ready,
+        warnings: Vec::new(),
     })
 }
 
@@ -1070,8 +1074,10 @@ fn migrate_contents(source: &Path, in_place: bool) -> Result<ComputedMigration, 
 /// Apply several project migrations as one journaled multi-file transaction
 /// (M2-04): every migrated artifact is staged first, then committed
 /// atomically. A mid-batch failure rolls the whole batch back; a crashed
-/// process leaves a journal that `recover_leftover_transactions` repairs on
-/// the next batch.
+/// process leaves a journal that `recover_leftover_transactions_with_roots`
+/// repairs on the next batch. Trusted roots are the canonical parents of the
+/// planned targets, so journals may reference user project paths that live
+/// outside the journal directory.
 pub fn migration_batch_apply_json(
     project_paths: &[String],
     in_place: bool,
@@ -1094,17 +1100,23 @@ pub fn migration_batch_apply_json(
 
     // Journaled transaction: stage all targets, validate everything, commit.
     // Because nothing is replaced until every step validates, a failure here
-    // leaves the batch untouched (no partial writes to roll back).
+    // leaves the batch untouched (no partial writes to roll back). The
+    // journal lives under the system temp dir while the targets live with
+    // the user's projects, so the trusted roots are the target parents.
     let journal_dir = std::env::temp_dir().join("seattrellis-migration-journal");
-    recover_leftover_transactions(&journal_dir)?;
-    let mut transaction = FileTransaction::begin(&journal_dir)?;
+    let roots: Vec<std::path::PathBuf> = planned
+        .iter()
+        .filter_map(|(_, target, _)| target.parent().map(std::path::Path::to_path_buf))
+        .collect();
+    recover_leftover_transactions_with_roots(&journal_dir, &roots)?;
+    let mut transaction = FileTransaction::begin_with_roots(&journal_dir, &roots)?;
     for (_, target, contents) in &planned {
         transaction.stage(target, contents).map_err(|error| {
             format!("The migration batch was not completed; no changes were written: {error}")
         })?;
     }
-    transaction
-        .commit(validate_written_artifact)
+    let receipt = transaction
+        .commit_with_receipt(validate_written_artifact)
         .map_err(|error| {
             format!("The migration batch was not completed; no changes were written: {error}")
         })?;
@@ -1118,6 +1130,7 @@ pub fn migration_batch_apply_json(
         projects: applied,
         shared_references: preview.shared_references,
         ready: true,
+        warnings: receipt.cleanup_warning.into_iter().collect(),
     };
     serde_json::to_string(&response)
         .map_err(|error| format!("could not serialize migration batch result: {error}"))
@@ -1587,10 +1600,9 @@ mod tests {
         for dir in [&dir_a, &dir_b] {
             fs::write(dir.join("project.json"), PROJECT_FIXTURE).unwrap();
         }
-        let original_a = fs::read_to_string(dir_a.join("project.json")).unwrap();
 
-        // Simulate a crash mid-transaction: stage both targets, replace the
-        // first, then abandon the transaction without committing.
+        // First batch commits a migration over the fixtures; the committed
+        // content becomes the durable current state of the targets.
         let journal_dir = root.path().join("journal");
         let mut transaction = FileTransaction::begin(&journal_dir).unwrap();
         let target_a = dir_a.join("project.json");
@@ -1602,10 +1614,11 @@ mod tests {
             .stage(&target_b, b"{\"schema_version\": 1}")
             .unwrap();
         transaction.commit(|_| Ok(())).unwrap();
+        let committed_a = fs::read_to_string(&target_a).unwrap();
 
         // Simulate a crash between staging and commit of a second batch:
         // begin again, stage (creating temps + journal), then drop without
-        // commit while a backup exists from the first commit.
+        // commit. The crashed transaction never published anything.
         let mut crashed = FileTransaction::begin(&journal_dir).unwrap();
         crashed
             .stage(&target_a, b"{\"schema_version\": 1, \"partial\": true}")
@@ -1614,7 +1627,10 @@ mod tests {
         // the journal + temps survive on disk, exactly like a killed process.
         std::mem::forget(crashed);
 
-        // Recovery finds the leftover journal; the target is untouched.
+        // Recovery rolls back only what the crashed transaction did (remove
+        // its temps and journal). The committed first batch is the durable
+        // state and must NOT be reverted from an older backup: a leftover
+        // pre-commit journal must never clobber a newer committed target.
         let recovered = recover_leftover_transactions(&journal_dir).unwrap();
         assert!(
             recovered >= 1,
@@ -1622,8 +1638,16 @@ mod tests {
         );
         assert_eq!(
             parse_json(&fs::read_to_string(&target_a).unwrap()),
-            parse_json(&original_a)
+            parse_json(&committed_a)
         );
+        // The crashed transaction's temp file was cleaned up.
+        let temps: Vec<_> = fs::read_dir(dir_a.join("project.json").parent().unwrap())
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".project.json.seattrellis-tmp-"))
+            .collect();
+        assert!(temps.is_empty(), "leftover temps: {temps:?}");
     }
 
     #[test]

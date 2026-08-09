@@ -396,17 +396,52 @@ export type RotationSettings = {
   periodLabels: string;
 };
 
-export type GenerateClassResponse = {
+export type SolveStatus =
+  | "Solved"
+  | "ProvenInfeasible"
+  | "Timeout"
+  | "Unknown"
+  | "InvalidInput"
+  | "Cancelled"
+  | "InternalError";
+
+export type NormalUnsolvedStatus = Exclude<
+  SolveStatus,
+  "Solved" | "InvalidInput" | "InternalError"
+>;
+
+export type CandidateSummary = {
+  candidate_id: string;
+  recommended: boolean;
+  total_score: number;
+};
+
+export type GenerateClassSolvedResponse = {
+  status: "Solved";
+  feasible: true;
   class_name: string;
   recommended_candidate_id: string;
-  candidates: Array<{
-    candidate_id: string;
-    recommended: boolean;
-    total_score: number;
-  }>;
+  candidates: CandidateSummary[];
   warnings: string[];
   editor: EditorState;
 };
+
+export type GenerateClassUnsolvedResponse = {
+  status: NormalUnsolvedStatus;
+  feasible: false;
+  class_name: string;
+  recommended_candidate_id: null;
+  candidates: [];
+  warnings: string[];
+  editor: null;
+  message_key: string;
+  recoverable: boolean;
+  suggested_action: string;
+};
+
+export type GenerateClassResponse =
+  | GenerateClassSolvedResponse
+  | GenerateClassUnsolvedResponse;
 
 export type RotationPeriod = {
   period: number;
@@ -441,13 +476,33 @@ export type GenerateRotationPlanRequest = {
   options?: GenerateClassRequest["options"];
 };
 
-export type GenerateRotationPlanResponse = {
+export type GenerateRotationPlanSolvedResponse = {
+  status: "Solved";
+  feasible: true;
   class_name: string;
   warnings: string[];
   rotation_plan: RotationPlan;
   editor: EditorState;
+  failed_period: null;
   period_editors?: EditorState[];
 };
+
+export type GenerateRotationPlanUnsolvedResponse = {
+  status: NormalUnsolvedStatus;
+  feasible: false;
+  class_name: string;
+  warnings: string[];
+  rotation_plan: null;
+  editor: null;
+  failed_period: number | null;
+  message_key: string;
+  recoverable: boolean;
+  suggested_action: string;
+};
+
+export type GenerateRotationPlanResponse =
+  | GenerateRotationPlanSolvedResponse
+  | GenerateRotationPlanUnsolvedResponse;
 
 export type ExportDraftRequest = {
   draft_id: string;
