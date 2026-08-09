@@ -4,6 +4,7 @@ pub mod objectives;
 pub mod rng;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::cost::{avoid_recent_neighbors_cost, individual_cost, normalize_edge};
@@ -473,7 +474,7 @@ impl SolveStatus {
 /// without a sound proof the honest status is `Unknown` (M1-03).
 pub fn classify_solve_error(message: &str) -> SolveStatus {
     let low = message.to_ascii_lowercase();
-    const INVALID_TOKENS: [&str; 11] = [
+    const INVALID_TOKENS: [&str; 12] = [
         "invalid",
         "unknown",
         "require",
@@ -485,6 +486,7 @@ pub fn classify_solve_error(message: &str) -> SolveStatus {
         "more students",
         "unrecognized",
         "unsupported",
+        "conflicting",
     ];
     if INVALID_TOKENS.iter().any(|token| low.contains(token)) {
         SolveStatus::InvalidInput
@@ -597,6 +599,39 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     let resolved = resolve_group_rules(request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
     let graph_distances = build_graph_distance_matrix(&adjacency);
+
+    // Candidate-domain precheck (plan §6.1 second layer): a student with no
+    // legal seat is a sound infeasibility proof — occupancy never *adds*
+    // candidates. This is the only ProvenInfeasible the greedy path may emit.
+    let domains = build_candidate_domains(request, &resolved, &adjacency, &graph_distances);
+    if domains.iter().any(|domain| domain.seats.is_empty()) {
+        return Ok(CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: false,
+            status: SolveStatus::ProvenInfeasible,
+            assignment: Vec::new(),
+            attempts_used: 0,
+            hard_constraints_satisfied: false,
+            total_cost: None,
+        });
+    }
+
+    // Global matching precheck (plan §6.1 third layer): even when every
+    // student has candidates, they may not be jointly seatable. A maximum
+    // bipartite matching smaller than the class size is a sound proof of
+    // infeasibility (Hall's theorem); a full matching proves nothing yet.
+    if maximum_candidate_matching(&domains) < request.student_count {
+        return Ok(CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: false,
+            status: SolveStatus::ProvenInfeasible,
+            assignment: Vec::new(),
+            attempts_used: 0,
+            hard_constraints_satisfied: false,
+            total_cost: None,
+        });
+    }
+
     let attempts = (request.student_count * 12).max(40);
     let mut rng = SplitMix64::new(request.seed);
     let ctx = build_cost_context(request);
@@ -625,7 +660,10 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
         }
     }
 
-    if let Some((assignment, total_cost, attempts_used)) = best {
+    if let Some((assignment, total_cost, best_attempts)) = best {
+        // Independent validation gate (M3-05): a solver bug must surface as
+        // InternalError, never as a silently "feasible" result.
+        validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
         let pairs: Vec<[usize; 2]> = assignment
             .iter()
             .enumerate()
@@ -636,23 +674,59 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
             feasible: true,
             status: SolveStatus::Solved,
             assignment: pairs,
-            attempts_used,
+            attempts_used: best_attempts,
             hard_constraints_satisfied: true,
             total_cost: Some(total_cost),
         });
     }
 
-    Ok(CoreSolveResponse {
-        api_version: NATIVE_API_VERSION,
-        feasible: false,
-        // Heuristic exhaustion with no sound proof: honest status is
-        // Unknown, never ProvenInfeasible (M1-03 / plan §四.1).
-        status: SolveStatus::Unknown,
-        assignment: Vec::new(),
-        attempts_used: attempts,
-        hard_constraints_satisfied: false,
-        total_cost: None,
-    })
+    // Full hard search (plan §6.1 fourth layer): when every greedy attempt
+    // fails, backtracking with MRV + forward checking either finds a legal
+    // seating, proves infeasibility by exhausting the whole state space, or
+    // spends its node budget (then the honest status stays Unknown).
+    match hard_search(request, &resolved, &adjacency, &graph_distances) {
+        SearchOutcome::Found(assignment) => {
+            // Independent validation gate (M3-05), same as the greedy path.
+            validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
+            let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
+            let pairs: Vec<[usize; 2]> = assignment
+                .iter()
+                .enumerate()
+                .map(|(student, seat)| [student, *seat])
+                .collect();
+            Ok(CoreSolveResponse {
+                api_version: NATIVE_API_VERSION,
+                feasible: true,
+                status: SolveStatus::Solved,
+                assignment: pairs,
+                attempts_used: attempts,
+                hard_constraints_satisfied: true,
+                total_cost: Some(total_cost),
+            })
+        }
+        SearchOutcome::ProvenInfeasible => Ok(CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: false,
+            // Exhaustive search over the full state space: this is a sound
+            // proof, so ProvenInfeasible is honest here (M1-03 / plan §四.1).
+            status: SolveStatus::ProvenInfeasible,
+            assignment: Vec::new(),
+            attempts_used: attempts,
+            hard_constraints_satisfied: false,
+            total_cost: None,
+        }),
+        SearchOutcome::BudgetExceeded => Ok(CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: false,
+            // Node budget spent without a complete state-space sweep: honest
+            // status is Unknown, never ProvenInfeasible (M1-03).
+            status: SolveStatus::Unknown,
+            assignment: Vec::new(),
+            attempts_used: attempts,
+            hard_constraints_satisfied: false,
+            total_cost: None,
+        }),
+    }
 }
 
 pub fn solve_problem_json(request_json: &str) -> Result<String, String> {
@@ -661,6 +735,82 @@ pub fn solve_problem_json(request_json: &str) -> Result<String, String> {
     let response = solve_problem(&request)?;
     serde_json::to_string(&response)
         .map_err(|error| format!("could not serialize native solve response: {error}"))
+}
+
+/// Feasibility precheck report (M3-06, plan §6.1 layer 2 + §6.5): candidate
+/// seat domains with per-seat exclusion reasons, the most constrained
+/// student, and the global matching size. The UI consumes this to explain
+/// *why* a problem is hard or infeasible before/without running a search.
+///
+/// The report never runs the solver; `precheck` is `"clean"` when static
+/// conflicts, empty domains, and matching all pass — that is a diagnostic,
+/// not a feasibility proof (the hard search decides that).
+pub fn precheck_report_json(request_json: &str) -> Result<String, String> {
+    let request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)?;
+    let resolved = resolve_group_rules(&request)?;
+    let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let domains = build_candidate_domains(&request, &resolved, &adjacency, &graph_distances);
+    let matching_size = maximum_candidate_matching(&domains);
+
+    let (precheck, reason): (&str, Option<String>) =
+        if let Some(empty) = domains.iter().find(|domain| domain.seats.is_empty()) {
+            let why = empty
+                .excluded
+                .first()
+                .map(|(seat, reason)| format!("seat {seat}: {reason}"))
+                .unwrap_or_else(|| "no legal seat".to_string());
+            ("infeasible", Some(format!("student {} has no legal seat ({why})", empty.student)))
+        } else if matching_size < request.student_count {
+            (
+                "infeasible",
+                Some(format!(
+                    "matching seats {} of {} students",
+                    matching_size, request.student_count
+                )),
+            )
+        } else {
+            ("clean", None)
+        };
+
+    let most_constrained = domains
+        .iter()
+        .min_by_key(|domain| (domain.seats.len(), domain.student))
+        .map(|domain| {
+            json!({
+                "student": domain.student,
+                "candidate_count": domain.seats.len(),
+            })
+        });
+
+    let students: Vec<Value> = domains
+        .iter()
+        .map(|domain| {
+            json!({
+                "student": domain.student,
+                "candidate_count": domain.seats.len(),
+                "seats": domain.seats,
+                "excluded": domain.excluded.iter().map(|(seat, reason)| {
+                    json!({ "seat": seat, "reason": reason })
+                }).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+
+    let report = json!({
+        "api_version": NATIVE_API_VERSION,
+        "precheck": precheck,
+        "infeasible_reason": reason,
+        "student_count": request.student_count,
+        "seat_count": request.seat_positions.len(),
+        "matching_size": matching_size,
+        "most_constrained_student": most_constrained,
+        "students": students,
+    });
+    serde_json::to_string(&report)
+        .map_err(|error| format!("could not serialize precheck report: {error}"))
 }
 
 /// Validate a solve request without spending the solver's attempt budget.
@@ -956,6 +1106,46 @@ fn greedy_attempt(
     }
 }
 
+/// Independent hard-rule validator for a complete assignment (M3-05).
+///
+/// Every `Solved` response must pass this before leaving the core: a solver
+/// bug that produced a violating assignment becomes `InternalError` instead
+/// of a silently "feasible" result. The check is deliberately separate from
+/// the solver's own bookkeeping — it re-derives the probe from the raw
+/// assignment and re-checks every hard rule from the request.
+pub fn validate_assignment(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &[usize],
+) -> Result<(), String> {
+    if assignment.len() != request.student_count {
+        return Err(format!(
+            "solver produced an assignment for {} of {} students",
+            assignment.len(),
+            request.student_count
+        ));
+    }
+    let mut seen = vec![false; request.seat_positions.len()];
+    for (student, &seat) in assignment.iter().enumerate() {
+        if seat >= request.seat_positions.len() {
+            return Err(format!(
+                "solver produced an out-of-range seat {seat} for student {student}"
+            ));
+        }
+        if seen[seat] {
+            return Err(format!("solver produced a duplicate seat {seat}"));
+        }
+        seen[seat] = true;
+    }
+    let probe: Vec<Option<usize>> = assignment.iter().map(|&seat| Some(seat)).collect();
+    if !solve_partial_assignment_valid(request, resolved, &probe, adjacency, graph_distances) {
+        return Err("solver produced an assignment that violates a hard rule".to_string());
+    }
+    Ok(())
+}
+
 fn valid_candidate_seats(
     request: &CoreSolveRequest,
     resolved: &ResolvedHardRules,
@@ -1047,6 +1237,401 @@ fn solve_partial_assignment_valid(
     true
 }
 
+/// Candidate seat domain for one student under the current hard rules,
+/// ignoring other students' occupancy (M3-02, plan §6.1 second layer).
+///
+/// `seats` is the list of seats that do not violate any hard rule when this
+/// student sits there and every fixed student keeps their seat. `excluded`
+/// records, for every seat outside the domain, the first hard rule that
+/// rejects it — used by feasibility reports (M3-06).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateDomain {
+    pub student: usize,
+    pub seats: Vec<usize>,
+    pub excluded: Vec<(usize, String)>,
+}
+
+/// Build the per-student candidate seat domains (plan §6.1 second layer).
+///
+/// A student with an empty domain is a *sound* infeasibility proof: no
+/// complete assignment can seat them, regardless of how other students are
+/// placed (occupancy only removes candidates, never adds them).
+pub fn build_candidate_domains(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+) -> Vec<CandidateDomain> {
+    // Pre-place every fixed student so pair rules involving them constrain the
+    // probed student exactly like in a real assignment (mirrors the strict
+    // compile-time fixed/pair interaction checks in Python).
+    let mut probe: Vec<Option<usize>> = vec![None; request.student_count];
+    for [student, seat] in &request.fixed_seats {
+        probe[*student] = Some(*seat);
+    }
+
+    let mut domains = Vec::with_capacity(request.student_count);
+    for student in 0..request.student_count {
+        let fixed = request
+            .fixed_seats
+            .iter()
+            .find(|pair| pair[0] == student)
+            .map(|pair| pair[1]);
+        let mut seats = Vec::new();
+        let mut excluded = Vec::new();
+        for seat in 0..request.seat_positions.len() {
+            if let Some(fixed_seat) = fixed {
+                if seat != fixed_seat {
+                    excluded.push((seat, format!("fixed to seat {fixed_seat}")));
+                    continue;
+                }
+            }
+            probe[student] = Some(seat);
+            let violation = first_hard_rule_violation(
+                request,
+                resolved,
+                &probe,
+                adjacency,
+                graph_distances,
+                student,
+            );
+            // Restore the pre-probe state: fixed students keep their seat,
+            // everyone else goes back to unassigned.
+            probe[student] = fixed;
+            match violation {
+                None => seats.push(seat),
+                Some(reason) => excluded.push((seat, reason)),
+            }
+        }
+        domains.push(CandidateDomain { student, seats, excluded });
+    }
+    domains
+}
+
+/// Global matching precheck (plan §6.1 third layer): maximum bipartite
+/// matching between students and their candidate seats.
+///
+/// When the maximum matching cannot seat every student, no complete
+/// assignment exists (each student must take one of their own candidates,
+/// seats are unique) — a sound `ProvenInfeasible` proof. The converse is not
+/// asserted: a full matching does not prove feasibility, because pair rules
+/// may still conflict across students (that is the hard search's job).
+pub fn maximum_candidate_matching(domains: &[CandidateDomain]) -> usize {
+    let seat_count = domains
+        .iter()
+        .flat_map(|domain| domain.seats.iter().copied())
+        .max()
+        .map_or(0, |max| max + 1);
+    let mut seat_owner: Vec<Option<usize>> = vec![None; seat_count];
+    let mut matched = 0;
+    for student in 0..domains.len() {
+        let mut visited = vec![false; seat_count];
+        if augment_matching(student, domains, &mut visited, &mut seat_owner) {
+            matched += 1;
+        }
+    }
+    matched
+}
+
+/// Kuhn's augmenting-path step: try to reassign seats so `student` gets one.
+fn augment_matching(
+    student: usize,
+    domains: &[CandidateDomain],
+    visited: &mut [bool],
+    seat_owner: &mut [Option<usize>],
+) -> bool {
+    for &seat in &domains[student].seats {
+        if visited[seat] {
+            continue;
+        }
+        visited[seat] = true;
+        if let Some(previous) = seat_owner[seat] {
+            if augment_matching(previous, domains, visited, seat_owner) {
+                seat_owner[seat] = Some(student);
+                return true;
+            }
+        } else {
+            seat_owner[seat] = Some(student);
+            return true;
+        }
+    }
+    false
+}
+
+/// Exhaustive hard search outcome (plan §6.1 fourth layer).
+///
+/// [`SearchOutcome::ProvenInfeasible`] is only returned when the entire state
+/// space was swept without a legal seating; hitting the node budget returns
+/// [`SearchOutcome::BudgetExceeded`] so callers can keep the honest `Unknown`
+/// status (M1-03: heuristic exhaustion is never ProvenInfeasible).
+#[derive(Debug, PartialEq, Eq)]
+enum SearchOutcome {
+    Found(Vec<usize>),
+    ProvenInfeasible,
+    BudgetExceeded,
+}
+
+/// Node budget for one hard search. Classes are small (<= 60 students) and
+/// MRV + forward checking prune hard, so 200k nodes is generous for the
+/// full sweep while still bounding worst-case time.
+const HARD_SEARCH_NODE_BUDGET: usize = 200_000;
+
+/// Full hard search: MRV student selection with degree tie-break, forward
+/// checking over the candidate domains, deterministic (fixed order) branch
+/// exploration. Fixed students are pre-placed; their domains are singletons
+/// so MRV picks them first.
+fn hard_search(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+) -> SearchOutcome {
+    hard_search_with_budget(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        HARD_SEARCH_NODE_BUDGET,
+    )
+}
+
+/// [`hard_search`] with an explicit node budget (tests exercise the
+/// [`SearchOutcome::BudgetExceeded`] path with a tiny budget).
+fn hard_search_with_budget(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    budget: usize,
+) -> SearchOutcome {
+    let mut assignment: Vec<Option<usize>> = vec![None; request.student_count];
+    for [student, seat] in &request.fixed_seats {
+        assignment[*student] = Some(*seat);
+    }
+    let mut domains: Vec<Vec<usize>> = build_candidate_domains(request, resolved, adjacency, graph_distances)
+        .into_iter()
+        .map(|domain| domain.seats)
+        .collect();
+    let mut budget = budget;
+    backtrack(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        &mut assignment,
+        &mut domains,
+        &mut budget,
+    )
+}
+
+/// One backtracking step. On success returns the complete assignment; on
+/// exhaustive failure returns [`SearchOutcome::ProvenInfeasible`]; on budget
+/// exhaustion [`SearchOutcome::BudgetExceeded`].
+#[allow(clippy::too_many_arguments)]
+fn backtrack(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &mut [Option<usize>],
+    domains: &mut [Vec<usize>],
+    budget: &mut usize,
+) -> SearchOutcome {
+    if *budget == 0 {
+        return SearchOutcome::BudgetExceeded;
+    }
+    *budget -= 1;
+
+    // Every student assigned: complete assignment found.
+    if assignment.iter().all(Option::is_some) {
+        let complete = assignment.iter().map(|seat| seat.unwrap()).collect();
+        return SearchOutcome::Found(complete);
+    }
+
+    // MRV: the unassigned student with the smallest domain, tie-broken by
+    // constraint degree (more pair rules first) then student index.
+    let student = (0..request.student_count)
+        .filter(|student| assignment[*student].is_none())
+        .min_by_key(|student| {
+            let degree = constraint_degree(resolved, request, *student);
+            (domains[*student].len(), std::cmp::Reverse(degree), *student)
+        })
+        .expect("at least one unassigned student after the all-assigned check");
+
+    if domains[student].is_empty() {
+        return SearchOutcome::ProvenInfeasible;
+    }
+
+    for seat in domains[student].clone() {
+        // Deterministic seat order; skip seats already taken.
+        if assignment.contains(&Some(seat)) {
+            continue;
+        }
+
+        // Forward checking: assign student -> seat and filter every other
+        // student's domain. Any empty domain prunes this branch.
+        let mut next_domains = domains.to_vec();
+        let mut pruned = false;
+        for other in 0..request.student_count {
+            if assignment[other].is_some() || other == student {
+                continue;
+            }
+            next_domains[other].retain(|candidate| {
+                *candidate != seat
+                    && partial_pair_valid(
+                        request,
+                        resolved,
+                        adjacency,
+                        graph_distances,
+                        assignment,
+                        student,
+                        seat,
+                        other,
+                        *candidate,
+                    )
+            });
+            if next_domains[other].is_empty() {
+                pruned = true;
+                break;
+            }
+        }
+        if pruned {
+            continue;
+        }
+
+        assignment[student] = Some(seat);
+        let result = backtrack(
+            request,
+            resolved,
+            adjacency,
+            graph_distances,
+            assignment,
+            &mut next_domains,
+            budget,
+        );
+        assignment[student] = None;
+        match result {
+            SearchOutcome::Found(_) => return result,
+            SearchOutcome::BudgetExceeded => return result,
+            SearchOutcome::ProvenInfeasible => continue,
+        }
+    }
+
+    SearchOutcome::ProvenInfeasible
+}
+
+/// Number of hard-rule pairs this student participates in (MRV tie-break).
+fn constraint_degree(
+    resolved: &ResolvedHardRules,
+    request: &CoreSolveRequest,
+    student: usize,
+) -> usize {
+    let pairs = resolved
+        .must_be_adjacent
+        .iter()
+        .chain(resolved.cannot_be_adjacent.iter())
+        .filter(|pair| pair[0] == student || pair[1] == student)
+        .count();
+    let distance = request
+        .min_distance
+        .iter()
+        .filter(|rule| rule.students[0] == student || rule.students[1] == student)
+        .count();
+    pairs + distance
+}
+
+/// Is `(student -> seat, other -> candidate)` jointly legal given the current
+/// partial assignment? Checks only the pairs that become fully assigned, so
+/// this is the incremental forward-checking test.
+#[allow(clippy::too_many_arguments)]
+fn partial_pair_valid(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &[Option<usize>],
+    student: usize,
+    seat: usize,
+    other: usize,
+    candidate: usize,
+) -> bool {
+    // Reuse the partial-assignment validator with a probe that contains the
+    // current assignment plus the two new placements. Unassigned students
+    // stay None, so only fully-assigned pairs are ever checked.
+    let mut probe: Vec<Option<usize>> = assignment.to_vec();
+    probe[student] = Some(seat);
+    probe[other] = Some(candidate);
+    solve_partial_assignment_valid(request, resolved, &probe, adjacency, graph_distances)
+}
+
+/// Find the first hard rule violated by `probe[student] = Some(seat)`.
+///
+/// Returns a human-readable reason naming the rule, mirroring the order the
+/// partial-assignment validator checks rules in (fixed, must_be_adjacent,
+/// cannot_be_adjacent, min_distance).
+fn first_hard_rule_violation(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    probe: &[Option<usize>],
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    student: usize,
+) -> Option<String> {
+    for [student_index, seat_index] in &request.fixed_seats {
+        if *student_index == student
+            && probe[*student_index] != Some(*seat_index)
+        {
+            return Some(format!("fixed seat {seat_index} not honored"));
+        }
+    }
+    for [first_student, second_student] in &resolved.must_be_adjacent {
+        if (*first_student == student || *second_student == student)
+            && probe[*first_student].is_some()
+            && probe[*second_student].is_some()
+            && !assigned_students_are_adjacent(probe, adjacency, *first_student, *second_student)
+        {
+            return Some(format!(
+                "not adjacent to required partner {other}",
+                other = if *first_student == student { second_student } else { first_student }
+            ));
+        }
+    }
+    for [first_student, second_student] in &resolved.cannot_be_adjacent {
+        if (*first_student == student || *second_student == student)
+            && probe[*first_student].is_some()
+            && probe[*second_student].is_some()
+            && assigned_students_are_adjacent(probe, adjacency, *first_student, *second_student)
+        {
+            return Some(format!(
+                "adjacent to forbidden partner {other}",
+                other = if *first_student == student { second_student } else { first_student }
+            ));
+        }
+    }
+    for rule in &request.min_distance {
+        if (rule.students[0] == student || rule.students[1] == student)
+            && probe[rule.students[0]].is_some()
+            && probe[rule.students[1]].is_some()
+            && !assigned_students_meet_distance(
+                &request.seat_positions,
+                probe,
+                graph_distances,
+                rule,
+            )
+        {
+            return Some(format!(
+                "too close to partner {other}",
+                other = if rule.students[0] == student {
+                    rule.students[1]
+                } else {
+                    rule.students[0]
+                }
+            ));
+        }
+    }
+    None
+}
+
 fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
     if request.api_version != NATIVE_API_VERSION {
         return Err(format!(
@@ -1128,6 +1713,82 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
             return Err("min_distance values must be positive and finite".to_string());
         }
     }
+    // Static conflict layer (plan §6.1 first layer), mirroring Python's strict
+    // `compile_hard_rules` + `_validate_compiled_rule_conflicts`: duplicate
+    // fixed seats and fixed seats that contradict a pair rule are caught
+    // before any search runs.
+    let mut fixed_by_student: HashMap<usize, usize> = HashMap::new();
+    let mut fixed_by_seat: HashMap<usize, usize> = HashMap::new();
+    for [student_index, seat_index] in &request.fixed_seats {
+        if fixed_by_student.insert(*student_index, *seat_index).is_some() {
+            return Err(format!(
+                "conflicting hard rules: student {student_index} is fixed to more than one seat"
+            ));
+        }
+        if fixed_by_seat.insert(*seat_index, *student_index).is_some() {
+            return Err(format!(
+                "conflicting hard rules: seat {seat_index} is fixed to more than one student"
+            ));
+        }
+    }
+    let adjacency = build_index_adjacency(seat_count, &request.edges);
+    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let must_pairs: HashSet<[usize; 2]> = request.must_be_adjacent.iter().copied().collect();
+    let cannot_pairs: HashSet<[usize; 2]> = request.cannot_be_adjacent.iter().copied().collect();
+    if let Some(pair) = must_pairs.intersection(&cannot_pairs).next() {
+        return Err(format!(
+            "conflicting hard rules: the same student pair appears in both \
+             must_be_adjacent and cannot_be_adjacent ({pair:?})"
+        ));
+    }
+    for [first_student, second_student] in &request.must_be_adjacent {
+        if let (Some(first_seat), Some(second_seat)) = (
+            fixed_by_student.get(first_student),
+            fixed_by_student.get(second_student),
+        ) {
+            if !adjacency[*first_seat].contains(second_seat) {
+                return Err(
+                    "conflicting hard rules: fixed seats do not satisfy a must_be_adjacent rule"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    for [first_student, second_student] in &request.cannot_be_adjacent {
+        if let (Some(first_seat), Some(second_seat)) = (
+            fixed_by_student.get(first_student),
+            fixed_by_student.get(second_student),
+        ) {
+            if adjacency[*first_seat].contains(second_seat) {
+                return Err(
+                    "conflicting hard rules: fixed seats violate a cannot_be_adjacent rule"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    for rule in &request.min_distance {
+        if let (Some(first_seat), Some(second_seat)) = (
+            fixed_by_student.get(&rule.students[0]),
+            fixed_by_student.get(&rule.students[1]),
+        ) {
+            let distance = match rule.metric {
+                CoreDistanceMetric::Euclidean => {
+                    let first = request.seat_positions[*first_seat];
+                    let second = request.seat_positions[*second_seat];
+                    seat_distance(first[0], first[1], second[0], second[1])
+                }
+                CoreDistanceMetric::Graph => {
+                    graph_distances[*first_seat][*second_seat].map(|distance| distance as f64)
+                }
+            };
+            if distance.is_none_or(|value| value < rule.distance) {
+                return Err(
+                    "conflicting hard rules: fixed seats violate a min_distance rule".to_string(),
+                );
+            }
+        }
+    }
     // Resolving groups surfaces unknown-member references, mirroring strict
     // rule compilation; the derived pairs are validated by the caller.
     resolve_group_rules(request)?;
@@ -1144,9 +1805,13 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 #[cfg(test)]
 mod tests {
     use super::{
-        assignment_is_unique, classify_solve_error, evaluate_problem_json, resolve_group_rules,
-        seat_distance, solve_problem_json, validate_solve_request_json, CoreEvaluationResponse,
-        CoreSolveRequest, CoreSolveResponse, SolveStatus, NATIVE_API_VERSION,
+        assignment_is_unique, assigned_students_meet_distance, build_candidate_domains,
+        build_graph_distance_matrix, build_index_adjacency, classify_solve_error,
+        evaluate_problem_json, hard_search, hard_search_with_budget,
+        maximum_candidate_matching, resolve_group_rules, seat_distance, solve_problem_json,
+        precheck_report_json, validate_assignment, validate_solve_request_json,
+        CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome,
+        SolveStatus, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -1737,13 +2402,15 @@ mod tests {
         assert_eq!(value["status"], "Solved");
     }
 
-    /// Greedy exhaustion with no sound proof must be `Unknown`, never
-    /// `ProvenInfeasible` (M1-03 P0 fix).
+    /// Exhaustive search proves a fully-constrained 2x2 grid infeasible
+    /// (M3-04: the status upgrades from Unknown to ProvenInfeasible once the
+    /// whole state space is swept; see
+    /// `hard_search_budget_exhaustion_stays_unknown` for the honest-Unknown
+    /// case).
     #[test]
     fn greedy_exhaustion_reports_unknown_status() {
         // 2x2 grid, every seat pair forbidden from adjacency: the request
-        // passes static validation but no complete assignment exists, so all
-        // greedy attempts fail.
+        // passes static validation but no complete assignment exists.
         let request = r#"{
             "api_version": 2,
             "student_count": 4,
@@ -1756,11 +2423,10 @@ mod tests {
         let response: CoreSolveResponse =
             serde_json::from_str(&response_json).expect("response should be valid JSON");
         assert!(!response.feasible);
-        assert_eq!(response.status, SolveStatus::Unknown);
-        assert_ne!(response.status, SolveStatus::ProvenInfeasible);
+        assert_eq!(response.status, SolveStatus::ProvenInfeasible);
 
         let value: serde_json::Value = serde_json::from_str(&response_json).unwrap();
-        assert_eq!(value["status"], "Unknown");
+        assert_eq!(value["status"], "ProvenInfeasible");
     }
 
     #[test]
@@ -1836,5 +2502,359 @@ mod tests {
         }"#;
         let response: CoreSolveResponse = serde_json::from_str(legacy).unwrap();
         assert_eq!(response.status, SolveStatus::Unknown);
+    }
+
+    // ---- M3-02: static conflict layer (plan §6.1 first layer) ----
+
+    #[test]
+    fn static_conflict_student_fixed_to_two_seats_is_invalid() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "fixed_seats": [[0, 0], [0, 2]]
+        }"#;
+        let error = validate_solve_request_json(request).unwrap_err();
+        assert!(
+            error.contains("fixed to more than one seat"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn static_conflict_seat_fixed_to_two_students_is_invalid() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "fixed_seats": [[0, 0], [1, 0]]
+        }"#;
+        let error = validate_solve_request_json(request).unwrap_err();
+        assert!(
+            error.contains("fixed to more than one student"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn static_conflict_same_pair_in_must_and_cannot_is_invalid() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "edges": [[0, 1]],
+            "must_be_adjacent": [[0, 1]],
+            "cannot_be_adjacent": [[0, 1]]
+        }"#;
+        let error = validate_solve_request_json(request).unwrap_err();
+        assert!(
+            error.contains("appears in both must_be_adjacent and cannot_be_adjacent"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn static_conflict_fixed_seats_contradict_pair_rules() {
+        // Fixed seats 0 and 2 are not adjacent, but must_be_adjacent demands
+        // adjacency: unsolvable before any search.
+        let must_violated = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 1], [1, 2]],
+            "fixed_seats": [[0, 0], [1, 2]],
+            "must_be_adjacent": [[0, 1]]
+        }"#;
+        let error = validate_solve_request_json(must_violated).unwrap_err();
+        assert!(error.contains("do not satisfy a must_be_adjacent rule"), "{error}");
+
+        // Fixed seats 0 and 1 are adjacent, but cannot_be_adjacent forbids it.
+        let cannot_violated = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "edges": [[0, 1]],
+            "fixed_seats": [[0, 0], [1, 1]],
+            "cannot_be_adjacent": [[0, 1]]
+        }"#;
+        let error = validate_solve_request_json(cannot_violated).unwrap_err();
+        assert!(error.contains("violate a cannot_be_adjacent rule"), "{error}");
+
+        // Fixed seats 0 and 1 violate a graph min_distance of 2 (they are 1 hop).
+        let distance_violated = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "edges": [[0, 1]],
+            "fixed_seats": [[0, 0], [1, 1]],
+            "min_distance": [{"students": [0, 1], "distance": 2.0, "metric": "graph"}]
+        }"#;
+        let error = validate_solve_request_json(distance_violated).unwrap_err();
+        assert!(error.contains("violate a min_distance rule"), "{error}");
+    }
+
+    #[test]
+    fn conflicting_errors_classify_as_invalid_input() {
+        assert_eq!(
+            classify_solve_error("conflicting hard rules: fixed seats violate a min_distance rule"),
+            SolveStatus::InvalidInput
+        );
+    }
+
+    // ---- M3-02: candidate domains (plan §6.1 second layer) ----
+
+    #[test]
+    fn candidate_domains_respect_fixed_and_pair_rules() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 3,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+                "edges": [[0, 1], [1, 2], [2, 3]],
+                "fixed_seats": [[0, 0]],
+                "must_be_adjacent": [[0, 1]]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+        let domains = build_candidate_domains(&request, &resolved, &adjacency, &graph_distances);
+        // Student 0 is fixed to seat 0: domain is exactly {0}.
+        assert_eq!(domains[0].seats, vec![0]);
+        assert!(domains[0].excluded.iter().all(|(seat, _)| *seat != 0));
+
+        // Student 1 must sit adjacent to student 0: only seat 1 is legal.
+        assert_eq!(domains[1].seats, vec![1]);
+        assert!(domains[1]
+            .excluded
+            .iter()
+            .any(|(seat, reason)| *seat == 3 && reason.contains("adjacent")));
+
+        // Student 2 is unconstrained: every seat is legal.
+        assert_eq!(domains[2].seats.len(), 4);
+    }
+
+    #[test]
+    fn empty_candidate_domain_is_proven_infeasible() {
+        // Student 1 must sit at graph distance >= 3 from the fixed student 0
+        // (seat 0), but every seat is closer than 3 hops on this line graph:
+        // no legal seat exists for student 1, a sound infeasibility proof.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 1], [1, 2]],
+            "fixed_seats": [[0, 0]],
+            "min_distance": [{"students": [0, 1], "distance": 3.0, "metric": "graph"}]
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should validate");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+
+        assert!(!response.feasible);
+        assert_eq!(response.status, SolveStatus::ProvenInfeasible);
+        assert_eq!(response.attempts_used, 0);
+        assert!(response.assignment.is_empty());
+    }
+
+    // ---- M3-03: global matching precheck (plan §6.1 third layer) ----
+
+    #[test]
+    fn maximum_matching_counts_jointly_seatable_students() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 3,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+                "edges": [[0, 1], [1, 2], [2, 3]],
+                "fixed_seats": [[0, 0]],
+                "must_be_adjacent": [[0, 1]]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+        let domains = build_candidate_domains(&request, &resolved, &adjacency, &graph_distances);
+        // domains: student0={0}, student1={1}, student2={0,1,2,3} — a full
+        // matching of size 3 exists (0->0, 1->1, 2->2).
+        assert_eq!(maximum_candidate_matching(&domains), 3);
+    }
+
+    #[test]
+    fn matching_precheck_proves_infeasibility_when_seats_are_overbooked() {
+        // Three students, three seats. Students 0/1 are fixed to seats 0/1;
+        // student 2 must not sit adjacent to student 0, which rules out seat
+        // 2 (its only neighbor) but not seats 0/1 (no edges). Every domain is
+        // non-empty, yet seats 0/1 are both taken: maximum matching = 2 < 3.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 2]],
+            "fixed_seats": [[0, 0], [1, 1]],
+            "cannot_be_adjacent": [[0, 2]]
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should validate");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+
+        assert!(!response.feasible);
+        assert_eq!(response.status, SolveStatus::ProvenInfeasible);
+        assert_eq!(response.attempts_used, 0);
+    }
+    // ---- M3-04: exhaustive hard search (plan §6.1 fourth layer) ----
+
+    #[test]
+    fn hard_search_finds_legal_assignment_when_greedy_fails() {
+        // A 4-cycle of must_be_adjacent pairs: students 0-1, 1-2, 2-3, 3-0
+        // must all sit adjacent, but seat 2 is disabled... no: use a layout
+        // where the only legal seating is a specific rotation the random
+        // greedy misses. Here a 2x3 grid with a min_distance pair between
+        // students 0 and 1 (>= 2 graph hops): greedy attempt 0 pins 0 and 1
+        // on adjacent cheap seats and every randomized attempt fails to
+        // escape; the search finds the far-apart placement.
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 2,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 1.0]],
+                "edges": [[0, 1], [1, 2], [3, 4], [4, 5], [0, 3], [1, 4], [2, 5]],
+                "min_distance": [{"students": [0, 1], "distance": 3.0, "metric": "graph"}],
+                "seed": 1
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+
+        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 200_000);
+        let SearchOutcome::Found(assignment) = outcome else {
+            panic!("hard search should find the far-apart placement, got {outcome:?}");
+        };
+        // Student 0 and 1 must be >= 3 hops apart: only opposite corners work
+        // in this 2x3 ladder (e.g. 0->seat 0 and 1->seat 5 is 3 hops).
+        let probe: Vec<Option<usize>> =
+            assignment.iter().map(|seat| Some(*seat)).collect();
+        assert!(assigned_students_meet_distance(
+            &request.seat_positions,
+            &probe,
+            &graph_distances,
+            &request.min_distance[0],
+        ));
+        assert_eq!(assignment.len(), 2);
+        assert!(assignment[0] != assignment[1]);
+    }
+
+    #[test]
+    fn hard_search_budget_exhaustion_stays_unknown() {
+        // The 2x2 fully-forbidden grid is proven infeasible in a few nodes;
+        // with a tiny budget the sweep cannot complete and the honest status
+        // must stay Unknown (never ProvenInfeasible).
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 4,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
+                "edges": [[0, 1], [2, 3], [0, 2], [1, 3]],
+                "cannot_be_adjacent": [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+
+        // A budget of 1 node cannot sweep anything.
+        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 1);
+        assert_eq!(outcome, SearchOutcome::BudgetExceeded);
+
+        // The full budget proves it (and solve_problem reports that).
+        let outcome = hard_search(&request, &resolved, &adjacency, &graph_distances);
+        assert_eq!(outcome, SearchOutcome::ProvenInfeasible);
+    }
+    #[test]
+    fn independent_validator_rejects_violating_assignments() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 2,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+                "edges": [[0, 1], [1, 2]],
+                "cannot_be_adjacent": [[0, 1]]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+
+        // Adjacent seats 0/1 violate the pair rule: must be rejected.
+        let error = validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0, 1])
+            .expect_err("adjacent placement must violate cannot_be_adjacent");
+        assert!(error.contains("violates a hard rule"), "{error}");
+
+        // Duplicate seat: must be rejected.
+        let error = validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0, 0])
+            .expect_err("duplicate seat must be rejected");
+        assert!(error.contains("duplicate seat"), "{error}");
+
+        // Missing students: must be rejected.
+        let error = validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0])
+            .expect_err("short assignment must be rejected");
+        assert!(error.contains("students"), "{error}");
+
+        // Seats 0 and 2 are not adjacent: a legal pairing passes.
+        validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0, 2])
+            .expect("non-adjacent pairing must pass");
+    }
+    #[test]
+    fn precheck_report_lists_domains_and_reasons() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+            "edges": [[0, 1], [1, 2], [2, 3]],
+            "fixed_seats": [[0, 0]],
+            "must_be_adjacent": [[0, 1]]
+        }"#;
+        let report: serde_json::Value =
+            serde_json::from_str(&precheck_report_json(request).unwrap()).unwrap();
+        assert_eq!(report["precheck"], "clean");
+        assert!(report["infeasible_reason"].is_null());
+        assert_eq!(report["matching_size"], 3);
+        assert_eq!(report["students"][0]["candidate_count"], 1);
+        assert_eq!(report["students"][0]["seats"][0], 0);
+        assert_eq!(report["students"][1]["candidate_count"], 1);
+        assert_eq!(report["students"][1]["seats"][0], 1);
+        // The exclusion reason names the pair rule.
+        let excluded = &report["students"][1]["excluded"];
+        assert!(
+            excluded
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["reason"].as_str().unwrap().contains("adjacent")),
+            "excluded reasons: {excluded}"
+        );
+    }
+
+    #[test]
+    fn precheck_report_flags_empty_domain_with_reason() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 1], [1, 2]],
+            "fixed_seats": [[0, 0]],
+            "min_distance": [{"students": [0, 1], "distance": 3.0, "metric": "graph"}]
+        }"#;
+        let report: serde_json::Value =
+            serde_json::from_str(&precheck_report_json(request).unwrap()).unwrap();
+        assert_eq!(report["precheck"], "infeasible");
+        let reason = report["infeasible_reason"].as_str().unwrap();
+        assert!(reason.contains("student 1 has no legal seat"), "{reason}");
     }
 }

@@ -99,6 +99,19 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 
 M1 Exit Gate 核查：workspace 统一 ✅ / PyO3 隔离 ✅ / 未认证、DNS rebinding、恶意 Origin、超大 body 全部拒绝并有测试 ✅ / 退出无残留 ✅。
 
+## M3 里程碑状态（2026-08-09）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| M3-01 RuleSpec registry | ✅ | `crates/seattrellis-rules`：15 条官方规则规格（params/spec/registry JSON + schema） |
+| M3-02 静态冲突 + 候选域 | ✅ | core validate 镜像 Python 严格编译：重复固定座位/must∩cannot/固定违反 pair 规则全在搜索前拒绝；`build_candidate_domains` 输出每学生候选域 + 排除原因；空域 = sound ProvenInfeasible |
+| M3-03 匹配预检 | ✅ | Kuhn 二分图最大匹配；匹配 < 学生数 = sound ProvenInfeasible（Hall）；匹配满不证可解（归 M3-04） |
+| M3-04 hard search | ✅ | MRV + degree tie-break + forward checking 回溯（200k 节点预算）；Found→Solved / 全枚举→ProvenInfeasible / 预算耗尽→Unknown（honest）；greedy 优先、失败才搜索 |
+| M3-05 独立 validator | ✅ | `validate_assignment` 在两条 Solved 路径出口复核 uniqueness/边界/全部硬规则；违规 → InternalError 而非静默 feasible |
+| M3-06 feasibility report | ✅ | `precheck_report_json` + CLI `precheck` 子命令：候选域/排除原因/最紧张学生/匹配大小/clean|infeasible+原因（PR #94） |
+
+PR #94 待合并；M3 剩余：6.2 soft optimizer（local search）、6.3 candidate engine（diversity/reproducibility metadata）、6.5 audit/explanation 输出、6.6 质量门槛基准（相对 OR-Tools regret ≤5%）、CLI 时间预算（M3-04 已知 gap 项）。
+
 ## 已知陷阱
 
 - `app/src-tauri/rust-toolchain.toml` 锁定 1.88.0（Tauri 依赖要求），其余 crate 声明 MSRV 1.83——两者不一致是已知问题，按计划 M1 统一为 1.88。
