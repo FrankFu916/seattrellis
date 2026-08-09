@@ -197,6 +197,17 @@ export interface CoreSolveRequest {
   layout?: Record<string, unknown>;
   history?: Record<string, unknown>;
   pair_history?: Record<string, unknown>;
+  time_limit_seconds?: number;
+}
+
+export interface CoreSolveResponse {
+  api_version: number;
+  feasible: boolean;
+  status: SolveStatus;
+  assignment: number[][];
+  attempts_used: number;
+  hard_constraints_satisfied: boolean;
+  total_cost: number | null;
 }
 
 export interface GenerateClassRequest {
@@ -215,14 +226,75 @@ export interface CandidateSummary {
   total_score: number;
 }
 
-export interface GenerateClassResponse {
+export type SolveStatus =
+  | "Solved"
+  | "ProvenInfeasible"
+  | "Timeout"
+  | "Unknown"
+  | "InvalidInput"
+  | "Cancelled"
+  | "InternalError";
+
+export interface GenerateClassSolvedResponse {
+  status: "Solved";
+  feasible: true;
   class_name: string;
-  goal: string;
+  goal: Record<string, unknown>;
   warnings: string[];
   recommended_candidate_id: string;
   candidates: CandidateSummary[];
   editor: EditorState;
 }
+
+export interface GenerateClassUnsolvedResponse {
+  status: Exclude<SolveStatus, "Solved" | "InvalidInput" | "InternalError">;
+  feasible: false;
+  class_name: string;
+  goal: Record<string, unknown>;
+  warnings: string[];
+  recommended_candidate_id: null;
+  candidates: [];
+  editor: null;
+  message_key: string;
+  recoverable: boolean;
+  suggested_action: string;
+}
+
+export type GenerateClassResponse =
+  | GenerateClassSolvedResponse
+  | GenerateClassUnsolvedResponse;
+
+export interface GenerateRotationRequest extends GenerateClassRequest {
+  period_count: number;
+  period_labels?: string[];
+}
+
+export interface GenerateRotationSolvedResponse {
+  status: "Solved";
+  feasible: true;
+  class_name: string;
+  warnings: string[];
+  rotation_plan: Record<string, unknown>;
+  editor: EditorState;
+  failed_period: null;
+}
+
+export interface GenerateRotationUnsolvedResponse {
+  status: Exclude<SolveStatus, "Solved" | "InvalidInput" | "InternalError">;
+  feasible: false;
+  class_name: string;
+  warnings: string[];
+  rotation_plan: null;
+  editor: null;
+  failed_period: number;
+  message_key: string;
+  recoverable: boolean;
+  suggested_action: string;
+}
+
+export type GenerateRotationResponse =
+  | GenerateRotationSolvedResponse
+  | GenerateRotationUnsolvedResponse;
 
 export interface EditorStudentState {
   student_key: string;
@@ -294,6 +366,32 @@ fn endpoints() -> Vec<(&'static str, String)> {
   request: GenerateClassRequest | CoreSolveRequest,
 ): Promise<GenerateClassResponse> {
   return call<GenerateClassResponse>(`${API_ROOT}/classes/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}"#
+            .to_string(),
+        ),
+        (
+            "generateRotation",
+            r#"export async function generateRotation(
+  request: GenerateRotationRequest,
+): Promise<GenerateRotationResponse> {
+  return call<GenerateRotationResponse>(`${API_ROOT}/classes/rotation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}"#
+            .to_string(),
+        ),
+        (
+            "solveV2",
+            r#"export async function solveV2(
+  request: CoreSolveRequest,
+): Promise<CoreSolveResponse> {
+  return call<CoreSolveResponse>("/api/v2/solve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),

@@ -7,6 +7,7 @@
 //! `run_export` reads both the problem and the solve result, recovers the seat
 //! grid, and renders SVG or HTML through `render`.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::json;
@@ -14,7 +15,7 @@ use serde_json::json;
 use seattrellis_core::{
     audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
     precheck_report_json, repair_json, solve_problem_json, validate_solve_request_json,
-    CoreSolveRequest, CoreSolveResponse, SolveStatus,
+    validate_solve_response, CoreSolveRequest, CoreSolveResponse, SolveStatus,
 };
 
 use crate::render::SeatingGrid;
@@ -25,6 +26,14 @@ use crate::{
     PrecheckArgs, ProjectArgs, RepairArgs, SolveArgs,
 };
 use seattrellis_export::export::export_plan;
+
+/// Publish a CLI output atomically (staged sibling temp + journaled
+/// transaction with rollback, plan §5.5 "all project writes roll back").
+fn write_output_atomically(path: &Path, contents: &[u8]) -> Result<(), String> {
+    seattrellis_io::transaction::atomic_write_file(path, contents)
+        .map_err(|error| format!("could not write {}: {error}", path.display()))?;
+    Ok(())
+}
 
 pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
     let styler = Styler::stdout();
@@ -106,15 +115,89 @@ pub fn run_project_solve(args: &ProjectArgs) -> Result<SolveStatus, String> {
         styler.cyan(&response.assignment.len().to_string())
     );
     if let Some(output) = &args.output {
-        std::fs::write(output, &response_json)
-            .map_err(|error| format!("could not write {}: {error}", output.display()))?;
+        write_output_atomically(output, response_json.as_bytes())?;
         println!("wrote result JSON to '{}'", output.display());
     }
     Ok(response.status)
 }
 
-/// `project-export`: solve the project workspace and render the requested
-/// format to the output file (plan §5.5 project lifecycle).
+/// Rebuild a `CoreSolveResponse` from a saved plan document so the export
+/// boundary renders exactly the plan that was persisted — never a fresh
+/// re-solve (which could silently differ from the saved plan). The result
+/// passes the independent validator before it is exported.
+///
+/// Two document shapes are accepted: the `CoreSolveResponse` JSON written by
+/// `project-solve --output` (index-pair `assignment`), and editor-style
+/// snapshots with `assignments: [{student_key, seat_id}]`.
+fn response_from_snapshot(
+    request: &CoreSolveRequest,
+    snapshot: &serde_json::Value,
+) -> Result<CoreSolveResponse, String> {
+    if snapshot.get("assignment").is_some() || snapshot.get("feasible").is_some() {
+        let response: CoreSolveResponse = serde_json::from_value(snapshot.clone())
+            .map_err(|error| format!("saved plan is not a CoreSolveResponse: {error}"))?;
+        validate_solve_response(request, &response)
+            .map_err(|message| format!("saved plan is not valid for this project: {message}"))?;
+        return Ok(response);
+    }
+    let student_index: HashMap<&str, usize> = request
+        .students
+        .iter()
+        .enumerate()
+        .map(|(index, student)| (student.key.as_str(), index))
+        .collect();
+    let seat_index: HashMap<&str, usize> = request
+        .layout
+        .as_ref()
+        .map(|layout| {
+            layout
+                .seats
+                .iter()
+                .enumerate()
+                .map(|(index, seat)| (seat.seat_id.as_str(), index))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut assignment: Vec<[usize; 2]> = Vec::new();
+    if let Some(entries) = snapshot
+        .get("assignments")
+        .and_then(serde_json::Value::as_array)
+    {
+        for entry in entries {
+            let student = entry
+                .get("student_key")
+                .and_then(serde_json::Value::as_str)
+                .ok_or("snapshot assignment is missing student_key")?;
+            let seat = entry
+                .get("seat_id")
+                .and_then(serde_json::Value::as_str)
+                .ok_or("snapshot assignment is missing seat_id")?;
+            let student = *student_index
+                .get(student)
+                .ok_or_else(|| format!("snapshot references unknown student {student:?}"))?;
+            let seat = *seat_index
+                .get(seat)
+                .ok_or_else(|| format!("snapshot references unknown seat {seat:?}"))?;
+            assignment.push([student, seat]);
+        }
+    }
+    let response = CoreSolveResponse {
+        api_version: seattrellis_core::NATIVE_API_VERSION,
+        feasible: true,
+        status: SolveStatus::Solved,
+        assignment,
+        attempts_used: 0,
+        hard_constraints_satisfied: true,
+        total_cost: None,
+    };
+    validate_solve_response(request, &response)
+        .map_err(|message| format!("saved plan is not valid for this project: {message}"))?;
+    Ok(response)
+}
+
+/// `project-export`: render a SAVED plan (snapshot from `project-solve
+/// --output`) to the requested format (plan §5.5 project lifecycle). It
+/// never re-solves: exporting must reflect the plan the teacher saved.
 pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
     let format = args
         .format
@@ -124,14 +207,18 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
         .output
         .clone()
         .ok_or("project-export requires --output <file>")?;
-    let mut request = crate::project::build_request(&args.project)?;
+    let snapshot_path = args.snapshot.clone().ok_or(
+        "project-export renders a saved plan: run 'project-solve --output <snapshot.json>' first, then pass --snapshot <file>",
+    )?;
+    let mut request_value = crate::project::build_request(&args.project)?;
     if let Some(seed) = args.seed {
-        request["seed"] = serde_json::Value::from(seed);
+        request_value["seed"] = serde_json::Value::from(seed);
     }
-    let request_json = serde_json::to_string(&request)
-        .map_err(|error| format!("could not serialize the compiled request: {error}"))?;
-    let response_json = solve_problem_json(&request_json)
-        .map_err(|error| format!("solver rejected the problem: {error}"))?;
+    let request: CoreSolveRequest = serde_json::from_value(request_value.clone())
+        .map_err(|error| format!("compiled request is malformed: {error}"))?;
+    let snapshot: serde_json::Value = serde_json::from_str(&read_text(&snapshot_path)?)
+        .map_err(|error| format!("'{}' is not valid JSON: {error}", snapshot_path.display()))?;
+    let response = response_from_snapshot(&request, &snapshot)?;
 
     let export_document = json!({
         "draft_id": "project-export",
@@ -145,19 +232,14 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
         "page_scale": 1.0,
         "locale": "zh",
         "show_student_ids": true,
-        "request": serde_json::from_str::<serde_json::Value>(&request_json)
-            .map_err(|error| format!("request re-encode failed: {error}"))?,
-        "response": serde_json::from_str::<serde_json::Value>(&response_json)
+        "request": request_value,
+        "response": serde_json::to_value(&response)
             .map_err(|error| format!("response re-encode failed: {error}"))?,
     });
     let export_json = serde_json::to_string(&export_document)
         .map_err(|error| format!("could not serialize the export request: {error}"))?;
-    let bytes =
-        seattrellis_core::solve_problem_json(&request_json).map_err(|error| error.to_string())?;
-    let _ = bytes;
     let bytes = export_plan(&export_json).map_err(|error| error.to_string())?;
-    std::fs::write(&output, &bytes)
-        .map_err(|error| format!("could not write {}: {error}", output.display()))?;
+    write_output_atomically(&output, &bytes)?;
     println!("wrote {} to '{}'", format, output.display());
     Ok(())
 }
@@ -175,8 +257,7 @@ pub fn run_repair(args: &RepairArgs) -> Result<(), String> {
     )
     .map_err(|error| format!("repair failed: {error}"))?;
     if let Some(output) = &args.output {
-        std::fs::write(output, &repaired)
-            .map_err(|error| format!("could not write {}: {error}", output.display()))?;
+        write_output_atomically(output, repaired.as_bytes())?;
         println!("wrote repaired snapshot to '{}'", output.display());
     } else {
         println!("{repaired}");
@@ -346,6 +427,8 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
         )
     })?;
 
+    validate_solve_response(&request, &response)
+        .map_err(|message| format!("refusing to export an invalid solved plan: {message}"))?;
     let grid = SeatingGrid::build(&request, &response)?;
     match args.format {
         ExportFormat::Svg => write_text(&args.output, &crate::render::render_svg(&grid))?,
@@ -376,11 +459,9 @@ fn read_text(path: &Path) -> Result<String, String> {
 }
 
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
-    std::fs::write(path, text)
-        .map_err(|error| format!("cannot write '{}': {error}", path.display()))
+    write_output_atomically(path, text.as_bytes())
 }
 
 fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    std::fs::write(path, bytes)
-        .map_err(|error| format!("cannot write '{}': {error}", path.display()))
+    write_output_atomically(path, bytes)
 }

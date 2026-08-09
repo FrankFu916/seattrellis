@@ -17,7 +17,7 @@
 //!   `ProjectArtifact` carries only metadata/counts — student records are never
 //!   returned, mirroring the Python "keep student data server-side" policy.
 //! * `ProjectPrivacyResponse`-> `{ api_version, project_path, files_scanned,
-//!   safe_for_public_sharing, findings: PrivacyFinding[] }` where
+//!   verdict, safe_for_public_sharing, findings: PrivacyFinding[] }` where
 //!   `PrivacyFinding = { file, fields: string[] }`.
 //! * `ProjectRestoreResponse`-> `{ api_version, project_path, output_dir }`.
 //!
@@ -35,13 +35,17 @@
 //! This module never panics on malformed input; all failures surface as
 //! `Err(String)`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use seattrellis_schema::{
+    aggregate_verdicts, classify_findings, classify_scan, classify_unscanned, is_sensitive_key,
+    scan_document, PrivacyVerdict,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -73,25 +77,6 @@ const MAX_RECENT_PROJECTS: usize = 20;
 
 /// Default project display name (matches `SeatTrellisProject.name`).
 const DEFAULT_PROJECT_NAME: &str = "SeatTrellis Project";
-
-/// Keys treated as potentially identifying or educationally sensitive by the
-/// privacy scan (mirrors `project_bundle._SENSITIVE_KEYS`).
-const SENSITIVE_KEYS: &[&str] = &[
-    "student_id",
-    "student_key",
-    "student_name",
-    "score",
-    "grade",
-    "notes",
-    "note",
-    "special_needs",
-    "special_need",
-    "height",
-    "vision",
-    "email",
-    "phone",
-    "name",
-];
 
 // ---------------------------------------------------------------------------
 // Wire types (JSON shapes match clients/web/src/api/types.ts)
@@ -154,8 +139,34 @@ pub struct ProjectPrivacy {
     pub api_version: &'static str,
     pub project_path: String,
     pub files_scanned: usize,
+    /// Additive v2 privacy state. Older clients may continue reading the
+    /// existing boolean; the explicit enum prevents incomplete scans from
+    /// being confused with a clean scan.
+    pub verdict: PrivacyVerdict,
     pub safe_for_public_sharing: bool,
     pub findings: Vec<PrivacyFinding>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PrivacyReport {
+    files_scanned: usize,
+    verdict: PrivacyVerdict,
+    findings: Vec<PrivacyFinding>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct FilePrivacyScan {
+    verdict: PrivacyVerdict,
+    fields: Vec<String>,
+}
+
+impl FilePrivacyScan {
+    fn indeterminate() -> Self {
+        Self {
+            verdict: classify_unscanned(),
+            fields: Vec::new(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +363,323 @@ fn ensure_inside(path: &Path, root: &Path, label: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Project workspace resolution and solve-request compilation
+// ---------------------------------------------------------------------------
+
+/// A project workspace with every sibling reference resolved and verified to
+/// stay inside the project root (canonical containment; `..`, absolute paths
+/// and symlink escapes are rejected).
+#[derive(Debug, Clone)]
+pub struct ResolvedProjectWorkspace {
+    pub project_file: PathBuf,
+    pub root: PathBuf,
+    pub students: PathBuf,
+    pub layout: PathBuf,
+    pub rules: PathBuf,
+    pub history_dir: Option<PathBuf>,
+    pub outputs_dir: PathBuf,
+}
+
+/// Load a project document (kind/schema checked) and resolve every sibling
+/// reference with canonical containment. Referenced files must exist.
+pub fn resolve_project_workspace(project_path: &Path) -> Result<ResolvedProjectWorkspace, String> {
+    let (_, resolved) = resolve_project(project_path, true)?;
+    Ok(ResolvedProjectWorkspace {
+        project_file: resolved.project_file,
+        root: resolved.root,
+        students: resolved.students,
+        layout: resolved.layout,
+        rules: resolved.rules,
+        history_dir: resolved.history_dir,
+        outputs_dir: resolved.outputs_dir,
+    })
+}
+
+/// Resolve a single project reference relative to `root` with canonical
+/// containment. Fails when the file is missing or escapes the root.
+pub fn resolve_project_reference(
+    root: &Path,
+    relative: &str,
+    label: &str,
+) -> Result<PathBuf, String> {
+    resolve_reference(root, relative, label, true)
+}
+
+/// Load a project document without requiring referenced inputs to exist.
+/// Returns the raw document plus the canonical project root.
+pub fn load_project_document(project_path: &Path) -> Result<(Value, PathBuf), String> {
+    let project_file = fs::canonicalize(project_path).map_err(|error| {
+        format!(
+            "Project file not found or unreadable: {} ({error})",
+            project_path.display()
+        )
+    })?;
+    if !project_file.is_file() {
+        return Err(format!(
+            "Project file not found: {}",
+            project_file.display()
+        ));
+    }
+    // Reuse the same document validation as resolve_project, then hand back
+    // the raw JSON so callers can render their own views of the workspace.
+    load_project(&project_file)?;
+    let bytes = fs::read(&project_file)
+        .map_err(|error| format!("could not read {}: {error}", project_file.display()))?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("Invalid project file: {} ({error})", project_file.display()))?;
+    let root = project_file
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| project_file.clone());
+    Ok((value, root))
+}
+
+/// Compile the core `CoreSolveRequest` JSON from a project workspace:
+/// roster CSV -> student records, layout JSON -> enabled seat grid +
+/// adjacency edges, rules JSON -> soft rules + resolved hard-rule pairs.
+///
+/// This is the single workspace -> request conversion used by the CLI
+/// project commands (plan §5.5: CLI and local API call the same library).
+pub fn build_project_solve_request(project_path: &Path) -> Result<Value, String> {
+    let workspace = resolve_project_workspace(project_path)?;
+
+    // Roster CSV -> core student records (automatic header mapping).
+    let roster_bytes = fs::read(&workspace.students)
+        .map_err(|error| format!("could not read {}: {error}", workspace.students.display()))?;
+    let students = crate::roster::parse_roster_students(&roster_bytes)?;
+    let core_students: Vec<Value> = students
+        .iter()
+        .map(|student| {
+            let key = student
+                .student_id
+                .clone()
+                .filter(|id| !id.is_empty())
+                .or_else(|| student.name.clone())
+                .unwrap_or_default();
+            json!({
+                "key": key,
+                "display_name": student.name,
+                "height_cm": student.height_cm,
+                "score": student.score,
+                "vision": student.vision.as_ref().map(|v| match v {
+                    crate::roster::VisionValue::Num(value) => value.to_string(),
+                    crate::roster::VisionValue::Str(value) => value.clone(),
+                }),
+                "tags": student.tags,
+                "needs": student.needs,
+            })
+        })
+        .collect();
+    if core_students.iter().any(|student| {
+        student
+            .get("key")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .is_empty()
+    }) {
+        return Err("roster rows must carry a student_id or name".to_string());
+    }
+
+    // Layout JSON -> enabled seat grid + adjacency.
+    let layout_text = fs::read_to_string(&workspace.layout)
+        .map_err(|error| format!("could not read {}: {error}", workspace.layout.display()))?;
+    let layout: Value = serde_json::from_str(&layout_text)
+        .map_err(|error| format!("layout file is not valid JSON: {error}"))?;
+    let seats = layout
+        .get("seats")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "layout has no seats array".to_string())?;
+    let enabled: Vec<&Value> = seats
+        .iter()
+        .filter(|seat| seat.get("enabled").and_then(Value::as_bool).unwrap_or(true))
+        .collect();
+    if enabled.is_empty() {
+        return Err("layout has no enabled seats".to_string());
+    }
+    let seat_positions: Vec<[f64; 2]> = enabled
+        .iter()
+        .map(|seat| {
+            let x = seat.get("x").and_then(Value::as_f64).unwrap_or(0.0);
+            let y = seat.get("y").and_then(Value::as_f64).unwrap_or(0.0);
+            [x, y]
+        })
+        .collect();
+    let seat_index_by_id: HashMap<&str, usize> = enabled
+        .iter()
+        .enumerate()
+        .filter_map(|(index, seat)| {
+            seat.get("seat_id")
+                .and_then(Value::as_str)
+                .map(|seat_id| (seat_id, index))
+        })
+        .collect();
+    // The core requires layout.seats to be aligned with seat_positions
+    // (layout.seats[i] <-> seat_positions[i]), so strip disabled seats.
+    let core_layout_value = json!({
+        "layout_id": layout.get("layout_id").cloned().unwrap_or_else(|| json!("project")),
+        "name": layout.get("name").cloned().unwrap_or_else(|| json!("Project")),
+        "seats": enabled,
+        "adjacency": layout.get("adjacency").cloned().unwrap_or_else(|| json!({})),
+    });
+    let core_layout: seattrellis_core::models::Layout =
+        serde_json::from_value(core_layout_value)
+            .map_err(|error| format!("layout is not core-compatible: {error}"))?;
+    let mut edges: Vec<[usize; 2]> = Vec::new();
+    for (first, second) in seattrellis_core::objectives::build_adjacency_edges(&core_layout) {
+        let (Some(&first_index), Some(&second_index)) = (
+            seat_index_by_id.get(first.as_str()),
+            seat_index_by_id.get(second.as_str()),
+        ) else {
+            continue;
+        };
+        edges.push([first_index.min(second_index), first_index.max(second_index)]);
+    }
+    edges.sort_unstable();
+    edges.dedup();
+
+    // Rules JSON -> soft rules + resolved hard-rule index pairs.
+    let rules_text = fs::read_to_string(&workspace.rules)
+        .map_err(|error| format!("could not read {}: {error}", workspace.rules.display()))?;
+    let rules: Value = serde_json::from_str(&rules_text)
+        .map_err(|error| format!("rules file is not valid JSON: {error}"))?;
+    let student_index: HashMap<&str, usize> = core_students
+        .iter()
+        .enumerate()
+        .filter_map(|(index, student)| {
+            student
+                .get("key")
+                .and_then(Value::as_str)
+                .map(|key| (key, index))
+        })
+        .collect();
+
+    let resolve_pair = |pair: &Value| -> Result<[usize; 2], String> {
+        // Accept both the pair-rule object {students: [k1, k2]} and the
+        // plain [k1, k2] array (Python PairRule vs index-pair shapes).
+        let list = pair
+            .get("students")
+            .and_then(Value::as_array)
+            .or_else(|| pair.as_array())
+            .ok_or_else(|| "hard rule pair must be {students: [a, b]} or [a, b]".to_string())?;
+        let first = list
+            .first()
+            .and_then(Value::as_str)
+            .and_then(|key| student_index.get(key).copied())
+            .ok_or_else(|| format!("hard rule references unknown student: {pair:?}"))?;
+        let second = list
+            .get(1)
+            .and_then(Value::as_str)
+            .and_then(|key| student_index.get(key).copied())
+            .ok_or_else(|| format!("hard rule references unknown student: {pair:?}"))?;
+        Ok([first.min(second), first.max(second)])
+    };
+
+    let hard = rules.get("hard").cloned().unwrap_or_else(|| json!({}));
+    let mut fixed_seats: Vec<[usize; 2]> = Vec::new();
+    if let Some(list) = hard.get("fixed_seats").and_then(Value::as_array) {
+        for entry in list {
+            let student = entry.get("student").and_then(Value::as_str).unwrap_or("");
+            let seat_id = entry.get("seat_id").and_then(Value::as_str).unwrap_or("");
+            let student_index = student_index
+                .get(student)
+                .copied()
+                .ok_or_else(|| format!("fixed seat references unknown student {student:?}"))?;
+            let seat_index = seat_index_by_id
+                .get(seat_id)
+                .copied()
+                .ok_or_else(|| format!("fixed seat references unknown seat {seat_id:?}"))?;
+            fixed_seats.push([student_index, seat_index]);
+        }
+    }
+    let must_be_adjacent = hard
+        .get("must_be_adjacent")
+        .and_then(Value::as_array)
+        .map(|pairs| {
+            pairs
+                .iter()
+                .map(resolve_pair)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let cannot_be_adjacent = hard
+        .get("cannot_be_adjacent")
+        .and_then(Value::as_array)
+        .map(|pairs| {
+            pairs
+                .iter()
+                .map(resolve_pair)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let min_distance: Vec<Value> = hard
+        .get("min_distance")
+        .and_then(Value::as_array)
+        .map(|rules| {
+            rules
+                .iter()
+                .map(|rule| -> Result<Value, String> {
+                    let students = rule
+                        .get("students")
+                        .and_then(Value::as_array)
+                        .ok_or_else(|| "min_distance rule is missing students".to_string())?;
+                    let first = students
+                        .first()
+                        .and_then(Value::as_str)
+                        .and_then(|key| student_index.get(key).copied())
+                        .ok_or_else(|| "min_distance references unknown student".to_string())?;
+                    let second = students
+                        .get(1)
+                        .and_then(Value::as_str)
+                        .and_then(|key| student_index.get(key).copied())
+                        .ok_or_else(|| "min_distance references unknown student".to_string())?;
+                    let distance = rule
+                        .get("distance")
+                        .and_then(Value::as_f64)
+                        .ok_or_else(|| "min_distance rule is missing distance".to_string())?;
+                    let metric = rule
+                        .get("metric")
+                        .and_then(Value::as_str)
+                        .unwrap_or("euclidean")
+                        .to_string();
+                    Ok(json!({
+                        "students": [first, second],
+                        "distance": distance,
+                        "metric": metric,
+                    }))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    Ok(json!({
+        "api_version": 2,
+        "student_count": core_students.len(),
+        "seat_positions": seat_positions,
+        "edges": edges,
+        "fixed_seats": fixed_seats,
+        "must_be_adjacent": must_be_adjacent,
+        "cannot_be_adjacent": cannot_be_adjacent,
+        "min_distance": min_distance,
+        "seed": rules.get("seed").and_then(Value::as_u64).unwrap_or(42),
+        "students": core_students,
+        "layout": json!({
+            "layout_id": layout.get("layout_id").cloned().unwrap_or_else(|| json!("project")),
+            "name": layout.get("name").cloned().unwrap_or_else(|| json!("Project")),
+            "seats": enabled,
+            "adjacency": layout.get("adjacency").cloned().unwrap_or_else(|| json!({})),
+        }),
+        "rules": {
+            "seed": rules.get("seed").and_then(Value::as_u64).unwrap_or(42),
+            "soft": rules.get("soft").cloned().unwrap_or_else(|| json!({})),
+            "groups": rules.get("groups").cloned().unwrap_or_else(|| json!([])),
+        },
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -736,13 +1064,14 @@ fn file_name_of(path: &str) -> String {
 /// locally and reduced to field names only.
 pub fn project_privacy(project_path: &str) -> Result<ProjectPrivacy, String> {
     let (_, paths) = resolve_project(Path::new(project_path), true)?;
-    let (files_scanned, findings) = privacy_report(&paths, true)?;
+    let report = privacy_report(&paths, true)?;
     Ok(ProjectPrivacy {
         api_version: "1",
         project_path: paths.project_file.to_string_lossy().into_owned(),
-        files_scanned,
-        safe_for_public_sharing: findings.is_empty(),
-        findings,
+        files_scanned: report.files_scanned,
+        verdict: report.verdict,
+        safe_for_public_sharing: report.verdict.is_safe_for_public_sharing(),
+        findings: report.findings,
     })
 }
 
@@ -752,23 +1081,26 @@ pub fn project_privacy_json(project_path: &str) -> Result<String, String> {
     serde_json::to_string(&privacy).map_err(|e| format!("Could not serialize project privacy: {e}"))
 }
 
-/// Collect (files_scanned, findings) for a resolved project.
-fn privacy_report(
-    paths: &ResolvedProject,
-    include_outputs: bool,
-) -> Result<(usize, Vec<PrivacyFinding>), String> {
+/// Collect a fail-closed privacy verdict for every file in a resolved project.
+fn privacy_report(paths: &ResolvedProject, include_outputs: bool) -> Result<PrivacyReport, String> {
     let files = collect_project_files(paths, include_outputs)?;
     let mut findings: Vec<PrivacyFinding> = Vec::new();
+    let mut verdicts = Vec::with_capacity(files.len());
     for path in &files {
-        let fields = scan_file(path);
-        if !fields.is_empty() {
+        let scan = scan_file(path);
+        verdicts.push(scan.verdict);
+        if !scan.fields.is_empty() {
             findings.push(PrivacyFinding {
                 file: rel_posix(path, &paths.root),
-                fields,
+                fields: scan.fields,
             });
         }
     }
-    Ok((files.len(), findings))
+    Ok(PrivacyReport {
+        files_scanned: files.len(),
+        verdict: aggregate_verdicts(verdicts),
+        findings,
+    })
 }
 
 /// Collect every file that belongs to a project bundle, refusing to follow
@@ -875,22 +1207,31 @@ fn is_symlink(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Inspect one text file for sensitive fields (mirrors `_scan_file`).
-fn scan_file(path: &Path) -> Vec<String> {
+/// Inspect one supported text file using the central schema privacy policy.
+/// Any input that cannot be fully inspected is explicitly `Indeterminate`;
+/// scan failures must never collapse to an empty (apparently safe) finding set.
+fn scan_file(path: &Path) -> FilePrivacyScan {
+    scan_file_with_limit(path, MAX_BUNDLE_FILE_BYTES)
+}
+
+fn scan_file_with_limit(path: &Path, max_bytes: u64) -> FilePrivacyScan {
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
-        Err(_) => return Vec::new(),
+        Err(_) => return FilePrivacyScan::indeterminate(),
     };
-    if metadata.len() > MAX_BUNDLE_FILE_BYTES {
-        return Vec::new();
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return FilePrivacyScan::indeterminate();
     }
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
-        Err(_) => return Vec::new(),
+        Err(_) => return FilePrivacyScan::indeterminate(),
     };
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_bytes {
+        return FilePrivacyScan::indeterminate();
+    }
     let text = match String::from_utf8(bytes) {
         Ok(text) => text,
-        Err(_) => return Vec::new(),
+        Err(_) => return FilePrivacyScan::indeterminate(),
     };
     let extension = path
         .extension()
@@ -898,33 +1239,49 @@ fn scan_file(path: &Path) -> Vec<String> {
         .unwrap_or("")
         .to_ascii_lowercase();
     if extension == "csv" {
-        let header_line = text.lines().next().unwrap_or("");
-        return csv_fields(header_line)
-            .into_iter()
-            .filter(|field| is_sensitive_key(field))
-            .collect();
+        return match csv_fields(&text) {
+            Ok(fields) => {
+                let mut fields: Vec<String> = fields
+                    .into_iter()
+                    .filter(|field| is_sensitive_key(field))
+                    .collect();
+                fields.sort();
+                fields.dedup();
+                FilePrivacyScan {
+                    verdict: classify_findings(true, !fields.is_empty()),
+                    fields,
+                }
+            }
+            Err(()) => FilePrivacyScan::indeterminate(),
+        };
     }
     if extension != "json" {
-        return Vec::new();
+        return FilePrivacyScan::indeterminate();
     }
     match serde_json::from_str::<Value>(&text) {
         Ok(value) => {
-            let mut found: Vec<String> = Vec::new();
-            sensitive_keys_in_json(&value, &mut found);
-            found.sort();
-            found.dedup();
-            found
+            let schema_findings = scan_document(&value);
+            let verdict = classify_scan(true, &schema_findings);
+            let mut fields: Vec<String> = schema_findings
+                .into_iter()
+                .map(|finding| finding.key)
+                .collect();
+            fields.sort();
+            fields.dedup();
+            FilePrivacyScan { verdict, fields }
         }
-        Err(_) => Vec::new(),
+        Err(_) => FilePrivacyScan::indeterminate(),
     }
 }
 
-/// Parse one CSV line into fields, honoring RFC 4180 double-quoted fields.
-fn csv_fields(line: &str) -> Vec<String> {
+/// Parse the first CSV record, honoring RFC 4180 quoting (including a newline
+/// inside a quoted header). Malformed quoting is an incomplete privacy scan.
+fn csv_fields(text: &str) -> Result<Vec<String>, ()> {
     let mut fields: Vec<String> = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
-    let mut chars = line.chars().peekable();
+    let mut just_closed_quote = false;
+    let mut chars = text.chars().peekable();
     while let Some(ch) = chars.next() {
         match ch {
             '"' => {
@@ -934,9 +1291,13 @@ fn csv_fields(line: &str) -> Vec<String> {
                         current.push('"');
                     } else {
                         in_quotes = false;
+                        just_closed_quote = true;
                     }
-                } else {
+                } else if current.trim().is_empty() && !just_closed_quote {
+                    current.clear();
                     in_quotes = true;
+                } else {
+                    return Err(());
                 }
             }
             ',' => {
@@ -945,37 +1306,25 @@ fn csv_fields(line: &str) -> Vec<String> {
                 } else {
                     fields.push(current.trim().to_string());
                     current.clear();
+                    just_closed_quote = false;
                 }
             }
+            '\r' | '\n' if !in_quotes => {
+                if ch == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                fields.push(current.trim().to_string());
+                return Ok(fields);
+            }
+            ch if just_closed_quote && !ch.is_whitespace() => return Err(()),
             _ => current.push(ch),
         }
     }
-    fields.push(current.trim().to_string());
-    fields
-}
-
-fn sensitive_keys_in_json(value: &Value, found: &mut Vec<String>) {
-    match value {
-        Value::Object(map) => {
-            for (key, child) in map {
-                if is_sensitive_key(key) {
-                    found.push(key.clone());
-                }
-                sensitive_keys_in_json(child, found);
-            }
-        }
-        Value::Array(items) => {
-            for child in items {
-                sensitive_keys_in_json(child, found);
-            }
-        }
-        _ => {}
+    if in_quotes {
+        return Err(());
     }
-}
-
-fn is_sensitive_key(value: &str) -> bool {
-    let normalized = value.trim().to_ascii_lowercase().replace(['-', ' '], "_");
-    SENSITIVE_KEYS.contains(&normalized.as_str()) || normalized.ends_with("_name")
+    fields.push(current.trim().to_string());
+    Ok(fields)
 }
 
 // ---------------------------------------------------------------------------
@@ -988,7 +1337,7 @@ pub fn pack_project(project_path: &str) -> Result<Vec<u8>, String> {
     let (_, paths) = resolve_project(Path::new(project_path), true)?;
     let files = collect_project_files(&paths, true)?;
     let root = &paths.root;
-    let (files_scanned, findings) = privacy_report(&paths, true)?;
+    let privacy = privacy_report(&paths, true)?;
     let manifest = json!({
         "kind": "seattrellis_project_bundle",
         "format_version": BUNDLE_FORMAT_VERSION,
@@ -997,9 +1346,10 @@ pub fn pack_project(project_path: &str) -> Result<Vec<u8>, String> {
         "include_outputs": true,
         "files": files.iter().map(|path| rel_posix(path, root)).collect::<Vec<_>>(),
         "privacy": {
-            "files_scanned": files_scanned,
-            "safe_for_public_sharing": findings.is_empty(),
-            "findings": findings
+            "files_scanned": privacy.files_scanned,
+            "verdict": privacy.verdict,
+            "safe_for_public_sharing": privacy.verdict.is_safe_for_public_sharing(),
+            "findings": privacy.findings
                 .iter()
                 .map(|finding| json!({ "file": finding.file, "fields": finding.fields }))
                 .collect::<Vec<_>>(),
@@ -1137,7 +1487,13 @@ pub fn restore_project_bundle(
         }
     }
 
-    let staging = parent_abs.join(format!(".seattrellis-restore-{}", now_nanos()));
+    // Staging is named with the destination so parallel restores (and other
+    // tests) never collide in the shared parent directory.
+    let staging = parent_abs.join(format!(
+        ".seattrellis-restore-{}-{}",
+        dest_name.to_string_lossy(),
+        now_nanos()
+    ));
     if let Err(err) = fs::create_dir_all(&staging) {
         return Err(format!("Could not create staging directory: {err}"));
     }
@@ -1154,20 +1510,26 @@ pub fn restore_project_bundle(
         return Err(err);
     }
 
-    if !dest_abs.exists() {
-        if let Err(err) = fs::create_dir_all(&dest_abs) {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(format!(
-                "Could not create restore destination {}: {err}",
-                dest_abs.display()
-            ));
-        }
+    // Publish atomically through the journaled transaction layer: the
+    // staging directory is adopted as the transaction temp, the previous
+    // destination (if any) moves to a unique backup, and the batch commits
+    // only after the final path re-validates. A failure or crash never
+    // leaves a partial destination.
+    let journal_dir = parent_abs.join(crate::transaction::JOURNAL_DIR_NAME);
+    crate::transaction::recover_leftover_transactions_with_root(&journal_dir, &parent_abs)?;
+    let mut transaction =
+        crate::transaction::FileTransaction::begin_with_root(&journal_dir, &parent_abs)?;
+    if dest_abs.exists() {
+        transaction.stage_directory(&dest_abs, &staging)?;
+    } else {
+        transaction.stage_new_directory(&dest_abs, &staging)?;
     }
-    if let Err(err) = copy_tree(&staging, &dest_abs) {
-        let _ = fs::remove_dir_all(&staging);
-        return Err(err);
-    }
-    let _ = fs::remove_dir_all(&staging);
+    transaction
+        .commit_with_receipt(|path| {
+            let project_file = path.join(&project_name);
+            load_project(&project_file).map(|_| ())
+        })
+        .map_err(|error| format!("Could not publish restored project: {error}"))?;
 
     Ok(dest_abs.join(&project_name))
 }
@@ -1600,30 +1962,6 @@ fn extract_bundle(
     Ok(())
 }
 
-fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    let entries =
-        fs::read_dir(source).map_err(|e| format!("Could not read restored files: {e}"))?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let target = destination.join(entry.file_name());
-        if is_symlink(&target) {
-            return Err(format!(
-                "Restore destination contains a symlink: {}",
-                target.display()
-            ));
-        }
-        if path.is_dir() {
-            fs::create_dir_all(&target)
-                .map_err(|e| format!("Could not create directory {}: {e}", target.display()))?;
-            copy_tree(&path, &target)?;
-        } else if path.is_file() {
-            fs::copy(&path, &target)
-                .map_err(|e| format!("Could not copy restored file {}: {e}", target.display()))?;
-        }
-    }
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
 // File + time helpers
 // ---------------------------------------------------------------------------
@@ -1903,11 +2241,12 @@ mod tests {
         let project_file = write_project(
             &root,
             "Sensitive",
-            "student_id,name,gender,score,vision,notes\nSTU001,Alice,F,92,poor,\n",
+            "student_id,name,gender,height_cm,score,vision,needs,notes\nSTU001,Alice,F,168,92,poor,front,\n",
             false,
         );
         let json = project_privacy_json(project_file.to_str().unwrap()).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["verdict"], "Unsafe");
         assert_eq!(value["safe_for_public_sharing"], false);
         let findings = value["findings"].as_array().unwrap();
         let students = findings.iter().find(|f| f["file"] == "students.csv");
@@ -1922,7 +2261,9 @@ mod tests {
             .map(|f| f.as_str().unwrap())
             .collect();
         assert!(fields.contains(&"student_id"));
+        assert!(fields.contains(&"height_cm"));
         assert!(fields.contains(&"score"));
+        assert!(fields.contains(&"needs"));
         assert!(fields.contains(&"notes"));
         // gender is not sensitive.
         assert!(!fields.contains(&"gender"));
@@ -1945,9 +2286,82 @@ mod tests {
 
         let json = project_privacy_json(project_file.to_str().unwrap()).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["verdict"], "Safe");
         assert_eq!(value["safe_for_public_sharing"], true);
         assert_eq!(value["files_scanned"], 4); // project + students + layout + rules
         assert_eq!(value["findings"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn privacy_scan_failures_are_indeterminate_not_empty_safe_results() {
+        let root = temp_root("privacy-indeterminate-files");
+
+        let missing = root.join("missing.json");
+        assert_eq!(scan_file(&missing).verdict, PrivacyVerdict::Indeterminate);
+
+        let oversized = root.join("oversized.json");
+        fs::write(&oversized, b"{}").unwrap();
+        assert_eq!(
+            scan_file_with_limit(&oversized, 1).verdict,
+            PrivacyVerdict::Indeterminate
+        );
+
+        let non_utf8 = root.join("non-utf8.json");
+        fs::write(&non_utf8, [0xff, 0xfe]).unwrap();
+        assert_eq!(scan_file(&non_utf8).verdict, PrivacyVerdict::Indeterminate);
+
+        let unknown = root.join("unknown.txt");
+        fs::write(&unknown, b"{}").unwrap();
+        assert_eq!(scan_file(&unknown).verdict, PrivacyVerdict::Indeterminate);
+
+        let invalid_json = root.join("invalid.json");
+        fs::write(&invalid_json, b"{").unwrap();
+        assert_eq!(
+            scan_file(&invalid_json).verdict,
+            PrivacyVerdict::Indeterminate
+        );
+
+        let invalid_csv = root.join("invalid.csv");
+        fs::write(&invalid_csv, b"\"unclosed").unwrap();
+        assert_eq!(
+            scan_file(&invalid_csv).verdict,
+            PrivacyVerdict::Indeterminate
+        );
+    }
+
+    #[test]
+    fn indeterminate_project_is_never_safe_in_response_or_bundle_manifest() {
+        let root = temp_root("privacy-indeterminate-project");
+        let project_file = root.join("project.seattrellis.json");
+        fs::write(
+            &project_file,
+            r#"{"kind":"seattrellis_project","schema_version":1,"students":"students.csv","layout":"classroom.json","rules":"rules.json","outputs_dir":"outputs"}"#,
+        )
+        .unwrap();
+        fs::write(root.join("students.csv"), "student_ref,gender\n").unwrap();
+        fs::write(root.join("classroom.json"), r#"{"rows":5,"cols":6}"#).unwrap();
+        fs::write(root.join("rules.json"), r#"{"mode":"default"}"#).unwrap();
+        fs::create_dir_all(root.join("outputs")).unwrap();
+        // A format with no complete scanner cannot prove the project safe.
+        fs::write(root.join("outputs/result.bin"), b"opaque").unwrap();
+
+        let response = project_privacy_json(project_file.to_str().unwrap()).unwrap();
+        let response: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(response["verdict"], "Indeterminate");
+        assert_eq!(response["safe_for_public_sharing"], false);
+        assert_eq!(response["findings"], json!([]));
+
+        let bundle = pack_project(project_file.to_str().unwrap()).unwrap();
+        let mut archive = ZipArchive::new(Cursor::new(bundle.as_slice())).unwrap();
+        let mut manifest_text = String::new();
+        archive
+            .by_name("manifest.json")
+            .unwrap()
+            .read_to_string(&mut manifest_text)
+            .unwrap();
+        let manifest: Value = serde_json::from_str(&manifest_text).unwrap();
+        assert_eq!(manifest["privacy"]["verdict"], "Indeterminate");
+        assert_eq!(manifest["privacy"]["safe_for_public_sharing"], false);
     }
 
     #[test]
@@ -2060,7 +2474,11 @@ mod tests {
 
     #[test]
     fn restore_rejects_nonempty_destination() {
-        let dest = temp_root("restore-nonempty");
+        // Destination lives in its own parent so the transaction journal
+        // anchor is isolated from other tests sharing the temp dir.
+        let parent = temp_root("restore-nonempty-parent");
+        let dest = parent.join("restored");
+        fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("existing.txt"), b"keep").unwrap();
         let zip = make_zip(&[
             (
@@ -2073,8 +2491,74 @@ mod tests {
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
         assert!(err.contains("not empty"), "got: {err}");
         // With overwrite, the same bundle passes the empty-destination check and
-        // then fails validating the (invalid) project file.
+        // then fails validating the (invalid) project file. The journaled
+        // transaction validates before publishing anything, so the existing
+        // destination must be completely untouched (no partial restore).
         assert!(restore_project_bundle(&zip, dest.to_str().unwrap(), true).is_err());
+        assert_eq!(fs::read(dest.join("existing.txt")).unwrap(), b"keep");
+        // No staging leftovers from this destination's restore attempts.
+        let dest_name = dest.file_name().unwrap().to_string_lossy().into_owned();
+        let leftovers: Vec<_> = fs::read_dir(&parent)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".seattrellis-restore-") && name.contains(&dest_name))
+            .collect();
+        assert!(leftovers.is_empty(), "staging leftovers: {leftovers:?}");
+    }
+
+    #[test]
+    fn restore_overwrite_publishes_atomically_and_keeps_backup() {
+        // A valid bundle restored over a non-empty destination replaces the
+        // whole tree atomically: no staging/journal leftovers, and the
+        // previous destination survives as a transaction backup. The
+        // destination lives in its own parent so the journal anchor is
+        // isolated from other tests.
+        let parent = temp_root("restore-overwrite-parent");
+        let dest = parent.join("restored");
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(dest.join("old.txt"), b"old").unwrap();
+        let project = temp_root("restore-overwrite-src");
+        fs::write(
+            project.join("proj.json"),
+            r#"{"kind":"seattrellis_project","schema_version":1,"name":"R","students":"students.csv","layout":"layout.json","rules":"rules.json"}"#,
+        )
+        .unwrap();
+        fs::write(project.join("students.csv"), "id,name\n").unwrap();
+        fs::write(project.join("layout.json"), r#"{"seats":[]}"#).unwrap();
+        fs::write(project.join("rules.json"), r#"{}"#).unwrap();
+        let bundle = pack_project(project.join("proj.json").to_str().unwrap()).unwrap();
+
+        let restored = restore_project_bundle(&bundle, dest.to_str().unwrap(), true).unwrap();
+        let restored_dir = restored.parent().unwrap();
+        assert!(restored_dir.join("students.csv").is_file());
+        assert!(!dest.join("old.txt").exists(), "old tree must be replaced");
+        // The old destination is retained as a unique backup next to dest.
+        let dest_name = dest.file_name().unwrap().to_string_lossy().into_owned();
+        let backups: Vec<_> = fs::read_dir(&parent)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(&format!(".{dest_name}.seattrellis-backup-")))
+            .collect();
+        assert_eq!(backups.len(), 1, "expected one backup: {backups:?}");
+        // The journal dir (recovery anchor) may persist but must be empty.
+        let journal_dir = parent.join(".seattrellis-transactions");
+        if journal_dir.exists() {
+            let remaining: Vec<_> = fs::read_dir(&journal_dir)
+                .unwrap()
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(remaining.is_empty(), "journal leftovers: {remaining:?}");
+        }
+        let leftovers: Vec<_> = fs::read_dir(&parent)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".seattrellis-restore-") && name.contains(&dest_name))
+            .collect();
+        assert!(leftovers.is_empty(), "staging leftovers: {leftovers:?}");
     }
 
     #[test]

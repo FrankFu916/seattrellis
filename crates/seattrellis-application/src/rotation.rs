@@ -17,10 +17,13 @@ use seattrellis_domain::editing::{self, EditorDraftStore};
 /// The result of a rotation-plan request: the plan document plus an editable
 /// draft for the first period (the transport formats the response).
 pub struct GenerateRotationOutcome {
+    pub feasible: bool,
+    pub status: seattrellis_core::SolveStatus,
     pub class_name: String,
     pub warnings: Vec<String>,
-    pub plan: Value,
-    pub editor: Value,
+    pub plan: Option<Value>,
+    pub editor: Option<Value>,
+    pub failed_period: Option<usize>,
 }
 
 /// Generate a rotation plan: solve each period with the accumulated history
@@ -36,24 +39,53 @@ pub fn generate_rotation_plan(
     let request: seattrellis_core::CoreSolveRequest = serde_json::from_value(core_request.clone())
         .map_err(|_| AppError::bad_request("request body is not a valid solve problem"))?;
 
-    let period_count = raw_request
-        .get("period_count")
-        .and_then(Value::as_u64)
-        .unwrap_or(4)
-        .clamp(1, 20) as usize;
-    let labels: Vec<String> = raw_request
-        .get("period_labels")
-        .and_then(Value::as_array)
-        .map(|labels| {
-            labels
+    let period_count = match raw_request.get("period_count") {
+        None => 4,
+        Some(value) => value
+            .as_u64()
+            .filter(|count| (1..=20).contains(count))
+            .map(|count| count as usize)
+            .ok_or_else(|| {
+                AppError::unprocessable(
+                    "invalid_rotation",
+                    "period_count must be an integer between 1 and 20",
+                )
+            })?,
+    };
+    let labels: Vec<String> = match raw_request.get("period_labels") {
+        None => Vec::new(),
+        Some(Value::Array(values)) => {
+            let labels = values
                 .iter()
-                .filter_map(Value::as_str)
-                .map(str::trim)
-                .filter(|label| !label.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(str::trim)
+                        .filter(|label| !label.is_empty())
+                        .map(str::to_string)
+                        .ok_or_else(|| {
+                            AppError::unprocessable(
+                                "invalid_rotation",
+                                "period_labels must contain non-empty strings",
+                            )
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if !labels.is_empty() && labels.len() != period_count {
+                return Err(AppError::unprocessable(
+                    "invalid_rotation",
+                    "period_labels must be empty or match period_count",
+                ));
+            }
+            labels
+        }
+        Some(_) => {
+            return Err(AppError::unprocessable(
+                "invalid_rotation",
+                "period_labels must be an array",
+            ))
+        }
+    };
     let base_seed = raw_request
         .pointer("/options/seed")
         .and_then(Value::as_u64)
@@ -81,6 +113,13 @@ pub fn generate_rotation_plan(
     let mut snapshots = base_snapshots.clone();
     let mut periods = Vec::with_capacity(period_count);
     let warnings: Vec<String> = Vec::new();
+    let mut first_assignment: Option<Vec<[usize; 2]>> = None;
+    let class_name = request
+        .layout
+        .as_ref()
+        .map(|layout| layout.name.clone())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "Classroom".to_string());
 
     for period in 1..=period_count {
         let label = labels
@@ -97,25 +136,30 @@ pub fn generate_rotation_plan(
             }
         }
 
-        let response = match seattrellis_core::solve_problem_json(&period_request.to_string()) {
-            Ok(response) => response,
-            Err(message) => return Err(AppError::solve_invalid_input(message)),
-        };
-        let response: seattrellis_core::CoreSolveResponse = serde_json::from_str(&response)
-            .map_err(|_| AppError::internal("core returned a malformed solve response"))?;
+        let typed_period_request: seattrellis_core::CoreSolveRequest =
+            serde_json::from_value(period_request).map_err(|_| {
+                AppError::internal("rotation produced a malformed period solve request")
+            })?;
+        // The shared solve use case (solver + independent validation) keeps
+        // every rotation period on the same path as /api/v2/solve.
+        let response = crate::class_generation::solve_core(&typed_period_request)?;
         if !response.feasible {
-            // Heuristic exhaustion / proven infeasibility on a period: the
-            // plan cannot be completed; surface the honest status.
-            return Err(AppError::unprocessable(
-                "plan_not_found",
-                format!(
-                    "rotation period {period} could not be seated (status {})",
-                    response.status.as_str()
-                ),
-            ));
+            return Ok(GenerateRotationOutcome {
+                feasible: false,
+                status: response.status,
+                class_name,
+                warnings,
+                plan: None,
+                editor: None,
+                failed_period: Some(period),
+            });
         }
 
-        let snapshot = build_period_snapshot(&request, &response, period, &label);
+        if first_assignment.is_none() {
+            first_assignment = Some(response.assignment.clone());
+        }
+
+        let snapshot = build_period_snapshot(&typed_period_request, &response, period, &label);
         snapshots.push(snapshot.clone());
         periods.push(json!({ "period": period, "label": label, "snapshot": snapshot }));
     }
@@ -147,31 +191,11 @@ pub fn generate_rotation_plan(
         },
     });
 
-    // Open an editable draft mirroring the first period, reusing the class
-    // generation draft flow so the transport can hand back an editor state.
-    let first_period_response = match periods.first() {
-        Some(period) => period["snapshot"].clone(),
-        None => return Err(AppError::internal("rotation plan has no periods")),
-    };
-    let first_period: seattrellis_core::CoreSolveResponse = serde_json::from_value(json!({
-        "api_version": 2,
-        "assignment": first_period_response["assignments"].as_array().map(|assignments| {
-            assignments.iter().filter_map(|assignment| {
-                let student = assignment.get("student_key").and_then(Value::as_str)?;
-                let seat = assignment.get("seat_id").and_then(Value::as_str)?;
-                let student_index = student_keys(&request).iter().position(|key| key == student)?;
-                let seat_index = (0..request.seat_positions.len())
-                    .find(|index| seat_id_for_index(&request, *index) == seat)?;
-                Some(json!([student_index, seat_index]))
-            }).collect::<Vec<_>>()
-        }).unwrap_or_default(),
-        "feasible": true,
-        "status": "Solved",
-        "attempts_used": 1,
-        "hard_constraints_satisfied": true,
-        "total_cost": null,
-    }))
-    .map_err(|_| AppError::internal("could not rebuild first-period assignment"))?;
+    // Open an editable draft from the already validated first-period solver
+    // assignment. Do not reconstruct a synthetic `Solved` response from the
+    // presentation snapshot: that would discard validation evidence.
+    let first_assignment = first_assignment
+        .ok_or_else(|| AppError::internal("rotation plan has no validated periods"))?;
 
     let draft_id = new_draft_id();
     let keys: Vec<String> = student_keys(&request);
@@ -180,8 +204,7 @@ pub fn generate_rotation_plan(
         .map(|index| seat_id_for_index(&request, index))
         .collect();
     let seats = seat_specs(&request);
-    let assignment: Vec<(&str, &str)> = first_period
-        .assignment
+    let assignment: Vec<(&str, &str)> = first_assignment
         .iter()
         .filter(|[student, seat]| *student < key_refs.len() && *seat < seat_ids.len())
         .map(|[student, seat]| (key_refs[*student], seat_ids[*seat].as_str()))
@@ -204,19 +227,16 @@ pub fn generate_rotation_plan(
         Err(_) => return Err(AppError::internal("solve request store is poisoned")),
     }
 
-    let class_name = request
-        .layout
-        .as_ref()
-        .map(|layout| layout.name.clone())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Classroom".to_string());
-
     Ok(GenerateRotationOutcome {
+        feasible: true,
+        status: seattrellis_core::SolveStatus::Solved,
         class_name,
         warnings,
-        plan,
-        editor: serde_json::to_value(editor)
-            .map_err(|error| AppError::internal(error.to_string()))?,
+        plan: Some(plan),
+        editor: Some(
+            serde_json::to_value(editor).map_err(|error| AppError::internal(error.to_string()))?,
+        ),
+        failed_period: None,
     })
 }
 

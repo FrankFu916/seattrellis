@@ -14,19 +14,20 @@ use crate::{AppError, SolveRequestStore};
 use seattrellis_core::cost::{
     classify_seat_position, detect_neighbor_relation_types, student_pair_key,
 };
-use seattrellis_core::CoreSolveRequest;
+use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
 use seattrellis_domain::editing::{self, EditorDraftStore, EditorSeatSpec};
 
 /// The result of a class-generation request: everything the transport layer
-/// needs to format the response (the 409/200 split is DTO formatting, M1-02).
+/// needs to format one normal domain response. Solver outcomes such as
+/// `ProvenInfeasible`, `Timeout` and `Unknown` are not transport errors.
 pub struct GenerateClassOutcome {
     pub feasible: bool,
     pub status: seattrellis_core::SolveStatus,
     pub class_name: String,
     pub goal_id: String,
-    pub total_score: f64,
-    pub draft_id: String,
-    pub editor: Value,
+    pub total_score: Option<f64>,
+    pub draft_id: Option<String>,
+    pub editor: Option<Value>,
 }
 
 /// Orchestrate class generation: expand the workbench request (or pass a raw
@@ -59,24 +60,25 @@ pub fn generate_class(
         }
     };
 
-    let response = match seattrellis_core::solve_problem(&request) {
-        Ok(response) => response,
-        // Domain messages (capacity, unsupported api_version, ...) are fine to
-        // return verbatim; the JSON parse errors above are kept coarse. The
-        // frozen SolveStatus classifies them (M1-03).
-        Err(message) => return Err(AppError::solve_invalid_input(message)),
-    };
+    let class_name = request
+        .layout
+        .as_ref()
+        .map(|layout| layout.name.clone())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "Classroom".to_string());
+
+    let response = solve_core(&request)?;
     if !response.feasible {
-        // Heuristic exhaustion is a normal domain result; the transport
-        // layer formats the legacy 409 shape (M1-03).
+        // Heuristic exhaustion, timeout and sound infeasibility are normal
+        // domain results. They carry no draft/candidate payload.
         return Ok(GenerateClassOutcome {
             feasible: false,
             status: response.status,
-            class_name: String::new(),
+            class_name,
             goal_id,
-            total_score: 0.0,
-            draft_id: String::new(),
-            editor: Value::Null,
+            total_score: None,
+            draft_id: None,
+            editor: None,
         });
     }
 
@@ -116,24 +118,40 @@ pub fn generate_class(
         Err(_) => return Err(AppError::internal("solve request store is poisoned")),
     }
 
-    let class_name = request
-        .layout
-        .as_ref()
-        .map(|layout| layout.name.clone())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Classroom".to_string());
-    let total_score = response.total_cost.unwrap_or(0.0);
-
     Ok(GenerateClassOutcome {
         feasible: true,
         status: response.status,
         class_name,
         goal_id,
-        total_score,
-        draft_id,
-        editor: serde_json::to_value(editor)
-            .map_err(|error| AppError::internal(error.to_string()))?,
+        total_score: response.total_cost,
+        draft_id: Some(draft_id),
+        editor: Some(
+            serde_json::to_value(editor).map_err(|error| AppError::internal(error.to_string()))?,
+        ),
     })
+}
+
+/// Execute the core solver as an application use case and independently
+/// validate every successful assignment before any transport/UI consumer can
+/// observe it. Non-solved statuses remain ordinary return values. Solver
+/// rejections are classified onto the frozen vocabulary: input validation
+/// failures surface as `InvalidInput` (400), anything else as an internal
+/// error (500) — a solver bug must never masquerade as a bad request.
+pub fn solve_core(request: &CoreSolveRequest) -> Result<CoreSolveResponse, AppError> {
+    let response = seattrellis_core::solve_problem(request).map_err(|message| {
+        match seattrellis_core::classify_solve_error(&message) {
+            seattrellis_core::SolveStatus::InvalidInput => AppError::solve_invalid_input(message),
+            _ => AppError::internal(format!("solver failed: {message}")),
+        }
+    })?;
+    if response.feasible {
+        seattrellis_core::validate_solve_response(request, &response).map_err(|message| {
+            AppError::internal(format!(
+                "solver output failed independent validation: {message}"
+            ))
+        })?;
+    }
+    Ok(response)
 }
 
 /// `true` when the body is a React workbench `GenerateClassRequest`, i.e. it

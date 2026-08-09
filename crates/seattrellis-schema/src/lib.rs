@@ -21,8 +21,8 @@ pub mod registry;
 pub use envelope::ArtifactEnvelope;
 pub use migration::{migrate_v1_to_v2, MigrationReport};
 pub use privacy::{
-    classify_document, classify_scan, classify_unscanned, is_sensitive_key, scan_document,
-    PrivacyFinding, PrivacyVerdict,
+    aggregate_verdicts, classify_document, classify_findings, classify_scan, classify_unscanned,
+    is_sensitive_key, scan_document, PrivacyFinding, PrivacyVerdict,
 };
 pub use registry::{
     check_version, entry_for, ArtifactEntry, ArtifactKind, REGISTRY, V2_ARTIFACT_VERSION,

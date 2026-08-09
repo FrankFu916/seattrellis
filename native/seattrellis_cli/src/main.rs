@@ -101,6 +101,9 @@ pub struct ProjectArgs {
     pub seed: Option<u64>,
     pub format: Option<String>,
     pub output: Option<PathBuf>,
+    /// Saved plan to render: `project-export` exports an existing snapshot
+    /// (the result of `project-solve --output <file>`), it never re-solves.
+    pub snapshot: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -479,6 +482,10 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
             takes_value: true,
         },
         Flag {
+            name: "--snapshot",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -498,11 +505,13 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
     };
     let format = flag_value(&parsed, "--format")?.map(str::to_string);
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    let snapshot = flag_value(&parsed, "--snapshot")?.map(PathBuf::from);
     let args = ProjectArgs {
         project: PathBuf::from(project),
         seed,
         format,
         output,
+        snapshot,
     };
     Ok(match command {
         "project-info" => Command::ProjectInfo(args),
@@ -1084,5 +1093,117 @@ mod tests {
             exit_code_for(classify_solve_error("solver panicked while ranking")),
             70
         );
+    }
+
+    // ------------------------------------------------------------------
+    // Plan §5.5: project lifecycle (solve saves a snapshot, export renders
+    // the SAVED plan and never re-solves)
+    // ------------------------------------------------------------------
+
+    fn write_project_workspace(dir: &std::path::Path) -> std::path::PathBuf {
+        use std::fs;
+        fs::create_dir_all(dir).unwrap();
+        fs::write(
+            dir.join("project.json"),
+            r#"{"kind":"seattrellis_project","name":"Lifecycle","students":"students.csv","layout":"layout.json","rules":"rules.json","history_dir":"history","outputs_dir":"outputs"}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("students.csv"),
+            "id,name\n1,Alice\n2,Bob\n3,Carol\n4,Dan\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("layout.json"),
+            r#"{"layout_id":"l","name":"Room","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true},
+                {"seat_id":"R2C1","row":2,"col":1,"x":0.0,"y":1.0,"enabled":true},
+                {"seat_id":"R2C2","row":2,"col":2,"x":1.0,"y":1.0,"enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R2C1","R2C2"],["R1C1","R2C1"],["R1C2","R2C2"]]}}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("rules.json"),
+            r#"{"seed":7,"soft":{"score_balance":{"enabled":false,"weight":0}}}"#,
+        )
+        .unwrap();
+        dir.join("project.json")
+    }
+
+    #[test]
+    fn project_lifecycle_solves_then_exports_the_saved_plan() {
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-lifecycle-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = write_project_workspace(&dir);
+        let snapshot = dir.join("snapshot.json");
+        let output = dir.join("plan.svg");
+
+        // project-solve writes the snapshot.
+        let status = commands::run_project_solve(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: None,
+            output: Some(snapshot.clone()),
+            snapshot: None,
+        })
+        .expect("project-solve should succeed");
+        assert_eq!(status, SolveStatus::Solved);
+        assert!(snapshot.is_file());
+
+        // project-export renders the saved snapshot, never re-solving.
+        commands::run_project_export(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: Some("svg".to_string()),
+            output: Some(output.clone()),
+            snapshot: Some(snapshot.clone()),
+        })
+        .expect("project-export should succeed");
+        let rendered = std::fs::read_to_string(&output).unwrap();
+        assert!(rendered.contains("<svg"), "expected an SVG document");
+        assert!(rendered.contains("Alice"), "saved plan names are rendered");
+
+        // project-export without --snapshot explains the lifecycle.
+        let error = commands::run_project_export(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: Some("svg".to_string()),
+            output: Some(dir.join("missing.svg")),
+            snapshot: None,
+        })
+        .expect_err("project-export without --snapshot must refuse to re-solve");
+        assert!(
+            error.contains("project-solve --output"),
+            "unexpected error: {error}"
+        );
+
+        // The saved plan is validated at the export boundary: a snapshot
+        // that violates a hard rule must be refused, not exported. Roster
+        // keys come from the student_id column ("1".."4").
+        std::fs::write(
+            dir.join("bad.json"),
+            r#"{"assignments":[{"student_key":"1","seat_id":"R1C1"},{"student_key":"2","seat_id":"R1C1"},{"student_key":"3","seat_id":"R2C1"},{"student_key":"4","seat_id":"R2C2"}]}"#,
+        )
+        .unwrap();
+        let error = commands::run_project_export(&ProjectArgs {
+            project,
+            seed: None,
+            format: Some("svg".to_string()),
+            output: Some(dir.join("bad.svg")),
+            snapshot: Some(dir.join("bad.json")),
+        })
+        .expect_err("a snapshot that double-occupies a seat must be refused");
+        assert!(
+            error.contains("not valid") || error.contains("more than once"),
+            "unexpected error: {error}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

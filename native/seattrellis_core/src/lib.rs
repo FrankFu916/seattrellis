@@ -5,7 +5,12 @@ pub mod rng;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::time::{Duration, Instant};
 
 use crate::cost::{
     avoid_recent_neighbors_cost, classify_seat_position, detect_neighbor_relation_types,
@@ -461,6 +466,31 @@ pub enum SolveStatus {
     InternalError,
 }
 
+/// Thread-safe, one-shot cancellation control for a running solve.
+///
+/// Clones share the same atomic flag, so a caller may keep one clone on the
+/// request thread and call [`SolveControl::cancel`] from another thread. A
+/// cancelled control is intentionally not resettable; create a fresh control
+/// for the next solve.
+#[derive(Clone, Debug, Default)]
+pub struct SolveControl {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl SolveControl {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
+
 impl SolveStatus {
     /// The frozen wire spelling (identical to `serde` PascalCase output).
     pub fn as_str(self) -> &'static str {
@@ -607,16 +637,113 @@ struct CostContext {
     max_row: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StopReason {
+    Deadline,
+    Cancelled,
+}
+
+struct SolveRunControl<'a> {
+    deadline: Option<Instant>,
+    cancellation: &'a SolveControl,
+}
+
+impl SolveRunControl<'_> {
+    fn stop_reason(&self) -> Option<StopReason> {
+        if self.cancellation.is_cancelled() {
+            Some(StopReason::Cancelled)
+        } else if self
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            Some(StopReason::Deadline)
+        } else {
+            None
+        }
+    }
+}
+
+fn stopped_response(reason: StopReason, attempts_used: usize) -> CoreSolveResponse {
+    CoreSolveResponse {
+        api_version: NATIVE_API_VERSION,
+        feasible: false,
+        status: match reason {
+            StopReason::Deadline => SolveStatus::Timeout,
+            StopReason::Cancelled => SolveStatus::Cancelled,
+        },
+        assignment: Vec::new(),
+        attempts_used,
+        hard_constraints_satisfied: false,
+        total_cost: None,
+    }
+}
+
 pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, String> {
+    let control = SolveControl::new();
+    solve_problem_with_control(request, &control)
+}
+
+/// Solve with cooperative cancellation while preserving the frozen response
+/// vocabulary. Cancellation before any legal incumbent returns `Cancelled`;
+/// once an incumbent exists it remains a valid `Solved` result and
+/// cancellation merely stops further search/optimization.
+pub fn solve_problem_with_control(
+    request: &CoreSolveRequest,
+    control: &SolveControl,
+) -> Result<CoreSolveResponse, String> {
+    solve_problem_internal(request, control, &[])
+}
+
+fn solve_problem_internal(
+    request: &CoreSolveRequest,
+    cancellation: &SolveControl,
+    excluded_assignments: &[Vec<usize>],
+) -> Result<CoreSolveResponse, String> {
+    let response = solve_problem_unchecked(request, cancellation, excluded_assignments)?;
+    validate_solve_response_consistency(request, &response)?;
+    Ok(response)
+}
+
+fn solve_problem_unchecked(
+    request: &CoreSolveRequest,
+    cancellation: &SolveControl,
+    excluded_assignments: &[Vec<usize>],
+) -> Result<CoreSolveResponse, String> {
     validate_solve_request(request)?;
+    let duration = request
+        .time_limit_seconds
+        .map(Duration::try_from_secs_f64)
+        .transpose()
+        .map_err(|_| "invalid time_limit_seconds: duration is out of range".to_string())?;
+    let deadline =
+        match duration {
+            Some(duration) => Some(Instant::now().checked_add(duration).ok_or_else(|| {
+                "invalid time_limit_seconds: deadline is out of range".to_string()
+            })?),
+            None => None,
+        };
+    let run = SolveRunControl {
+        deadline,
+        cancellation,
+    };
+    if let Some(reason) = run.stop_reason() {
+        return Ok(stopped_response(reason, 0));
+    }
+
     let resolved = resolve_group_rules(request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
     let graph_distances = build_graph_distance_matrix(&adjacency);
+    if let Some(reason) = run.stop_reason() {
+        return Ok(stopped_response(reason, 0));
+    }
 
     // Candidate-domain precheck (plan §6.1 second layer): a student with no
     // legal seat is a sound infeasibility proof — occupancy never *adds*
     // candidates. This is the only ProvenInfeasible the greedy path may emit.
     let domains = build_candidate_domains(request, &resolved, &adjacency, &graph_distances);
+    if let Some(reason) = run.stop_reason() {
+        return Ok(stopped_response(reason, 0));
+    }
     if domains.iter().any(|domain| domain.seats.is_empty()) {
         return Ok(CoreSolveResponse {
             api_version: NATIVE_API_VERSION,
@@ -633,7 +760,11 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     // student has candidates, they may not be jointly seatable. A maximum
     // bipartite matching smaller than the class size is a sound proof of
     // infeasibility (Hall's theorem); a full matching proves nothing yet.
-    if maximum_candidate_matching(&domains) < request.student_count {
+    let matching_size = maximum_candidate_matching(&domains);
+    if let Some(reason) = run.stop_reason() {
+        return Ok(stopped_response(reason, 0));
+    }
+    if matching_size < request.student_count {
         return Ok(CoreSolveResponse {
             api_version: NATIVE_API_VERSION,
             feasible: false,
@@ -649,23 +780,20 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     let mut rng = SplitMix64::new(request.seed);
     let ctx = build_cost_context(request);
 
-    // Optional wall-clock budget (M3-04): once set, the whole solve (greedy
-    // attempts + hard search) must honor it. A valid incumbent found before
-    // the deadline still returns Solved; running out of time without one
-    // reports Timeout instead of Unknown.
-    let deadline: Option<std::time::Instant> = request
-        .time_limit_seconds
-        .map(|seconds| std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds));
-
     // Mirror the Python fallback: attempt 0 seats each student on the cheapest
     // seat, later attempts sample randomly among the top-3 cheap seats, and the
     // lowest-total-cost complete assignment across every attempt wins.
     let mut best: Option<(Vec<usize>, f64, usize)> = None;
+    let mut attempts_used = 0;
     for attempt in 0..attempts {
-        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-            break;
+        if let Some(reason) = run.stop_reason() {
+            if best.is_some() {
+                break;
+            }
+            return Ok(stopped_response(reason, attempts_used));
         }
-        if let Some(assignment) = greedy_attempt(
+        attempts_used = attempt + 1;
+        match greedy_attempt_controlled(
             request,
             &resolved,
             &adjacency,
@@ -673,13 +801,24 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
             &mut rng,
             &ctx,
             attempt,
+            &run,
+            excluded_assignments,
         ) {
-            let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
-            if best
-                .as_ref()
-                .is_none_or(|(_, best_cost, _)| total_cost < *best_cost)
-            {
-                best = Some((assignment, total_cost, attempt + 1));
+            GreedyOutcome::Found(assignment) => {
+                let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
+                if best
+                    .as_ref()
+                    .is_none_or(|(_, best_cost, _)| total_cost < *best_cost)
+                {
+                    best = Some((assignment, total_cost, attempt + 1));
+                }
+            }
+            GreedyOutcome::DeadEnd => {}
+            GreedyOutcome::Stopped(reason) => {
+                if best.is_some() {
+                    break;
+                }
+                return Ok(stopped_response(reason, attempts_used));
             }
         }
     }
@@ -687,7 +826,7 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     if let Some((assignment, _total_cost, best_attempts)) = best {
         // Soft optimization (plan §6.2): hill-climb on the greedy best; the
         // result still passes the independent validation gate below.
-        let assignment = local_search(
+        let assignment = local_search_controlled(
             request,
             &resolved,
             &adjacency,
@@ -695,6 +834,8 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
             &assignment,
             &ctx,
             &mut rng,
+            &run,
+            excluded_assignments,
         );
         let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
         // Independent validation gate (M3-05): a solver bug must surface as
@@ -727,19 +868,20 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     // seating, proves infeasibility by exhausting the whole state space, or
     // spends its budget (node budget without a time limit; the clock with
     // one — then the honest status is Timeout/Unknown, never ProvenInfeasible).
-    let outcome = hard_search_with_budget(
+    let outcome = hard_search_controlled(
         request,
         &resolved,
         &adjacency,
         &graph_distances,
-        deadline.map_or(HARD_SEARCH_NODE_BUDGET, |_| HARD_SEARCH_NODE_BUDGET),
-        deadline,
+        HARD_SEARCH_NODE_BUDGET,
+        &run,
+        excluded_assignments,
     );
     match outcome {
         SearchOutcome::Found(assignment) => {
             // Soft optimization (plan §6.2), then the same independent
             // validation gate as the greedy path (M3-05).
-            let assignment = local_search(
+            let assignment = local_search_controlled(
                 request,
                 &resolved,
                 &adjacency,
@@ -747,6 +889,8 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
                 &assignment,
                 &ctx,
                 &mut rng,
+                &run,
+                excluded_assignments,
             );
             validate_assignment(
                 request,
@@ -766,7 +910,7 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
                 feasible: true,
                 status: SolveStatus::Solved,
                 assignment: pairs,
-                attempts_used: attempts,
+                attempts_used,
                 hard_constraints_satisfied: true,
                 total_cost: Some(total_cost),
             })
@@ -778,7 +922,7 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
             // proof, so ProvenInfeasible is honest here (M1-03 / plan §四.1).
             status: SolveStatus::ProvenInfeasible,
             assignment: Vec::new(),
-            attempts_used: attempts,
+            attempts_used,
             hard_constraints_satisfied: false,
             total_cost: None,
         }),
@@ -788,17 +932,138 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
             // Budget spent without a complete state-space sweep: honest
             // status is Timeout when a time budget was given, Unknown
             // otherwise — never ProvenInfeasible (M1-03).
-            status: if deadline.is_some() {
-                SolveStatus::Timeout
-            } else {
-                SolveStatus::Unknown
-            },
+            status: SolveStatus::Unknown,
             assignment: Vec::new(),
-            attempts_used: attempts,
+            attempts_used,
             hard_constraints_satisfied: false,
             total_cost: None,
         }),
+        SearchOutcome::DeadlineExceeded => {
+            Ok(stopped_response(StopReason::Deadline, attempts_used))
+        }
+        SearchOutcome::Cancelled => Ok(stopped_response(StopReason::Cancelled, attempts_used)),
     }
+}
+
+/// Validate a successful solve response against the complete request contract.
+///
+/// This is a consumer-side boundary check: it distrusts the response flags and
+/// assignment indices, reconstructs the student-indexed assignment, then
+/// independently re-checks every hard rule (including group-derived rules).
+pub fn validate_solve_response(
+    request: &CoreSolveRequest,
+    response: &CoreSolveResponse,
+) -> Result<(), String> {
+    validate_solve_request(request)?;
+
+    if response.api_version != NATIVE_API_VERSION {
+        return Err(format!(
+            "solve response api_version {} does not match {}",
+            response.api_version, NATIVE_API_VERSION
+        ));
+    }
+    if response.status != SolveStatus::Solved {
+        return Err(format!(
+            "solve response status must be Solved, got {}",
+            response.status.as_str()
+        ));
+    }
+    if !response.feasible {
+        return Err("Solved response must set feasible=true".to_string());
+    }
+    if !response.hard_constraints_satisfied {
+        return Err("Solved response must set hard_constraints_satisfied=true".to_string());
+    }
+    if response.assignment.len() != request.student_count {
+        return Err(format!(
+            "solve response assignment contains {} entries for {} students",
+            response.assignment.len(),
+            request.student_count
+        ));
+    }
+
+    let mut assignment_by_student: Vec<Option<usize>> = vec![None; request.student_count];
+    let mut occupied_seats = vec![false; request.seat_positions.len()];
+    for [student, seat] in &response.assignment {
+        if *student >= request.student_count {
+            return Err(format!(
+                "solve response references out-of-range student {student}"
+            ));
+        }
+        if *seat >= request.seat_positions.len() {
+            return Err(format!(
+                "solve response references out-of-range seat {seat}"
+            ));
+        }
+        if assignment_by_student[*student].replace(*seat).is_some() {
+            return Err(format!(
+                "solve response assigns student {student} more than once"
+            ));
+        }
+        if std::mem::replace(&mut occupied_seats[*seat], true) {
+            return Err(format!("solve response assigns seat {seat} more than once"));
+        }
+    }
+
+    let assignment: Vec<usize> = assignment_by_student
+        .into_iter()
+        .enumerate()
+        .map(|(student, seat)| {
+            seat.ok_or_else(|| format!("solve response omits student {student}"))
+        })
+        .collect::<Result<_, _>>()?;
+    let resolved = resolve_group_rules(request)?;
+    let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+    let graph_distances = build_graph_distance_matrix(&adjacency);
+    validate_assignment(
+        request,
+        &resolved,
+        &adjacency,
+        &graph_distances,
+        &assignment,
+    )
+    .map_err(|error| format!("solve response failed independent validation: {error}"))
+}
+
+fn validate_solve_response_consistency(
+    request: &CoreSolveRequest,
+    response: &CoreSolveResponse,
+) -> Result<(), String> {
+    if response.status == SolveStatus::Solved {
+        return validate_solve_response(request, response);
+    }
+    validate_solve_request(request)?;
+    if response.api_version != NATIVE_API_VERSION {
+        return Err(format!(
+            "solve response api_version {} does not match {}",
+            response.api_version, NATIVE_API_VERSION
+        ));
+    }
+    if response.feasible {
+        return Err(format!(
+            "non-Solved response {} must set feasible=false",
+            response.status.as_str()
+        ));
+    }
+    if !response.assignment.is_empty() {
+        return Err(format!(
+            "non-Solved response {} must have an empty assignment",
+            response.status.as_str()
+        ));
+    }
+    if response.hard_constraints_satisfied {
+        return Err(format!(
+            "non-Solved response {} must set hard_constraints_satisfied=false",
+            response.status.as_str()
+        ));
+    }
+    if response.total_cost.is_some() {
+        return Err(format!(
+            "non-Solved response {} must not report total_cost",
+            response.status.as_str()
+        ));
+    }
+    Ok(())
 }
 
 pub fn solve_problem_json(request_json: &str) -> Result<String, String> {
@@ -906,15 +1171,34 @@ pub fn audit_report_json(request_json: &str, assignment: &[[usize; 2]]) -> Resul
     let graph_distances = build_graph_distance_matrix(&adjacency);
 
     // Rebuild the student->seat probe and validate independently (M3-05),
-    // so the audit never blesses an illegal assignment.
+    // so the audit never blesses an illegal assignment. The assignment must
+    // be complete and conflict-free: a missing or duplicated student would
+    // otherwise be silently masked here.
     let mut probe: Vec<Option<usize>> = vec![None; request.student_count];
+    let mut occupied = vec![false; request.seat_positions.len()];
     for [student, seat] in assignment {
         if *student >= request.student_count || *seat >= request.seat_positions.len() {
             return Err(format!(
                 "assignment references unknown student {student} or seat {seat}"
             ));
         }
-        probe[*student] = Some(*seat);
+        if probe[*student].replace(*seat).is_some() {
+            return Err(format!(
+                "assignment assigns student {student} more than once"
+            ));
+        }
+        if occupied[*seat] {
+            return Err(format!(
+                "assignment assigns seat {seat} to more than one student"
+            ));
+        }
+        occupied[*seat] = true;
+    }
+    if let Some(missing) = probe.iter().position(Option::is_none) {
+        return Err(format!(
+            "assignment is incomplete: student index {} has no seat",
+            missing + 1
+        ));
     }
     if !solve_partial_assignment_valid(&request, &resolved, &probe, &adjacency, &graph_distances) {
         return Err("assignment violates a hard rule".to_string());
@@ -1015,6 +1299,70 @@ pub fn audit_report_json(request_json: &str, assignment: &[[usize; 2]]) -> Resul
 ///
 /// Returns the repaired snapshot document (`assignments` + `solver_status`)
 /// plus a short summary of moved/unseated students.
+#[derive(Debug, Clone)]
+struct ParsedSnapshotAssignment {
+    student_key: String,
+    seat_id: String,
+}
+
+fn parse_snapshot_assignments(
+    snapshot: &Value,
+    context: &str,
+) -> Result<Vec<ParsedSnapshotAssignment>, String> {
+    let object = snapshot
+        .as_object()
+        .ok_or_else(|| format!("invalid {context}: expected a JSON object"))?;
+    let assignments = object
+        .get("assignments")
+        .ok_or_else(|| format!("invalid {context}: missing assignments"))?
+        .as_array()
+        .ok_or_else(|| format!("invalid {context}: assignments must be an array"))?;
+    assignments
+        .iter()
+        .enumerate()
+        .map(|(index, assignment)| {
+            let assignment = assignment.as_object().ok_or_else(|| {
+                format!("invalid {context}: assignments[{index}] must be an object")
+            })?;
+            let student_key = assignment
+                .get("student_key")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    format!(
+                        "invalid {context}: assignments[{index}].student_key must be a non-empty string"
+                    )
+                })?;
+            let seat_id = assignment
+                .get("seat_id")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    format!(
+                        "invalid {context}: assignments[{index}].seat_id must be a non-empty string"
+                    )
+                })?;
+            Ok(ParsedSnapshotAssignment {
+                student_key: student_key.to_string(),
+                seat_id: seat_id.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn request_seat_ids(request: &CoreSolveRequest) -> Vec<String> {
+    (0..request.seat_positions.len())
+        .map(|index| {
+            request
+                .layout
+                .as_ref()
+                .and_then(|layout| layout.seats.get(index))
+                .map(|seat| seat.seat_id.clone())
+                .unwrap_or_else(|| format!("seat-{}", index + 1))
+        })
+        .collect()
+}
+
 pub fn repair_json(
     request_json: &str,
     snapshot_json: &str,
@@ -1027,22 +1375,7 @@ pub fn repair_json(
     validate_solve_request(&request)?;
     let snapshot: Value = serde_json::from_str(snapshot_json)
         .map_err(|error| format!("invalid snapshot document: {error}"))?;
-
-    // Current assignment: student key -> seat id (and reverse).
-    let mut seat_by_student: HashMap<String, String> = HashMap::new();
-    let mut student_by_seat: HashMap<String, String> = HashMap::new();
-    if let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) {
-        for assignment in assignments {
-            let (Some(student), Some(seat)) = (
-                assignment.get("student_key").and_then(Value::as_str),
-                assignment.get("seat_id").and_then(Value::as_str),
-            ) else {
-                continue;
-            };
-            seat_by_student.insert(student.to_string(), seat.to_string());
-            student_by_seat.insert(seat.to_string(), student.to_string());
-        }
-    }
+    let snapshot_assignments = parse_snapshot_assignments(&snapshot, "repair snapshot")?;
 
     // Student keys -> indices from the request.
     let students = effective_students(&request);
@@ -1051,18 +1384,50 @@ pub fn repair_json(
         .enumerate()
         .map(|(index, student)| (student.key.as_str(), index))
         .collect();
-    let seat_index_by_id: HashMap<&str, usize> = request
-        .layout
-        .as_ref()
-        .map(|layout| {
-            layout
-                .seats
-                .iter()
-                .enumerate()
-                .map(|(index, seat)| (seat.seat_id.as_str(), index))
-                .collect::<HashMap<_, _>>()
-        })
-        .unwrap_or_default();
+    let seat_ids = request_seat_ids(&request);
+    let seat_index_by_id: HashMap<&str, usize> = seat_ids
+        .iter()
+        .enumerate()
+        .map(|(index, seat_id)| (seat_id.as_str(), index))
+        .collect();
+
+    // Current assignment: student key -> seat id (and reverse). Repair uses
+    // strict semantics: malformed, unknown, or duplicate references must not
+    // silently change which anchors are preserved.
+    let mut seat_by_student: HashMap<String, String> = HashMap::new();
+    let mut student_by_seat: HashMap<String, String> = HashMap::new();
+    for assignment in snapshot_assignments {
+        if !index_by_key.contains_key(assignment.student_key.as_str()) {
+            return Err(format!(
+                "Repair snapshot references unknown student: {}.",
+                assignment.student_key
+            ));
+        }
+        if !seat_index_by_id.contains_key(assignment.seat_id.as_str()) {
+            return Err(format!(
+                "Repair snapshot references unknown seat: {}.",
+                assignment.seat_id
+            ));
+        }
+        if seat_by_student
+            .insert(assignment.student_key.clone(), assignment.seat_id.clone())
+            .is_some()
+        {
+            return Err(format!(
+                "Repair snapshot contains duplicate assignments for student: {}.",
+                assignment.student_key
+            ));
+        }
+        if student_by_seat
+            .insert(assignment.seat_id.clone(), assignment.student_key.clone())
+            .is_some()
+        {
+            return Err(format!(
+                "Repair snapshot assigns seat {} more than once.",
+                assignment.seat_id
+            ));
+        }
+    }
 
     // Validate the anchor sets.
     let unknown_affected: Vec<&str> = affected_students
@@ -1158,8 +1523,19 @@ pub fn repair_json(
         }
     }
 
-    // Express the anchors as fixed seats in the re-solve request.
-    let mut fixed_seats: Vec<[usize; 2]> = Vec::new();
+    // Express repair anchors as additional fixed seats. The request's original
+    // fixed-seat rules remain authoritative even when the fixed student is in
+    // the affected (movable) set.
+    let original_fixed_seats = request.fixed_seats.clone();
+    let original_fixed_by_student: HashMap<usize, usize> = original_fixed_seats
+        .iter()
+        .map(|[student, seat]| (*student, *seat))
+        .collect();
+    let original_fixed_by_seat: HashMap<usize, usize> = original_fixed_seats
+        .iter()
+        .map(|[student, seat]| (*seat, *student))
+        .collect();
+    let mut repair_anchors: Vec<[usize; 2]> = Vec::new();
     for index in fixed_students {
         let student_key = students[index].key.clone();
         let seat_id = seat_by_student
@@ -1168,9 +1544,34 @@ pub fn repair_json(
         let seat_index = seat_index_by_id
             .get(seat_id.as_str())
             .ok_or_else(|| format!("Current seat is unknown: {seat_id}."))?;
-        fixed_seats.push([index, *seat_index]);
+
+        if let Some(original_seat) = original_fixed_by_student.get(&index) {
+            if original_seat != seat_index {
+                return Err(format!(
+                    "Repair anchor conflicts with the original fixed-seat rule: student \
+                     {student_key} is fixed to seat index {original_seat}, but the repair \
+                     anchor requires {seat_id} (index {seat_index})."
+                ));
+            }
+            // The identical pair already exists in `original_fixed_seats`.
+            continue;
+        }
+        if let Some(original_student) = original_fixed_by_seat.get(seat_index) {
+            let original_student_key = &students[*original_student].key;
+            return Err(format!(
+                "Repair anchor conflicts with the original fixed-seat rule: seat {seat_id} \
+                 (index {seat_index}) is fixed to student {original_student_key}, but the \
+                 repair anchor requires student {student_key}."
+            ));
+        }
+        repair_anchors.push([index, *seat_index]);
     }
-    request.fixed_seats = fixed_seats;
+    request.fixed_seats = original_fixed_seats;
+    request.fixed_seats.extend(repair_anchors);
+    // Re-run static conflict detection now that repair anchors have been
+    // merged with the original hard rules (also catches anchor/anchor clashes).
+    validate_solve_request(&request)
+        .map_err(|error| format!("Repair constraints are invalid: {error}"))?;
 
     let response = solve_problem(&request)?;
     if !response.feasible {
@@ -1179,18 +1580,13 @@ pub fn repair_json(
             response.status.as_str()
         ));
     }
+    // Boundary validation is intentionally repeated here: repair must not
+    // publish a snapshot unless the response satisfies both the original hard
+    // rules and every repair anchor in the merged request.
+    validate_solve_response(&request, &response)
+        .map_err(|error| format!("Repair solve returned an invalid result: {error}"))?;
 
     // Build the repaired snapshot (frontend shape) + summary.
-    let seat_ids: Vec<String> = (0..request.seat_positions.len())
-        .map(|index| {
-            request
-                .layout
-                .as_ref()
-                .and_then(|layout| layout.seats.get(index))
-                .map(|seat| seat.seat_id.clone())
-                .unwrap_or_else(|| format!("seat-{}", index + 1))
-        })
-        .collect();
     let mut assignments: Vec<Value> = Vec::new();
     let mut moved = 0;
     let mut unseated = 0;
@@ -1230,15 +1626,45 @@ pub fn repair_json(
         .map_err(|error| format!("could not serialize repair result: {error}"))
 }
 
-/// Fairness report over historical snapshots (mirrors
-/// `history.build_fairness_report`): per-category totals and per-category
-/// min/max/spread across students. The request supplies the students and
-/// layout used to classify seat positions; snapshots are the frontend shape
-/// (`{assignments: [{student_key, seat_id}]}`).
+const REPORT_POSITION_CATEGORIES: [&str; 10] = [
+    "front",
+    "back",
+    "middle",
+    "side",
+    "corner",
+    "near_window",
+    "near_door",
+    "near_platform",
+    "near_ac",
+    "unknown",
+];
+const REPORT_PAIR_RELATIONS: [&str; 6] = [
+    "desk_mate",
+    "horizontal",
+    "vertical",
+    "diagonal",
+    "adjacent_any",
+    "within_distance",
+];
+const PAIR_REPORT_RECENT_LOOKBACK: usize = 4;
+
+struct HistoryStudentAccumulator {
+    student_name: Option<String>,
+    total_assignments: u64,
+    seat_counts: BTreeMap<String, u64>,
+    category_counts: BTreeMap<String, u64>,
+    records: Vec<Value>,
+}
+
+/// Fairness report over historical snapshots, retaining all current students
+/// even when no snapshot contains an assignment for them. Malformed snapshot
+/// entries are rejected instead of silently disappearing; semantic history
+/// gaps are reported as warnings, matching the Python report contract.
 pub fn history_report_json(request_json: &str, snapshots_json: &str) -> Result<String, String> {
     let request: CoreSolveRequest = serde_json::from_str(request_json)
         .map_err(|error| format!("invalid native solve request: {error}"))?;
     validate_solve_request(&request)?;
+    let students = effective_students(&request);
     let layout = effective_layout(&request);
     let snapshots: Vec<Value> = serde_json::from_str(snapshots_json)
         .map_err(|error| format!("invalid snapshots document: {error}"))?;
@@ -1247,74 +1673,228 @@ pub fn history_report_json(request_json: &str, snapshots_json: &str) -> Result<S
         .iter()
         .map(|seat| (seat.seat_id.as_str(), seat))
         .collect();
+    let known_students: HashSet<&str> = students
+        .iter()
+        .map(|student| student.key.as_str())
+        .collect();
+    let mut per_student: BTreeMap<String, HistoryStudentAccumulator> = students
+        .iter()
+        .map(|student| {
+            (
+                student.key.clone(),
+                HistoryStudentAccumulator {
+                    student_name: student.display_name.clone(),
+                    total_assignments: 0,
+                    seat_counts: BTreeMap::new(),
+                    category_counts: BTreeMap::new(),
+                    records: Vec::new(),
+                },
+            )
+        })
+        .collect();
+    let mut totals: BTreeMap<String, u64> = REPORT_POSITION_CATEGORIES
+        .iter()
+        .map(|category| ((*category).to_string(), 0))
+        .collect();
+    let mut warnings: Vec<String> = Vec::new();
 
-    // student key -> category -> count.
-    let mut per_student: HashMap<&str, HashMap<String, u64>> = HashMap::new();
-    for snapshot in &snapshots {
-        let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) else {
-            continue;
-        };
-        for assignment in assignments {
-            let (Some(student), Some(seat_id)) = (
-                assignment.get("student_key").and_then(Value::as_str),
-                assignment.get("seat_id").and_then(Value::as_str),
-            ) else {
+    for (snapshot_offset, snapshot) in snapshots.iter().enumerate() {
+        let snapshot_index = snapshot_offset + 1;
+        let parsed =
+            parse_snapshot_assignments(snapshot, &format!("history snapshot {snapshot_index}"))?;
+        let mut assignments: BTreeMap<String, String> = BTreeMap::new();
+        let mut seat_owner: HashMap<String, String> = HashMap::new();
+        for assignment in parsed {
+            if !known_students.contains(assignment.student_key.as_str()) {
+                warnings.push(format!(
+                    "history snapshot {snapshot_index} references unknown student {:?}; skipped",
+                    assignment.student_key
+                ));
                 continue;
-            };
-            let Some(seat) = seat_by_id.get(seat_id) else {
-                continue;
-            };
-            for category in classify_seat_position(seat, &layout) {
-                *per_student
-                    .entry(student)
-                    .or_default()
-                    .entry(category)
-                    .or_default() += 1;
+            }
+            if assignments
+                .insert(assignment.student_key.clone(), assignment.seat_id.clone())
+                .is_some()
+            {
+                warnings.push(format!(
+                    "history snapshot {snapshot_index} contains duplicate assignments for student {:?}; the last one was used",
+                    assignment.student_key
+                ));
+            }
+            if let Some(previous) =
+                seat_owner.insert(assignment.seat_id.clone(), assignment.student_key.clone())
+            {
+                warnings.push(format!(
+                    "history snapshot {snapshot_index} assigns seat {:?} to both {:?} and {:?}",
+                    assignment.seat_id, previous, assignment.student_key
+                ));
             }
         }
-    }
+        let missing: Vec<&str> = known_students
+            .iter()
+            .copied()
+            .filter(|student| !assignments.contains_key(*student))
+            .collect();
+        if !missing.is_empty() {
+            warnings.push(format!(
+                "history snapshot {snapshot_index} is missing {} current student(s)",
+                missing.len()
+            ));
+        }
 
-    let mut totals: HashMap<String, u64> = HashMap::new();
-    let mut spread: HashMap<String, (u64, u64)> = HashMap::new();
-    for counts in per_student.values() {
-        for (category, count) in counts {
-            *totals.entry(category.clone()).or_default() += *count;
-            let entry = spread.entry(category.clone()).or_insert((*count, *count));
-            entry.0 = entry.0.min(*count);
-            entry.1 = entry.1.max(*count);
+        for (student_key, seat_id) in assignments {
+            let student = per_student
+                .get_mut(&student_key)
+                .expect("known student accumulators are pre-initialized");
+            let (categories, unknown_seat, disabled_seat) = match seat_by_id.get(seat_id.as_str()) {
+                None => {
+                    warnings.push(format!(
+                        "history snapshot {snapshot_index} references unknown seat_id {seat_id:?} for student {student_key:?}; marked as unknown"
+                    ));
+                    (vec!["unknown".to_string()], true, false)
+                }
+                Some(seat) if !seat.enabled => {
+                    warnings.push(format!(
+                        "history snapshot {snapshot_index} references disabled seat_id {seat_id:?} for student {student_key:?}; categories skipped"
+                    ));
+                    (Vec::new(), false, true)
+                }
+                Some(seat) => {
+                    let mut categories: Vec<String> =
+                        classify_seat_position(seat, &layout).into_iter().collect();
+                    categories.sort();
+                    (categories, false, false)
+                }
+            };
+            student.total_assignments += 1;
+            *student.seat_counts.entry(seat_id.clone()).or_default() += 1;
+            for category in &categories {
+                *student.category_counts.entry(category.clone()).or_default() += 1;
+                *totals.entry(category.clone()).or_default() += 1;
+            }
+            student.records.push(json!({
+                "snapshot_index": snapshot_index,
+                "seat_id": seat_id,
+                "categories": categories,
+                "unknown_seat": unknown_seat,
+                "disabled_seat": disabled_seat,
+            }));
         }
     }
-    let mut category_spread = serde_json::Map::new();
-    for (category, (min, max)) in spread {
+
+    let student_values: Vec<Value> = per_student
+        .iter()
+        .map(|(student_key, student)| {
+            json!({
+                "student_key": student_key,
+                "student_name": student.student_name,
+                "total_assignments": student.total_assignments,
+                "seat_counts": student.seat_counts,
+                "category_counts": student.category_counts,
+                "records": student.records,
+            })
+        })
+        .collect();
+    let mut category_spread: BTreeMap<String, Value> = BTreeMap::new();
+    for category in REPORT_POSITION_CATEGORIES {
+        let counts: Vec<u64> = per_student
+            .values()
+            .map(|student| student.category_counts.get(category).copied().unwrap_or(0))
+            .collect();
+        let min = counts.iter().copied().min().unwrap_or(0);
+        let max = counts.iter().copied().max().unwrap_or(0);
         category_spread.insert(
-            category,
+            category.to_string(),
             json!({ "min": min, "max": max, "spread": max - min }),
         );
     }
 
     let report = json!({
         "history_count": snapshots.len(),
-        "student_count": per_student.len(),
+        "student_count": request.student_count,
         "category_totals": totals,
-        "summary": { "category_spread": category_spread, "warning_count": 0 },
-        "warnings": [],
+        "students": student_values,
+        "summary": {
+            "category_spread": category_spread,
+            "warning_count": warnings.len(),
+        },
+        "warnings": warnings,
     });
     serde_json::to_string(&report)
         .map_err(|error| format!("could not serialize history report: {error}"))
 }
 
-/// Pair-history report (mirrors `history.build_pair_history_report`): total
-/// pairs, repeated pairs, max occurrences and per-relation totals, plus the
-/// top repeated pairs (anonymized as `student-N`).
+struct PairReportAccumulator {
+    pair_key: String,
+    first_student_key: String,
+    second_student_key: String,
+    first_student_name: Option<String>,
+    second_student_name: Option<String>,
+    total_occurrences: u64,
+    recent_occurrences: u64,
+    relation_counts: BTreeMap<String, u64>,
+    records: Vec<Value>,
+}
+
+fn pair_report_value(pair: &PairReportAccumulator) -> Value {
+    json!({
+        "pair_key": pair.pair_key,
+        "first_student_key": pair.first_student_key,
+        "second_student_key": pair.second_student_key,
+        "first_student_name": pair.first_student_name,
+        "second_student_name": pair.second_student_name,
+        "total_occurrences": pair.total_occurrences,
+        "relation_counts": pair.relation_counts,
+        "records": pair.records,
+    })
+}
+
+fn rank_pairs_for_relation<'a>(
+    pairs: impl Iterator<Item = &'a PairReportAccumulator>,
+    relation: &str,
+    top: usize,
+) -> Vec<&'a PairReportAccumulator> {
+    let mut ranked: Vec<&PairReportAccumulator> = pairs
+        .filter(|pair| pair.relation_counts.get(relation).copied().unwrap_or(0) > 0)
+        .collect();
+    ranked.sort_by(|left, right| {
+        right
+            .relation_counts
+            .get(relation)
+            .copied()
+            .unwrap_or(0)
+            .cmp(&left.relation_counts.get(relation).copied().unwrap_or(0))
+            .then_with(|| right.total_occurrences.cmp(&left.total_occurrences))
+            .then_with(|| left.pair_key.cmp(&right.pair_key))
+    });
+    ranked.truncate(top);
+    ranked
+}
+
+/// Pair-history report with Python-compatible pair records and relation
+/// rankings. `top` and `within_distance` are contract inputs, so invalid
+/// values are rejected rather than silently coerced.
 pub fn pair_report_json(
     request_json: &str,
     snapshots_json: &str,
     top: usize,
     within_distance: i32,
 ) -> Result<String, String> {
+    if top == 0 {
+        return Err("invalid top: expected a positive value".to_string());
+    }
+    if within_distance <= 0 {
+        return Err("invalid within_distance: expected a positive value".to_string());
+    }
     let request: CoreSolveRequest = serde_json::from_str(request_json)
         .map_err(|error| format!("invalid native solve request: {error}"))?;
     validate_solve_request(&request)?;
+    let students = effective_students(&request);
+    let student_names: HashMap<&str, Option<String>> = students
+        .iter()
+        .map(|student| (student.key.as_str(), student.display_name.clone()))
+        .collect();
+    let known_students: HashSet<&str> = student_names.keys().copied().collect();
     let layout = effective_layout(&request);
     let snapshots: Vec<Value> = serde_json::from_str(snapshots_json)
         .map_err(|error| format!("invalid snapshots document: {error}"))?;
@@ -1323,96 +1903,190 @@ pub fn pair_report_json(
         .iter()
         .map(|seat| (seat.seat_id.as_str(), seat))
         .collect();
+    let mut pairs: BTreeMap<String, PairReportAccumulator> = BTreeMap::new();
+    let mut relation_totals: BTreeMap<String, u64> = REPORT_PAIR_RELATIONS
+        .iter()
+        .map(|relation| ((*relation).to_string(), 0))
+        .collect();
+    let mut warnings: Vec<String> = Vec::new();
+    let recent_start = snapshots.len().saturating_sub(PAIR_REPORT_RECENT_LOOKBACK) + 1;
 
-    // pair key -> occurrences and relation totals.
-    let mut occurrences: HashMap<(String, String), u64> = HashMap::new();
-    let mut relation_totals: HashMap<String, u64> = HashMap::new();
-    for snapshot in &snapshots {
-        let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) else {
-            continue;
-        };
-        let mut known: Vec<(&str, &Seat)> = Vec::new();
-        for assignment in assignments {
-            let (Some(student), Some(seat_id)) = (
-                assignment.get("student_key").and_then(Value::as_str),
-                assignment.get("seat_id").and_then(Value::as_str),
-            ) else {
+    for (snapshot_offset, snapshot) in snapshots.iter().enumerate() {
+        let snapshot_index = snapshot_offset + 1;
+        let parsed = parse_snapshot_assignments(
+            snapshot,
+            &format!("pair-history snapshot {snapshot_index}"),
+        )?;
+        let mut by_student: BTreeMap<String, String> = BTreeMap::new();
+        for assignment in parsed {
+            if !known_students.contains(assignment.student_key.as_str()) {
+                warnings.push(format!(
+                    "pair-history snapshot {snapshot_index} references unknown student {:?}; skipped",
+                    assignment.student_key
+                ));
+                continue;
+            }
+            if by_student
+                .insert(assignment.student_key.clone(), assignment.seat_id)
+                .is_some()
+            {
+                warnings.push(format!(
+                    "pair-history snapshot {snapshot_index} contains duplicate assignments for student {:?}; the last one was used",
+                    assignment.student_key
+                ));
+            }
+        }
+        let missing = known_students
+            .iter()
+            .filter(|student| !by_student.contains_key(**student))
+            .count();
+        if missing > 0 {
+            warnings.push(format!(
+                "pair-history snapshot {snapshot_index} is missing {missing} current student(s)"
+            ));
+        }
+
+        let mut known: Vec<(&str, &str, &Seat)> = Vec::new();
+        let mut occupied: HashMap<&str, &str> = HashMap::new();
+        for (student_key, seat_id) in &by_student {
+            let Some(seat) = seat_by_id.get(seat_id.as_str()).copied() else {
+                warnings.push(format!(
+                    "pair-history snapshot {snapshot_index} references unknown seat_id {seat_id:?} for student {student_key:?}; pair relations skipped"
+                ));
                 continue;
             };
-            let Some(seat) = seat_by_id.get(seat_id) else {
+            if let Some(previous) = occupied.insert(seat_id.as_str(), student_key.as_str()) {
+                warnings.push(format!(
+                    "pair-history snapshot {snapshot_index} assigns seat {seat_id:?} to both {previous:?} and {student_key:?}; later assignment skipped"
+                ));
                 continue;
-            };
-            known.push((student, seat));
+            }
+            known.push((student_key.as_str(), seat_id.as_str(), seat));
         }
         for first in 0..known.len() {
             for second in (first + 1)..known.len() {
-                let (first_key, first_seat) = known[first];
-                let (second_key, second_seat) = known[second];
-                let relations = detect_neighbor_relation_types(
+                let (first_key, first_seat_id, first_seat) = known[first];
+                let (second_key, second_seat_id, second_seat) = known[second];
+                let mut relations: Vec<String> = detect_neighbor_relation_types(
                     first_seat,
                     second_seat,
                     &layout,
                     None,
                     within_distance,
-                );
+                )
+                .into_iter()
+                .collect();
                 if relations.is_empty() {
                     continue;
                 }
-                let (first, second) = if first_key <= second_key {
-                    (first_key.to_string(), second_key.to_string())
-                } else {
-                    (second_key.to_string(), first_key.to_string())
-                };
-                *occurrences.entry((first, second)).or_default() += 1;
-                for relation in relations {
-                    *relation_totals.entry(relation).or_default() += 1;
+                relations.sort();
+                let pair_key = format!("{first_key}|{second_key}");
+                let pair = pairs
+                    .entry(pair_key.clone())
+                    .or_insert_with(|| PairReportAccumulator {
+                        pair_key,
+                        first_student_key: first_key.to_string(),
+                        second_student_key: second_key.to_string(),
+                        first_student_name: student_names.get(first_key).cloned().flatten(),
+                        second_student_name: student_names.get(second_key).cloned().flatten(),
+                        total_occurrences: 0,
+                        recent_occurrences: 0,
+                        relation_counts: BTreeMap::new(),
+                        records: Vec::new(),
+                    });
+                pair.total_occurrences += 1;
+                if snapshot_index >= recent_start {
+                    pair.recent_occurrences += 1;
                 }
+                for relation in &relations {
+                    *pair.relation_counts.entry(relation.clone()).or_default() += 1;
+                    *relation_totals.entry(relation.clone()).or_default() += 1;
+                }
+                let row_delta = (first_seat.row - second_seat.row).unsigned_abs();
+                let col_delta = (first_seat.col - second_seat.col).unsigned_abs();
+                pair.records.push(json!({
+                    "snapshot_index": snapshot_index,
+                    "first_seat_id": first_seat_id,
+                    "second_seat_id": second_seat_id,
+                    "relations": relations,
+                    "row_delta": row_delta,
+                    "col_delta": col_delta,
+                    "chebyshev_distance": row_delta.max(col_delta),
+                    "manhattan_distance": row_delta + col_delta,
+                    "first_seat_disabled": !first_seat.enabled,
+                    "second_seat_disabled": !second_seat.enabled,
+                }));
             }
         }
     }
 
-    let mut ranked: Vec<((String, String), u64)> = occurrences.into_iter().collect();
-    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    let repeated = ranked.iter().filter(|(_, count)| *count > 1).count();
-    let max_occurrences = ranked.first().map(|(_, count)| *count).unwrap_or(0);
+    let pair_values: Vec<Value> = pairs.values().map(pair_report_value).collect();
+    let top_desk_mates: Vec<Value> = rank_pairs_for_relation(pairs.values(), "desk_mate", top)
+        .into_iter()
+        .map(pair_report_value)
+        .collect();
+    let top_adjacent_pairs: Vec<Value> =
+        rank_pairs_for_relation(pairs.values(), "adjacent_any", top)
+            .into_iter()
+            .map(pair_report_value)
+            .collect();
+    let mut ranked: Vec<&PairReportAccumulator> = pairs.values().collect();
+    ranked.sort_by(|left, right| {
+        right
+            .total_occurrences
+            .cmp(&left.total_occurrences)
+            .then_with(|| left.pair_key.cmp(&right.pair_key))
+    });
+    let repeated = ranked
+        .iter()
+        .filter(|pair| pair.total_occurrences > 1)
+        .count();
+    let max_occurrences = ranked
+        .first()
+        .map(|pair| pair.total_occurrences)
+        .unwrap_or(0);
 
-    let mut student_index: HashMap<String, usize> = HashMap::new();
-    let mut pairs: Vec<Value> = Vec::new();
-    for (pair, count) in ranked.iter().take(top.max(1)) {
-        let (first, second) = pair.clone();
-        let first_ref = if let Some(index) = student_index.get(&first) {
-            format!("student-{index}")
-        } else {
-            let index = student_index.len() + 1;
-            student_index.insert(first.clone(), index);
-            format!("student-{index}")
-        };
-        let second_ref = if let Some(index) = student_index.get(&second) {
-            format!("student-{index}")
-        } else {
-            let index = student_index.len() + 1;
-            student_index.insert(second.clone(), index);
-            format!("student-{index}")
-        };
-        pairs.push(json!({
-            "student_a": first_ref,
-            "student_b": second_ref,
-            "total_occurrences": count,
-            "recent_occurrences": count,
+    // Retain the compact anonymized legacy view for current Rust consumers,
+    // but compute "recent" from the Python-default four-snapshot lookback.
+    let mut anonymized_students: BTreeMap<String, usize> = BTreeMap::new();
+    let mut legacy_top_pairs: Vec<Value> = Vec::new();
+    for pair in ranked.iter().take(top) {
+        let next_first = anonymized_students.len() + 1;
+        let first = *anonymized_students
+            .entry(pair.first_student_key.clone())
+            .or_insert(next_first);
+        let next_second = anonymized_students.len() + 1;
+        let second = *anonymized_students
+            .entry(pair.second_student_key.clone())
+            .or_insert(next_second);
+        legacy_top_pairs.push(json!({
+            "student_a": format!("student-{first}"),
+            "student_b": format!("student-{second}"),
+            "total_occurrences": pair.total_occurrences,
+            "recent_occurrences": pair.recent_occurrences,
         }));
     }
 
     let report = json!({
         "history_count": snapshots.len(),
-        "student_count": 0,
-        "pair_count": ranked.len(),
+        "student_count": request.student_count,
+        "pair_count": pairs.len(),
         "within_distance_metric": "chebyshev",
         "within_distance": within_distance,
         "relation_totals": relation_totals,
+        "top_desk_mates": top_desk_mates,
+        "top_adjacent_pairs": top_adjacent_pairs,
+        "pairs": pair_values,
         "repeated_pair_count": repeated,
         "max_occurrences": max_occurrences,
-        "top_pairs": pairs,
-        "summary": { "warning_count": 0 },
+        "top_pairs": legacy_top_pairs,
+        "summary": {
+            "warning_count": warnings.len(),
+            "within_distance_metric": "chebyshev",
+            "within_distance": within_distance,
+            "recent_lookback": PAIR_REPORT_RECENT_LOOKBACK,
+        },
+        "warnings": warnings,
     });
     serde_json::to_string(&report)
         .map_err(|error| format!("could not serialize pair report: {error}"))
@@ -1427,75 +2101,114 @@ pub fn pair_report_json(
 /// `candidate_count` caps the set (1..=20); `attempt_limit` bounds the
 /// generation loop. Mirrors the Python `candidates.generate_candidate_set`
 /// strategy (seeded repeated solve + exclusion).
+#[derive(Debug)]
+struct GeneratedCandidate {
+    candidate_id: String,
+    seed: u64,
+    attempts_used: usize,
+    total_cost: Option<f64>,
+    assignment: Vec<usize>,
+    assignment_pairs: Vec<[usize; 2]>,
+}
+
+fn candidate_recommendation_index(candidates: &[GeneratedCandidate]) -> usize {
+    candidates
+        .iter()
+        .enumerate()
+        .min_by(|(_, left), (_, right)| {
+            let left_cost = left.total_cost.unwrap_or(f64::INFINITY);
+            let right_cost = right.total_cost.unwrap_or(f64::INFINITY);
+            left_cost
+                .partial_cmp(&right_cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| left.candidate_id.cmp(&right.candidate_id))
+        })
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
+
+fn assignment_distance(first: &[usize], second: &[usize]) -> f64 {
+    if first.is_empty() {
+        return 0.0;
+    }
+    first
+        .iter()
+        .zip(second.iter())
+        .filter(|(left, right)| left != right)
+        .count() as f64
+        / first.len() as f64
+}
+
+fn derive_candidate_seed(base_seed: u64, attempt_index: usize) -> u64 {
+    base_seed.wrapping_add(attempt_index as u64)
+}
+
 pub fn generate_candidates_json(
     request_json: &str,
     candidate_count: usize,
 ) -> Result<String, String> {
+    if !(1..=20).contains(&candidate_count) {
+        return Err(format!(
+            "invalid candidate_count {candidate_count}: expected a value between 1 and 20"
+        ));
+    }
     let mut request: CoreSolveRequest = serde_json::from_str(request_json)
         .map_err(|error| format!("invalid native solve request: {error}"))?;
     validate_solve_request(&request)?;
     let base_seed = request.seed;
-    let count = candidate_count.clamp(1, 20);
-    let attempt_limit = count * 12 + 8;
+    let attempt_limit = candidate_count * 12 + 8;
 
-    let mut candidates: Vec<Value> = Vec::new();
+    let mut candidates: Vec<GeneratedCandidate> = Vec::new();
     let mut seen: Vec<Vec<usize>> = Vec::new();
     let mut failed_attempts = 0;
 
     for attempt_index in 0..attempt_limit {
-        if candidates.len() >= count {
+        if candidates.len() >= candidate_count {
             break;
         }
-        request.seed = request.seed.wrapping_add(attempt_index as u64);
-        let Ok(response) = solve_problem(&request) else {
-            failed_attempts += 1;
-            continue;
-        };
+        // Seed derivation is independent for every attempt; never feed the
+        // previous derived seed back into the next derivation.
+        request.seed = derive_candidate_seed(base_seed, attempt_index);
+        let control = SolveControl::new();
+        let response = solve_problem_internal(&request, &control, &seen)?;
         if !response.feasible {
             failed_attempts += 1;
+            // With exact no-goods installed, exhaustive infeasibility means
+            // there are no additional distinct assignments to generate.
+            if response.status == SolveStatus::ProvenInfeasible {
+                break;
+            }
             continue;
         }
-        let mut assignment: Vec<usize> = vec![0; request.student_count];
+        validate_solve_response(&request, &response)?;
+        let mut assignment: Vec<usize> = vec![usize::MAX; request.student_count];
         for [student, seat] in &response.assignment {
             assignment[*student] = *seat;
         }
         if seen.iter().any(|existing| existing == &assignment) {
-            failed_attempts += 1;
-            continue;
+            return Err(
+                "candidate solver violated exact-assignment exclusion by returning a duplicate"
+                    .to_string(),
+            );
         }
         seen.push(assignment.clone());
-
-        // Assignment distance to the recommended (first) plan: seats where
-        // the two assignments differ, normalized by the student count.
-        let distance_to_best = seen
-            .first()
-            .map(|best| {
-                best.iter()
-                    .zip(assignment.iter())
-                    .filter(|(a, b)| a != b)
-                    .count() as f64
-                    / request.student_count.max(1) as f64
-            })
-            .unwrap_or(0.0);
-
-        candidates.push(json!({
-            "candidate_id": format!("candidate_{:02}", candidates.len() + 1),
-            "seed": request.seed,
-            "attempts_used": response.attempts_used,
-            "total_cost": response.total_cost,
-            "hard_constraints_satisfied": response.hard_constraints_satisfied,
-            "distance_to_best": distance_to_best,
-            "assignment": response.assignment,
-        }));
+        candidates.push(GeneratedCandidate {
+            candidate_id: format!("candidate_{:02}", candidates.len() + 1),
+            seed: request.seed,
+            attempts_used: response.attempts_used,
+            total_cost: response.total_cost,
+            assignment,
+            assignment_pairs: response.assignment,
+        });
     }
 
     if candidates.is_empty() {
         return Err("candidate generation did not produce any feasible plan".to_string());
     }
     let mut warnings: Vec<String> = Vec::new();
-    if candidates.len() < count {
+    if candidates.len() < candidate_count {
         warnings.push(format!(
-            "requested {count} candidates but generated {} distinct feasible plans",
+            "requested {candidate_count} candidates but generated {} distinct feasible plans",
             candidates.len()
         ));
     }
@@ -1505,29 +2218,37 @@ pub fn generate_candidates_json(
         ));
     }
 
-    // Recommend the lowest-cost plan (mirrors Python's
-    // refresh_recommendation); ties break toward the first candidate.
-    let recommended = candidates
+    // Recommend the lowest-cost legal plan, then calculate every distance
+    // against that actual recommendation (which need not be candidate_01).
+    let recommended_index = candidate_recommendation_index(&candidates);
+    let recommended = candidates[recommended_index].candidate_id.clone();
+    let recommended_assignment = candidates[recommended_index].assignment.clone();
+    let candidate_values: Vec<Value> = candidates
         .iter()
-        .min_by(|left, right| {
-            let left_cost = left["total_cost"].as_f64().unwrap_or(f64::INFINITY);
-            let right_cost = right["total_cost"].as_f64().unwrap_or(f64::INFINITY);
-            left_cost
-                .partial_cmp(&right_cost)
-                .unwrap_or(std::cmp::Ordering::Equal)
+        .map(|candidate| {
+            json!({
+                "candidate_id": candidate.candidate_id,
+                "seed": candidate.seed,
+                "attempts_used": candidate.attempts_used,
+                "total_cost": candidate.total_cost,
+                "hard_constraints_satisfied": true,
+                "distance_to_best": assignment_distance(
+                    &candidate.assignment,
+                    &recommended_assignment,
+                ),
+                "assignment": candidate.assignment_pairs,
+            })
         })
-        .and_then(|candidate| candidate["candidate_id"].as_str())
-        .unwrap_or("")
-        .to_string();
+        .collect();
 
     let report = json!({
         "api_version": NATIVE_API_VERSION,
-        "candidate_count": candidates.len(),
-        "requested_candidate_count": count,
+        "candidate_count": candidate_values.len(),
+        "requested_candidate_count": candidate_count,
         "base_seed": base_seed,
         "generation_method": "seeded repeated solve with exact-assignment exclusion",
         "recommended_candidate_id": recommended,
-        "candidates": candidates,
+        "candidates": candidate_values,
         "warnings": warnings,
     });
     serde_json::to_string(&report)
@@ -1788,6 +2509,7 @@ const LOCAL_SEARCH_STAGNATION_LIMIT: usize = 250;
 /// Only strictly-improving moves are accepted; after `STAGNATION_LIMIT`
 /// consecutive failures the search stops. Returns the best assignment found
 /// (may be the input itself).
+#[cfg(test)]
 fn local_search(
     request: &CoreSolveRequest,
     resolved: &ResolvedHardRules,
@@ -1797,17 +2519,67 @@ fn local_search(
     ctx: &CostContext,
     rng: &mut SplitMix64,
 ) -> Vec<usize> {
+    let cancellation = SolveControl::new();
+    let run = SolveRunControl {
+        deadline: None,
+        cancellation: &cancellation,
+    };
+    local_search_controlled(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        assignment,
+        ctx,
+        rng,
+        &run,
+        &[],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn local_search_controlled(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &[usize],
+    ctx: &CostContext,
+    rng: &mut SplitMix64,
+    run: &SolveRunControl<'_>,
+    excluded_assignments: &[Vec<usize>],
+) -> Vec<usize> {
+    // With fewer than two students and no empty seat there is no legal
+    // neighbor to explore. Returning immediately also avoids constructing a
+    // swap index from `len - 1` for the single-student case.
+    if assignment.len() < 2 && ctx.layout.seats.len() <= assignment.len() {
+        return assignment.to_vec();
+    }
     let mut current = assignment.to_vec();
     let mut current_cost = full_solution_total_cost(&current, adjacency, ctx);
     let mut stagnation = 0;
 
     for _ in 0..LOCAL_SEARCH_ITERATIONS {
+        if run.stop_reason().is_some() {
+            break;
+        }
         let candidate = random_neighbor(&current, ctx, rng);
         let Ok(probe) =
             validate_candidate_move(request, resolved, adjacency, graph_distances, candidate)
         else {
+            stagnation += 1;
+            if stagnation >= LOCAL_SEARCH_STAGNATION_LIMIT {
+                break;
+            }
             continue;
         };
+        if assignment_is_excluded(&probe, excluded_assignments) {
+            stagnation += 1;
+            if stagnation >= LOCAL_SEARCH_STAGNATION_LIMIT {
+                break;
+            }
+            continue;
+        }
         let candidate_cost = full_solution_total_cost(&probe, adjacency, ctx);
         if candidate_cost < current_cost {
             current = probe;
@@ -1823,11 +2595,28 @@ fn local_search(
     current
 }
 
+fn assignment_is_excluded(assignment: &[usize], excluded_assignments: &[Vec<usize>]) -> bool {
+    excluded_assignments
+        .iter()
+        .any(|excluded| excluded.as_slice() == assignment)
+}
+
 /// A candidate neighbor assignment: either a swap of two students' seats or
 /// a move of one student into an empty seat (sampled deterministically).
 fn random_neighbor(assignment: &[usize], ctx: &CostContext, rng: &mut SplitMix64) -> Vec<usize> {
     let mut neighbor = assignment.to_vec();
     let seat_count = ctx.layout.seats.len();
+    if neighbor.is_empty() {
+        return neighbor;
+    }
+    if neighbor.len() == 1 {
+        // A lone student can only move into an empty seat; if none exists the
+        // original assignment is the only possible neighbor.
+        if let Some(empty_seat) = (0..seat_count).find(|seat| !neighbor.contains(seat)) {
+            neighbor[0] = empty_seat;
+        }
+        return neighbor;
+    }
     let swap = rng.next_usize(2) == 0;
     if swap {
         let first = rng.next_usize(neighbor.len());
@@ -1877,6 +2666,14 @@ fn validate_candidate_move(
     Ok(candidate)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum GreedyOutcome {
+    Found(Vec<usize>),
+    DeadEnd,
+    Stopped(StopReason),
+}
+
+#[cfg(test)]
 fn greedy_attempt(
     request: &CoreSolveRequest,
     resolved: &ResolvedHardRules,
@@ -1886,6 +2683,39 @@ fn greedy_attempt(
     ctx: &CostContext,
     attempt: usize,
 ) -> Option<Vec<usize>> {
+    let cancellation = SolveControl::new();
+    let run = SolveRunControl {
+        deadline: None,
+        cancellation: &cancellation,
+    };
+    match greedy_attempt_controlled(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        rng,
+        ctx,
+        attempt,
+        &run,
+        &[],
+    ) {
+        GreedyOutcome::Found(assignment) => Some(assignment),
+        GreedyOutcome::DeadEnd | GreedyOutcome::Stopped(_) => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn greedy_attempt_controlled(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    rng: &mut SplitMix64,
+    ctx: &CostContext,
+    attempt: usize,
+    run: &SolveRunControl<'_>,
+    excluded_assignments: &[Vec<usize>],
+) -> GreedyOutcome {
     let student_count = request.student_count;
     let seat_count = request.seat_positions.len();
     let mut assignment: Vec<Option<usize>> = vec![None; student_count];
@@ -1894,13 +2724,19 @@ fn greedy_attempt(
     shuffle(&mut order, rng);
 
     loop {
+        if let Some(reason) = run.stop_reason() {
+            return GreedyOutcome::Stopped(reason);
+        }
         // Pick the unassigned student with the fewest valid candidate seats.
         let mut best: Option<(usize, Vec<usize>)> = None;
         for &student in &order {
+            if let Some(reason) = run.stop_reason() {
+                return GreedyOutcome::Stopped(reason);
+            }
             if assignment[student].is_some() {
                 continue;
             }
-            let candidates = valid_candidate_seats(
+            let candidates = match valid_candidate_seats_controlled(
                 request,
                 resolved,
                 &mut assignment,
@@ -1908,9 +2744,13 @@ fn greedy_attempt(
                 adjacency,
                 graph_distances,
                 student,
-            );
+                run,
+            ) {
+                Ok(candidates) => candidates,
+                Err(reason) => return GreedyOutcome::Stopped(reason),
+            };
             if candidates.is_empty() {
-                return None;
+                return GreedyOutcome::DeadEnd;
             }
             if best
                 .as_ref()
@@ -1919,19 +2759,22 @@ fn greedy_attempt(
                 best = Some((student, candidates));
             }
         }
-        let (student, candidates) = best?;
+        let Some((student, candidates)) = best else {
+            return GreedyOutcome::DeadEnd;
+        };
 
         // Rank candidates by cost; attempt 0 takes the cheapest, later attempts
         // sample uniformly from the top-3 (mirrors Python `rng.choice`).
-        let mut ranked: Vec<(f64, usize)> = candidates
-            .iter()
-            .map(|seat| {
-                (
-                    candidate_ranking_cost(student, *seat, &assignment, ctx),
-                    *seat,
-                )
-            })
-            .collect();
+        let mut ranked: Vec<(f64, usize)> = Vec::with_capacity(candidates.len());
+        for seat in candidates {
+            if let Some(reason) = run.stop_reason() {
+                return GreedyOutcome::Stopped(reason);
+            }
+            ranked.push((
+                candidate_ranking_cost(student, seat, &assignment, ctx),
+                seat,
+            ));
+        }
         ranked.sort_by(|a, b| {
             a.0.partial_cmp(&b.0)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -1947,7 +2790,14 @@ fn greedy_attempt(
         assignment[student] = Some(seat);
         used[seat] = true;
         if assignment.iter().all(Option::is_some) {
-            return Some(assignment.into_iter().map(|seat| seat.unwrap()).collect());
+            let complete: Vec<usize> = assignment
+                .into_iter()
+                .map(|seat| seat.expect("all students were checked as assigned"))
+                .collect();
+            if assignment_is_excluded(&complete, excluded_assignments) {
+                return GreedyOutcome::DeadEnd;
+            }
+            return GreedyOutcome::Found(complete);
         }
     }
 }
@@ -1992,7 +2842,8 @@ pub fn validate_assignment(
     Ok(())
 }
 
-fn valid_candidate_seats(
+#[allow(clippy::too_many_arguments)] // solver-internal candidate filter mirroring Python
+fn valid_candidate_seats_controlled(
     request: &CoreSolveRequest,
     resolved: &ResolvedHardRules,
     assignment: &mut [Option<usize>],
@@ -2000,7 +2851,8 @@ fn valid_candidate_seats(
     adjacency: &[Vec<usize>],
     graph_distances: &[Vec<Option<u32>>],
     student: usize,
-) -> Vec<usize> {
+    run: &SolveRunControl<'_>,
+) -> Result<Vec<usize>, StopReason> {
     let fixed = request
         .fixed_seats
         .iter()
@@ -2008,6 +2860,9 @@ fn valid_candidate_seats(
         .map(|pair| pair[1]);
     let mut candidates = Vec::new();
     for (seat, &is_used) in used.iter().enumerate() {
+        if let Some(reason) = run.stop_reason() {
+            return Err(reason);
+        }
         if is_used {
             continue;
         }
@@ -2029,7 +2884,7 @@ fn valid_candidate_seats(
             candidates.push(seat);
         }
     }
-    candidates
+    Ok(candidates)
 }
 
 fn solve_partial_assignment_valid(
@@ -2224,6 +3079,8 @@ enum SearchOutcome {
     Found(Vec<usize>),
     ProvenInfeasible,
     BudgetExceeded,
+    DeadlineExceeded,
+    Cancelled,
 }
 
 /// Node budget for one hard search. Classes are small (<= 60 students) and
@@ -2236,13 +3093,39 @@ const HARD_SEARCH_NODE_BUDGET: usize = 200_000;
 /// exploration. Fixed students are pre-placed; their domains are singletons
 /// so MRV picks them first. `budget` bounds nodes; `deadline` (optional
 /// wall-clock, M3-04) bounds time — whichever hits first stops the sweep.
+#[cfg(test)]
 fn hard_search_with_budget(
     request: &CoreSolveRequest,
     resolved: &ResolvedHardRules,
     adjacency: &[Vec<usize>],
     graph_distances: &[Vec<Option<u32>>],
     budget: usize,
-    deadline: Option<std::time::Instant>,
+    deadline: Option<Instant>,
+) -> SearchOutcome {
+    let cancellation = SolveControl::new();
+    let run = SolveRunControl {
+        deadline,
+        cancellation: &cancellation,
+    };
+    hard_search_controlled(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        budget,
+        &run,
+        &[],
+    )
+}
+
+fn hard_search_controlled(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    budget: usize,
+    run: &SolveRunControl<'_>,
+    excluded_assignments: &[Vec<usize>],
 ) -> SearchOutcome {
     let mut assignment: Vec<Option<usize>> = vec![None; request.student_count];
     for [student, seat] in &request.fixed_seats {
@@ -2262,7 +3145,8 @@ fn hard_search_with_budget(
         &mut assignment,
         &mut domains,
         &mut budget,
-        deadline,
+        run,
+        excluded_assignments,
     )
 }
 
@@ -2278,21 +3162,37 @@ fn backtrack(
     assignment: &mut [Option<usize>],
     domains: &mut [Vec<usize>],
     budget: &mut usize,
-    deadline: Option<std::time::Instant>,
+    run: &SolveRunControl<'_>,
+    excluded_assignments: &[Vec<usize>],
 ) -> SearchOutcome {
+    // A complete legal assignment is an incumbent even when cancellation or
+    // the deadline becomes visible at this exact checkpoint.
+    if assignment.iter().all(Option::is_some) {
+        let complete: Vec<usize> = assignment
+            .iter()
+            .map(|seat| seat.expect("all students were checked as assigned"))
+            .collect();
+        if !assignment_is_excluded(&complete, excluded_assignments) {
+            return SearchOutcome::Found(complete);
+        }
+        if let Some(reason) = run.stop_reason() {
+            return match reason {
+                StopReason::Deadline => SearchOutcome::DeadlineExceeded,
+                StopReason::Cancelled => SearchOutcome::Cancelled,
+            };
+        }
+        return SearchOutcome::ProvenInfeasible;
+    }
+    if let Some(reason) = run.stop_reason() {
+        return match reason {
+            StopReason::Deadline => SearchOutcome::DeadlineExceeded,
+            StopReason::Cancelled => SearchOutcome::Cancelled,
+        };
+    }
     if *budget == 0 {
         return SearchOutcome::BudgetExceeded;
     }
     *budget -= 1;
-    if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-        return SearchOutcome::BudgetExceeded;
-    }
-
-    // Every student assigned: complete assignment found.
-    if assignment.iter().all(Option::is_some) {
-        let complete = assignment.iter().map(|seat| seat.unwrap()).collect();
-        return SearchOutcome::Found(complete);
-    }
 
     // MRV: the unassigned student with the smallest domain, tie-broken by
     // constraint degree (more pair rules first) then student index.
@@ -2309,6 +3209,12 @@ fn backtrack(
     }
 
     for seat in domains[student].clone() {
+        if let Some(reason) = run.stop_reason() {
+            return match reason {
+                StopReason::Deadline => SearchOutcome::DeadlineExceeded,
+                StopReason::Cancelled => SearchOutcome::Cancelled,
+            };
+        }
         // Deterministic seat order; skip seats already taken.
         if assignment.contains(&Some(seat)) {
             continue;
@@ -2319,11 +3225,24 @@ fn backtrack(
         let mut next_domains = domains.to_vec();
         let mut pruned = false;
         for other in 0..request.student_count {
+            if let Some(reason) = run.stop_reason() {
+                return match reason {
+                    StopReason::Deadline => SearchOutcome::DeadlineExceeded,
+                    StopReason::Cancelled => SearchOutcome::Cancelled,
+                };
+            }
             if assignment[other].is_some() || other == student {
                 continue;
             }
-            next_domains[other].retain(|candidate| {
-                *candidate != seat
+            let mut filtered = Vec::with_capacity(next_domains[other].len());
+            for candidate in next_domains[other].iter().copied() {
+                if let Some(reason) = run.stop_reason() {
+                    return match reason {
+                        StopReason::Deadline => SearchOutcome::DeadlineExceeded,
+                        StopReason::Cancelled => SearchOutcome::Cancelled,
+                    };
+                }
+                if candidate != seat
                     && partial_pair_valid(
                         request,
                         resolved,
@@ -2333,9 +3252,13 @@ fn backtrack(
                         student,
                         seat,
                         other,
-                        *candidate,
+                        candidate,
                     )
-            });
+                {
+                    filtered.push(candidate);
+                }
+            }
+            next_domains[other] = filtered;
             if next_domains[other].is_empty() {
                 pruned = true;
                 break;
@@ -2354,12 +3277,15 @@ fn backtrack(
             assignment,
             &mut next_domains,
             budget,
-            deadline,
+            run,
+            excluded_assignments,
         );
         assignment[student] = None;
         match result {
             SearchOutcome::Found(_) => return result,
-            SearchOutcome::BudgetExceeded => return result,
+            SearchOutcome::BudgetExceeded
+            | SearchOutcome::DeadlineExceeded
+            | SearchOutcome::Cancelled => return result,
             SearchOutcome::ProvenInfeasible => continue,
         }
     }
@@ -2492,6 +3418,9 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
             request.api_version, NATIVE_API_VERSION
         ));
     }
+    if request.student_count == 0 {
+        return Err("native solve requires at least one student".to_string());
+    }
     if request.seat_positions.is_empty() {
         return Err("native solve requires at least one seat".to_string());
     }
@@ -2510,6 +3439,17 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
     if !request.students.is_empty() && request.students.len() != request.student_count {
         return Err("students must be empty or match student_count".to_string());
     }
+    if !request.students.is_empty() {
+        let mut student_keys: HashSet<&str> = HashSet::new();
+        for student in &request.students {
+            if student.key.trim().is_empty() {
+                return Err("students require non-empty keys".to_string());
+            }
+            if !student_keys.insert(student.key.as_str()) {
+                return Err(format!("duplicate student key: {:?}", student.key));
+            }
+        }
+    }
     if !request.student_scores.is_empty() && request.student_scores.len() != request.student_count {
         return Err("student_scores must be empty or match student_count".to_string());
     }
@@ -2520,6 +3460,14 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
         .any(|score| !score.is_finite())
     {
         return Err("student scores must be finite numbers".to_string());
+    }
+    if request
+        .time_limit_seconds
+        .is_some_and(|seconds| !seconds.is_finite() || seconds <= 0.0)
+    {
+        return Err(
+            "invalid time_limit_seconds: expected a finite value greater than zero".to_string(),
+        );
     }
     if let Some(layout) = &request.layout {
         if layout.seats.len() < seat_count {
@@ -2559,10 +3507,18 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
         if pair[0] >= request.student_count || pair[1] >= request.student_count {
             return Err("pair rules reference an unknown student".to_string());
         }
+        if pair[0] == pair[1] {
+            return Err("invalid pair rule: must reference two different students".to_string());
+        }
     }
     for rule in &request.min_distance {
         if rule.students[0] >= request.student_count || rule.students[1] >= request.student_count {
             return Err("min_distance references an unknown student".to_string());
+        }
+        if rule.students[0] == rule.students[1] {
+            return Err(
+                "invalid min_distance rule: must reference two different students".to_string(),
+            );
         }
         if !rule.distance.is_finite() || rule.distance <= 0.0 {
             return Err("min_distance values must be positive and finite".to_string());
@@ -2640,7 +3596,12 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
                     graph_distances[*first_seat][*second_seat].map(|distance| distance as f64)
                 }
             };
-            if distance.is_none_or(|value| value < rule.distance) {
+            // A disconnected graph pair has no finite distance: the Python
+            // oracle treats it as infinite (inf < d is false), and the
+            // runtime checker `assigned_students_meet_distance` treats it as
+            // satisfied. Only a measured distance below the threshold is a
+            // static conflict.
+            if distance.is_some_and(|value| value < rule.distance) {
                 return Err(
                     "conflicting hard rules: fixed seats violate a min_distance rule".to_string(),
                 );
@@ -2669,9 +3630,10 @@ mod tests {
         full_solution_total_cost, generate_candidates_json, greedy_attempt,
         hard_search_with_budget, history_report_json, local_search, maximum_candidate_matching,
         pair_report_json, precheck_report_json, repair_json, resolve_group_rules, seat_distance,
-        solve_problem_json, validate_assignment, validate_solve_request_json,
-        CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome, SolveStatus,
-        SplitMix64, HARD_SEARCH_NODE_BUDGET, NATIVE_API_VERSION,
+        solve_problem_json, solve_problem_with_control, validate_assignment,
+        validate_solve_request, validate_solve_request_json, validate_solve_response,
+        CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome, SolveControl,
+        SolveStatus, SplitMix64, HARD_SEARCH_NODE_BUDGET, NATIVE_API_VERSION,
     };
     use serde_json::Value;
 
@@ -2745,6 +3707,86 @@ mod tests {
         }"#;
         let error = validate_solve_request_json(invalid).unwrap_err();
         assert!(error.contains("more students than available seats"));
+    }
+
+    #[test]
+    fn validate_rejects_empty_class_and_invalid_student_keys() {
+        let empty_class = r#"{
+            "api_version": 2,
+            "student_count": 0,
+            "seat_positions": [[0.0, 0.0]]
+        }"#;
+        let error = validate_solve_request_json(empty_class).unwrap_err();
+        assert!(error.contains("at least one student"), "{error}");
+
+        let empty_key = r#"{
+            "api_version": 2,
+            "student_count": 1,
+            "seat_positions": [[0.0, 0.0]],
+            "students": [{"key": "   "}]
+        }"#;
+        let error = validate_solve_request_json(empty_key).unwrap_err();
+        assert!(error.contains("non-empty keys"), "{error}");
+
+        let duplicate_key = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+            "students": [{"key": "same"}, {"key": "same"}]
+        }"#;
+        let error = validate_solve_request_json(duplicate_key).unwrap_err();
+        assert!(error.contains("duplicate student key"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_non_positive_or_non_finite_time_limit() {
+        let negative = r#"{
+            "api_version": 2,
+            "student_count": 1,
+            "seat_positions": [[0.0, 0.0]],
+            "time_limit_seconds": -1.0
+        }"#;
+        let error = validate_solve_request_json(negative).unwrap_err();
+        assert!(error.contains("time_limit_seconds"), "{error}");
+
+        let mut request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 1,
+                "seat_positions": [[0.0, 0.0]]
+            }"#,
+        )
+        .unwrap();
+        request.time_limit_seconds = Some(f64::NAN);
+        let error = validate_solve_request(&request).unwrap_err();
+        assert!(error.contains("finite"), "{error}");
+
+        request.time_limit_seconds = Some(0.0);
+        let error = validate_solve_request(&request).unwrap_err();
+        assert!(error.contains("greater than zero"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_self_referential_pair_and_distance_rules() {
+        let pair = r#"{
+            "api_version": 2,
+            "student_count": 1,
+            "seat_positions": [[0.0, 0.0]],
+            "must_be_adjacent": [[0, 0]]
+        }"#;
+        let error = validate_solve_request_json(pair).unwrap_err();
+        assert!(error.contains("two different students"), "{error}");
+
+        let distance = r#"{
+            "api_version": 2,
+            "student_count": 1,
+            "seat_positions": [[0.0, 0.0]],
+            "min_distance": [
+                {"students": [0, 0], "distance": 1.0, "metric": "graph"}
+            ]
+        }"#;
+        let error = validate_solve_request_json(distance).unwrap_err();
+        assert!(error.contains("two different students"), "{error}");
     }
 
     #[test]
@@ -2834,6 +3876,22 @@ mod tests {
             .collect::<Vec<_>>();
         seats.sort_unstable();
         assert_eq!(seats, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn solves_single_student_single_seat_without_local_search_panic() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 1,
+            "seat_positions": [[0.0, 0.0]],
+            "students": [{"key": "only"}],
+            "seed": 1
+        }"#;
+
+        let response_json = solve_problem_json(request).expect("single-student solve succeeds");
+        let response: CoreSolveResponse = serde_json::from_str(&response_json).unwrap();
+        assert_eq!(response.status, SolveStatus::Solved);
+        assert_eq!(response.assignment, vec![[0, 0]]);
     }
 
     #[test]
@@ -3393,6 +4451,112 @@ mod tests {
         assert_eq!(response.status, SolveStatus::Unknown);
     }
 
+    fn response_validation_request() -> CoreSolveRequest {
+        serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 2,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0]],
+                "edges": [[0, 1]],
+                "students": [{"key": "A"}, {"key": "B"}]
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn structurally_valid_solved_response() -> CoreSolveResponse {
+        CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: true,
+            status: SolveStatus::Solved,
+            assignment: vec![[0, 0], [1, 1]],
+            attempts_used: 1,
+            hard_constraints_satisfied: true,
+            total_cost: Some(0.0),
+        }
+    }
+
+    #[test]
+    fn solve_response_validation_rejects_forged_success_flags() {
+        let request = response_validation_request();
+        let mut response = structurally_valid_solved_response();
+        assert!(validate_solve_response(&request, &response).is_ok());
+
+        response.api_version = 1;
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("api_version"), "{error}");
+
+        response = structurally_valid_solved_response();
+        response.status = SolveStatus::Unknown;
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("status must be Solved"), "{error}");
+
+        response = structurally_valid_solved_response();
+        response.feasible = false;
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("feasible=true"), "{error}");
+
+        response = structurally_valid_solved_response();
+        response.hard_constraints_satisfied = false;
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("hard_constraints_satisfied=true"), "{error}");
+    }
+
+    #[test]
+    fn solve_response_validation_rejects_duplicate_and_out_of_range_indices() {
+        let request = response_validation_request();
+
+        let mut response = structurally_valid_solved_response();
+        response.assignment = vec![[0, 0], [0, 1]];
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("student 0 more than once"), "{error}");
+
+        response = structurally_valid_solved_response();
+        response.assignment = vec![[0, 0], [1, 0]];
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("seat 0 more than once"), "{error}");
+
+        response = structurally_valid_solved_response();
+        response.assignment = vec![[0, 0], [2, 1]];
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("out-of-range student 2"), "{error}");
+
+        response = structurally_valid_solved_response();
+        response.assignment = vec![[0, 0], [1, 2]];
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("out-of-range seat 2"), "{error}");
+    }
+
+    #[test]
+    fn solve_response_validation_rechecks_group_derived_hard_rules() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 2,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+                "edges": [[0, 1], [1, 2]],
+                "students": [{"key": "A"}, {"key": "B"}],
+                "rules": {
+                    "groups": [
+                        {"name": "together", "students": ["A", "B"], "together": true}
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+        let response = CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: true,
+            status: SolveStatus::Solved,
+            assignment: vec![[0, 0], [1, 2]],
+            attempts_used: 1,
+            hard_constraints_satisfied: true,
+            total_cost: Some(0.0),
+        };
+        let error = validate_solve_response(&request, &response).unwrap_err();
+        assert!(error.contains("violates a hard rule"), "{error}");
+    }
+
     // ---- M3-02: static conflict layer (plan §6.1 first layer) ----
 
     #[test]
@@ -3805,6 +4969,34 @@ mod tests {
         assert!(response.feasible);
         assert_eq!(response.status, SolveStatus::Solved);
     }
+
+    #[test]
+    fn cancelled_control_reports_cancelled_before_any_incumbent() {
+        // Cooperative cancellation (plan §6.1): a control cancelled before
+        // the solve starts must terminate with the Cancelled status and
+        // never produce an incumbent.
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 8,
+                "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0],[0.0,1.0],[1.0,1.0],[2.0,1.0],[3.0,1.0]],
+                "edges": [[0,1],[1,2],[2,3],[4,5],[5,6],[6,7],[0,4],[1,5],[2,6],[3,7]],
+                "seed": 7
+            }"#,
+        )
+        .expect("request should parse");
+        let control = SolveControl::new();
+        control.cancel();
+        let response =
+            solve_problem_with_control(&request, &control).expect("solve should terminate");
+        assert!(!response.feasible);
+        assert_eq!(response.status, SolveStatus::Cancelled);
+        assert!(response.assignment.is_empty());
+        // A fresh control on the same request still solves normally.
+        let response =
+            solve_problem_with_control(&request, &SolveControl::new()).expect("solve should run");
+        assert_eq!(response.status, SolveStatus::Solved);
+    }
     // ---- M3 6.2: soft optimization (local search) ----
 
     #[test]
@@ -4002,7 +5194,7 @@ mod tests {
         }
     }
     #[test]
-    fn history_report_counts_categories_without_student_data() {
+    fn history_report_counts_categories_with_identifiers() {
         let request = r#"{
             "api_version": 2,
             "student_count": 2,
@@ -4024,9 +5216,15 @@ mod tests {
         assert_eq!(report["student_count"], 2);
         // Both students sat in the front zone in both periods.
         assert!(report["category_totals"]["front"].as_u64().unwrap() >= 4);
-        // No raw identifiers in the report.
+        // Teacher-side report: identifiers are present (oracle contract,
+        // mirroring Python's StudentSeatHistory). Anonymization happens at
+        // the export/display boundary (teacher vs public templates), not in
+        // the core report.
+        let students = report["students"].as_array().unwrap();
+        assert_eq!(students.len(), 2);
+        assert!(report["students"][0]["student_key"].as_str().is_some());
         let serialized = serde_json::to_string(&report).unwrap();
-        assert!(!serialized.contains("Alice") && !serialized.contains("S1"));
+        assert!(serialized.contains("Alice") && serialized.contains("S1"));
     }
 
     #[test]
@@ -4100,6 +5298,88 @@ mod tests {
             .unwrap();
         assert_eq!(s1["seat_id"], "R1C1", "locked student must keep its seat");
         assert!(value["summary"]["moved_students"].as_u64().is_some());
+    }
+
+    #[test]
+    fn repair_preserves_original_fixed_seat_for_affected_student_non_identity() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 4,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0]],
+            "edges": [[0,1],[1,2],[2,3]],
+            "fixed_seats": [[0,2]],
+            "seed": 2,
+            "students": [{"key":"S1"},{"key":"S2"},{"key":"S3"},{"key":"S4"}],
+            "layout": {"layout_id":"l","name":"l","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C3","row":1,"col":3,"x":2.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C4","row":1,"col":4,"x":3.0,"y":0.0,"zone":"front","enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R1C2","R1C3"],["R1C3","R1C4"]]}}
+        }"#;
+        // Deliberately non-identity: S1 is student index 0 but occupies seat
+        // index 2. S1 and S2 are both movable, so dropping the original fixed
+        // rule would let the deterministic seed move S1 to R1C1.
+        let snapshot = r#"{
+            "assignments": [
+                {"student_key":"S1","seat_id":"R1C3"},
+                {"student_key":"S2","seat_id":"R1C1"},
+                {"student_key":"S3","seat_id":"R1C4"},
+                {"student_key":"S4","seat_id":"R1C2"}
+            ]
+        }"#;
+
+        let repaired = repair_json(
+            request,
+            snapshot,
+            &["S1".to_string(), "S2".to_string()],
+            &[],
+            &[],
+        )
+        .expect("repair should preserve the original fixed-seat rule");
+        let value: Value = serde_json::from_str(&repaired).unwrap();
+        let s1 = value["assignments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|assignment| assignment["student_key"] == "S1")
+            .unwrap();
+        assert_eq!(s1["seat_id"], "R1C3");
+    }
+
+    #[test]
+    fn repair_rejects_anchors_conflicting_with_original_fixed_seat() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0]],
+            "edges": [[0,1],[1,2]],
+            "fixed_seats": [[0,2]],
+            "students": [{"key":"S1"},{"key":"S2"},{"key":"S3"}],
+            "layout": {"layout_id":"l","name":"l","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"zone":"front","enabled":true},
+                {"seat_id":"R1C3","row":1,"col":3,"x":2.0,"y":0.0,"zone":"front","enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R1C2","R1C3"]]}}
+        }"#;
+        let snapshot = r#"{
+            "assignments": [
+                {"student_key":"S1","seat_id":"R1C1"},
+                {"student_key":"S2","seat_id":"R1C3"},
+                {"student_key":"S3","seat_id":"R1C2"}
+            ]
+        }"#;
+
+        // Same student, different seat.
+        let error = repair_json(request, snapshot, &[], &["S1".to_string()], &[]).unwrap_err();
+        assert!(error.contains("original fixed-seat rule"), "{error}");
+        assert!(error.contains("student S1"), "{error}");
+
+        // Different anchored student attempts to occupy the original fixed
+        // student's seat when S1 is the local affected student.
+        let error = repair_json(request, snapshot, &["S1".to_string()], &[], &[]).unwrap_err();
+        assert!(error.contains("original fixed-seat rule"), "{error}");
+        assert!(error.contains("student S2"), "{error}");
     }
 
     #[test]

@@ -2917,8 +2917,11 @@ dependencies = [
 name = "seattrellis-io"
 version = "0.1.0"
 dependencies = [
+ "seattrellis-schema",
+ "seattrellis_core",
  "serde",
  "serde_json",
+ "sha2",
  "zip",
 ]
 

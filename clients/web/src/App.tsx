@@ -743,6 +743,12 @@ export function App() {
             }),
           )
         : await generateClass(buildGenerateClassRequest(requestArgs));
+      if (!response.feasible) {
+        // ProvenInfeasible/Timeout/Unknown/Cancelled are successful transport
+        // responses with no editable assignment, not HTTP failures.
+        setSaveError(t("app.planNotFound"));
+        return;
+      }
       const isRotation = "rotation_plan" in response;
       const periodEditors =
         isRotation && response.period_editors?.length

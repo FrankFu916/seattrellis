@@ -52,14 +52,24 @@ impl SeatingGrid {
             return Err("problem has no seat_positions to render".to_string());
         }
 
-        // Map seat -> student label from the assignment. Stray indices are
-        // ignored rather than crashing the renderer.
+        // Map seat -> assigned student data. The detail line must follow the
+        // assignment's student index, not the seat index: using the latter can
+        // attach one student's height/vision to another student's name after
+        // any non-identity solve or manual edit.
         let mut student_by_seat: HashMap<usize, String> = HashMap::new();
+        let mut detail_by_seat: HashMap<usize, String> = HashMap::new();
         for [student_index, seat_index] in &response.assignment {
             if *student_index >= request.student_count || *seat_index >= seat_count {
                 continue;
             }
             student_by_seat.insert(*seat_index, student_label(request, *student_index));
+            if let Some(detail) = request
+                .students
+                .get(*student_index)
+                .and_then(student_detail)
+            {
+                detail_by_seat.insert(*seat_index, detail);
+            }
         }
 
         let mut cells = Vec::with_capacity(seat_count);
@@ -73,13 +83,12 @@ impl SeatingGrid {
             max_row = max_row.max(row);
             min_col = min_col.min(col);
             max_col = max_col.max(col);
-            let detail = request.students.get(seat_index).and_then(student_detail);
             cells.push(GridCell {
                 row,
                 col,
                 seat_index,
                 student: student_by_seat.get(&seat_index).cloned(),
-                detail,
+                detail: detail_by_seat.get(&seat_index).cloned(),
                 enabled,
             });
         }
@@ -939,6 +948,27 @@ mod tests {
         // Seats 4 and 5 are unassigned.
         assert_eq!(grid.cell_at(2, 2).unwrap().student, None);
         assert_eq!(grid.cell_at(2, 3).unwrap().student, None);
+    }
+
+    #[test]
+    fn sensitive_detail_follows_assigned_student_not_seat_index() {
+        let mut request = sample_request();
+        request.students[0].height_cm = Some(151.0);
+        request.students[0].vision = Some("left".to_string());
+        request.students[1].height_cm = Some(179.0);
+        request.students[1].vision = Some("right".to_string());
+        let response = CoreSolveResponse {
+            assignment: vec![[0, 1], [1, 0], [2, 2], [3, 3]],
+            ..sample_response()
+        };
+
+        let grid = SeatingGrid::build(&request, &response).unwrap();
+        let first_seat = grid.cell_at(1, 1).unwrap();
+        assert_eq!(first_seat.student.as_deref(), Some("Bob"));
+        assert_eq!(first_seat.detail.as_deref(), Some("179 cm  vision right"));
+        let second_seat = grid.cell_at(1, 2).unwrap();
+        assert_eq!(second_seat.student.as_deref(), Some("Alice"));
+        assert_eq!(second_seat.detail.as_deref(), Some("151 cm  vision left"));
     }
 
     #[test]

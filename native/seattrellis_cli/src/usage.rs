@@ -156,7 +156,11 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.bold("--format"));
     out.push_str(" <f>       project-export only: svg|html|png|pdf.\n      ");
     out.push_str(&styler.bold("--output"));
-    out.push_str(" <file>   project-solve/export write their artifact here.\n\n");
+    out.push_str(" <file>   project-solve/export write their artifact here.\n      ");
+    out.push_str(&styler.bold("--snapshot"));
+    out.push_str(" <file>  project-export only: the saved plan to render (the\n      ");
+    out.push_str("        result of 'project-solve --output <snapshot.json>'). Exporting\n      ");
+    out.push_str("        never re-solves; it renders exactly the saved plan.\n\n");
 
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");

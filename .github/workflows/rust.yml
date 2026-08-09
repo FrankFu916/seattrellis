@@ -14,7 +14,9 @@ on:
     types: [published]
 
 permissions:
-  contents: write
+  # Only the release publish-assets job needs contents: write (gh release
+  # upload); every other job runs read-only.
+  contents: read
 
 concurrency:
   group: rust-${{ github.event.pull_request.number || github.ref }}
@@ -119,6 +121,8 @@ jobs:
     if: github.event_name == 'release'
     needs: build-binaries
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download platform binaries
         uses: actions/download-artifact@v7

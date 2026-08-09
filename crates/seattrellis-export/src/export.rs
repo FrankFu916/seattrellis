@@ -55,7 +55,7 @@
 //! The module never panics: every failure is returned as a `String` error that
 //! identifies the offending field, so the server can surface a coarse 400.
 
-use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
+use seattrellis_core::{validate_solve_response, CoreSolveRequest, CoreSolveResponse};
 use serde::Deserialize;
 
 use crate::render::{
@@ -248,6 +248,13 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
     let orientation = ExportOrientation::parse(&request.orientation)?;
     let page_scale = validate_page_scale(request.page_scale)?;
 
+    // Export is a release artifact boundary, not a best-effort renderer.
+    // Re-check the complete assignment independently so forged response flags,
+    // stale/manual hard-rule violations, duplicate indices, and non-Solved
+    // outcomes can never be presented as a valid seating plan.
+    validate_solve_response(&request.request, &request.response)
+        .map_err(|message| format!("export rejected invalid solved plan: {message}"))?;
+
     let grid = SeatingGrid::build(&request.request, &request.response)?;
 
     // Privacy options (C.8): the public template — or explicit anonymization
@@ -402,6 +409,7 @@ mod tests {
         serde_json::json!({
             "api_version": 2,
             "feasible": true,
+            "status": "Solved",
             "assignment": [[0,0],[1,1],[2,2],[3,3]],
             "attempts_used": 4,
             "hard_constraints_satisfied": true,
@@ -600,6 +608,25 @@ mod tests {
     }
 
     #[test]
+    fn export_rejects_forged_feasibility_flags_and_invalid_assignments() {
+        let mut body = export_body("svg", "teacher");
+        body["response"]["status"] = serde_json::json!("Unknown");
+        let error = export_plan(&body_string(&body)).unwrap_err();
+        assert!(error.contains("status must be Solved"), "{error}");
+
+        let mut body = export_body("svg", "teacher");
+        body["response"]["assignment"] = serde_json::json!([[0, 0], [1, 0], [2, 2], [3, 3]]);
+        let error = export_plan(&body_string(&body)).unwrap_err();
+        assert!(error.contains("seat 0 more than once"), "{error}");
+
+        let mut body = export_body("svg", "teacher");
+        body["request"]["fixed_seats"] = serde_json::json!([[0, 0]]);
+        body["response"]["assignment"] = serde_json::json!([[0, 1], [1, 0], [2, 2], [3, 3]]);
+        let error = export_plan(&body_string(&body)).unwrap_err();
+        assert!(error.contains("hard rule"), "{error}");
+    }
+
+    #[test]
     fn pdf_landscape_swaps_a4_page() {
         let mut body = export_body("pdf", "teacher");
         body["orientation"] = serde_json::Value::String("landscape".into());
@@ -654,7 +681,7 @@ mod tests {
                 "students": [{"key": "S1", "display_name": "Alice", "height_cm": 160.0, "vision": "0.8"}]
             },
             "response": {
-                "api_version": 2, "feasible": true, "assignment": [[0, 0]],
+                "api_version": 2, "feasible": true, "status": "Solved", "assignment": [[0, 0]],
                 "attempts_used": 1, "hard_constraints_satisfied": true
             }
         }"#;

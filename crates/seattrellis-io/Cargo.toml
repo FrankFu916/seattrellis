@@ -7,6 +7,9 @@ license.workspace = true
 description = "File/import/export side of the domain: rosters, projects, migration, rotation plans and journaled transactions (M1-02 crate split)."
 
 [dependencies]
+seattrellis_core = { path = "../../native/seattrellis_core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+seattrellis-schema = { path = "../seattrellis-schema" }
+sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
