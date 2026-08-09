@@ -660,6 +660,9 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     }
 
     if let Some((assignment, total_cost, best_attempts)) = best {
+        // Independent validation gate (M3-05): a solver bug must surface as
+        // InternalError, never as a silently "feasible" result.
+        validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
         let pairs: Vec<[usize; 2]> = assignment
             .iter()
             .enumerate()
@@ -682,6 +685,8 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     // spends its node budget (then the honest status stays Unknown).
     match hard_search(request, &resolved, &adjacency, &graph_distances) {
         SearchOutcome::Found(assignment) => {
+            // Independent validation gate (M3-05), same as the greedy path.
+            validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
             let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
             let pairs: Vec<[usize; 2]> = assignment
                 .iter()
@@ -1022,6 +1027,46 @@ fn greedy_attempt(
             return Some(assignment.into_iter().map(|seat| seat.unwrap()).collect());
         }
     }
+}
+
+/// Independent hard-rule validator for a complete assignment (M3-05).
+///
+/// Every `Solved` response must pass this before leaving the core: a solver
+/// bug that produced a violating assignment becomes `InternalError` instead
+/// of a silently "feasible" result. The check is deliberately separate from
+/// the solver's own bookkeeping — it re-derives the probe from the raw
+/// assignment and re-checks every hard rule from the request.
+pub fn validate_assignment(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &[usize],
+) -> Result<(), String> {
+    if assignment.len() != request.student_count {
+        return Err(format!(
+            "solver produced an assignment for {} of {} students",
+            assignment.len(),
+            request.student_count
+        ));
+    }
+    let mut seen = vec![false; request.seat_positions.len()];
+    for (student, &seat) in assignment.iter().enumerate() {
+        if seat >= request.seat_positions.len() {
+            return Err(format!(
+                "solver produced an out-of-range seat {seat} for student {student}"
+            ));
+        }
+        if seen[seat] {
+            return Err(format!("solver produced a duplicate seat {seat}"));
+        }
+        seen[seat] = true;
+    }
+    let probe: Vec<Option<usize>> = assignment.iter().map(|&seat| Some(seat)).collect();
+    if !solve_partial_assignment_valid(request, resolved, &probe, adjacency, graph_distances) {
+        return Err("solver produced an assignment that violates a hard rule".to_string());
+    }
+    Ok(())
 }
 
 fn valid_candidate_seats(
@@ -1687,8 +1732,8 @@ mod tests {
         build_graph_distance_matrix, build_index_adjacency, classify_solve_error,
         evaluate_problem_json, hard_search, hard_search_with_budget,
         maximum_candidate_matching, resolve_group_rules, seat_distance, solve_problem_json,
-        validate_solve_request_json, CoreEvaluationResponse, CoreSolveRequest,
-        CoreSolveResponse, SearchOutcome, SolveStatus, NATIVE_API_VERSION,
+        validate_assignment, validate_solve_request_json, CoreEvaluationResponse,
+        CoreSolveRequest, CoreSolveResponse, SearchOutcome, SolveStatus, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -2651,5 +2696,40 @@ mod tests {
         // The full budget proves it (and solve_problem reports that).
         let outcome = hard_search(&request, &resolved, &adjacency, &graph_distances);
         assert_eq!(outcome, SearchOutcome::ProvenInfeasible);
+    }
+    #[test]
+    fn independent_validator_rejects_violating_assignments() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 2,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+                "edges": [[0, 1], [1, 2]],
+                "cannot_be_adjacent": [[0, 1]]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+
+        // Adjacent seats 0/1 violate the pair rule: must be rejected.
+        let error = validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0, 1])
+            .expect_err("adjacent placement must violate cannot_be_adjacent");
+        assert!(error.contains("violates a hard rule"), "{error}");
+
+        // Duplicate seat: must be rejected.
+        let error = validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0, 0])
+            .expect_err("duplicate seat must be rejected");
+        assert!(error.contains("duplicate seat"), "{error}");
+
+        // Missing students: must be rejected.
+        let error = validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0])
+            .expect_err("short assignment must be rejected");
+        assert!(error.contains("students"), "{error}");
+
+        // Seats 0 and 2 are not adjacent: a legal pairing passes.
+        validate_assignment(&request, &resolved, &adjacency, &graph_distances, &[0, 2])
+            .expect("non-adjacent pairing must pass");
     }
 }
