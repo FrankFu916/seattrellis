@@ -51,7 +51,7 @@ Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）目前仅 
 | `workspace` | cli.py:195-230 → `workspace_server.run_workspace_server` | `--host/--port/--open-browser`（长驻进程） | v2 由 Rust app server 替代（见 §14） | `RUST_PARTIAL` |
 | `desktop` | cli.py:232-246 → `desktop.run_desktop_app` | `--width/--height`（pywebview） | v2 由 Tauri 壳替代（见 §14） | `RUST_PARTIAL` |
 | `init-demo` | cli.py:248-253 → `init_demo` service.py:1023 | `--output-dir/--force` | 无对应 | `PYTHON_ONLY` |
-| `solve` | cli.py:255-300 → `solve_with_report` service.py:569 | `--students/--layout/--rules/--preset/--history(-dir)/--time-limit/--backend/--candidates(1-20)/--seed/--report` | Rust CLI `solve` 存在但输入为 CoreSolveRequest JSON、无候选集/报告 | `RUST_PARTIAL` |
+| `solve` | cli.py:255-300 → `solve_with_report` service.py:569 | `--students/--layout/--rules/--preset/--history(-dir)/--time-limit/--backend/--candidates(1-20)/--seed/--report` | Rust CLI `solve`（CoreSolveRequest JSON、`--seed`/`--time-limit`/`--output`）；七状态语义冻结；precheck/audit/candidates 子命令补齐诊断与候选集 | `RUST_PARTIAL` |
 | `rotation-plan` | cli.py:302-339 → `generate_rotation_plan` service.py:647 | `--periods(1-20)/--label/--name/...` | 无对应（Rust rotation 仅保存/加载已生成 plan） | `PYTHON_ONLY` |
 | `validate` | cli.py:341-367 → `run_validate` service.py:944 | `--strict` | Rust CLI `validate` 存在（core `evaluate_problem` 已验证），但无 preset/history 警告语义 | `RUST_PARTIAL` |
 | `export` | cli.py:369-449 → `export` service.py:696 | 8 格式、template、6 隐私开关、page/locale | Rust CLI `export` 仅 svg/html/png/pdf | `RUST_PARTIAL` |
@@ -514,7 +514,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 9. 渲染保真：PNG 无文字、PDF 无 CJK、print-html 退化为 html、SVG/HTML/PNG 无打印版页面选项。
 
 ### D. 覆盖缺口（§1/§2/§9/§11/§14）
-10. Rust CLI 命令面远小于 Python（3 vs 30）；history/project/migration 命令在 `native/seattrellis_cli/README.md:7-11` 明确列为 roadmap。
+10. Rust CLI 命令面（6 vs 30）：`validate`/`solve`/`export` + M3 新增 `precheck`/`audit`/`candidates`（PR #94/#97/#98）；history/project/migration 命令仍列为 roadmap（对应本表 B 类）。
 11. Repair（受约束重解）无 Rust 对应。
 12. 文件级 edit/export/validate 的 preset/history 警告语义无 Rust CLI 对应。
 13. Teacher goals：app 仅 4 goal（6/10 soft 规则），Python 15 preset 中 11 个不可达。
