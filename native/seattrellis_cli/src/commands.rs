@@ -10,13 +10,13 @@
 use std::path::Path;
 
 use seattrellis_core::{
-    precheck_report_json, solve_problem_json, validate_solve_request_json, CoreSolveRequest,
-    CoreSolveResponse, SolveStatus,
+    audit_report_json, precheck_report_json, solve_problem_json, validate_solve_request_json,
+    CoreSolveRequest, CoreSolveResponse, SolveStatus,
 };
 
 use crate::render::SeatingGrid;
 use crate::style::Styler;
-use crate::{ExportArgs, ExportFormat, PrecheckArgs, SolveArgs};
+use crate::{AuditArgs, ExportArgs, ExportFormat, PrecheckArgs, SolveArgs};
 use crate::ValidateArgs;
 
 pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
@@ -54,6 +54,18 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
 
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
 /// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+/// Run the solution audit and print the JSON report (plan §6.5).
+pub fn run_audit(args: &AuditArgs) -> Result<(), String> {
+    let problem_text = read_text(&args.problem)?;
+    let solution_text = read_text(&args.solution)?;
+    let solution: CoreSolveResponse = serde_json::from_str(&solution_text)
+        .map_err(|error| format!("'{}' is not valid JSON: {error}", args.solution.display()))?;
+    let report = audit_report_json(&problem_text, &solution.assignment)
+        .map_err(|error| format!("audit failed: {error}"))?;
+    println!("{report}");
+    Ok(())
+}
+
 /// Run the feasibility precheck and print the JSON report (M3-06).
 pub fn run_precheck(args: &PrecheckArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
