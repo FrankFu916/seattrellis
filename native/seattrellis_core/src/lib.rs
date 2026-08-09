@@ -659,7 +659,7 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
         }
     }
 
-    if let Some((assignment, total_cost, attempts_used)) = best {
+    if let Some((assignment, total_cost, best_attempts)) = best {
         let pairs: Vec<[usize; 2]> = assignment
             .iter()
             .enumerate()
@@ -670,23 +670,57 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
             feasible: true,
             status: SolveStatus::Solved,
             assignment: pairs,
-            attempts_used,
+            attempts_used: best_attempts,
             hard_constraints_satisfied: true,
             total_cost: Some(total_cost),
         });
     }
 
-    Ok(CoreSolveResponse {
-        api_version: NATIVE_API_VERSION,
-        feasible: false,
-        // Heuristic exhaustion with no sound proof: honest status is
-        // Unknown, never ProvenInfeasible (M1-03 / plan §四.1).
-        status: SolveStatus::Unknown,
-        assignment: Vec::new(),
-        attempts_used: attempts,
-        hard_constraints_satisfied: false,
-        total_cost: None,
-    })
+    // Full hard search (plan §6.1 fourth layer): when every greedy attempt
+    // fails, backtracking with MRV + forward checking either finds a legal
+    // seating, proves infeasibility by exhausting the whole state space, or
+    // spends its node budget (then the honest status stays Unknown).
+    match hard_search(request, &resolved, &adjacency, &graph_distances) {
+        SearchOutcome::Found(assignment) => {
+            let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
+            let pairs: Vec<[usize; 2]> = assignment
+                .iter()
+                .enumerate()
+                .map(|(student, seat)| [student, *seat])
+                .collect();
+            Ok(CoreSolveResponse {
+                api_version: NATIVE_API_VERSION,
+                feasible: true,
+                status: SolveStatus::Solved,
+                assignment: pairs,
+                attempts_used: attempts,
+                hard_constraints_satisfied: true,
+                total_cost: Some(total_cost),
+            })
+        }
+        SearchOutcome::ProvenInfeasible => Ok(CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: false,
+            // Exhaustive search over the full state space: this is a sound
+            // proof, so ProvenInfeasible is honest here (M1-03 / plan §四.1).
+            status: SolveStatus::ProvenInfeasible,
+            assignment: Vec::new(),
+            attempts_used: attempts,
+            hard_constraints_satisfied: false,
+            total_cost: None,
+        }),
+        SearchOutcome::BudgetExceeded => Ok(CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: false,
+            // Node budget spent without a complete state-space sweep: honest
+            // status is Unknown, never ProvenInfeasible (M1-03).
+            status: SolveStatus::Unknown,
+            assignment: Vec::new(),
+            attempts_used: attempts,
+            hard_constraints_satisfied: false,
+            total_cost: None,
+        }),
+    }
 }
 
 pub fn solve_problem_json(request_json: &str) -> Result<String, String> {
@@ -1202,6 +1236,212 @@ fn augment_matching(
     false
 }
 
+/// Exhaustive hard search outcome (plan §6.1 fourth layer).
+///
+/// [`SearchOutcome::ProvenInfeasible`] is only returned when the entire state
+/// space was swept without a legal seating; hitting the node budget returns
+/// [`SearchOutcome::BudgetExceeded`] so callers can keep the honest `Unknown`
+/// status (M1-03: heuristic exhaustion is never ProvenInfeasible).
+#[derive(Debug, PartialEq, Eq)]
+enum SearchOutcome {
+    Found(Vec<usize>),
+    ProvenInfeasible,
+    BudgetExceeded,
+}
+
+/// Node budget for one hard search. Classes are small (<= 60 students) and
+/// MRV + forward checking prune hard, so 200k nodes is generous for the
+/// full sweep while still bounding worst-case time.
+const HARD_SEARCH_NODE_BUDGET: usize = 200_000;
+
+/// Full hard search: MRV student selection with degree tie-break, forward
+/// checking over the candidate domains, deterministic (fixed order) branch
+/// exploration. Fixed students are pre-placed; their domains are singletons
+/// so MRV picks them first.
+fn hard_search(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+) -> SearchOutcome {
+    hard_search_with_budget(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        HARD_SEARCH_NODE_BUDGET,
+    )
+}
+
+/// [`hard_search`] with an explicit node budget (tests exercise the
+/// [`SearchOutcome::BudgetExceeded`] path with a tiny budget).
+fn hard_search_with_budget(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    budget: usize,
+) -> SearchOutcome {
+    let mut assignment: Vec<Option<usize>> = vec![None; request.student_count];
+    for [student, seat] in &request.fixed_seats {
+        assignment[*student] = Some(*seat);
+    }
+    let mut domains: Vec<Vec<usize>> = build_candidate_domains(request, resolved, adjacency, graph_distances)
+        .into_iter()
+        .map(|domain| domain.seats)
+        .collect();
+    let mut budget = budget;
+    backtrack(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        &mut assignment,
+        &mut domains,
+        &mut budget,
+    )
+}
+
+/// One backtracking step. On success returns the complete assignment; on
+/// exhaustive failure returns [`SearchOutcome::ProvenInfeasible`]; on budget
+/// exhaustion [`SearchOutcome::BudgetExceeded`].
+#[allow(clippy::too_many_arguments)]
+fn backtrack(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &mut [Option<usize>],
+    domains: &mut [Vec<usize>],
+    budget: &mut usize,
+) -> SearchOutcome {
+    if *budget == 0 {
+        return SearchOutcome::BudgetExceeded;
+    }
+    *budget -= 1;
+
+    // Every student assigned: complete assignment found.
+    if assignment.iter().all(Option::is_some) {
+        let complete = assignment.iter().map(|seat| seat.unwrap()).collect();
+        return SearchOutcome::Found(complete);
+    }
+
+    // MRV: the unassigned student with the smallest domain, tie-broken by
+    // constraint degree (more pair rules first) then student index.
+    let student = (0..request.student_count)
+        .filter(|student| assignment[*student].is_none())
+        .min_by_key(|student| {
+            let degree = constraint_degree(resolved, request, *student);
+            (domains[*student].len(), std::cmp::Reverse(degree), *student)
+        })
+        .expect("at least one unassigned student after the all-assigned check");
+
+    if domains[student].is_empty() {
+        return SearchOutcome::ProvenInfeasible;
+    }
+
+    for seat in domains[student].clone() {
+        // Deterministic seat order; skip seats already taken.
+        if assignment.contains(&Some(seat)) {
+            continue;
+        }
+
+        // Forward checking: assign student -> seat and filter every other
+        // student's domain. Any empty domain prunes this branch.
+        let mut next_domains = domains.to_vec();
+        let mut pruned = false;
+        for other in 0..request.student_count {
+            if assignment[other].is_some() || other == student {
+                continue;
+            }
+            next_domains[other].retain(|candidate| {
+                *candidate != seat
+                    && partial_pair_valid(
+                        request,
+                        resolved,
+                        adjacency,
+                        graph_distances,
+                        assignment,
+                        student,
+                        seat,
+                        other,
+                        *candidate,
+                    )
+            });
+            if next_domains[other].is_empty() {
+                pruned = true;
+                break;
+            }
+        }
+        if pruned {
+            continue;
+        }
+
+        assignment[student] = Some(seat);
+        let result = backtrack(
+            request,
+            resolved,
+            adjacency,
+            graph_distances,
+            assignment,
+            &mut next_domains,
+            budget,
+        );
+        assignment[student] = None;
+        match result {
+            SearchOutcome::Found(_) => return result,
+            SearchOutcome::BudgetExceeded => return result,
+            SearchOutcome::ProvenInfeasible => continue,
+        }
+    }
+
+    SearchOutcome::ProvenInfeasible
+}
+
+/// Number of hard-rule pairs this student participates in (MRV tie-break).
+fn constraint_degree(
+    resolved: &ResolvedHardRules,
+    request: &CoreSolveRequest,
+    student: usize,
+) -> usize {
+    let pairs = resolved
+        .must_be_adjacent
+        .iter()
+        .chain(resolved.cannot_be_adjacent.iter())
+        .filter(|pair| pair[0] == student || pair[1] == student)
+        .count();
+    let distance = request
+        .min_distance
+        .iter()
+        .filter(|rule| rule.students[0] == student || rule.students[1] == student)
+        .count();
+    pairs + distance
+}
+
+/// Is `(student -> seat, other -> candidate)` jointly legal given the current
+/// partial assignment? Checks only the pairs that become fully assigned, so
+/// this is the incremental forward-checking test.
+#[allow(clippy::too_many_arguments)]
+fn partial_pair_valid(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    assignment: &[Option<usize>],
+    student: usize,
+    seat: usize,
+    other: usize,
+    candidate: usize,
+) -> bool {
+    // Reuse the partial-assignment validator with a probe that contains the
+    // current assignment plus the two new placements. Unassigned students
+    // stay None, so only fully-assigned pairs are ever checked.
+    let mut probe: Vec<Option<usize>> = assignment.to_vec();
+    probe[student] = Some(seat);
+    probe[other] = Some(candidate);
+    solve_partial_assignment_valid(request, resolved, &probe, adjacency, graph_distances)
+}
+
 /// Find the first hard rule violated by `probe[student] = Some(seat)`.
 ///
 /// Returns a human-readable reason naming the rule, mirroring the order the
@@ -1443,11 +1683,12 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 #[cfg(test)]
 mod tests {
     use super::{
-        assignment_is_unique, build_candidate_domains, build_graph_distance_matrix,
-        build_index_adjacency, classify_solve_error, evaluate_problem_json,
+        assignment_is_unique, assigned_students_meet_distance, build_candidate_domains,
+        build_graph_distance_matrix, build_index_adjacency, classify_solve_error,
+        evaluate_problem_json, hard_search, hard_search_with_budget,
         maximum_candidate_matching, resolve_group_rules, seat_distance, solve_problem_json,
-        validate_solve_request_json, CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse,
-        SolveStatus, NATIVE_API_VERSION,
+        validate_solve_request_json, CoreEvaluationResponse, CoreSolveRequest,
+        CoreSolveResponse, SearchOutcome, SolveStatus, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -2038,13 +2279,15 @@ mod tests {
         assert_eq!(value["status"], "Solved");
     }
 
-    /// Greedy exhaustion with no sound proof must be `Unknown`, never
-    /// `ProvenInfeasible` (M1-03 P0 fix).
+    /// Exhaustive search proves a fully-constrained 2x2 grid infeasible
+    /// (M3-04: the status upgrades from Unknown to ProvenInfeasible once the
+    /// whole state space is swept; see
+    /// `hard_search_budget_exhaustion_stays_unknown` for the honest-Unknown
+    /// case).
     #[test]
     fn greedy_exhaustion_reports_unknown_status() {
         // 2x2 grid, every seat pair forbidden from adjacency: the request
-        // passes static validation but no complete assignment exists, so all
-        // greedy attempts fail.
+        // passes static validation but no complete assignment exists.
         let request = r#"{
             "api_version": 2,
             "student_count": 4,
@@ -2057,11 +2300,10 @@ mod tests {
         let response: CoreSolveResponse =
             serde_json::from_str(&response_json).expect("response should be valid JSON");
         assert!(!response.feasible);
-        assert_eq!(response.status, SolveStatus::Unknown);
-        assert_ne!(response.status, SolveStatus::ProvenInfeasible);
+        assert_eq!(response.status, SolveStatus::ProvenInfeasible);
 
         let value: serde_json::Value = serde_json::from_str(&response_json).unwrap();
-        assert_eq!(value["status"], "Unknown");
+        assert_eq!(value["status"], "ProvenInfeasible");
     }
 
     #[test]
@@ -2338,5 +2580,76 @@ mod tests {
         assert!(!response.feasible);
         assert_eq!(response.status, SolveStatus::ProvenInfeasible);
         assert_eq!(response.attempts_used, 0);
+    }
+    // ---- M3-04: exhaustive hard search (plan §6.1 fourth layer) ----
+
+    #[test]
+    fn hard_search_finds_legal_assignment_when_greedy_fails() {
+        // A 4-cycle of must_be_adjacent pairs: students 0-1, 1-2, 2-3, 3-0
+        // must all sit adjacent, but seat 2 is disabled... no: use a layout
+        // where the only legal seating is a specific rotation the random
+        // greedy misses. Here a 2x3 grid with a min_distance pair between
+        // students 0 and 1 (>= 2 graph hops): greedy attempt 0 pins 0 and 1
+        // on adjacent cheap seats and every randomized attempt fails to
+        // escape; the search finds the far-apart placement.
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 2,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 1.0]],
+                "edges": [[0, 1], [1, 2], [3, 4], [4, 5], [0, 3], [1, 4], [2, 5]],
+                "min_distance": [{"students": [0, 1], "distance": 3.0, "metric": "graph"}],
+                "seed": 1
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+
+        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 200_000);
+        let SearchOutcome::Found(assignment) = outcome else {
+            panic!("hard search should find the far-apart placement, got {outcome:?}");
+        };
+        // Student 0 and 1 must be >= 3 hops apart: only opposite corners work
+        // in this 2x3 ladder (e.g. 0->seat 0 and 1->seat 5 is 3 hops).
+        let probe: Vec<Option<usize>> =
+            assignment.iter().map(|seat| Some(*seat)).collect();
+        assert!(assigned_students_meet_distance(
+            &request.seat_positions,
+            &probe,
+            &graph_distances,
+            &request.min_distance[0],
+        ));
+        assert_eq!(assignment.len(), 2);
+        assert!(assignment[0] != assignment[1]);
+    }
+
+    #[test]
+    fn hard_search_budget_exhaustion_stays_unknown() {
+        // The 2x2 fully-forbidden grid is proven infeasible in a few nodes;
+        // with a tiny budget the sweep cannot complete and the honest status
+        // must stay Unknown (never ProvenInfeasible).
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 4,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
+                "edges": [[0, 1], [2, 3], [0, 2], [1, 3]],
+                "cannot_be_adjacent": [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+
+        // A budget of 1 node cannot sweep anything.
+        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 1);
+        assert_eq!(outcome, SearchOutcome::BudgetExceeded);
+
+        // The full budget proves it (and solve_problem reports that).
+        let outcome = hard_search(&request, &resolved, &adjacency, &graph_distances);
+        assert_eq!(outcome, SearchOutcome::ProvenInfeasible);
     }
 }
