@@ -40,18 +40,66 @@ pub struct ArtifactEntry {
 }
 
 pub const REGISTRY: &[ArtifactEntry] = &[
-    ArtifactEntry { kind: ArtifactKind::StudentRoster, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::ClassroomLayout, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::RuleSet, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::SeatingSnapshot, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::CandidateSet, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::PlanComparison, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::HistoryArchive, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::RotationPlan, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::EditingOperationLog, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::Project, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::ProjectBundleManifest, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
-    ArtifactEntry { kind: ArtifactKind::ExportPreset, current_version: V2_ARTIFACT_VERSION, migratable_from_older: false },
+    ArtifactEntry {
+        kind: ArtifactKind::StudentRoster,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::ClassroomLayout,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::RuleSet,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::SeatingSnapshot,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::CandidateSet,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::PlanComparison,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::HistoryArchive,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::RotationPlan,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::EditingOperationLog,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::Project,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::ProjectBundleManifest,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
+    ArtifactEntry {
+        kind: ArtifactKind::ExportPreset,
+        current_version: V2_ARTIFACT_VERSION,
+        migratable_from_older: false,
+    },
 ];
 
 /// Look up a kind in the registry.
@@ -64,9 +112,11 @@ pub fn entry_for(kind: ArtifactKind) -> Option<&'static ArtifactEntry> {
 /// Returns the registry entry on success. A `schema_version` that is not the
 /// current one is rejected: without a typed migration step (M2-03) an old
 /// artifact must never be silently reshaped.
-pub fn check_version(kind: ArtifactKind, schema_version: u32) -> Result<&'static ArtifactEntry, String> {
-    let entry = entry_for(kind)
-        .ok_or_else(|| format!("unknown artifact kind: {kind:?}"))?;
+pub fn check_version(
+    kind: ArtifactKind,
+    schema_version: u32,
+) -> Result<&'static ArtifactEntry, String> {
+    let entry = entry_for(kind).ok_or_else(|| format!("unknown artifact kind: {kind:?}"))?;
     if schema_version != entry.current_version {
         return Err(format!(
             "unsupported schema_version {schema_version} for {kind:?}; \
@@ -97,7 +147,10 @@ mod tests {
             ArtifactKind::ProjectBundleManifest,
             ArtifactKind::ExportPreset,
         ] {
-            assert!(entry_for(kind).is_some(), "registry entry missing for {kind:?}");
+            assert!(
+                entry_for(kind).is_some(),
+                "registry entry missing for {kind:?}"
+            );
         }
     }
 

@@ -86,10 +86,18 @@ pub struct FairRotationParam {
 }
 
 pub(crate) fn default_categories() -> Vec<String> {
-    ["front", "back", "side", "corner", "near_window", "near_door", "near_ac"]
-        .iter()
-        .map(|value| value.to_string())
-        .collect()
+    [
+        "front",
+        "back",
+        "side",
+        "corner",
+        "near_window",
+        "near_door",
+        "near_ac",
+    ]
+    .iter()
+    .map(|value| value.to_string())
+    .collect()
 }
 
 fn default_lookback() -> i32 {
@@ -114,7 +122,10 @@ pub struct AvoidRecentNeighborsParam {
 }
 
 pub(crate) fn default_relations() -> Vec<String> {
-    ["desk_mate", "adjacent_any"].iter().map(|value| value.to_string()).collect()
+    ["desk_mate", "adjacent_any"]
+        .iter()
+        .map(|value| value.to_string())
+        .collect()
 }
 
 fn default_max_recent() -> i32 {

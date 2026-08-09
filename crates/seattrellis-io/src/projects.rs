@@ -204,7 +204,10 @@ fn load_project(path: &Path) -> Result<ProjectFile, String> {
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid project file: {} ({e})", path.display()))?;
     let obj = value.as_object().ok_or_else(|| {
-        format!("Invalid project file: {} (not a JSON object)", path.display())
+        format!(
+            "Invalid project file: {} (not a JSON object)",
+            path.display()
+        )
     })?;
     if obj.get("kind").and_then(Value::as_str) != Some("seattrellis_project") {
         return Err(format!(
@@ -233,13 +236,18 @@ fn load_project(path: &Path) -> Result<ProjectFile, String> {
 }
 
 fn require_relative_path(value: Option<&str>, field: &str) -> Result<(), String> {
-    let text = value.ok_or_else(|| format!("Project field \"{field}\" is required."))?.trim();
+    let text = value
+        .ok_or_else(|| format!("Project field \"{field}\" is required."))?
+        .trim();
     if text.is_empty() {
         return Err(format!("Project field \"{field}\" cannot be empty."));
     }
-    let looks_absolute = Path::new(text).is_absolute() || (text.len() >= 2 && text.as_bytes()[1] == b':');
+    let looks_absolute =
+        Path::new(text).is_absolute() || (text.len() >= 2 && text.as_bytes()[1] == b':');
     if looks_absolute {
-        return Err(format!("Project field \"{field}\" must be a relative path."));
+        return Err(format!(
+            "Project field \"{field}\" must be a relative path."
+        ));
     }
     Ok(())
 }
@@ -252,20 +260,45 @@ fn required_field<'a>(value: &'a Option<String>, field: &str) -> Result<&'a str,
 
 /// Resolve a project file and (optionally) require its input references to
 /// exist. Paths are canonicalized and checked to stay inside the project root.
-fn resolve_project(project_path: &Path, require_inputs: bool) -> Result<(ProjectFile, ResolvedProject), String> {
-    let project_file = fs::canonicalize(project_path)
-        .map_err(|e| format!("Project file not found or unreadable: {} ({e})", project_path.display()))?;
+fn resolve_project(
+    project_path: &Path,
+    require_inputs: bool,
+) -> Result<(ProjectFile, ResolvedProject), String> {
+    let project_file = fs::canonicalize(project_path).map_err(|e| {
+        format!(
+            "Project file not found or unreadable: {} ({e})",
+            project_path.display()
+        )
+    })?;
     if !project_file.is_file() {
-        return Err(format!("Project file not found: {}", project_file.display()));
+        return Err(format!(
+            "Project file not found: {}",
+            project_file.display()
+        ));
     }
     let project = load_project(&project_file)?;
     let root = project_file
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| project_file.clone());
-    let students = resolve_reference(&root, required_field(&project.students, "students")?, "students", require_inputs)?;
-    let layout = resolve_reference(&root, required_field(&project.layout, "layout")?, "layout", require_inputs)?;
-    let rules = resolve_reference(&root, required_field(&project.rules, "rules")?, "rules", require_inputs)?;
+    let students = resolve_reference(
+        &root,
+        required_field(&project.students, "students")?,
+        "students",
+        require_inputs,
+    )?;
+    let layout = resolve_reference(
+        &root,
+        required_field(&project.layout, "layout")?,
+        "layout",
+        require_inputs,
+    )?;
+    let rules = resolve_reference(
+        &root,
+        required_field(&project.rules, "rules")?,
+        "rules",
+        require_inputs,
+    )?;
     let history_dir = match project.history_dir.as_deref() {
         Some(dir) => Some(resolve_reference(&root, dir, "history_dir", false)?),
         None => None,
@@ -286,7 +319,12 @@ fn resolve_project(project_path: &Path, require_inputs: bool) -> Result<(Project
 }
 
 /// Resolve a project reference and reject it when it escapes the root.
-fn resolve_reference(root: &Path, relative: &str, label: &str, require: bool) -> Result<PathBuf, String> {
+fn resolve_reference(
+    root: &Path,
+    relative: &str,
+    label: &str,
+    require: bool,
+) -> Result<PathBuf, String> {
     let candidate = root.join(relative);
     match fs::canonicalize(&candidate) {
         Ok(resolved) => {
@@ -429,7 +467,10 @@ pub fn record_recent_project(path: &str, name: &str) {
 
 /// Return the in-memory recent-project list (most recent first).
 pub fn recent_projects() -> Vec<RecentProject> {
-    recent_store().lock().map(|store| store.clone()).unwrap_or_default()
+    recent_store()
+        .lock()
+        .map(|store| store.clone())
+        .unwrap_or_default()
 }
 
 /// JSON form of the in-memory recent-project list.
@@ -469,7 +510,9 @@ pub fn project_history(project_path: &str) -> Result<ProjectHistory, String> {
     dedupe_warnings(&mut warnings);
     Ok(ProjectHistory {
         api_version: "1",
-        project_name: project.name.unwrap_or_else(|| DEFAULT_PROJECT_NAME.to_string()),
+        project_name: project
+            .name
+            .unwrap_or_else(|| DEFAULT_PROJECT_NAME.to_string()),
         project_path: paths.project_file.to_string_lossy().into_owned(),
         history,
         outputs,
@@ -500,9 +543,7 @@ fn artifact_items(dir: &Path, warnings: &mut Vec<String>) -> Vec<ProjectArtifact
             }
         }
     }
-    paths.sort_by(|a, b| {
-        (mtime_nanos(b), b.as_os_str()).cmp(&(mtime_nanos(a), a.as_os_str()))
-    });
+    paths.sort_by(|a, b| (mtime_nanos(b), b.as_os_str()).cmp(&(mtime_nanos(a), a.as_os_str())));
     let mut items: Vec<ProjectArtifact> = Vec::new();
     for path in paths {
         match artifact_from_file(&path) {
@@ -521,7 +562,8 @@ fn artifact_items(dir: &Path, warnings: &mut Vec<String>) -> Vec<ProjectArtifact
 
 fn artifact_from_file(path: &Path) -> Result<ProjectArtifact, String> {
     let bytes = read_file_capped(path, MAX_BUNDLE_FILE_BYTES)?;
-    let metadata = fs::metadata(path).map_err(|e| format!("Could not stat {}: {e}", path.display()))?;
+    let metadata =
+        fs::metadata(path).map_err(|e| format!("Could not stat {}: {e}", path.display()))?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid JSON in {}: {e}", path.display()))?;
     let kind = artifact_kind(&value);
@@ -663,7 +705,9 @@ fn artifact_metadata_values(value: &Value, kind: &str) -> Vec<Value> {
         "candidate_set" => {
             if let Some(candidates) = value.get("candidates").and_then(Value::as_array) {
                 for candidate in candidates {
-                    if let Some(metadata) = candidate.get("snapshot").and_then(|s| s.get("metadata")) {
+                    if let Some(metadata) =
+                        candidate.get("snapshot").and_then(|s| s.get("metadata"))
+                    {
                         if metadata.is_object() {
                             values.push(metadata.clone());
                         }
@@ -709,7 +753,10 @@ pub fn project_privacy_json(project_path: &str) -> Result<String, String> {
 }
 
 /// Collect (files_scanned, findings) for a resolved project.
-fn privacy_report(paths: &ResolvedProject, include_outputs: bool) -> Result<(usize, Vec<PrivacyFinding>), String> {
+fn privacy_report(
+    paths: &ResolvedProject,
+    include_outputs: bool,
+) -> Result<(usize, Vec<PrivacyFinding>), String> {
     let files = collect_project_files(paths, include_outputs)?;
     let mut findings: Vec<PrivacyFinding> = Vec::new();
     for path in &files {
@@ -726,7 +773,10 @@ fn privacy_report(paths: &ResolvedProject, include_outputs: bool) -> Result<(usi
 
 /// Collect every file that belongs to a project bundle, refusing to follow
 /// references that escape the project root (mirrors `project_files`).
-fn collect_project_files(paths: &ResolvedProject, include_outputs: bool) -> Result<Vec<PathBuf>, String> {
+fn collect_project_files(
+    paths: &ResolvedProject,
+    include_outputs: bool,
+) -> Result<Vec<PathBuf>, String> {
     let mut files: Vec<PathBuf> = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new();
 
@@ -737,11 +787,18 @@ fn collect_project_files(paths: &ResolvedProject, include_outputs: bool) -> Resu
         (&paths.layout, "layout"),
         (&paths.rules, "rules"),
     ] {
-        let resolved = fs::canonicalize(path)
-            .map_err(|e| format!("Project reference \"{label}\" not found: {} ({e})", path.display()))?;
+        let resolved = fs::canonicalize(path).map_err(|e| {
+            format!(
+                "Project reference \"{label}\" not found: {} ({e})",
+                path.display()
+            )
+        })?;
         ensure_inside(&resolved, &paths.root, label)?;
         if !resolved.is_file() {
-            return Err(format!("Project reference \"{label}\" is not a file: {}", resolved.display()));
+            return Err(format!(
+                "Project reference \"{label}\" is not a file: {}",
+                resolved.display()
+            ));
         }
         add_resolved_file(&mut files, &mut seen, resolved);
     }
@@ -752,7 +809,13 @@ fn collect_project_files(paths: &ResolvedProject, include_outputs: bool) -> Resu
         }
     }
     if include_outputs && paths.outputs_dir.is_dir() {
-        add_directory_files(&mut files, &mut seen, &paths.outputs_dir, &paths.root, "outputs_dir")?;
+        add_directory_files(
+            &mut files,
+            &mut seen,
+            &paths.outputs_dir,
+            &paths.root,
+            "outputs_dir",
+        )?;
     }
 
     let root = &paths.root;
@@ -773,8 +836,12 @@ fn add_directory_files(
     root: &Path,
     label: &str,
 ) -> Result<(), String> {
-    let resolved_dir = fs::canonicalize(dir)
-        .map_err(|e| format!("Project reference \"{label}\" is not a directory: {} ({e})", dir.display()))?;
+    let resolved_dir = fs::canonicalize(dir).map_err(|e| {
+        format!(
+            "Project reference \"{label}\" is not a directory: {} ({e})",
+            dir.display()
+        )
+    })?;
     ensure_inside(&resolved_dir, root, label)?;
     let mut stack: Vec<PathBuf> = vec![resolved_dir];
     while let Some(current) = stack.pop() {
@@ -1010,7 +1077,11 @@ struct ValidatedEntry {
 
 /// Validate and restore a project bundle without allowing path traversal or
 /// symlink escape. Returns the path to the restored project file.
-pub fn restore_project_bundle(bundle_bytes: &[u8], output_dir: &str, overwrite: bool) -> Result<PathBuf, String> {
+pub fn restore_project_bundle(
+    bundle_bytes: &[u8],
+    output_dir: &str,
+    overwrite: bool,
+) -> Result<PathBuf, String> {
     let mut archive = ZipArchive::new(Cursor::new(bundle_bytes))
         .map_err(|e| format!("Could not read project bundle: {e}"))?;
     let manifest = read_manifest(&mut archive)?;
@@ -1040,10 +1111,18 @@ pub fn restore_project_bundle(bundle_bytes: &[u8], output_dir: &str, overwrite: 
         .filter(|parent| !parent.as_os_str().is_empty())
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    fs::create_dir_all(&parent)
-        .map_err(|e| format!("Could not create restore destination {}: {e}", parent.display()))?;
-    let parent_abs = fs::canonicalize(&parent)
-        .map_err(|e| format!("Restore destination unavailable: {} ({e})", parent.display()))?;
+    fs::create_dir_all(&parent).map_err(|e| {
+        format!(
+            "Could not create restore destination {}: {e}",
+            parent.display()
+        )
+    })?;
+    let parent_abs = fs::canonicalize(&parent).map_err(|e| {
+        format!(
+            "Restore destination unavailable: {} ({e})",
+            parent.display()
+        )
+    })?;
     let dest_abs = parent_abs.join(&dest_name);
 
     if dest_abs.exists() {
@@ -1051,7 +1130,10 @@ pub fn restore_project_bundle(bundle_bytes: &[u8], output_dir: &str, overwrite: 
             .map(|mut entries| entries.next().is_some())
             .unwrap_or(true);
         if non_empty && !overwrite {
-            return Err(format!("Restore destination is not empty: {}", dest_abs.display()));
+            return Err(format!(
+                "Restore destination is not empty: {}",
+                dest_abs.display()
+            ));
         }
     }
 
@@ -1075,7 +1157,10 @@ pub fn restore_project_bundle(bundle_bytes: &[u8], output_dir: &str, overwrite: 
     if !dest_abs.exists() {
         if let Err(err) = fs::create_dir_all(&dest_abs) {
             let _ = fs::remove_dir_all(&staging);
-            return Err(format!("Could not create restore destination {}: {err}", dest_abs.display()));
+            return Err(format!(
+                "Could not create restore destination {}: {err}",
+                dest_abs.display()
+            ));
         }
     }
     if let Err(err) = copy_tree(&staging, &dest_abs) {
@@ -1145,8 +1230,7 @@ fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
                 .and_then(Value::as_array)
                 .and_then(|candidates| {
                     candidates.iter().find(|candidate| {
-                        candidate.get("candidate_id").and_then(Value::as_str)
-                            == Some(recommended)
+                        candidate.get("candidate_id").and_then(Value::as_str) == Some(recommended)
                     })
                 })
                 .or_else(|| {
@@ -1256,11 +1340,7 @@ pub fn compare_artifacts_json(
         .iter()
         .map(|(student, seat)| (student.as_str(), seat.as_str()))
         .collect();
-    let mut all_students: Vec<&str> = left_map
-        .keys()
-        .chain(right_map.keys())
-        .copied()
-        .collect();
+    let mut all_students: Vec<&str> = left_map.keys().chain(right_map.keys()).copied().collect();
     all_students.sort_unstable();
     all_students.dedup();
 
@@ -1312,7 +1392,8 @@ pub fn compare_artifacts_json(
         "right": summary(&right, right_path),
         "diff": diff,
     });
-    serde_json::to_string(&response).map_err(|e| format!("Could not serialize compare response: {e}"))
+    serde_json::to_string(&response)
+        .map_err(|e| format!("Could not serialize compare response: {e}"))
 }
 
 /// Restore an artifact as a new output snapshot without overwriting history
@@ -1339,10 +1420,7 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if let Some(metadata) = document
-        .get_mut("metadata")
-        .and_then(Value::as_object_mut)
-    {
+    if let Some(metadata) = document.get_mut("metadata").and_then(Value::as_object_mut) {
         metadata.insert("restored_from".to_string(), json!(source_name));
     } else if let Some(object) = document.as_object_mut() {
         object.insert(
@@ -1366,7 +1444,9 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_else(|| "artifact".to_string());
     let clean_stem = stem.strip_suffix(".snapshot").unwrap_or(&stem);
-    let mut target = paths.outputs_dir.join(format!("restored-{clean_stem}.snapshot.json"));
+    let mut target = paths
+        .outputs_dir
+        .join(format!("restored-{clean_stem}.snapshot.json"));
     let mut index = 2;
     while target.exists() {
         target = paths
@@ -1374,10 +1454,17 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
             .join(format!("restored-{clean_stem}-{index}.snapshot.json"));
         index += 1;
     }
-    fs::write(&target, serde_json::to_vec(&document).map_err(|e| {
-        format!("Could not serialize restored artifact: {e}")
-    })?)
-    .map_err(|e| format!("Could not write restored artifact {}: {e}", target.display()))?;
+    fs::write(
+        &target,
+        serde_json::to_vec(&document)
+            .map_err(|e| format!("Could not serialize restored artifact: {e}"))?,
+    )
+    .map_err(|e| {
+        format!(
+            "Could not write restored artifact {}: {e}",
+            target.display()
+        )
+    })?;
 
     let response = json!({
         "api_version": "1",
@@ -1385,7 +1472,8 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
         "source_artifact": source_path.to_string_lossy(),
         "restored_artifact": target.to_string_lossy(),
     });
-    serde_json::to_string(&response).map_err(|e| format!("Could not serialize restore response: {e}"))
+    serde_json::to_string(&response)
+        .map_err(|e| format!("Could not serialize restore response: {e}"))
 }
 
 fn read_manifest(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Manifest, String> {
@@ -1408,7 +1496,9 @@ fn read_manifest(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Manifest, St
     }
     if obj.get("format_version").and_then(Value::as_u64) != Some(u64::from(BUNDLE_FORMAT_VERSION)) {
         let version = obj.get("format_version").cloned().unwrap_or(Value::Null);
-        return Err(format!("Unsupported project bundle format_version {version}."));
+        return Err(format!(
+            "Unsupported project bundle format_version {version}."
+        ));
     }
     let project_file = obj
         .get("project_file")
@@ -1427,10 +1517,15 @@ fn read_manifest(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Manifest, St
     if unique.len() != files.len() {
         return Err("Project bundle manifest contains duplicate file entries.".to_string());
     }
-    Ok(Manifest { project_file, files })
+    Ok(Manifest {
+        project_file,
+        files,
+    })
 }
 
-fn validated_entries(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Vec<ValidatedEntry>, String> {
+fn validated_entries(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+) -> Result<Vec<ValidatedEntry>, String> {
     let mut entries: Vec<ValidatedEntry> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     for index in 0..archive.len() {
@@ -1506,13 +1601,16 @@ fn extract_bundle(
 }
 
 fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    let entries = fs::read_dir(source)
-        .map_err(|e| format!("Could not read restored files: {e}"))?;
+    let entries =
+        fs::read_dir(source).map_err(|e| format!("Could not read restored files: {e}"))?;
     for entry in entries.flatten() {
         let path = entry.path();
         let target = destination.join(entry.file_name());
         if is_symlink(&target) {
-            return Err(format!("Restore destination contains a symlink: {}", target.display()));
+            return Err(format!(
+                "Restore destination contains a symlink: {}",
+                target.display()
+            ));
         }
         if path.is_dir() {
             fs::create_dir_all(&target)
@@ -1531,8 +1629,8 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 fn read_file_capped(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
-    let metadata = fs::metadata(path)
-        .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let metadata =
+        fs::metadata(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
     if metadata.len() > max_bytes {
         return Err(format!(
             "File is too large to read: {} ({} bytes)",
@@ -1706,7 +1804,12 @@ mod tests {
         write_project(&root.join("a"), "Alpha", "student_ref,gender\n", false);
         write_project(&root.join("a/b"), "Beta", "student_ref,gender\n", false);
         // Hidden project must be ignored.
-        write_project(&root.join(".hidden"), "Hidden", "student_ref,gender\n", false);
+        write_project(
+            &root.join(".hidden"),
+            "Hidden",
+            "student_ref,gender\n",
+            false,
+        );
 
         let canonical_root = fs::canonicalize(&root).unwrap();
         let json = list_projects_json(root.to_str().unwrap(), 100).unwrap();
@@ -1715,11 +1818,17 @@ mod tests {
         assert_eq!(value["root"], canonical_root.to_str().unwrap());
         let projects = value["projects"].as_array().unwrap();
         assert_eq!(projects.len(), 2);
-        let names: Vec<&str> = projects.iter().map(|p| p["name"].as_str().unwrap()).collect();
+        let names: Vec<&str> = projects
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
         assert!(names.contains(&"Alpha"));
         assert!(names.contains(&"Beta"));
         for project in projects {
-            assert!(project["path"].as_str().unwrap().contains("project.seattrellis.json"));
+            assert!(project["path"]
+                .as_str()
+                .unwrap()
+                .contains("project.seattrellis.json"));
             assert!(project["modified_at"].as_str().unwrap().ends_with("+00:00"));
         }
     }
@@ -1782,7 +1891,9 @@ mod tests {
         let json = project_history_json(project_file.to_str().unwrap()).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
         let warnings = value["warnings"].as_array().unwrap();
-        assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("history directory")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.as_str().unwrap().contains("history directory")));
         assert_eq!(value["history"].as_array().unwrap().len(), 0);
     }
 
@@ -1800,9 +1911,11 @@ mod tests {
         assert_eq!(value["safe_for_public_sharing"], false);
         let findings = value["findings"].as_array().unwrap();
         let students = findings.iter().find(|f| f["file"] == "students.csv");
-        assert!(students.is_some(), "expected a students.csv finding, got {findings:?}");
-        let fields: Vec<&str> = students
-            .unwrap()["fields"]
+        assert!(
+            students.is_some(),
+            "expected a students.csv finding, got {findings:?}"
+        );
+        let fields: Vec<&str> = students.unwrap()["fields"]
             .as_array()
             .unwrap()
             .iter()
@@ -1840,7 +1953,8 @@ mod tests {
     #[test]
     fn pack_restore_roundtrip() {
         let root = temp_root("roundtrip");
-        let project_file = write_project(&root, "Roundtrip", "student_ref,gender\nA,F\nB,M\n", true);
+        let project_file =
+            write_project(&root, "Roundtrip", "student_ref,gender\nA,F\nB,M\n", true);
         write_snapshot(
             &root,
             "week1.snapshot.json",
@@ -1858,7 +1972,11 @@ mod tests {
 
         let restored_project = PathBuf::from(value["project_path"].as_str().unwrap());
         assert!(restored_project.is_file());
-        assert!(restored_project.parent().unwrap().join("students.csv").is_file());
+        assert!(restored_project
+            .parent()
+            .unwrap()
+            .join("students.csv")
+            .is_file());
         assert!(restored_project
             .parent()
             .unwrap()
@@ -1892,7 +2010,11 @@ mod tests {
     fn restore_rejects_path_traversal() {
         let dest = temp_root("restore-traversal");
         let zip = make_zip(&[
-            ("manifest.json", &simple_manifest(&["../evil.txt"], "../evil.txt"), 0o100644),
+            (
+                "manifest.json",
+                &simple_manifest(&["../evil.txt"], "../evil.txt"),
+                0o100644,
+            ),
             ("../evil.txt", b"boom", 0o100644),
         ]);
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
@@ -1902,7 +2024,8 @@ mod tests {
     #[test]
     fn restore_rejects_symlink_entry() {
         let dest = temp_root("restore-symlink");
-        let zip = make_zip_with_symlink(&simple_manifest(&["link"], "link"), "link", "students.csv");
+        let zip =
+            make_zip_with_symlink(&simple_manifest(&["link"], "link"), "link", "students.csv");
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
         assert!(err.contains("symlink"), "got: {err}");
     }
@@ -1910,8 +2033,12 @@ mod tests {
     #[test]
     fn restore_rejects_corrupt_zip() {
         let dest = temp_root("restore-corrupt");
-        let err = restore_project_bundle(b"this is definitely not a zip archive", dest.to_str().unwrap(), false)
-            .unwrap_err();
+        let err = restore_project_bundle(
+            b"this is definitely not a zip archive",
+            dest.to_str().unwrap(),
+            false,
+        )
+        .unwrap_err();
         assert!(err.contains("Could not read project bundle"), "got: {err}");
     }
 
@@ -1920,7 +2047,11 @@ mod tests {
         let dest = temp_root("restore-mismatch");
         // Manifest claims a.txt but the archive carries b.txt.
         let zip = make_zip(&[
-            ("manifest.json", &simple_manifest(&["a.txt"], "a.txt"), 0o100644),
+            (
+                "manifest.json",
+                &simple_manifest(&["a.txt"], "a.txt"),
+                0o100644,
+            ),
             ("b.txt", b"x", 0o100644),
         ]);
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
@@ -1932,7 +2063,11 @@ mod tests {
         let dest = temp_root("restore-nonempty");
         fs::write(dest.join("existing.txt"), b"keep").unwrap();
         let zip = make_zip(&[
-            ("manifest.json", &simple_manifest(&["proj.json"], "proj.json"), 0o100644),
+            (
+                "manifest.json",
+                &simple_manifest(&["proj.json"], "proj.json"),
+                0o100644,
+            ),
             ("proj.json", b"{}", 0o100644),
         ]);
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
@@ -1962,17 +2097,35 @@ mod tests {
 
     #[test]
     fn default_bundle_name_matches_suffixes() {
-        assert_eq!(default_bundle_name("/d/x.seattrellis.json").unwrap(), "x.seattrellis.zip");
-        assert_eq!(default_bundle_name("/d/x.project.json").unwrap(), "x.seattrellis.zip");
-        assert_eq!(default_bundle_name("/d/plain.json").unwrap(), "plain.seattrellis.zip");
-        assert_eq!(default_bundle_name("/d/weird.txt").unwrap(), "weird.txt.seattrellis.zip");
+        assert_eq!(
+            default_bundle_name("/d/x.seattrellis.json").unwrap(),
+            "x.seattrellis.zip"
+        );
+        assert_eq!(
+            default_bundle_name("/d/x.project.json").unwrap(),
+            "x.seattrellis.zip"
+        );
+        assert_eq!(
+            default_bundle_name("/d/plain.json").unwrap(),
+            "plain.seattrellis.zip"
+        );
+        assert_eq!(
+            default_bundle_name("/d/weird.txt").unwrap(),
+            "weird.txt.seattrellis.zip"
+        );
     }
 
     #[test]
     fn iso_formatting_rounds_trip() {
         assert_eq!(iso_from_epoch_secs(0), "1970-01-01T00:00:00+00:00");
-        assert_eq!(iso_from_epoch_secs(1_752_900_000), "2025-07-19T04:40:00+00:00");
-        assert_eq!(iso_from_epoch_secs(1_780_272_000), "2026-06-01T00:00:00+00:00");
+        assert_eq!(
+            iso_from_epoch_secs(1_752_900_000),
+            "2025-07-19T04:40:00+00:00"
+        );
+        assert_eq!(
+            iso_from_epoch_secs(1_780_272_000),
+            "2026-06-01T00:00:00+00:00"
+        );
     }
     #[test]
     fn restore_rejects_zip_bomb_expansion() {
@@ -1989,13 +2142,22 @@ mod tests {
         let zeros_ref: &[u8] = &zeros;
         let mut entries: Vec<(&str, &[u8], u32)> = vec![("manifest.json", &manifest, 0o100644)];
         for index in 1..=6 {
-            entries.push((Box::leak(format!("a{index}.bin").into_boxed_str()), zeros_ref, 0o100644));
+            entries.push((
+                Box::leak(format!("a{index}.bin").into_boxed_str()),
+                zeros_ref,
+                0o100644,
+            ));
         }
         let zip = make_zip(&entries);
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
         assert!(err.contains("too large"), "got: {err}");
-        assert!(!dest.exists() || fs::read_dir(dest).map(|mut it| it.next().is_none()).unwrap_or(true),
-            "nothing may be extracted from a rejected bundle");
+        assert!(
+            !dest.exists()
+                || fs::read_dir(dest)
+                    .map(|mut it| it.next().is_none())
+                    .unwrap_or(true),
+            "nothing may be extracted from a rejected bundle"
+        );
     }
 
     #[test]
@@ -2003,11 +2165,7 @@ mod tests {
         // A symlink whose target escapes the staging directory must be
         // rejected even though the entry name itself looks safe.
         let dest = temp_root("restore-symlink-abs");
-        let zip = make_zip_with_symlink(
-            &simple_manifest(&["link"], "link"),
-            "link",
-            "/etc/passwd",
-        );
+        let zip = make_zip_with_symlink(&simple_manifest(&["link"], "link"), "link", "/etc/passwd");
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
         assert!(err.contains("symlink"), "got: {err}");
     }
@@ -2075,14 +2233,18 @@ mod tests {
     #[test]
     fn compare_artifacts_reports_assignment_and_roster_diff() {
         let root = temp_root("compare");
-        fs::write(root.join("project.json"), r#"{
+        fs::write(
+            root.join("project.json"),
+            r#"{
             "kind": "seattrellis_project",
             "name": "Demo",
             "students": "students.csv",
             "layout": "classroom.json",
             "rules": "rules.json",
             "outputs_dir": "outputs"
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         fs::write(root.join("a.json"), SNAPSHOT_A).unwrap();
         fs::write(root.join("b.json"), SNAPSHOT_B).unwrap();
 
@@ -2117,12 +2279,16 @@ mod tests {
     #[test]
     fn compare_rejects_self_comparison() {
         let root = temp_root("compare-self");
-        fs::write(root.join("project.json"), r#"{
+        fs::write(
+            root.join("project.json"),
+            r#"{
             "kind": "seattrellis_project",
             "students": "students.csv",
             "layout": "classroom.json",
             "rules": "rules.json"
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         fs::write(root.join("a.json"), SNAPSHOT_A).unwrap();
         let err = compare_artifacts_json(
             root.join("project.json").to_str().unwrap(),
@@ -2136,14 +2302,18 @@ mod tests {
     #[test]
     fn restore_artifact_writes_output_snapshot_with_metadata() {
         let root = temp_root("restore-artifact");
-        fs::write(root.join("project.json"), r#"{
+        fs::write(
+            root.join("project.json"),
+            r#"{
             "kind": "seattrellis_project",
             "name": "Demo",
             "students": "students.csv",
             "layout": "classroom.json",
             "rules": "rules.json",
             "outputs_dir": "outputs"
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         fs::write(root.join("plan.snapshot.json"), SNAPSHOT_A).unwrap();
 
         let result = restore_artifact_json(
@@ -2153,11 +2323,13 @@ mod tests {
         .unwrap();
         let value: Value = serde_json::from_str(&result).unwrap();
         let restored = value["restored_artifact"].as_str().unwrap();
-        assert!(restored.ends_with("restored-plan.snapshot.json"), "{restored}");
+        assert!(
+            restored.ends_with("restored-plan.snapshot.json"),
+            "{restored}"
+        );
         assert!(Path::new(restored).is_file());
 
-        let document: Value =
-            serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
+        let document: Value = serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
         assert_eq!(document["metadata"]["restored_from"], "plan.snapshot.json");
         assert!(document["restored_at"].is_number());
         // The assignment content survived.
@@ -2167,17 +2339,25 @@ mod tests {
     #[test]
     fn restore_rejects_rotation_plan_and_never_overwrites() {
         let root = temp_root("restore-rot");
-        fs::write(root.join("project.json"), r#"{
+        fs::write(
+            root.join("project.json"),
+            r#"{
             "kind": "seattrellis_project",
             "students": "students.csv",
             "layout": "classroom.json",
             "rules": "rules.json",
             "outputs_dir": "outputs"
-        }"#).unwrap();
-        fs::write(root.join("rot.json"), r#"{
+        }"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("rot.json"),
+            r#"{
             "kind": "rotation_plan",
             "periods": [{"period": 1, "label": "P1", "snapshot": {"assignments": []}}]
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         let err = restore_artifact_json(
             root.join("project.json").to_str().unwrap(),
             root.join("rot.json").to_str().unwrap(),
@@ -2200,8 +2380,7 @@ mod tests {
         let first_path: Value = serde_json::from_str(&first).unwrap();
         let second_path: Value = serde_json::from_str(&second).unwrap();
         assert_ne!(
-            first_path["restored_artifact"],
-            second_path["restored_artifact"],
+            first_path["restored_artifact"], second_path["restored_artifact"],
             "restore must never overwrite an existing snapshot"
         );
     }

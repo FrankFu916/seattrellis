@@ -429,8 +429,7 @@ pub(crate) fn route(
     match (request.method.as_str(), segments.as_slice()) {
         ("GET", ["api", "v1", "health"]) => health_response(),
         ("GET", ["api", "v1", "catalogs"]) => catalogs_response(),
-        ("POST", ["api", "v1", "classes", "generate"])
-        | ("POST", ["api", "v1", "solve"]) => {
+        ("POST", ["api", "v1", "classes", "generate"]) | ("POST", ["api", "v1", "solve"]) => {
             generate_response(&request.body, editor_store, solve_requests)
         }
         ("POST", ["api", "v1", "classes", "rotation"]) => {
@@ -439,9 +438,7 @@ pub(crate) fn route(
         ("POST", ["api", "v1", "rosters", "drafts"]) => {
             roster_upload_response(&request.body, request.content_type.as_deref())
         }
-        ("GET", ["api", "v1", "rosters", "drafts", draft_id]) => {
-            roster_get_response(draft_id)
-        }
+        ("GET", ["api", "v1", "rosters", "drafts", draft_id]) => roster_get_response(draft_id),
         ("POST", ["api", "v1", "rosters", "drafts", draft_id, "preview"]) => {
             roster_preview_response(draft_id, &request.body)
         }
@@ -457,12 +454,8 @@ pub(crate) fn route(
         ("POST", ["api", "v1", "exports"]) => {
             export_response(&request.body, editor_store, solve_requests)
         }
-        ("POST", ["api", "v1", "layouts", "drafts"]) => {
-            layout_create_response(&request.body)
-        }
-        ("GET", ["api", "v1", "layouts", "drafts", draft_id]) => {
-            layout_get_response(draft_id)
-        }
+        ("POST", ["api", "v1", "layouts", "drafts"]) => layout_create_response(&request.body),
+        ("GET", ["api", "v1", "layouts", "drafts", draft_id]) => layout_get_response(draft_id),
         ("POST", ["api", "v1", "layouts", "drafts", draft_id, "commands"]) => {
             layout_command_response(draft_id, &request.body)
         }
@@ -472,24 +465,16 @@ pub(crate) fn route(
         ("DELETE", ["api", "v1", "layouts", "drafts", draft_id]) => {
             layout_delete_response(draft_id)
         }
-        ("GET", ["api", "v1", "projects", "recent"]) => {
-            projects_recent_response(query)
-        }
-        ("POST", ["api", "v1", "projects", "history"]) => {
-            project_history_response(&request.body)
-        }
+        ("GET", ["api", "v1", "projects", "recent"]) => projects_recent_response(query),
+        ("POST", ["api", "v1", "projects", "history"]) => project_history_response(&request.body),
         ("POST", ["api", "v1", "projects", "artifacts", "compare"]) => {
             artifact_compare_response(&request.body)
         }
         ("POST", ["api", "v1", "projects", "artifacts", "restore"]) => {
             artifact_restore_response(&request.body)
         }
-        ("POST", ["api", "v1", "projects", "privacy"]) => {
-            project_privacy_response(&request.body)
-        }
-        ("POST", ["api", "v1", "projects", "bundle"]) => {
-            project_bundle_response(&request.body)
-        }
+        ("POST", ["api", "v1", "projects", "privacy"]) => project_privacy_response(&request.body),
+        ("POST", ["api", "v1", "projects", "bundle"]) => project_bundle_response(&request.body),
         ("POST", ["api", "v1", "projects", "restore"]) => {
             project_restore_response(&request.body, request.content_type.as_deref())
         }
@@ -878,9 +863,7 @@ fn projects_recent_response(query: Option<&str>) -> Response {
         None => 20,
         Some(raw) => match raw.parse::<usize>() {
             Ok(value) => value,
-            Err(_) => {
-                return json_error(422, "The project list limit must be between 1 and 100.")
-            }
+            Err(_) => return json_error(422, "The project list limit must be between 1 and 100."),
         },
     };
     match seattrellis_io::projects::list_projects_json(&root, limit) {
@@ -916,7 +899,9 @@ fn project_history_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    project_result_response(seattrellis_io::projects::project_history_json(&project_path))
+    project_result_response(seattrellis_io::projects::project_history_json(
+        &project_path,
+    ))
 }
 
 /// `POST /api/v1/projects/artifacts/compare`: compare two project artifacts
@@ -983,7 +968,9 @@ fn project_privacy_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    project_result_response(seattrellis_io::projects::project_privacy_json(&project_path))
+    project_result_response(seattrellis_io::projects::project_privacy_json(
+        &project_path,
+    ))
 }
 
 /// `POST /api/v1/projects/bundle`: pack a project into a self-contained
@@ -1038,13 +1025,9 @@ fn project_restore_response(body: &[u8], content_type: Option<&str>) -> Response
     let output_dir = match fields.get("output_dir") {
         Some(bytes) => match std::str::from_utf8(bytes) {
             Ok(value) if !value.trim().is_empty() => value.trim().to_string(),
-            _ => {
-                return json_error(422, "Choose a destination folder for the restored project.")
-            }
+            _ => return json_error(422, "Choose a destination folder for the restored project."),
         },
-        None => {
-            return json_error(422, "Choose a destination folder for the restored project.")
-        }
+        None => return json_error(422, "Choose a destination folder for the restored project."),
     };
     let output_dir = resolve_request_path(&output_dir);
     let overwrite = fields
@@ -1202,7 +1185,10 @@ fn migration_batch_preview_response(body: &[u8]) -> Response {
         Ok(paths) => paths,
         Err(response) => return response,
     };
-    let paths: Vec<String> = paths.iter().map(|path| resolve_request_path(path)).collect();
+    let paths: Vec<String> = paths
+        .iter()
+        .map(|path| resolve_request_path(path))
+        .collect();
     match seattrellis_io::migration::migration_batch_preview_json(&paths) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
@@ -1224,7 +1210,10 @@ fn migration_batch_apply_response(body: &[u8]) -> Response {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let paths: Vec<String> = paths.iter().map(|path| resolve_request_path(path)).collect();
+    let paths: Vec<String> = paths
+        .iter()
+        .map(|path| resolve_request_path(path))
+        .collect();
     match seattrellis_io::migration::migration_batch_apply_json(&paths, in_place) {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => migration_error_response(&message),
@@ -1345,7 +1334,9 @@ fn rotation_register_download_response(body: &[u8]) -> Response {
             Ok(bytes) => Response {
                 status: 200,
                 content_type: Some("text/csv; charset=utf-8"),
-                content_disposition: Some("attachment; filename=\"group-register.csv\"".to_string()),
+                content_disposition: Some(
+                    "attachment; filename=\"group-register.csv\"".to_string(),
+                ),
                 body: bytes,
             },
             Err(message) => rotation_error_response(&message),
@@ -1355,7 +1346,9 @@ fn rotation_register_download_response(body: &[u8]) -> Response {
             Ok(bytes) => Response {
                 status: 200,
                 content_type: Some("text/html; charset=utf-8"),
-                content_disposition: Some("attachment; filename=\"group-register.html\"".to_string()),
+                content_disposition: Some(
+                    "attachment; filename=\"group-register.html\"".to_string(),
+                ),
                 body: bytes,
             },
             Err(message) => rotation_error_response(&message),
@@ -1423,7 +1416,8 @@ fn rotation_register_save_response(body: &[u8], content_type: Option<&str>) -> R
             None => return json_error(422, "upload is missing a 'groups' field"),
         };
         let project_path = resolve_request_path(&project_path);
-        return match seattrellis_io::rotation::group_register_save_json(&project_path, &groups_json) {
+        return match seattrellis_io::rotation::group_register_save_json(&project_path, &groups_json)
+        {
             Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
             Err(message) => rotation_error_response(&message),
         };
@@ -1527,15 +1521,12 @@ fn optional_i64(value: &Value, field: &str) -> Result<Option<i64>, Response> {
 
 /// Read a required array-of-strings field from a parsed JSON object body.
 fn required_string_array(value: &Value, field: &str) -> Result<Vec<String>, Response> {
-    let array = value
-        .get(field)
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            json_error(
-                400,
-                &format!("request body is missing a '{field}' string array field"),
-            )
-        })?;
+    let array = value.get(field).and_then(Value::as_array).ok_or_else(|| {
+        json_error(
+            400,
+            &format!("request body is missing a '{field}' string array field"),
+        )
+    })?;
     array
         .iter()
         .map(|item| item.as_str().map(str::to_string))
@@ -1914,7 +1905,10 @@ mod tests {
         let root = test_web_root();
         let response = route_one(&request("GET", "/api/v1/health", b""), &root);
         assert_eq!(response.status, 200);
-        assert_eq!(response.content_type, Some("application/json; charset=utf-8"));
+        assert_eq!(
+            response.content_type,
+            Some("application/json; charset=utf-8")
+        );
         let value = body_json(&response);
         assert_eq!(value["status"], "ok");
         assert_eq!(value["service"], "seattrellis");
@@ -1940,17 +1934,19 @@ mod tests {
             .collect();
         assert_eq!(
             goal_ids,
-            vec!["daily-rotation", "quick-shuffle", "fair-shuffle", "peer-support"]
+            vec![
+                "daily-rotation",
+                "quick-shuffle",
+                "fair-shuffle",
+                "peer-support"
+            ]
         );
         let formats = value["exportFormats"].as_array().unwrap();
         let format_ids: Vec<&str> = formats
             .iter()
             .map(|format| format["id"].as_str().unwrap())
             .collect();
-        assert_eq!(
-            format_ids,
-            vec!["svg", "html", "png", "pdf", "print-html"]
-        );
+        assert_eq!(format_ids, vec!["svg", "html", "png", "pdf", "print-html"]);
     }
 
     #[test]
@@ -1973,7 +1969,10 @@ mod tests {
         let index = route_one(&request("GET", "/", b""), &root);
         assert_eq!(index.status, 200);
         assert_eq!(index.content_type, Some("text/html; charset=utf-8"));
-        assert_eq!(index.body.as_slice(), crate::embedded_web::get("index.html").unwrap());
+        assert_eq!(
+            index.body.as_slice(),
+            crate::embedded_web::get("index.html").unwrap()
+        );
 
         let asset_path = crate::embedded_web::EMBEDDED_WEB_ASSETS
             .iter()
@@ -1981,7 +1980,10 @@ mod tests {
             .expect("embedded workbench should contain an asset");
         let asset = route_one(&request("GET", &format!("/{asset_path}"), b""), &root);
         assert_eq!(asset.status, 200);
-        assert_eq!(asset.body.as_slice(), crate::embedded_web::get(asset_path).unwrap());
+        assert_eq!(
+            asset.body.as_slice(),
+            crate::embedded_web::get(asset_path).unwrap()
+        );
     }
 
     #[test]
@@ -1989,7 +1991,10 @@ mod tests {
         let root = test_web_root();
         let response = route_one(&request("GET", "/assets/app.js", b""), &root);
         assert_eq!(response.status, 200);
-        assert_eq!(response.content_type, Some("text/javascript; charset=utf-8"));
+        assert_eq!(
+            response.content_type,
+            Some("text/javascript; charset=utf-8")
+        );
         assert_eq!(response.body, b"console.log('hi');");
     }
 
@@ -2130,7 +2135,9 @@ mod tests {
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0]["candidate_id"], draft_id);
         assert_eq!(candidates[0]["recommended"], true);
-        let total_score = candidates[0]["total_score"].as_f64().expect("total_score is a number");
+        let total_score = candidates[0]["total_score"]
+            .as_f64()
+            .expect("total_score is a number");
         assert!(total_score.is_finite());
 
         // The editor draft mirrors the 3 students and the 30-seat template.
@@ -2184,7 +2191,10 @@ mod tests {
         );
         let value = body_json(&response);
         assert_eq!(value["goal"]["goal_id"], "peer-support");
-        assert_eq!(value["editor"]["students"].as_array().map(Vec::len), Some(3));
+        assert_eq!(
+            value["editor"]["students"].as_array().map(Vec::len),
+            Some(3)
+        );
         assert_eq!(value["editor"]["seats"].as_array().map(Vec::len), Some(48));
     }
 
@@ -2244,7 +2254,9 @@ mod tests {
         assert!(editor["draft_id"].as_str().is_some());
         assert_eq!(editor["students"].as_array().unwrap().len(), 3);
         assert!(
-            value["class_name"].as_str().is_some_and(|name| !name.is_empty()),
+            value["class_name"]
+                .as_str()
+                .is_some_and(|name| !name.is_empty()),
             "class_name: {}",
             value["class_name"]
         );
@@ -2264,7 +2276,12 @@ mod tests {
         });
         let body = serde_json::to_vec(&problem).unwrap();
         let response = route_one(&request("POST", "/api/v1/classes/rotation", &body), &root);
-        assert_eq!(response.status, 422, "body: {}", String::from_utf8_lossy(&response.body));
+        assert_eq!(
+            response.status,
+            422,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
     }
 
     #[test]
@@ -2299,9 +2316,11 @@ mod tests {
         );
         let plan = &body_json(&response)["rotation_plan"];
         assert_eq!(plan["base_history_count"], 1, "one base snapshot");
-        assert_eq!(plan["fairness_summary"]["history_count"], 3, "base + 2 generated periods");
+        assert_eq!(
+            plan["fairness_summary"]["history_count"], 3,
+            "base + 2 generated periods"
+        );
     }
-
 
     #[test]
     fn artifact_compare_and_restore_routes_work() {
@@ -2312,14 +2331,18 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("project.json"), r#"{
+        fs::write(
+            dir.join("project.json"),
+            r#"{
             "kind": "seattrellis_project",
             "name": "Demo",
             "students": "students.csv",
             "layout": "classroom.json",
             "rules": "rules.json",
             "outputs_dir": "outputs"
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         fs::write(dir.join("a.json"), r#"{
             "kind": "snapshot",
             "created_at": "2026-08-09T00:00:00Z",
@@ -2350,9 +2373,18 @@ mod tests {
             "project_path": dir.join("project.json"),
             "artifact_path": dir.join("a.json"),
             "compare_to_path": dir.join("b.json"),
-        })).unwrap();
-        let response = route_one(&request("POST", "/api/v1/projects/artifacts/compare", &body), &root);
-        assert_eq!(response.status, 200, "body: {}", String::from_utf8_lossy(&response.body));
+        }))
+        .unwrap();
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/compare", &body),
+            &root,
+        );
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
         let value = body_json(&response);
         assert_eq!(value["diff"]["assignment_changes"], 1);
         assert_eq!(value["diff"]["assignment_details"][0]["change"], "moved");
@@ -2361,9 +2393,18 @@ mod tests {
         let body = serde_json::to_vec(&json!({
             "project_path": dir.join("project.json"),
             "artifact_path": dir.join("a.json"),
-        })).unwrap();
-        let response = route_one(&request("POST", "/api/v1/projects/artifacts/restore", &body), &root);
-        assert_eq!(response.status, 200, "body: {}", String::from_utf8_lossy(&response.body));
+        }))
+        .unwrap();
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/restore", &body),
+            &root,
+        );
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
         let value = body_json(&response);
         let restored = value["restored_artifact"].as_str().unwrap();
         assert!(restored.ends_with("restored-a.snapshot.json"), "{restored}");
@@ -2556,7 +2597,10 @@ mod tests {
         });
         let body = serde_json::to_vec(&missing).unwrap();
         let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
-        assert_eq!(response.status, 422, "custom goal without rules must be a 422");
+        assert_eq!(
+            response.status, 422,
+            "custom goal without rules must be a 422"
+        );
         assert_eq!(body_json(&response)["error"], "invalid_class_draft");
 
         let with_rules = json!({
@@ -2612,7 +2656,10 @@ mod tests {
         });
         let body = serde_json::to_vec(&problem).unwrap();
         let response = route_one(&request("POST", "/api/v1/classes/generate", &body), &root);
-        assert_eq!(response.status, 422, "unknown hard-rule student must be a 422");
+        assert_eq!(
+            response.status, 422,
+            "unknown hard-rule student must be a 422"
+        );
         let value = body_json(&response);
         assert_eq!(value["error"], "invalid_class_draft");
         assert!(value["message"].as_str().unwrap().contains("GHOST"));
@@ -2640,7 +2687,10 @@ mod tests {
         .clone();
 
         let (history, pair_history) =
-            seattrellis_application::class_generation::build_history_json(&students, &grid, &snapshots).expect("snapshots build");
+            seattrellis_application::class_generation::build_history_json(
+                &students, &grid, &snapshots,
+            )
+            .expect("snapshots build");
         assert_eq!(history["history_count"], 1);
         let s1 = &history["students"]["S1"];
         assert_eq!(s1["records"].as_array().map(Vec::len), Some(1));
@@ -2664,7 +2714,10 @@ mod tests {
         // recorded and the recent-neighbor cost can penalize a repeat.
         assert_eq!(pair_history["history_count"], 1);
         let pair = &pair_history["pairs"]["S1|S2"];
-        assert!(pair.is_object(), "adjacent S1/S2 must appear in pair history");
+        assert!(
+            pair.is_object(),
+            "adjacent S1/S2 must appear in pair history"
+        );
         let relations = pair["records"][0]["relations"].as_array().unwrap();
         assert!(
             relations.iter().any(|relation| relation == "desk_mate"),
@@ -2705,7 +2758,10 @@ mod tests {
         );
         let value = body_json(&response);
         assert_eq!(value["goal"]["goal_id"], "daily-rotation");
-        assert_eq!(value["editor"]["students"].as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            value["editor"]["students"].as_array().map(Vec::len),
+            Some(2)
+        );
     }
 
     #[test]
@@ -2770,7 +2826,10 @@ mod tests {
         let value = body_json(&response);
         assert_eq!(value["error"], "invalid_solve_request");
         assert_eq!(value["status"], "InvalidInput");
-        assert!(value["message"].as_str().unwrap().contains("cannot seat more students"));
+        assert!(value["message"]
+            .as_str()
+            .unwrap()
+            .contains("cannot seat more students"));
     }
 
     #[test]
@@ -2832,15 +2891,26 @@ mod tests {
         assert_eq!(preview_val["draft_id"], roster_id);
         assert_eq!(preview_val["mode"], "incremental");
         assert_eq!(preview_val["can_apply"], true);
-        assert!(preview_val["changes"].as_array().map(|changes| !changes.is_empty()).unwrap_or(false));
+        assert!(preview_val["changes"]
+            .as_array()
+            .map(|changes| !changes.is_empty())
+            .unwrap_or(false));
 
         let del = route_one(
-            &request("DELETE", &format!("/api/v1/rosters/drafts/{roster_id}"), b""),
+            &request(
+                "DELETE",
+                &format!("/api/v1/rosters/drafts/{roster_id}"),
+                b"",
+            ),
             &root,
         );
         assert_eq!(del.status, 204);
         let del_again = route_one(
-            &request("DELETE", &format!("/api/v1/rosters/drafts/{roster_id}"), b""),
+            &request(
+                "DELETE",
+                &format!("/api/v1/rosters/drafts/{roster_id}"),
+                b"",
+            ),
             &root,
         );
         assert_eq!(del_again.status, 404);
@@ -2861,7 +2931,10 @@ mod tests {
             &root,
         );
         assert_eq!(response.status, 422);
-        assert!(body_json(&response)["error"].as_str().unwrap().contains("file"));
+        assert!(body_json(&response)["error"]
+            .as_str()
+            .unwrap()
+            .contains("file"));
     }
 
     #[test]
@@ -2907,7 +2980,9 @@ mod tests {
         let csv = b"name\nAlice\nBob\n";
         let mut body = Vec::new();
         body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"roster.csv\"\r\n");
+        body.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"file\"; filename=\"roster.csv\"\r\n",
+        );
         body.extend_from_slice(b"Content-Type: text/csv\r\n\r\n");
         body.extend_from_slice(csv);
         body.extend_from_slice(b"\r\n");
@@ -2917,7 +2992,10 @@ mod tests {
 
         let fields = parse_multipart(&body, boundary).unwrap();
         assert_eq!(fields.get("file").map(Vec::as_slice), Some(csv.as_slice()));
-        assert_eq!(fields.get("note").map(Vec::as_slice), Some(b"hello".as_slice()));
+        assert_eq!(
+            fields.get("note").map(Vec::as_slice),
+            Some(b"hello".as_slice())
+        );
     }
 
     #[test]
@@ -2927,7 +3005,10 @@ mod tests {
             "--{boundary}\r\nContent-Disposition: form-data; filename=\"x.csv\"; name=\"file\"\r\n\r\nabc\r\n--{boundary}--\r\n"
         );
         let fields = parse_multipart(body.as_bytes(), boundary).unwrap();
-        assert_eq!(fields.get("file").map(Vec::as_slice), Some(b"abc".as_slice()));
+        assert_eq!(
+            fields.get("file").map(Vec::as_slice),
+            Some(b"abc".as_slice())
+        );
     }
 
     #[test]
@@ -2992,7 +3073,12 @@ mod tests {
             &editor_store,
             &solve_requests,
         );
-        assert_eq!(preview.status, 200, "body: {}", String::from_utf8_lossy(&preview.body));
+        assert_eq!(
+            preview.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&preview.body)
+        );
         let preview_val = body_json(&preview);
         assert_eq!(preview_val["draft_id"], roster_id);
         assert_eq!(preview_val["can_apply"], true);
@@ -3020,7 +3106,12 @@ mod tests {
             &editor_store,
             &solve_requests,
         );
-        assert_eq!(gen.status, 200, "body: {}", String::from_utf8_lossy(&gen.body));
+        assert_eq!(
+            gen.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&gen.body)
+        );
         let gen_val = body_json(&gen);
         let draft_id = gen_val["editor"]["draft_id"].as_str().unwrap().to_string();
         assert_eq!(gen_val["recommended_candidate_id"], draft_id);
@@ -3029,11 +3120,7 @@ mod tests {
 
         // 4. Fetch the editor state.
         let fetch = route(
-            &request(
-                "GET",
-                &format!("/api/v1/editing/drafts/{draft_id}"),
-                b"",
-            ),
+            &request("GET", &format!("/api/v1/editing/drafts/{draft_id}"), b""),
             &root,
             &editor_store,
             &solve_requests,
@@ -3079,7 +3166,12 @@ mod tests {
             &editor_store,
             &solve_requests,
         );
-        assert_eq!(swapped.status, 200, "body: {}", String::from_utf8_lossy(&swapped.body));
+        assert_eq!(
+            swapped.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&swapped.body)
+        );
         let swapped_val = body_json(&swapped);
         assert_eq!(swapped_val["revision"], 1);
         let s1_after = swapped_val["students"]
@@ -3120,7 +3212,12 @@ mod tests {
             &editor_store,
             &solve_requests,
         );
-        assert_eq!(export.status, 200, "body: {}", String::from_utf8_lossy(&export.body));
+        assert_eq!(
+            export.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&export.body)
+        );
         assert_eq!(export.content_type, Some("image/svg+xml"));
         assert!(export
             .content_disposition
@@ -3201,9 +3298,17 @@ mod tests {
             &editor_store,
             &solve_requests,
         );
-        assert_eq!(export.status, 200, "body: {}", String::from_utf8_lossy(&export.body));
+        assert_eq!(
+            export.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&export.body)
+        );
         assert_eq!(export.content_type, Some("text/html; charset=utf-8"));
-        assert!(export.body.starts_with(b"<!doctype html") || export.body.windows(5).any(|w| w == b"<html"));
+        assert!(
+            export.body.starts_with(b"<!doctype html")
+                || export.body.windows(5).any(|w| w == b"<html")
+        );
     }
 
     #[test]
@@ -3328,7 +3433,10 @@ mod tests {
             &solve_requests,
         );
         assert_eq!(stale.status, 409);
-        assert!(body_json(&stale)["error"].as_str().unwrap().contains("stale"));
+        assert!(body_json(&stale)["error"]
+            .as_str()
+            .unwrap()
+            .contains("stale"));
 
         // Malformed JSON body -> 400.
         let bad = route(
@@ -3683,7 +3791,9 @@ mod tests {
         assert_eq!(list_val["api_version"], "1");
         let projects = list_val["projects"].as_array().unwrap();
         assert!(
-            projects.iter().any(|project| project["path"] == project_path_str),
+            projects
+                .iter()
+                .any(|project| project["path"] == project_path_str),
             "project list should include {project_path_str}: {projects:?}"
         );
 
@@ -3879,7 +3989,11 @@ mod tests {
 
         // Real referenced files so reference checks pass and batch apply is ready.
         let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
-        for name in ["students.csv", "classroom.json", "rules_multi_candidate.json"] {
+        for name in [
+            "students.csv",
+            "classroom.json",
+            "rules_multi_candidate.json",
+        ] {
             fs::copy(examples.join(name), dir.join(name)).unwrap();
         }
         fs::create_dir_all(dir.join("history")).unwrap();
@@ -3897,8 +4011,14 @@ mod tests {
         }"#;
         fs::write(dir.join("mig1.seattrellis.json"), minimal).unwrap();
         fs::write(dir.join("mig2.seattrellis.json"), minimal).unwrap();
-        let p1 = dir.join("mig1.seattrellis.json").to_string_lossy().into_owned();
-        let p2 = dir.join("mig2.seattrellis.json").to_string_lossy().into_owned();
+        let p1 = dir
+            .join("mig1.seattrellis.json")
+            .to_string_lossy()
+            .into_owned();
+        let p2 = dir
+            .join("mig2.seattrellis.json")
+            .to_string_lossy()
+            .into_owned();
 
         // 1. Preview a single migration -> changes detected, refs ok.
         let preview_body = json!({ "project_path": p1, "in_place": false });
@@ -3967,7 +4087,10 @@ mod tests {
         assert_eq!(apply_val["dry_run"], false);
         assert!(apply_val["change_count"].as_u64().unwrap() > 0);
         let output_path = apply_val["output_path"].as_str().unwrap();
-        assert!(Path::new(output_path).is_file(), "migrated file should exist");
+        assert!(
+            Path::new(output_path).is_file(),
+            "migrated file should exist"
+        );
 
         // 4. Batch preview + batch apply over both fixtures.
         let batch_body = json!({ "project_paths": [p1, p2], "in_place": false });
@@ -4233,9 +4356,18 @@ mod tests {
         );
         let load_val = body_json(&load);
         assert_eq!(load_val["artifact_path"].as_str().unwrap(), output_path);
-        assert_eq!(load_val["project_path"].as_str().unwrap(), save_val["project_path"]);
+        assert_eq!(
+            load_val["project_path"].as_str().unwrap(),
+            save_val["project_path"]
+        );
         assert_eq!(load_val["rotation_plan"]["name"], "Weekly Rotation");
-        assert_eq!(load_val["rotation_plan"]["periods"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            load_val["rotation_plan"]["periods"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
 
         // 3. Preview defaults to period 1 and groups by row and column.
         let preview = route_one(
@@ -4302,12 +4434,11 @@ mod tests {
         );
         assert_eq!(html.content_type, Some("text/html; charset=utf-8"));
         assert!(html.body.starts_with(b"<!doctype html>"));
-        assert!(
-            html.content_disposition
-                .as_deref()
-                .unwrap()
-                .contains("filename=\"group-register.html\"")
-        );
+        assert!(html
+            .content_disposition
+            .as_deref()
+            .unwrap()
+            .contains("filename=\"group-register.html\""));
 
         // 5. CSV download: text/csv with a UTF-8 BOM magic prefix.
         let csv = route_one(
@@ -4330,12 +4461,11 @@ mod tests {
         );
         assert_eq!(csv.content_type, Some("text/csv; charset=utf-8"));
         assert_eq!(&csv.body[..3], &[0xEF, 0xBB, 0xBF]);
-        assert!(
-            csv.content_disposition
-                .as_deref()
-                .unwrap()
-                .contains("filename=\"group-register.csv\"")
-        );
+        assert!(csv
+            .content_disposition
+            .as_deref()
+            .unwrap()
+            .contains("filename=\"group-register.csv\""));
 
         // 6. Persist a group register (JSON body) and read it back from disk.
         let groups = json!({ "groups": [{ "name": "A", "students": ["STU001"] }] });
@@ -4363,9 +4493,10 @@ mod tests {
             .as_str()
             .unwrap()
             .ends_with("group-register.json"));
-        let on_disk: Value =
-            serde_json::from_slice(&fs::read(dir.join("outputs").join("group-register.json")).unwrap())
-                .unwrap();
+        let on_disk: Value = serde_json::from_slice(
+            &fs::read(dir.join("outputs").join("group-register.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(on_disk["groups"][0]["name"], "A");
 
         // 7. The same save endpoint accepts a multipart form.

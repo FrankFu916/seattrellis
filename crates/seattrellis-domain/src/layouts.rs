@@ -354,7 +354,9 @@ impl LayoutDraft {
                     .payload
                     .get("kind")
                     .and_then(JsonValue::as_str)
-                    .ok_or_else(|| "Cell kind must be seat, aisle, platform, or empty.".to_string())?;
+                    .ok_or_else(|| {
+                        "Cell kind must be seat, aisle, platform, or empty.".to_string()
+                    })?;
                 let kind = parse_cell_kind(raw_kind)?;
                 let seat_id = if kind == LayoutCellKind::Seat {
                     match operation.payload.get("seat_id") {
@@ -476,8 +478,7 @@ impl LayoutDraft {
             }
             "translate" => {
                 let row_delta = required_int(&operation.payload, "translate", "row_delta")?;
-                let column_delta =
-                    required_int(&operation.payload, "translate", "column_delta")?;
+                let column_delta = required_int(&operation.payload, "translate", "column_delta")?;
                 let mut moved: HashMap<(i32, i32), LayoutCell> = HashMap::new();
                 for cell in self.cells.values() {
                     // Empty cells are the canvas background: moving them would
@@ -828,10 +829,8 @@ fn build_draft_from_request(value: &JsonValue) -> Result<LayoutDraft, String> {
     } else if let Some(layout_value) = layout_value {
         cells_from_layout_value(layout_value)?
     } else {
-        let rows = rows
-            .ok_or_else(|| "Both rows and columns are required.".to_string())?;
-        let columns = columns
-            .ok_or_else(|| "Both rows and columns are required.".to_string())?;
+        let rows = rows.ok_or_else(|| "Both rows and columns are required.".to_string())?;
+        let columns = columns.ok_or_else(|| "Both rows and columns are required.".to_string())?;
         (rows, columns, rectangular_cells(rows, columns))
     };
 
@@ -840,7 +839,9 @@ fn build_draft_from_request(value: &JsonValue) -> Result<LayoutDraft, String> {
 
 /// Map a template's full layout (every cell, including disabled aisles) onto
 /// editor cells.
-fn cells_from_template_layout(layout: &crate::room_templates::Layout) -> HashMap<(i32, i32), LayoutCell> {
+fn cells_from_template_layout(
+    layout: &crate::room_templates::Layout,
+) -> HashMap<(i32, i32), LayoutCell> {
     let mut cells = HashMap::new();
     for seat in &layout.seats {
         let kind = if seat.enabled {
@@ -918,7 +919,11 @@ fn cells_from_layout_value(value: &JsonValue) -> Result<LayoutGrid, String> {
                 (LayoutCellKind::Seat, Some(seat_id.to_string()))
             }
         } else {
-            let cell_type = cell_type.as_deref().unwrap_or("").trim().to_ascii_lowercase();
+            let cell_type = cell_type
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
             if cell_type == "platform" || zone.as_deref() == Some("platform") {
                 (LayoutCellKind::Platform, None)
             } else if cell_type == "aisle" || zone.as_deref() == Some("aisle") {
@@ -1042,7 +1047,9 @@ fn parse_cell_kind(raw: &str) -> Result<LayoutCellKind, String> {
 
 fn validate_dimensions(rows: i32, columns: i32) -> Result<(), String> {
     if !(1..=MAX_LAYOUT_ROWS).contains(&rows) {
-        return Err(format!("Layout rows must be between 1 and {MAX_LAYOUT_ROWS}."));
+        return Err(format!(
+            "Layout rows must be between 1 and {MAX_LAYOUT_ROWS}."
+        ));
     }
     if !(1..=MAX_LAYOUT_COLUMNS).contains(&columns) {
         return Err(format!(
@@ -1102,7 +1109,10 @@ fn validate_unique_seat_ids(cells: &HashMap<(i32, i32), LayoutCell>) -> Result<(
         }
     }
     if !duplicates.is_empty() {
-        return Err(format!("Seat IDs must be unique: {}", duplicates.join(", ")));
+        return Err(format!(
+            "Seat IDs must be unique: {}",
+            duplicates.join(", ")
+        ));
     }
     Ok(())
 }
@@ -1115,17 +1125,12 @@ fn ordered_cells_for(
     let mut result = Vec::with_capacity((rows * columns) as usize);
     for row in 1..=rows {
         for column in 1..=columns {
-            result.push(
-                cells
-                    .get(&(row, column))
-                    .cloned()
-                    .unwrap_or(LayoutCell {
-                        row,
-                        column,
-                        kind: LayoutCellKind::Empty,
-                        seat_id: None,
-                    }),
-            );
+            result.push(cells.get(&(row, column)).cloned().unwrap_or(LayoutCell {
+                row,
+                column,
+                kind: LayoutCellKind::Empty,
+                seat_id: None,
+            }));
         }
     }
     result
@@ -1144,26 +1149,23 @@ fn required_int(
 ) -> Result<i32, String> {
     match payload.get(key) {
         Some(JsonValue::Number(number)) => match number.as_i64() {
-            Some(value) if (i32::MIN as i64..=i32::MAX as i64).contains(&value) => {
-                Ok(value as i32)
-            }
-            _ => Err(format!("{op_kind} requires an integer payload field: {key}.")),
+            Some(value) if (i32::MIN as i64..=i32::MAX as i64).contains(&value) => Ok(value as i32),
+            _ => Err(format!(
+                "{op_kind} requires an integer payload field: {key}."
+            )),
         },
-        Some(_) => Err(format!("{op_kind} requires an integer payload field: {key}.")),
+        Some(_) => Err(format!(
+            "{op_kind} requires an integer payload field: {key}."
+        )),
         None => Err(format!("{op_kind} requires payload field: {key}.")),
     }
 }
 
 /// Read a required integer field from a create-request or layout object.
-fn required_int_from_object(
-    object: &JsonMap<String, JsonValue>,
-    key: &str,
-) -> Result<i32, String> {
+fn required_int_from_object(object: &JsonMap<String, JsonValue>, key: &str) -> Result<i32, String> {
     match object.get(key) {
         Some(JsonValue::Number(number)) => match number.as_i64() {
-            Some(value) if (i32::MIN as i64..=i32::MAX as i64).contains(&value) => {
-                Ok(value as i32)
-            }
+            Some(value) if (i32::MIN as i64..=i32::MAX as i64).contains(&value) => Ok(value as i32),
             _ => Err(format!("{key} must be an integer.")),
         },
         Some(_) => Err(format!("{key} must be an integer.")),
@@ -1265,12 +1267,9 @@ mod tests {
             command.insert("operation".to_string(), operation);
         }
         let command_json = JsonValue::Object(command).to_string();
-        let json = dispatch_layout_command(
-            store,
-            state["draft_id"].as_str().unwrap(),
-            &command_json,
-        )
-        .unwrap_or_else(|error| panic!("dispatch {command_id} ({command_json}): {error}"));
+        let json =
+            dispatch_layout_command(store, state["draft_id"].as_str().unwrap(), &command_json)
+                .unwrap_or_else(|error| panic!("dispatch {command_id} ({command_json}): {error}"));
         serde_json::from_str(&json).expect("state is valid JSON")
     }
 
@@ -1302,7 +1301,10 @@ mod tests {
     #[test]
     fn create_template_draft_matches_room_grid() {
         let store = store();
-        let state = create(&store, r#"{"template_id": "standard-30", "name": "Period 2"}"#);
+        let state = create(
+            &store,
+            r#"{"template_id": "standard-30", "name": "Period 2"}"#,
+        );
         assert_eq!(state["name"], "Period 2");
         assert_eq!(state["rows"], 5);
         assert_eq!(state["columns"], 7, "6 seats + 1 aisle column");
@@ -1337,7 +1339,11 @@ mod tests {
         assert_eq!(state["columns"], 3);
         assert_eq!(cell(&state, 1, 1)["kind"], "seat");
         assert_eq!(cell(&state, 1, 2)["kind"], "aisle");
-        assert_eq!(cell(&state, 1, 3)["kind"], "empty", "blocked seats are empty cells");
+        assert_eq!(
+            cell(&state, 1, 3)["kind"],
+            "empty",
+            "blocked seats are empty cells"
+        );
         assert_eq!(cell(&state, 2, 1)["kind"], "platform");
         assert_eq!(state["usable_seat_count"], 1);
     }
@@ -1346,14 +1352,20 @@ mod tests {
     fn create_requires_exactly_one_source() {
         let store = store();
         let error = create_layout_draft(&store, r#"{"name": "X"}"#).expect_err("no source");
-        assert_eq!(error, "Choose one template, existing layout, or rows and columns.");
+        assert_eq!(
+            error,
+            "Choose one template, existing layout, or rows and columns."
+        );
 
         let error = create_layout_draft(
             &store,
             r#"{"template_id": "standard-30", "rows": 2, "columns": 3}"#,
         )
         .expect_err("two sources");
-        assert_eq!(error, "Choose one template, existing layout, or rows and columns.");
+        assert_eq!(
+            error,
+            "Choose one template, existing layout, or rows and columns."
+        );
 
         let error = create_layout_draft(&store, r#"{"rows": 2}"#).expect_err("missing columns");
         assert_eq!(error, "Both rows and columns are required.");
@@ -1366,8 +1378,8 @@ mod tests {
             .expect_err("50x50 exceeds cell cap");
         assert!(error.contains("at most 1000 cells"), "{error}");
 
-        let error = create_layout_draft(&store, r#"{"rows": 51, "columns": 1}"#)
-            .expect_err("51 rows");
+        let error =
+            create_layout_draft(&store, r#"{"rows": 51, "columns": 1}"#).expect_err("51 rows");
         assert!(error.contains("between 1 and 50"), "{error}");
     }
 
@@ -1385,7 +1397,13 @@ mod tests {
         let store = store();
         let state = create_rect(&store, 2, 2);
         // Clear one seat into an aisle: usable count drops, revision advances.
-        let state = dispatch(&store, &state, "c1", "apply", Some(set_cell_op(1, 1, "aisle")));
+        let state = dispatch(
+            &store,
+            &state,
+            "c1",
+            "apply",
+            Some(set_cell_op(1, 1, "aisle")),
+        );
         assert_eq!(state["usable_seat_count"], 3);
         assert_eq!(state["revision"], 1);
         assert_eq!(state["undo_depth"], 1);
@@ -1397,14 +1415,26 @@ mod tests {
             &state,
             "c2",
             "apply",
-            Some(json!({"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "seat", "seat_id": "MySeat"}})),
+            Some(
+                json!({"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "seat", "seat_id": "MySeat"}}),
+            ),
         );
         assert_eq!(cell(&state, 1, 1)["seat_id"], "MySeat");
 
         // Setting a seat without an id auto-generates a unique one when the
         // preferred id is already taken by the cell being replaced.
-        let state = dispatch(&store, &state, "c3", "apply", Some(set_cell_op(2, 2, "seat")));
-        assert_eq!(cell(&state, 2, 2)["seat_id"], "R2C2-2", "suffix avoids the existing id");
+        let state = dispatch(
+            &store,
+            &state,
+            "c3",
+            "apply",
+            Some(set_cell_op(2, 2, "seat")),
+        );
+        assert_eq!(
+            cell(&state, 2, 2)["seat_id"],
+            "R2C2-2",
+            "suffix avoids the existing id"
+        );
     }
 
     #[test]
@@ -1485,7 +1515,11 @@ mod tests {
         );
         assert_eq!(state["columns"], 2);
         assert_eq!(cell(&state, 1, 2)["seat_id"], "R1C1");
-        assert_eq!(cell(&state, 2, 2)["seat_id"], "R2C1", "the deleted column held R2C2");
+        assert_eq!(
+            cell(&state, 2, 2)["seat_id"],
+            "R2C1",
+            "the deleted column held R2C2"
+        );
     }
 
     #[test]
@@ -1537,9 +1571,24 @@ mod tests {
                 Some(set_cell_op(3, column, "empty")),
             );
         }
-        state = dispatch(&store, &state, "c3", "apply", Some(set_cell_op(1, 3, "empty")));
-        state = dispatch(&store, &state, "c3b", "apply", Some(set_cell_op(2, 3, "empty")));
-        assert_eq!(state["usable_seat_count"], 4, "only the 2x2 top-left block remains");
+        state = dispatch(
+            &store,
+            &state,
+            "c3",
+            "apply",
+            Some(set_cell_op(1, 3, "empty")),
+        );
+        state = dispatch(
+            &store,
+            &state,
+            "c3b",
+            "apply",
+            Some(set_cell_op(2, 3, "empty")),
+        );
+        assert_eq!(
+            state["usable_seat_count"], 4,
+            "only the 2x2 top-left block remains"
+        );
 
         let state = dispatch(
             &store,
@@ -1577,7 +1626,10 @@ mod tests {
 
         let after = get_layout_state(&store, state["draft_id"].as_str().unwrap()).unwrap();
         let after: JsonValue = serde_json::from_str(&after).unwrap();
-        assert_eq!(after["revision"], 0, "failed command left the draft untouched");
+        assert_eq!(
+            after["revision"], 0,
+            "failed command left the draft untouched"
+        );
         assert_eq!(after["usable_seat_count"], 4);
         assert_eq!(after["undo_depth"], 0);
     }
@@ -1613,7 +1665,13 @@ mod tests {
     fn undo_redo_round_trip() {
         let store = store();
         let state = create_rect(&store, 2, 2);
-        let state = dispatch(&store, &state, "c1", "apply", Some(set_cell_op(1, 1, "aisle")));
+        let state = dispatch(
+            &store,
+            &state,
+            "c1",
+            "apply",
+            Some(set_cell_op(1, 1, "aisle")),
+        );
         assert_eq!(state["revision"], 1);
         assert_eq!(state["usable_seat_count"], 3);
 
@@ -1630,7 +1688,13 @@ mod tests {
 
         // A new command after undo clears the redo stack.
         let state = dispatch(&store, &state, "c4", "undo", None);
-        let state = dispatch(&store, &state, "c5", "apply", Some(set_cell_op(2, 2, "platform")));
+        let state = dispatch(
+            &store,
+            &state,
+            "c5",
+            "apply",
+            Some(set_cell_op(2, 2, "platform")),
+        );
         assert_eq!(state["redo_depth"], 0);
         assert_eq!(cell(&state, 2, 2)["kind"], "platform");
     }
@@ -1659,7 +1723,13 @@ mod tests {
         let store = store();
         let state = create_rect(&store, 2, 2);
         // Advance the draft past revision 0.
-        dispatch(&store, &state, "c1", "apply", Some(set_cell_op(1, 1, "aisle")));
+        dispatch(
+            &store,
+            &state,
+            "c1",
+            "apply",
+            Some(set_cell_op(1, 1, "aisle")),
+        );
         let error = dispatch_layout_command(
             &store,
             state["draft_id"].as_str().unwrap(),
@@ -1681,7 +1751,13 @@ mod tests {
     fn duplicate_command_id_rejected() {
         let store = store();
         let state = create_rect(&store, 2, 2);
-        dispatch(&store, &state, "same-id", "apply", Some(set_cell_op(1, 1, "aisle")));
+        dispatch(
+            &store,
+            &state,
+            "same-id",
+            "apply",
+            Some(set_cell_op(1, 1, "aisle")),
+        );
         let error = dispatch_layout_command(
             &store,
             state["draft_id"].as_str().unwrap(),
@@ -1782,7 +1858,9 @@ mod tests {
             &state,
             "platform",
             "apply",
-            Some(json!({"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "platform"}})),
+            Some(
+                json!({"kind": "set_cell", "payload": {"row": 1, "column": 1, "kind": "platform"}}),
+            ),
         );
         let draft_id = state["draft_id"].as_str().unwrap().to_string();
         let json = compile_layout(&store, &draft_id).expect("compiles");
@@ -1798,7 +1876,10 @@ mod tests {
 
         let seats = layout["seats"].as_array().unwrap();
         assert_eq!(seats.len(), 4, "platform + three remaining seats");
-        let platform = seats.iter().find(|seat| seat["seat_id"] == "PLATFORM-R1C1").unwrap();
+        let platform = seats
+            .iter()
+            .find(|seat| seat["seat_id"] == "PLATFORM-R1C1")
+            .unwrap();
         assert_eq!(platform["enabled"], false);
         assert_eq!(platform["zone"], "platform");
         let seat = seats.iter().find(|seat| seat["seat_id"] == "R2C2").unwrap();
@@ -1810,8 +1891,20 @@ mod tests {
     fn compile_requires_a_usable_seat() {
         let store = store();
         let state = create_rect(&store, 1, 2);
-        let state = dispatch(&store, &state, "a", "apply", Some(set_cell_op(1, 1, "empty")));
-        let state = dispatch(&store, &state, "b", "apply", Some(set_cell_op(1, 2, "empty")));
+        let state = dispatch(
+            &store,
+            &state,
+            "a",
+            "apply",
+            Some(set_cell_op(1, 1, "empty")),
+        );
+        let state = dispatch(
+            &store,
+            &state,
+            "b",
+            "apply",
+            Some(set_cell_op(1, 2, "empty")),
+        );
         let error = compile_layout(&store, state["draft_id"].as_str().unwrap())
             .expect_err("no seats remain");
         assert_eq!(
@@ -1852,9 +1945,18 @@ mod tests {
         let draft_id = state["draft_id"].as_str().unwrap().to_string();
         assert!(get_layout_state(&store, &draft_id).is_ok());
         assert!(delete_layout_draft_in_store(&store, &draft_id));
-        assert!(get_layout_state(&store, &draft_id).is_err(), "draft removed");
-        assert!(!delete_layout_draft_in_store(&store, &draft_id), "second delete misses");
-        assert!(!delete_layout_draft_in_store(&store, "   "), "blank id misses");
+        assert!(
+            get_layout_state(&store, &draft_id).is_err(),
+            "draft removed"
+        );
+        assert!(
+            !delete_layout_draft_in_store(&store, &draft_id),
+            "second delete misses"
+        );
+        assert!(
+            !delete_layout_draft_in_store(&store, "   "),
+            "blank id misses"
+        );
     }
 
     #[test]
@@ -1867,7 +1969,10 @@ mod tests {
         let draft_id = state["draft_id"].as_str().unwrap().to_string();
 
         let fetched = get_layout_state_json(&draft_id).expect("fetches");
-        assert_eq!(serde_json::from_str::<JsonValue>(&fetched).unwrap()["rows"], 2);
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(&fetched).unwrap()["rows"],
+            2
+        );
 
         let command = json!({
             "command_id": "global-1",
@@ -1878,12 +1983,21 @@ mod tests {
         })
         .to_string();
         let after = dispatch_layout_command_json(&draft_id, &command).expect("dispatches");
-        assert_eq!(serde_json::from_str::<JsonValue>(&after).unwrap()["revision"], 1);
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(&after).unwrap()["revision"],
+            1
+        );
 
         let compiled = compile_layout_draft_json(&draft_id).expect("compiles");
-        assert_eq!(serde_json::from_str::<JsonValue>(&compiled).unwrap()["draft_id"], draft_id);
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(&compiled).unwrap()["draft_id"],
+            draft_id
+        );
 
-        assert!(delete_layout_draft(&draft_id), "deletes through the global store");
+        assert!(
+            delete_layout_draft(&draft_id),
+            "deletes through the global store"
+        );
         assert!(get_layout_state_json(&draft_id).is_err(), "draft gone");
     }
 }

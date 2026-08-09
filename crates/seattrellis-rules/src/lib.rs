@@ -8,4 +8,7 @@
 pub mod params;
 pub mod spec;
 
-pub use spec::{rule_registry_json, rule_spec, rule_specs, ExplanationCode, LocalizedKeys, ObjectiveMeta, RuleCategory, RuleSpec};
+pub use spec::{
+    rule_registry_json, rule_spec, rule_specs, ExplanationCode, LocalizedKeys, ObjectiveMeta,
+    RuleCategory, RuleSpec,
+};

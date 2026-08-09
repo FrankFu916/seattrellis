@@ -102,7 +102,8 @@ mod tests {
 
     #[test]
     fn project_defaults_match_python() {
-        let minimal = r#"{"students": "students.csv", "layout": "layout.json", "rules": "rules.json"}"#;
+        let minimal =
+            r#"{"students": "students.csv", "layout": "layout.json", "rules": "rules.json"}"#;
         let parsed: SeatTrellisProjectArtifact = serde_json::from_str(minimal).unwrap();
         assert_eq!(parsed.kind, "seattrellis_project");
         assert_eq!(parsed.schema_version, 1);

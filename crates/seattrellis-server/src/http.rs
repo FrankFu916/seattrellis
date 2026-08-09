@@ -26,8 +26,8 @@ use axum::Router;
 use serde_json::json;
 use tower::limit::ConcurrencyLimitLayer;
 
-use seattrellis_domain::editing::EditorDraftStore;
 use crate::server::{route, Request, Response, SolveRequestStore};
+use seattrellis_domain::editing::EditorDraftStore;
 
 /// Maximum accepted request body size (matches the old `MAX_BODY_BYTES`).
 pub const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
@@ -59,8 +59,6 @@ pub struct AppState {
 /// `localhost` always resolves to loopback; attacker-controlled names never
 /// match.
 const ALLOWED_HOSTS: [&str; 3] = ["127.0.0.1", "localhost", "::1"];
-
-
 
 /// Build the axum router that adapts incoming requests into the legacy
 /// [`Request`] shape and dispatches through [`route`].
@@ -296,7 +294,6 @@ mod tests {
         }
     }
 
-
     /// The adapter must dispatch a legacy-shaped request through `route`
     /// unchanged: a plain solve round-trip through the axum layer.
     #[tokio::test]
@@ -312,7 +309,10 @@ mod tests {
             .method("POST")
             .uri("/api/v1/solve")
             .header(header::HOST, "127.0.0.1:8765")
-            .header(header::AUTHORIZATION, "Bearer 0123456789abcdef0123456789abcdef")
+            .header(
+                header::AUTHORIZATION,
+                "Bearer 0123456789abcdef0123456789abcdef",
+            )
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap();
@@ -397,7 +397,9 @@ mod tests {
         )
         .await;
         assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(value["session_token"], "0123456789abcdef0123456789abcdef");
     }
@@ -453,7 +455,10 @@ mod tests {
             .uri("/api/v1/solve")
             .header(header::HOST, "127.0.0.1:8765")
             .header(header::ORIGIN, "https://evil.example.com")
-            .header(header::AUTHORIZATION, "Bearer 0123456789abcdef0123456789abcdef")
+            .header(
+                header::AUTHORIZATION,
+                "Bearer 0123456789abcdef0123456789abcdef",
+            )
             .body(Body::empty())
             .unwrap();
         let (parts, body) = request.into_parts();
@@ -496,7 +501,10 @@ mod tests {
             .method("GET")
             .uri("/api/v1/health")
             .header(header::HOST, "127.0.0.1:8765")
-            .header(header::AUTHORIZATION, "Bearer deadbeefdeadbeefdeadbeefdeadbeef")
+            .header(
+                header::AUTHORIZATION,
+                "Bearer deadbeefdeadbeefdeadbeefdeadbeef",
+            )
             .body(Body::empty())
             .unwrap();
         let (parts, body) = request.into_parts();
@@ -518,7 +526,10 @@ mod tests {
             .method("GET")
             .uri("/api/v1/health")
             .header(header::HOST, "127.0.0.1:8765")
-            .header(header::AUTHORIZATION, "Bearer 0123456789abcdef0123456789abcdef")
+            .header(
+                header::AUTHORIZATION,
+                "Bearer 0123456789abcdef0123456789abcdef",
+            )
             .body(Body::empty())
             .unwrap();
         let (parts, body) = request.into_parts();
@@ -557,7 +568,10 @@ mod tests {
             .method("GET")
             .uri("/api/v1/health")
             .header(header::HOST, "127.0.0.1:8765")
-            .header(header::AUTHORIZATION, "Bearer 0123456789abcdef0123456789abcdef")
+            .header(
+                header::AUTHORIZATION,
+                "Bearer 0123456789abcdef0123456789abcdef",
+            )
             .body(Body::empty())
             .unwrap();
         let (parts, body) = request.into_parts();
@@ -569,9 +583,18 @@ mod tests {
             axum::body::to_bytes(body, 1024).await.unwrap(),
         )
         .await;
-        assert!(response.headers().get(header::CONTENT_SECURITY_POLICY).is_some());
-        assert_eq!(response.headers().get(header::X_FRAME_OPTIONS).unwrap(), "DENY");
-        assert_eq!(response.headers().get(header::REFERRER_POLICY).unwrap(), "no-referrer");
+        assert!(response
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .is_some());
+        assert_eq!(
+            response.headers().get(header::X_FRAME_OPTIONS).unwrap(),
+            "DENY"
+        );
+        assert_eq!(
+            response.headers().get(header::REFERRER_POLICY).unwrap(),
+            "no-referrer"
+        );
     }
 
     #[test]

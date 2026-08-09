@@ -5,6 +5,7 @@
 //! avoid pulling in clap and to keep the release binary small. See `USAGE`.
 
 mod commands;
+mod project;
 mod render;
 mod style;
 mod usage;
@@ -95,6 +96,24 @@ pub struct HistoryReportArgs {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct ProjectArgs {
+    pub project: PathBuf,
+    pub seed: Option<u64>,
+    pub format: Option<String>,
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RepairArgs {
+    pub problem: PathBuf,
+    pub snapshot: PathBuf,
+    pub affected: Vec<String>,
+    pub locked_students: Vec<String>,
+    pub locked_seats: Vec<String>,
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct PairReportArgs {
     pub problem: PathBuf,
     pub history: Vec<PathBuf>,
@@ -112,6 +131,11 @@ enum Command {
     Candidates(CandidatesArgs),
     HistoryReport(HistoryReportArgs),
     PairReport(PairReportArgs),
+    Repair(RepairArgs),
+    ProjectInfo(ProjectArgs),
+    ProjectValidate(ProjectArgs),
+    ProjectSolve(ProjectArgs),
+    ProjectExport(ProjectArgs),
     Solve(SolveArgs),
     Export(ExportArgs),
 }
@@ -120,7 +144,10 @@ enum Command {
 ///
 /// Returns the flags in order as `(name, value)` pairs; value is `Some` only
 /// for flags declared with `takes_value`. Repeated flags keep the last value.
-fn parse_flags(tokens: &[String], allowed: &[Flag]) -> Result<Vec<(String, Option<String>)>, String> {
+fn parse_flags(
+    tokens: &[String],
+    allowed: &[Flag],
+) -> Result<Vec<(String, Option<String>)>, String> {
     let mut out: Vec<(String, Option<String>)> = Vec::new();
     let mut index = 0;
     while index < tokens.len() {
@@ -164,11 +191,18 @@ fn parse_flags(tokens: &[String], allowed: &[Flag]) -> Result<Vec<(String, Optio
 }
 
 /// Look up a flag's value in the parsed pairs (last occurrence wins).
-fn flag_value<'a>(parsed: &'a [(String, Option<String>)], name: &str) -> Result<Option<&'a str>, String> {
+fn flag_value<'a>(
+    parsed: &'a [(String, Option<String>)],
+    name: &str,
+) -> Result<Option<&'a str>, String> {
     let mut found: Option<&'a str> = None;
     for (parsed_name, value) in parsed {
         if parsed_name == name {
-            found = Some(value.as_deref().ok_or_else(|| format!("option '{name}' requires a value"))?);
+            found = Some(
+                value
+                    .as_deref()
+                    .ok_or_else(|| format!("option '{name}' requires a value"))?,
+            );
         }
     }
     Ok(found)
@@ -176,18 +210,32 @@ fn flag_value<'a>(parsed: &'a [(String, Option<String>)], name: &str) -> Result<
 
 fn parse_solve(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
-        Flag { name: "--problem", takes_value: true },
-        Flag { name: "--seed", takes_value: true },
-        Flag { name: "--time-limit", takes_value: true },
-        Flag { name: "--output", takes_value: true },
-        Flag { name: "--help", takes_value: false },
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--seed",
+            takes_value: true,
+        },
+        Flag {
+            name: "--time-limit",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
     ];
     let parsed = parse_flags(tokens, FLAGS)?;
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
-    let problem = flag_value(&parsed, "--problem")?
-        .ok_or("solve requires --problem <file>")?;
+    let problem = flag_value(&parsed, "--problem")?.ok_or("solve requires --problem <file>")?;
     let seed = match flag_value(&parsed, "--seed")? {
         Some(raw) => Some(
             raw.parse::<u64>()
@@ -252,8 +300,7 @@ fn parse_precheck(tokens: &[String]) -> Result<Command, String> {
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
-    let problem = flag_value(&parsed, "--problem")?
-        .ok_or("precheck requires --problem <file>")?;
+    let problem = flag_value(&parsed, "--problem")?.ok_or("precheck requires --problem <file>")?;
     Ok(Command::Precheck(PrecheckArgs {
         problem: PathBuf::from(problem),
     }))
@@ -261,18 +308,25 @@ fn parse_precheck(tokens: &[String]) -> Result<Command, String> {
 
 fn parse_audit(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
-        Flag { name: "--problem", takes_value: true },
-        Flag { name: "--solution", takes_value: true },
-        Flag { name: "--help", takes_value: false },
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--solution",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
     ];
     let parsed = parse_flags(tokens, FLAGS)?;
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
-    let problem = flag_value(&parsed, "--problem")?
-        .ok_or("audit requires --problem <file>")?;
-    let solution = flag_value(&parsed, "--solution")?
-        .ok_or("audit requires --solution <file>")?;
+    let problem = flag_value(&parsed, "--problem")?.ok_or("audit requires --problem <file>")?;
+    let solution = flag_value(&parsed, "--solution")?.ok_or("audit requires --solution <file>")?;
     Ok(Command::Audit(AuditArgs {
         problem: PathBuf::from(problem),
         solution: PathBuf::from(solution),
@@ -281,16 +335,25 @@ fn parse_audit(tokens: &[String]) -> Result<Command, String> {
 
 fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
-        Flag { name: "--problem", takes_value: true },
-        Flag { name: "--count", takes_value: true },
-        Flag { name: "--help", takes_value: false },
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--count",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
     ];
     let parsed = parse_flags(tokens, FLAGS)?;
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
-    let problem = flag_value(&parsed, "--problem")?
-        .ok_or("candidates requires --problem <file>")?;
+    let problem =
+        flag_value(&parsed, "--problem")?.ok_or("candidates requires --problem <file>")?;
     let count = match flag_value(&parsed, "--count")? {
         Some(raw) => raw
             .parse::<usize>()
@@ -305,16 +368,25 @@ fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
 
 fn parse_history_report(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
-        Flag { name: "--problem", takes_value: true },
-        Flag { name: "--history", takes_value: true },
-        Flag { name: "--help", takes_value: false },
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--history",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
     ];
     let parsed = parse_flags(tokens, FLAGS)?;
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
-    let problem = flag_value(&parsed, "--problem")?
-        .ok_or("history-report requires --problem <file>")?;
+    let problem =
+        flag_value(&parsed, "--problem")?.ok_or("history-report requires --problem <file>")?;
     let history = parsed
         .iter()
         .filter(|(name, _)| name == "--history")
@@ -332,18 +404,33 @@ fn parse_history_report(tokens: &[String]) -> Result<Command, String> {
 
 fn parse_pair_report(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
-        Flag { name: "--problem", takes_value: true },
-        Flag { name: "--history", takes_value: true },
-        Flag { name: "--top", takes_value: true },
-        Flag { name: "--within-distance", takes_value: true },
-        Flag { name: "--help", takes_value: false },
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--history",
+            takes_value: true,
+        },
+        Flag {
+            name: "--top",
+            takes_value: true,
+        },
+        Flag {
+            name: "--within-distance",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
     ];
     let parsed = parse_flags(tokens, FLAGS)?;
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
-    let problem = flag_value(&parsed, "--problem")?
-        .ok_or("pair-report requires --problem <file>")?;
+    let problem =
+        flag_value(&parsed, "--problem")?.ok_or("pair-report requires --problem <file>")?;
     let history = parsed
         .iter()
         .filter(|(name, _)| name == "--history")
@@ -373,28 +460,155 @@ fn parse_pair_report(tokens: &[String]) -> Result<Command, String> {
     }))
 }
 
-fn parse_export(tokens: &[String]) -> Result<Command, String> {
+fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
-        Flag { name: "--problem", takes_value: true },
-        Flag { name: "--solution", takes_value: true },
-        Flag { name: "--format", takes_value: true },
-        Flag { name: "--output", takes_value: true },
-        Flag { name: "--help", takes_value: false },
+        Flag {
+            name: "--project",
+            takes_value: true,
+        },
+        Flag {
+            name: "--seed",
+            takes_value: true,
+        },
+        Flag {
+            name: "--format",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
     ];
     let parsed = parse_flags(tokens, FLAGS)?;
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
-    let problem = flag_value(&parsed, "--problem")?
-        .ok_or("export requires --problem <file>")?;
-    let solution = flag_value(&parsed, "--solution")?
-        .ok_or("export requires --solution <file>")?;
+    let project = flag_value(&parsed, "--project")?
+        .ok_or_else(|| format!("{command} requires --project <file>"))?;
+    let seed = match flag_value(&parsed, "--seed")? {
+        Some(raw) => Some(
+            raw.parse::<u64>()
+                .map_err(|error| format!("invalid seed '{raw}': {error}"))?,
+        ),
+        None => None,
+    };
+    let format = flag_value(&parsed, "--format")?.map(str::to_string);
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    let args = ProjectArgs {
+        project: PathBuf::from(project),
+        seed,
+        format,
+        output,
+    };
+    Ok(match command {
+        "project-info" => Command::ProjectInfo(args),
+        "project-validate" => Command::ProjectValidate(args),
+        "project-solve" => Command::ProjectSolve(args),
+        "project-export" => Command::ProjectExport(args),
+        _ => return Err(format!("unknown project command {command}")),
+    })
+}
+
+fn parse_repair(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--snapshot",
+            takes_value: true,
+        },
+        Flag {
+            name: "--affected",
+            takes_value: true,
+        },
+        Flag {
+            name: "--lock-student",
+            takes_value: true,
+        },
+        Flag {
+            name: "--lock-seat",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?.ok_or("repair requires --problem <file>")?;
+    let snapshot = flag_value(&parsed, "--snapshot")?.ok_or("repair requires --snapshot <file>")?;
+    let affected = parsed
+        .iter()
+        .filter(|(name, _)| name == "--affected")
+        .filter_map(|(_, value)| value.clone())
+        .collect();
+    let locked_students = parsed
+        .iter()
+        .filter(|(name, _)| name == "--lock-student")
+        .filter_map(|(_, value)| value.clone())
+        .collect();
+    let locked_seats = parsed
+        .iter()
+        .filter(|(name, _)| name == "--lock-seat")
+        .filter_map(|(_, value)| value.clone())
+        .collect();
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    Ok(Command::Repair(RepairArgs {
+        problem: PathBuf::from(problem),
+        snapshot: PathBuf::from(snapshot),
+        affected,
+        locked_students,
+        locked_seats,
+        output,
+    }))
+}
+
+fn parse_export(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--solution",
+            takes_value: true,
+        },
+        Flag {
+            name: "--format",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?.ok_or("export requires --problem <file>")?;
+    let solution = flag_value(&parsed, "--solution")?.ok_or("export requires --solution <file>")?;
     let format = ExportFormat::parse(
-        flag_value(&parsed, "--format")?
-            .ok_or("export requires --format <svg|html|png|pdf>")?,
+        flag_value(&parsed, "--format")?.ok_or("export requires --format <svg|html|png|pdf>")?,
     )?;
-    let output = flag_value(&parsed, "--output")?
-        .ok_or("export requires --output <file>")?;
+    let output = flag_value(&parsed, "--output")?.ok_or("export requires --output <file>")?;
     Ok(Command::Export(ExportArgs {
         problem: PathBuf::from(problem),
         solution: PathBuf::from(solution),
@@ -425,6 +639,11 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "candidates" => parse_candidates(&text[1..]),
         "history-report" => parse_history_report(&text[1..]),
         "pair-report" => parse_pair_report(&text[1..]),
+        "repair" => parse_repair(&text[1..]),
+        "project-info" => parse_project_command("project-info", &text[1..]),
+        "project-validate" => parse_project_command("project-validate", &text[1..]),
+        "project-solve" => parse_project_command("project-solve", &text[1..]),
+        "project-export" => parse_project_command("project-export", &text[1..]),
         "solve" => parse_solve(&text[1..]),
         "export" => parse_export(&text[1..]),
         other => Err(format!("unknown command '{other}'")),
@@ -512,6 +731,52 @@ fn run_command(command: Command) -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Command::Repair(args) => match commands::run_repair(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectInfo(args) => match project::project_info(&args.project) {
+            Ok(report) => {
+                println!("{report}");
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectValidate(args) => match project::project_validate(&args.project) {
+            Ok(report) => {
+                println!("{report}");
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectSolve(args) => match commands::run_project_solve(&args) {
+            Ok(status) => ExitCode::from(exit_code_for(status)),
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(exit_code_for(classify_solve_error(&message)))
+            }
+        },
+        Command::ProjectExport(args) => match commands::run_project_export(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
         Command::Solve(args) => match commands::run_solve(&args) {
             Ok(status) => ExitCode::from(exit_code_for(status)),
             Err(message) => {
@@ -564,12 +829,24 @@ mod tests {
         assert_eq!(parse_args(&args_of(&["--help"])).unwrap(), Command::Help);
         assert_eq!(parse_args(&args_of(&["-h"])).unwrap(), Command::Help);
         assert_eq!(parse_args(&args_of(&["help"])).unwrap(), Command::Help);
-        assert_eq!(parse_args(&args_of(&["--version"])).unwrap(), Command::Version);
+        assert_eq!(
+            parse_args(&args_of(&["--version"])).unwrap(),
+            Command::Version
+        );
         assert_eq!(parse_args(&args_of(&["-V"])).unwrap(), Command::Version);
-        assert_eq!(parse_args(&args_of(&["version"])).unwrap(), Command::Version);
+        assert_eq!(
+            parse_args(&args_of(&["version"])).unwrap(),
+            Command::Version
+        );
         // --help inside a subcommand shows help too.
-        assert_eq!(parse_args(&args_of(&["solve", "--help"])).unwrap(), Command::Help);
-        assert_eq!(parse_args(&args_of(&["export", "--help"])).unwrap(), Command::Help);
+        assert_eq!(
+            parse_args(&args_of(&["solve", "--help"])).unwrap(),
+            Command::Help
+        );
+        assert_eq!(
+            parse_args(&args_of(&["export", "--help"])).unwrap(),
+            Command::Help
+        );
     }
 
     #[test]
@@ -599,10 +876,13 @@ mod tests {
     #[test]
     fn parse_solve_with_all_options() {
         let Command::Solve(args) = parse_args(&args_of(&[
-            "solve", "--problem=p.json", "--seed", "7", "--output=out.json",
+            "solve",
+            "--problem=p.json",
+            "--seed",
+            "7",
+            "--output=out.json",
         ]))
-        .unwrap()
-        else {
+        .unwrap() else {
             panic!("expected a solve command");
         };
         assert_eq!(args.problem, PathBuf::from("p.json"));
@@ -619,35 +899,54 @@ mod tests {
     #[test]
     fn rejects_unknown_option() {
         let error = parse_args(&args_of(&["solve", "--problem", "p", "--bogus", "x"])).unwrap_err();
-        assert!(error.contains("unknown option '--bogus'"), "unexpected error: {error}");
+        assert!(
+            error.contains("unknown option '--bogus'"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
     fn rejects_missing_option_value() {
         let error = parse_args(&args_of(&["solve", "--problem"])).unwrap_err();
-        assert!(error.contains("requires a value"), "unexpected error: {error}");
+        assert!(
+            error.contains("requires a value"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
     fn rejects_bad_seed() {
-        let error = parse_args(&args_of(&["solve", "--problem", "p", "--seed", "abc"])).unwrap_err();
-        assert!(error.contains("invalid seed 'abc'"), "unexpected error: {error}");
+        let error =
+            parse_args(&args_of(&["solve", "--problem", "p", "--seed", "abc"])).unwrap_err();
+        assert!(
+            error.contains("invalid seed 'abc'"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
     fn rejects_unknown_command() {
         let error = parse_args(&args_of(&["frobnicate"])).unwrap_err();
-        assert!(error.contains("unknown command 'frobnicate'"), "unexpected error: {error}");
+        assert!(
+            error.contains("unknown command 'frobnicate'"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
     fn parse_export_with_all_options() {
         let Command::Export(args) = parse_args(&args_of(&[
-            "export", "--problem", "p.json", "--solution", "s.json", "--format", "svg", "--output",
+            "export",
+            "--problem",
+            "p.json",
+            "--solution",
+            "s.json",
+            "--format",
+            "svg",
+            "--output",
             "o.svg",
         ]))
-        .unwrap()
-        else {
+        .unwrap() else {
             panic!("expected an export command");
         };
         assert_eq!(args.problem, PathBuf::from("p.json"));
@@ -659,10 +958,13 @@ mod tests {
     #[test]
     fn parse_export_inline_values_and_html_format() {
         let Command::Export(args) = parse_args(&args_of(&[
-            "export", "--problem=p", "--solution=s", "--format=html", "--output=o",
+            "export",
+            "--problem=p",
+            "--solution=s",
+            "--format=html",
+            "--output=o",
         ]))
-        .unwrap()
-        else {
+        .unwrap() else {
             panic!("expected an export command");
         };
         assert_eq!(args.format, ExportFormat::Html);
@@ -671,28 +973,47 @@ mod tests {
     #[test]
     fn rejects_bad_format() {
         let error = parse_args(&args_of(&[
-            "export", "--problem", "p", "--solution", "s", "--format", "bmp", "--output", "o",
+            "export",
+            "--problem",
+            "p",
+            "--solution",
+            "s",
+            "--format",
+            "bmp",
+            "--output",
+            "o",
         ]))
         .unwrap_err();
-        assert!(error.contains("unknown format 'bmp'"), "unexpected error: {error}");
+        assert!(
+            error.contains("unknown format 'bmp'"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
     fn parse_export_png_and_pdf_formats() {
         let Command::Export(args) = parse_args(&args_of(&[
-            "export", "--problem=p", "--solution=s", "--format=png", "--output=o",
+            "export",
+            "--problem=p",
+            "--solution=s",
+            "--format=png",
+            "--output=o",
         ]))
-        .unwrap()
-        else {
+        .unwrap() else {
             panic!("expected an export command");
         };
         assert_eq!(args.format, ExportFormat::Png);
 
         let Command::Export(args) = parse_args(&args_of(&[
-            "export", "--problem=p", "--solution=s", "--format", "PDF", "--output", "o",
+            "export",
+            "--problem=p",
+            "--solution=s",
+            "--format",
+            "PDF",
+            "--output",
+            "o",
         ]))
-        .unwrap()
-        else {
+        .unwrap() else {
             panic!("expected an export command");
         };
         assert_eq!(args.format, ExportFormat::Pdf, "format is case-insensitive");
@@ -713,7 +1034,10 @@ mod tests {
             OsString::from_vec(vec![0xff]),
         ];
         let error = parse_args(&args).unwrap_err();
-        assert!(error.contains("not valid UTF-8"), "unexpected error: {error}");
+        assert!(
+            error.contains("not valid UTF-8"),
+            "unexpected error: {error}"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -739,10 +1063,26 @@ mod tests {
     #[test]
     fn solve_error_classification_drives_exit_codes() {
         // Invalid input must exit 2, never 1 or 70.
-        assert_eq!(exit_code_for(classify_solve_error("unsupported api_version 99")), 2);
-        assert_eq!(exit_code_for(classify_solve_error("native solve requires at least one seat")), 2);
-        assert_eq!(exit_code_for(classify_solve_error("Duplicate student identifiers: STU001")), 2);
+        assert_eq!(
+            exit_code_for(classify_solve_error("unsupported api_version 99")),
+            2
+        );
+        assert_eq!(
+            exit_code_for(classify_solve_error(
+                "native solve requires at least one seat"
+            )),
+            2
+        );
+        assert_eq!(
+            exit_code_for(classify_solve_error(
+                "Duplicate student identifiers: STU001"
+            )),
+            2
+        );
         // Internal faults exit 70.
-        assert_eq!(exit_code_for(classify_solve_error("solver panicked while ranking")), 70);
+        assert_eq!(
+            exit_code_for(classify_solve_error("solver panicked while ranking")),
+            70
+        );
     }
 }

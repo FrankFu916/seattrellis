@@ -348,9 +348,8 @@ pub fn parse_roster_csv(bytes: &[u8]) -> Result<RosterDraft, String> {
             MAX_ROSTER_FILE_BYTES
         ));
     }
-    let text = std::str::from_utf8(bytes).map_err(|error| {
-        format!("Roster CSV must be UTF-8 text: {error}")
-    })?;
+    let text = std::str::from_utf8(bytes)
+        .map_err(|error| format!("Roster CSV must be UTF-8 text: {error}"))?;
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let records = parse_csv(text)?;
 
@@ -368,7 +367,10 @@ pub fn parse_roster_csv(bytes: &[u8]) -> Result<RosterDraft, String> {
             MAX_ROSTER_COLUMNS
         ));
     }
-    let headers: Vec<String> = raw_headers.iter().map(|cell| cell.trim().to_string()).collect();
+    let headers: Vec<String> = raw_headers
+        .iter()
+        .map(|cell| cell.trim().to_string())
+        .collect();
 
     let mut raw_rows: Vec<RosterRow> = Vec::new();
     for (index, record) in records.iter().skip(1).enumerate() {
@@ -516,9 +518,7 @@ fn parse_csv(text: &str) -> Result<Vec<Vec<String>>, String> {
                 }
                 ' ' | '\t' => {}
                 _ => {
-                    return Err(format!(
-                        "invalid character {ch:?} after a quoted CSV field"
-                    ));
+                    return Err(format!("invalid character {ch:?} after a quoted CSV field"));
                 }
             }
             continue;
@@ -712,7 +712,9 @@ fn suggest_mapping(
             .iter()
             .filter(|column| {
                 let normalized = normalize_header(&column.header);
-                aliases.iter().any(|alias| alias.as_str() == normalized.as_str())
+                aliases
+                    .iter()
+                    .any(|alias| alias.as_str() == normalized.as_str())
             })
             .map(|column| column.index)
             .collect();
@@ -758,8 +760,7 @@ fn add_headerless_identity_suggestions(
 ) {
     let assigned_fields: HashSet<RosterField> =
         assignments.iter().map(|(field, _)| *field).collect();
-    let assigned_columns: HashSet<usize> =
-        assignments.iter().map(|(_, column)| *column).collect();
+    let assigned_columns: HashSet<usize> = assignments.iter().map(|(_, column)| *column).collect();
 
     let mut candidates: Vec<(usize, f64, f64)> = Vec::new();
     for column in columns {
@@ -977,9 +978,8 @@ pub fn upload_draft_json(bytes: &[u8]) -> Result<String, String> {
         .lock()
         .map_err(|_| "roster draft store lock is poisoned".to_string())?
         .create(draft);
-    serde_json::to_string(&response).map_err(|error| {
-        format!("could not serialize roster draft: {error}")
-    })
+    serde_json::to_string(&response)
+        .map_err(|error| format!("could not serialize roster draft: {error}"))
 }
 
 /// Return the stored `RosterDraftResponse` JSON for a draft id.
@@ -988,24 +988,21 @@ pub fn get_draft_json(draft_id: &str) -> Result<String, String> {
         .lock()
         .map_err(|_| "roster draft store lock is poisoned".to_string())?
         .state(draft_id)?;
-    serde_json::to_string(&response).map_err(|error| {
-        format!("could not serialize roster draft: {error}")
-    })
+    serde_json::to_string(&response)
+        .map_err(|error| format!("could not serialize roster draft: {error}"))
 }
 
 /// Build a preview from a `RosterUpdatePreviewRequest` JSON body against a
 /// stored draft, returning `RosterUpdatePreviewResponse` JSON.
 pub fn preview_update_json(draft_id: &str, body: &str) -> Result<String, String> {
-    let request: RosterUpdatePreviewRequest = serde_json::from_str(body).map_err(|error| {
-        format!("request body is not a valid roster update preview: {error}")
-    })?;
+    let request: RosterUpdatePreviewRequest = serde_json::from_str(body)
+        .map_err(|error| format!("request body is not a valid roster update preview: {error}"))?;
     let response = global_store()
         .lock()
         .map_err(|_| "roster draft store lock is poisoned".to_string())?
         .preview(draft_id, &request)?;
-    serde_json::to_string(&response).map_err(|error| {
-        format!("could not serialize roster preview: {error}")
-    })
+    serde_json::to_string(&response)
+        .map_err(|error| format!("could not serialize roster preview: {error}"))
 }
 
 /// Delete a stored draft by id. Returns whether it existed.
@@ -1077,7 +1074,11 @@ pub fn normalize_student_name(value: &Option<String>) -> Option<String> {
     if text.is_empty() {
         return None;
     }
-    let collapsed = text.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed = text
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     if collapsed.is_empty() {
         None
     } else {
@@ -1102,7 +1103,10 @@ const STUDENT_FIELDS: &[&str] = &[
 /// are rejected, and the result keeps the canonical field order.
 fn normalize_updated_fields(values: Option<&[String]>) -> Result<Vec<String>, String> {
     match values {
-        None => Ok(STUDENT_FIELDS.iter().map(|field| field.to_string()).collect()),
+        None => Ok(STUDENT_FIELDS
+            .iter()
+            .map(|field| field.to_string())
+            .collect()),
         Some(requested) => {
             for value in requested {
                 if !STUDENT_FIELDS.contains(&value.as_str()) {
@@ -1131,7 +1135,10 @@ fn validate_mapping(
     let mut columns: Vec<usize> = Vec::new();
     for item in mapping {
         if fields.contains(&item.field) {
-            return Err(format!("Roster fields mapped more than once: {}", item.field));
+            return Err(format!(
+                "Roster fields mapped more than once: {}",
+                item.field
+            ));
         }
         if columns.contains(&item.column_index) {
             return Err(format!(
@@ -1170,7 +1177,10 @@ fn build_student(
     for (field, column) in assignments {
         let raw = row.cells.get(*column).map(String::as_str).unwrap_or("");
         match field {
-            RosterField::StudentId | RosterField::Name | RosterField::Gender | RosterField::Notes => {
+            RosterField::StudentId
+            | RosterField::Name
+            | RosterField::Gender
+            | RosterField::Notes => {
                 let value = clean_text(raw);
                 match field {
                     RosterField::StudentId => {
@@ -1206,7 +1216,10 @@ fn build_student(
                 if text.is_empty() {
                     continue;
                 }
-                let number = text.parse::<f64>().ok().filter(|number| number.is_finite())
+                let number = text
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|number| number.is_finite())
                     .ok_or_else(|| {
                         format!(
                             "Row {}: column \"{}\" must be a number, got \"{text}\".",
@@ -1277,6 +1290,14 @@ fn students_from_draft(
         }
     }
     Ok(students)
+}
+
+/// Parse a roster CSV into student records using the automatic header
+/// mapping (project workflows / CLI project-solve).
+pub fn parse_roster_students(bytes: &[u8]) -> Result<Vec<Student>, String> {
+    let draft = parse_roster_csv(bytes)?;
+    let assignments = validate_mapping(&draft.suggested_mapping, draft.column_count())?;
+    students_from_draft(&draft, &assignments)
 }
 
 /// Build an incremental or full-replacement difference preview for a draft.
@@ -1370,12 +1391,23 @@ pub fn preview_roster_update(
             continue;
         }
 
-        let (matched_index, method, conflict) =
-            match_student(student, current_students, &existing_ids, &existing_names, incoming_index);
+        let (matched_index, method, conflict) = match_student(
+            student,
+            current_students,
+            &existing_ids,
+            &existing_names,
+            incoming_index,
+        );
 
         if let Some(conflict) = &conflict {
             conflicts.push(conflict.clone());
-            changes.push(conflict_change(student, incoming_index, None, None, Some(conflict)));
+            changes.push(conflict_change(
+                student,
+                incoming_index,
+                None,
+                None,
+                Some(conflict),
+            ));
             continue;
         }
 
@@ -1396,10 +1428,9 @@ pub fn preview_roster_update(
         if matched_existing.contains(&matched_index) {
             let conflict = RosterConflictItem {
                 code: "existing_student_matched_twice".to_string(),
-                message:
-                    "Two imported rows resolve to the same current student. Add or correct \
+                message: "Two imported rows resolve to the same current student. Add or correct \
                      student IDs before applying."
-                        .to_string(),
+                    .to_string(),
                 incoming_index: Some(incoming_index),
                 existing_indices: vec![matched_index],
             };
@@ -1464,7 +1495,10 @@ pub fn preview_roster_update(
             .iter()
             .enumerate()
             .map(|(index, student)| {
-                replacements.get(&index).cloned().unwrap_or_else(|| student.clone())
+                replacements
+                    .get(&index)
+                    .cloned()
+                    .unwrap_or_else(|| student.clone())
             })
             .collect();
         merged.extend(additions);
@@ -1748,7 +1782,10 @@ mod tests {
     use super::*;
 
     fn mapping(field: RosterField, column_index: usize) -> RosterMappingItem {
-        RosterMappingItem { field, column_index }
+        RosterMappingItem {
+            field,
+            column_index,
+        }
     }
 
     fn id_name_score_mapping() -> Vec<RosterMappingItem> {
@@ -1759,11 +1796,7 @@ mod tests {
         ]
     }
 
-    fn student_with_id_name_score(
-        student_id: &str,
-        name: &str,
-        score: Option<f64>,
-    ) -> Student {
+    fn student_with_id_name_score(student_id: &str, name: &str, score: Option<f64>) -> Student {
         Student {
             student_id: Some(student_id.to_string()),
             name: Some(name.to_string()),
@@ -1822,8 +1855,8 @@ mod tests {
 
     #[test]
     fn suggest_mapping_recognizes_chinese_headers() {
-        let draft = parse_roster_csv("学号,姓名,总分\n001,小明,91\n002,小红,88\n".as_bytes())
-            .unwrap();
+        let draft =
+            parse_roster_csv("学号,姓名,总分\n001,小明,91\n002,小红,88\n".as_bytes()).unwrap();
         let suggested: Vec<(String, usize)> = draft
             .suggested_mapping
             .iter()
@@ -1869,23 +1902,19 @@ mod tests {
         let issue = issue.expect("expected an ambiguous_header issue");
         assert_eq!(issue.field, Some(RosterField::StudentId));
         assert_eq!(issue.column_indices, vec![0, 1]);
-        assert!(
-            draft
-                .suggested_mapping
-                .iter()
-                .all(|item| item.field != RosterField::StudentId)
-        );
+        assert!(draft
+            .suggested_mapping
+            .iter()
+            .all(|item| item.field != RosterField::StudentId));
     }
 
     #[test]
     fn suggest_mapping_reports_missing_identity() {
         let draft = parse_roster_csv("score\n91\n".as_bytes()).unwrap();
-        assert!(
-            draft
-                .mapping_issues
-                .iter()
-                .any(|issue| issue.code == "missing_identity" && issue.field.is_none())
-        );
+        assert!(draft
+            .mapping_issues
+            .iter()
+            .any(|issue| issue.code == "missing_identity" && issue.field.is_none()));
     }
 
     #[test]
@@ -1914,10 +1943,20 @@ mod tests {
             },
             student_with_id_name_score("S3", "Cara", Some(80.0)),
         ];
-        let updated_fields = vec!["student_id".to_string(), "name".to_string(), "score".to_string()];
-        let preview =
-            preview_roster_update(&draft, &id_name_score_mapping(), &current, 4, "incremental", Some(&updated_fields))
-                .unwrap();
+        let updated_fields = vec![
+            "student_id".to_string(),
+            "name".to_string(),
+            "score".to_string(),
+        ];
+        let preview = preview_roster_update(
+            &draft,
+            &id_name_score_mapping(),
+            &current,
+            4,
+            "incremental",
+            Some(&updated_fields),
+        )
+        .unwrap();
 
         assert!(preview.can_apply);
         assert!(preview.conflicts.is_empty());
@@ -1960,9 +1999,15 @@ mod tests {
             student_with_id_name_score("S1", "Alice", Some(70.0)),
             student_with_id_name_score("S3", "Cara", Some(80.0)),
         ];
-        let preview =
-            preview_roster_update(&draft, &id_name_score_mapping(), &current, 4, "replace", None)
-                .unwrap();
+        let preview = preview_roster_update(
+            &draft,
+            &id_name_score_mapping(),
+            &current,
+            4,
+            "replace",
+            None,
+        )
+        .unwrap();
 
         assert!(preview.can_apply);
         assert_eq!(
@@ -1996,12 +2041,10 @@ mod tests {
 
         assert!(!preview.can_apply);
         assert!(preview.resulting_students.is_none());
-        assert!(
-            preview
-                .conflicts
-                .iter()
-                .any(|conflict| conflict.code == "student_id_name_mismatch")
-        );
+        assert!(preview
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "student_id_name_mismatch"));
     }
 
     #[test]
@@ -2011,16 +2054,13 @@ mod tests {
             mapping(RosterField::StudentId, 0),
             mapping(RosterField::Name, 1),
         ];
-        let preview =
-            preview_roster_update(&draft, &mapping, &[], 0, "incremental", None).unwrap();
+        let preview = preview_roster_update(&draft, &mapping, &[], 0, "incremental", None).unwrap();
 
         assert!(!preview.can_apply);
-        assert!(
-            preview
-                .conflicts
-                .iter()
-                .any(|conflict| conflict.code == "duplicate_incoming_student_id")
-        );
+        assert!(preview
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "duplicate_incoming_student_id"));
         assert_eq!(
             preview
                 .changes
@@ -2046,7 +2086,10 @@ mod tests {
             ],
         }))
         .unwrap();
-        assert_eq!(request.current_students[0].student_id.as_deref(), Some("S1"));
+        assert_eq!(
+            request.current_students[0].student_id.as_deref(),
+            Some("S1")
+        );
         assert_eq!(request.current_students[0].height_cm, Some(160.0));
         assert_eq!(request.current_revision, 3);
     }
@@ -2058,9 +2101,12 @@ mod tests {
             mapping(RosterField::StudentId, 0),
             mapping(RosterField::Score, 1),
         ];
-        let error = preview_roster_update(&draft, &mapping, &[], 0, "incremental", None)
-            .unwrap_err();
-        assert!(error.contains("must be a number"), "unexpected error: {error}");
+        let error =
+            preview_roster_update(&draft, &mapping, &[], 0, "incremental", None).unwrap_err();
+        assert!(
+            error.contains("must be a number"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -2125,8 +2171,8 @@ mod tests {
 
     #[test]
     fn draft_response_json_matches_contract_shape() {
-        let draft = parse_roster_csv("姓名,学号,总分\n小林,001,91\n小周,002,88\n".as_bytes())
-            .unwrap();
+        let draft =
+            parse_roster_csv("姓名,学号,总分\n小林,001,91\n小周,002,88\n".as_bytes()).unwrap();
         let response = draft.to_response();
         let value = serde_json::to_value(&response).unwrap();
         assert_eq!(value["source_format"], "csv");

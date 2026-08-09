@@ -352,14 +352,12 @@ impl EditorDraft {
         if first_index == second_index {
             return Ok(());
         }
-        let first_seat = self.students[first_index]
-            .seat_id
-            .clone()
-            .ok_or_else(|| "Both students must be seated before they can be swapped.".to_string())?;
-        let second_seat = self.students[second_index]
-            .seat_id
-            .clone()
-            .ok_or_else(|| "Both students must be seated before they can be swapped.".to_string())?;
+        let first_seat = self.students[first_index].seat_id.clone().ok_or_else(|| {
+            "Both students must be seated before they can be swapped.".to_string()
+        })?;
+        let second_seat = self.students[second_index].seat_id.clone().ok_or_else(|| {
+            "Both students must be seated before they can be swapped.".to_string()
+        })?;
         self.ensure_student_can_move(first_index)?;
         self.ensure_student_can_move(second_index)?;
         self.ensure_seat_can_change(&first_seat)?;
@@ -470,8 +468,10 @@ impl EditorDraft {
                     != Some(self.seats[seat_index].seat_id.as_str())
             })
             .collect();
-        let moving_students: HashSet<usize> =
-            active.iter().map(|&(student_index, _)| student_index).collect();
+        let moving_students: HashSet<usize> = active
+            .iter()
+            .map(|&(student_index, _)| student_index)
+            .collect();
 
         for &(student_index, target_index) in &active {
             self.ensure_student_can_move(student_index)?;
@@ -496,8 +496,7 @@ impl EditorDraft {
             self.students[student_index].seat_id = None;
         }
         for &(student_index, target_index) in &active {
-            self.students[student_index].seat_id =
-                Some(self.seats[target_index].seat_id.clone());
+            self.students[student_index].seat_id = Some(self.seats[target_index].seat_id.clone());
         }
         self.sync_seat_students();
         Ok(())
@@ -509,11 +508,8 @@ impl EditorDraft {
         for operation in operations {
             match operation.kind.as_str() {
                 "swap_students" => {
-                    let first = required_payload_str(
-                        &operation.payload,
-                        &operation.kind,
-                        "first_student",
-                    )?;
+                    let first =
+                        required_payload_str(&operation.payload, &operation.kind, "first_student")?;
                     let second = required_payload_str(
                         &operation.payload,
                         &operation.kind,
@@ -522,37 +518,25 @@ impl EditorDraft {
                     self.op_swap_students(first, second)?;
                 }
                 "move_student" | "seat_student" => {
-                    let student_key = required_payload_str(
-                        &operation.payload,
-                        &operation.kind,
-                        "student_key",
-                    )?;
+                    let student_key =
+                        required_payload_str(&operation.payload, &operation.kind, "student_key")?;
                     let seat_id =
                         required_payload_str(&operation.payload, &operation.kind, "seat_id")?;
                     self.op_move_student(student_key, seat_id)?;
                 }
                 "unseat_student" => {
-                    let student_key = required_payload_str(
-                        &operation.payload,
-                        &operation.kind,
-                        "student_key",
-                    )?;
+                    let student_key =
+                        required_payload_str(&operation.payload, &operation.kind, "student_key")?;
                     self.op_unseat_student(student_key)?;
                 }
                 "lock_student" => {
-                    let student_key = required_payload_str(
-                        &operation.payload,
-                        &operation.kind,
-                        "student_key",
-                    )?;
+                    let student_key =
+                        required_payload_str(&operation.payload, &operation.kind, "student_key")?;
                     self.op_lock_student(student_key)?;
                 }
                 "unlock_student" => {
-                    let student_key = required_payload_str(
-                        &operation.payload,
-                        &operation.kind,
-                        "student_key",
-                    )?;
+                    let student_key =
+                        required_payload_str(&operation.payload, &operation.kind, "student_key")?;
                     self.op_unlock_student(student_key)?;
                 }
                 "lock_seat" => {
@@ -906,9 +890,7 @@ fn required_payload_str(
     key: &str,
 ) -> Result<String, String> {
     match payload.get(key) {
-        Some(JsonValue::String(value)) if !value.trim().is_empty() => {
-            Ok(value.trim().to_string())
-        }
+        Some(JsonValue::String(value)) if !value.trim().is_empty() => Ok(value.trim().to_string()),
         Some(_) => Err(format!(
             "{op_kind} requires a non-empty string payload field: {key}."
         )),
@@ -1157,12 +1139,14 @@ mod tests {
         .expect("lock commands should apply");
 
         assert!(student_locked(&state, "s1"));
-        assert!(state
-            .seats
-            .iter()
-            .find(|seat| seat.seat_id == "A1")
-            .unwrap()
-            .locked);
+        assert!(
+            state
+                .seats
+                .iter()
+                .find(|seat| seat.seat_id == "A1")
+                .unwrap()
+                .locked
+        );
 
         let state = apply_command(
             &mut draft,
@@ -1180,12 +1164,14 @@ mod tests {
         .expect("unlock commands should apply");
 
         assert!(!student_locked(&state, "s1"));
-        assert!(!state
-            .seats
-            .iter()
-            .find(|seat| seat.seat_id == "A1")
-            .unwrap()
-            .locked);
+        assert!(
+            !state
+                .seats
+                .iter()
+                .find(|seat| seat.seat_id == "A1")
+                .unwrap()
+                .locked
+        );
     }
 
     #[test]
@@ -1236,11 +1222,8 @@ mod tests {
         assert!(error.contains("Student is locked"), "{error}");
 
         // Undo the lock, then lock the seat instead.
-        apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-4", 1, "undo", vec![]),
-        )
-        .expect("undo applies");
+        apply_command(&mut draft, &command("draft-1", "cmd-4", 1, "undo", vec![]))
+            .expect("undo applies");
         apply_command(
             &mut draft,
             &command(
@@ -1321,22 +1304,16 @@ mod tests {
         .expect("swap applies");
         assert_eq!(student_seat(&state, "s1").as_deref(), Some("A2"));
 
-        let undone = apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-2", 1, "undo", vec![]),
-        )
-        .expect("undo applies");
+        let undone = apply_command(&mut draft, &command("draft-1", "cmd-2", 1, "undo", vec![]))
+            .expect("undo applies");
         assert_eq!(undone.revision, 2);
         assert_eq!(undone.undo_depth, 0);
         assert_eq!(undone.redo_depth, 1);
         assert_eq!(student_seat(&undone, "s1").as_deref(), Some("A1"));
         assert_eq!(student_seat(&undone, "s2").as_deref(), Some("A2"));
 
-        let redone = apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-3", 2, "redo", vec![]),
-        )
-        .expect("redo applies");
+        let redone = apply_command(&mut draft, &command("draft-1", "cmd-3", 2, "redo", vec![]))
+            .expect("redo applies");
         assert_eq!(redone.revision, 3);
         assert_eq!(redone.undo_depth, 1);
         assert_eq!(redone.redo_depth, 0);
@@ -1347,18 +1324,12 @@ mod tests {
     #[test]
     fn undo_redo_raise_when_stack_is_empty() {
         let mut draft = test_draft();
-        let error = apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-1", 0, "undo", vec![]),
-        )
-        .expect_err("empty undo stack");
+        let error = apply_command(&mut draft, &command("draft-1", "cmd-1", 0, "undo", vec![]))
+            .expect_err("empty undo stack");
         assert!(error.contains("undo"), "{error}");
 
-        let error = apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-2", 0, "redo", vec![]),
-        )
-        .expect_err("empty redo stack");
+        let error = apply_command(&mut draft, &command("draft-1", "cmd-2", 0, "redo", vec![]))
+            .expect_err("empty redo stack");
         assert!(error.contains("redo"), "{error}");
 
         // Failed history commands must not advance the revision.
@@ -1386,20 +1357,14 @@ mod tests {
         assert_eq!(state.revision, 1);
         assert_eq!(state.undo_depth, 1);
 
-        let undone = apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-2", 1, "undo", vec![]),
-        )
-        .expect("undo applies");
+        let undone = apply_command(&mut draft, &command("draft-1", "cmd-2", 1, "undo", vec![]))
+            .expect("undo applies");
         assert_eq!(undone.revision, 2);
         assert_eq!(undone.undo_depth, 0);
         assert_eq!(undone.redo_depth, 1);
 
-        let redone = apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-3", 2, "redo", vec![]),
-        )
-        .expect("redo applies");
+        let redone = apply_command(&mut draft, &command("draft-1", "cmd-3", 2, "redo", vec![]))
+            .expect("redo applies");
         assert_eq!(redone.revision, 3);
         assert_eq!(redone.undo_depth, 1);
         assert_eq!(redone.redo_depth, 0);
@@ -1661,8 +1626,7 @@ mod tests {
                 }
             ]
         });
-        let command: EditorCommandEnvelope =
-            serde_json::from_value(raw).expect("envelope parses");
+        let command: EditorCommandEnvelope = serde_json::from_value(raw).expect("envelope parses");
 
         let mut draft = test_draft();
         let state = apply_command(&mut draft, &command).expect("command applies");
@@ -1721,7 +1685,9 @@ mod tests {
             vec![op("lock_student", json!({ "student_key": "s2" }))],
         );
         bad.protocol_version = "9.9".to_string();
-        assert!(apply_command(&mut draft, &bad).unwrap_err().contains("protocol version"));
+        assert!(apply_command(&mut draft, &bad)
+            .unwrap_err()
+            .contains("protocol version"));
 
         let mut bad = command(
             "draft-1",
@@ -1731,7 +1697,9 @@ mod tests {
             vec![op("lock_student", json!({ "student_key": "s2" }))],
         );
         bad.kind = "something_else".to_string();
-        assert!(apply_command(&mut draft, &bad).unwrap_err().contains("editor command kind"));
+        assert!(apply_command(&mut draft, &bad)
+            .unwrap_err()
+            .contains("editor command kind"));
 
         let mut bad = command(
             "draft-1",
@@ -1741,7 +1709,9 @@ mod tests {
             vec![op("lock_student", json!({ "student_key": "s2" }))],
         );
         bad.action = "delete".to_string();
-        assert!(apply_command(&mut draft, &bad).unwrap_err().contains("unknown editor action"));
+        assert!(apply_command(&mut draft, &bad)
+            .unwrap_err()
+            .contains("unknown editor action"));
 
         // undo/redo must not carry operations; apply must carry at least one.
         let error = apply_command(
@@ -1757,11 +1727,8 @@ mod tests {
         .expect_err("undo with operations rejected");
         assert!(error.contains("must not contain operations"), "{error}");
 
-        let error = apply_command(
-            &mut draft,
-            &command("draft-1", "cmd-7", 1, "apply", vec![]),
-        )
-        .expect_err("apply without operations rejected");
+        let error = apply_command(&mut draft, &command("draft-1", "cmd-7", 1, "apply", vec![]))
+            .expect_err("apply without operations rejected");
         assert!(error.contains("require at least one operation"), "{error}");
     }
 
@@ -1817,7 +1784,9 @@ mod tests {
         let state = fetch_state(&store, "draft-1").expect("draft fetched");
         assert_eq!(student_seat(&state, "s1").as_deref(), Some("A2"));
 
-        assert!(fetch_state(&store, "nope").unwrap_err().contains("unknown editor draft"));
+        assert!(fetch_state(&store, "nope")
+            .unwrap_err()
+            .contains("unknown editor draft"));
         assert!(apply_command_in_store(
             &store,
             &command(
@@ -1862,6 +1831,12 @@ mod tests {
         for handle in handles {
             handle.join().expect("worker thread completes");
         }
-        assert_eq!(get_draft(&store, "draft-0").expect("draft exists").students().len(), 1);
+        assert_eq!(
+            get_draft(&store, "draft-0")
+                .expect("draft exists")
+                .students()
+                .len(),
+            1
+        );
     }
 }

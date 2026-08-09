@@ -95,7 +95,7 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 | M2-05 Bundle Manifest v2 | ✅ | 每文件 size/sha256/kind/version + 路径安全校验（zip corpus 为后续） |
 | M2-06 统一 privacy policy | ✅ | Safe/Unsafe/Indeterminate + 敏感字段单一来源（敏感键与 Python oracle 对齐） |
 
-M2 follow-up 已完成（PR #99/#100）：migration batch 接入 FileTransaction（all-or-nothing + 崩溃恢复）；zip-bomb/symlink/duplicate 恶意输入 corpus；RuleSet/Snapshot/Project artifact DTO + 6 个 v2 JSON Schema（xtask 生成）。
+M2 follow-up 已完成（PR #99-#103）：migration batch 接入 FileTransaction；zip-bomb/symlink corpus；RuleSet/Snapshot/Project DTO + 6 个 v2 Schema；rotation 生成器（A.1）；artifact compare/restore（A.2/A.3）；history-report/pair-report（B.5）；repair（D.11）；project-info/validate/solve/export（D.12，项目生命周期闭环）；export 隐私粒度（C.8）；CI cargo fmt + cargo-deny（E.18）；pyi 补 solve_problem（E.17）。ledger A 类全关、B 类主项全关。
 
 M1 Exit Gate 核查：workspace 统一 ✅ / PyO3 隔离 ✅ / 未认证、DNS rebinding、恶意 Origin、超大 body 全部拒绝并有测试 ✅ / 退出无残留 ✅。
 

@@ -96,9 +96,7 @@ pub fn individual_cost(
 ) -> i64 {
     let mut cost: i64 = 0;
     if rules.soft.vision_front.enabled && student_needs_front(student) {
-        cost += i64::from(rules.soft.vision_front.weight)
-            * i64::from(seat.row - min_row)
-            * 100;
+        cost += i64::from(rules.soft.vision_front.weight) * i64::from(seat.row - min_row) * 100;
     }
     if rules.soft.height_back.enabled {
         if let Some(height) = student.height_cm {
@@ -170,9 +168,8 @@ pub fn fair_rotation_cost(
             .map(|sh| sh.category_counts.get(category).copied().unwrap_or(0))
             .min()
             .unwrap_or(0);
-        let repeated_recent_penalty = i64::from(
-            recent_counts.get(category).copied().unwrap_or(0) * 100,
-        );
+        let repeated_recent_penalty =
+            i64::from(recent_counts.get(category).copied().unwrap_or(0) * 100);
         let long_term_penalty = i64::from(0.max(total_count - min_count) * 25);
         let compensation_bonus = if total_count == min_count { 10 } else { 0 };
         total_cost += repeated_recent_penalty + long_term_penalty - compensation_bonus;
@@ -215,8 +212,7 @@ pub fn classify_seat_position(seat: &Seat, layout: &Layout) -> HashSet<String> {
     if seat.col == min_col || seat.col == max_col {
         categories.insert("side".to_string());
     }
-    if (seat.row == min_row || seat.row == max_row)
-        && (seat.col == min_col || seat.col == max_col)
+    if (seat.row == min_row || seat.row == max_row) && (seat.col == min_col || seat.col == max_col)
     {
         categories.insert("corner".to_string());
     }
@@ -313,7 +309,9 @@ pub fn avoid_recent_neighbors_cost(
         return 0;
     }
 
-    let pair = pair_history.pairs.get(&student_pair_key(first_student_key, second_student_key));
+    let pair = pair_history
+        .pairs
+        .get(&student_pair_key(first_student_key, second_student_key));
     let Some(pair) = pair else {
         return 0;
     };
@@ -403,10 +401,7 @@ pub fn build_adjacency_edges(layout: &Layout) -> HashSet<(String, String)> {
         }
     }
     for (a, b) in &config.custom_edges {
-        if enabled.contains_key(a.as_str())
-            && enabled.contains_key(b.as_str())
-            && a != b
-        {
+        if enabled.contains_key(a.as_str()) && enabled.contains_key(b.as_str()) && a != b {
             edges.insert(normalize_edge(a, b));
         }
     }
@@ -530,7 +525,16 @@ mod tests {
         rules.soft.randomize.enabled = false;
         let mut rng = SplitMix64::new(0);
         assert_eq!(
-            individual_cost(&student, &layout.seats[0], &layout, &rules, None, &mut rng, 1, 1),
+            individual_cost(
+                &student,
+                &layout.seats[0],
+                &layout,
+                &rules,
+                None,
+                &mut rng,
+                1,
+                1
+            ),
             0
         );
     }

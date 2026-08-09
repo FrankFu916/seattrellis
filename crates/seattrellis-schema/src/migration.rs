@@ -219,11 +219,9 @@ fn default_one() -> i32 {
 
 /// v1 StudentRoster → v2 `ArtifactEnvelope<StudentRoster>`. Field-preserving
 /// (lossless); the v2 envelope adds kind/version/extensions.
-pub fn migrate_student_roster_v1_to_v2(
-    source: &Value,
-) -> Result<(Value, MigrationReport), String> {
-    let v1: V1StudentRoster =
-        serde_json::from_value(source.clone()).map_err(|error| format!("invalid v1 student roster: {error}"))?;
+pub fn migrate_student_roster_v1_to_v2(source: &Value) -> Result<(Value, MigrationReport), String> {
+    let v1: V1StudentRoster = serde_json::from_value(source.clone())
+        .map_err(|error| format!("invalid v1 student roster: {error}"))?;
     let data = StudentRoster {
         students: v1.students.into_iter().map(RosterStudent::from).collect(),
     };
@@ -284,7 +282,10 @@ pub fn migrate_classroom_layout_v1_to_v2(
 
 /// The v1→v2 dispatch for the kinds this crate currently migrates. Unknown
 /// kinds are an error: migration coverage is explicit, never inferred.
-pub fn migrate_v1_to_v2(kind: ArtifactKind, source: &Value) -> Result<(Value, MigrationReport), String> {
+pub fn migrate_v1_to_v2(
+    kind: ArtifactKind,
+    source: &Value,
+) -> Result<(Value, MigrationReport), String> {
     match kind {
         ArtifactKind::StudentRoster => migrate_student_roster_v1_to_v2(source),
         ArtifactKind::ClassroomLayout => migrate_classroom_layout_v1_to_v2(source),
@@ -356,7 +357,10 @@ mod tests {
         let mut source: Value = serde_json::from_str(V1_ROSTER).unwrap();
         source["students"][0]["mystery_field"] = Value::Bool(true);
         let error = migrate_v1_to_v2(ArtifactKind::StudentRoster, &source).unwrap_err();
-        assert!(error.contains("invalid v1 student roster"), "error: {error}");
+        assert!(
+            error.contains("invalid v1 student roster"),
+            "error: {error}"
+        );
     }
 
     #[test]

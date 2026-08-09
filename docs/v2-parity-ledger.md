@@ -56,17 +56,17 @@ Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）目前仅 
 | `validate` | cli.py:341-367 → `run_validate` service.py:944 | `--strict` | Rust CLI `validate` 存在（core `evaluate_problem` 已验证），但无 preset/history 警告语义 | `RUST_PARTIAL` |
 | `export` | cli.py:369-449 → `export` service.py:696 | 8 格式、template、6 隐私开关、page/locale | Rust CLI `export` 仅 svg/html/png/pdf | `RUST_PARTIAL` |
 | `edit` | cli.py:451-505 → `edit_snapshot` service.py:764 | 9 种操作 kind、`--operations-file/--strict` | Rust CLI 无；app server 有 editing 协议端点（§11） | `PYTHON_ONLY` |
-| `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | 无对应 | `PYTHON_ONLY` |
-| `history-report` | cli.py:593-611 → `run_history_report` service.py:969 | `--history(-dir)` | 无对应（app 仅目录浏览，无统计报告） | `PYTHON_ONLY` |
-| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | 无对应 | `PYTHON_ONLY` |
+| `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | Rust CLI `repair`（--problem --snapshot --lock-student/--lock-seat/--affected，PR #103）；空座位锁为已知差距 | `RUST_PARITY_PENDING` |
+| `history-report` | cli.py:593-611 → `run_history_report` service.py:969 | `--history(-dir)` | Rust CLI `history-report`（PR #102） | `RUST_PARITY_PENDING` |
+| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | Rust CLI `pair-report`（PR #102） | `RUST_PARITY_PENDING` |
 | `project-init` | cli.py:637-658 → `project_init` service.py:1029 | 默认项目文件 `seattrellis.project.json` | 无对应 CLI；app projects.rs 可读 | `PYTHON_ONLY` |
 | `project-list` | cli.py:660-673 → `project_bundle.list_recent_projects` | `--root/--limit` | app `GET /projects/recent`（server.rs:470） | `RUST_PARITY_PENDING` |
 | `project-privacy` | cli.py:675-684 → `project_bundle.scan_project_privacy` | `--include-outputs` | app `POST /projects/privacy`（server.rs:476） | `RUST_PARITY_PENDING` |
 | `project-pack` | cli.py:686-699 → `project_bundle.pack_project` | 输出 `.seattrellis.zip` | app `POST /projects/bundle`（server.rs:479，格式 v1 双向对齐） | `RUST_PARITY_PENDING` |
 | `project-restore` | cli.py:701-711 → `project_bundle.restore_project_bundle` | `--bundle/--output-dir/--force` | app `POST /projects/restore`（server.rs:482） | `RUST_PARITY_PENDING` |
-| `project-info` | cli.py:713-721 → `project_info` service.py:1053 | 无 | 无对应 | `PYTHON_ONLY` |
-| `project-validate` | cli.py:723-732 → `project_validate` service.py:1062 | `--strict` | 无对应 | `PYTHON_ONLY` |
-| `project-solve` | cli.py:734-764 → `project_solve` service.py:1080 | `--candidates/--seed/--report` | 无对应 CLI（app `classes/generate` 部分覆盖，见 §2） | `PYTHON_ONLY` |
+| `project-info` | cli.py:713-721 → `project_info` service.py:1053 | 无 | Rust CLI `project-info`（PR #103） | `RUST_PARITY_PENDING` |
+| `project-validate` | cli.py:723-732 → `project_validate` service.py:1062 | `--strict` | Rust CLI `project-validate`（PR #103） | `RUST_PARITY_PENDING` |
+| `project-solve` | cli.py:734-764 → `project_solve` service.py:1080 | `--candidates/--seed/--report` | Rust CLI `project-solve`/`project-export`（PR #103）；无候选集参数 | `RUST_PARITY_PENDING` |
 | `project-rotate` | cli.py:766-788 → `project_rotate` service.py:1118 | `--periods/--label` | 无对应（旋转生成 Python-only） | `PYTHON_ONLY` |
 | `project-edit` | cli.py:790-842 → `project_edit` service.py:1154 | `--snapshot/--operation/...` | 无对应 | `PYTHON_ONLY` |
 | `project-repair` | cli.py:844-922 → `project_repair` service.py:1181 | `--affected-student/...` | 无对应 | `PYTHON_ONLY` |
@@ -510,21 +510,21 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 ### C. 语义缺口（§8/§12）
 7. `cooling` 为两语言共同的近似实现（`cooling_period`→`lookback`）— 需 v2 产品决策（保留近似 or 强化语义）。
-8. Export 隐私粒度：Rust 仅 `anonymize` 生效，`hide_scores/hide_notes/hide_special_needs/show_height/show_vision` 与 report 模板渲染无差异。
+8. Export 隐私粒度：✅ `show_height`/`show_vision` 控制每座 detail 行（SVG/HTML/PDF），`anonymize`/public 清空；`hide_scores/hide_notes/hide_special_needs` 无对应渲染（渲染器不画分数/备注/需求，天然无泄漏）——见 C.9 渲染保真项（PNG 无文字/PDF 无 CJK 属 M5-04）。
 9. 渲染保真：PNG 无文字、PDF 无 CJK、print-html 退化为 html、SVG/HTML/PNG 无打印版页面选项。
 
 ### D. 覆盖缺口（§1/§2/§9/§11/§14）
-10. Rust CLI 命令面（6 vs 30）：`validate`/`solve`/`export` + M3 新增 `precheck`/`audit`/`candidates`（PR #94/#97/#98）；history/project/migration 命令仍列为 roadmap（对应本表 B 类）。
-11. Repair（受约束重解）无 Rust 对应。
-12. 文件级 edit/export/validate 的 preset/history 警告语义无 Rust CLI 对应。
+10. Rust CLI 命令面（14 vs 30）：`validate`/`solve`/`export`/`precheck`/`audit`/`candidates`/`history-report`/`pair-report`/`repair`/`project-info`/`project-validate`/`project-solve`/`project-export` + `help`/`version`；project 生命周期闭环（PR #103）。
+11. Repair（受约束重解）— ✅ `repair` 命令 + `core::repair_json`（PR #103）：locked student/seat + affected scope + 硬规则闭包；已知差距：空座位锁（Python reserve 语义）不支持。
+12. 文件级 edit/export/validate — ✅ `project-solve`/`project-export` 编译项目文件（CSV+layout+rules→core request）；preset 警告语义部分保留（`project-validate` 报引用缺失）。
 13. Teacher goals：app 仅 4 goal（6/10 soft 规则），Python 15 preset 中 11 个不可达。
 14. Tauri 壳无原生文件对话框；desktop 文件工作流依赖 Web 上传/下载。
 15. Roster mapping 启发式（表头指纹、身份列推断）、roster_fingerprint 未确认镜像。
 16. Rust 无 JSON Schema 生成器（`schema list/export` Python-only）。
 
 ### E. 工程债务（非 parity，但影响 v2 交付）
-17. `seattrellis_native.pyi` 缺 `solve_problem` 声明（native/seattrellis_native/src/lib.rs:40 vs .pyi:4-17）。
-18. CI 无 `cargo fmt` 步骤；无 deny.toml（无 cargo-deny 依赖审计）（.github/workflows/rust.yml）。
+17. `seattrellis_native.pyi` — ✅ 已补 `solve_problem` 声明（PR #103）。
+18. CI — ✅ 新增 `cargo fmt --check` 与 `cargo-deny`（deny.toml：advisories/未知 registry deny、许可证白名单）（PR #103）。
 19. `app/` 与 `native/` 为两个独立 workspace（各自 Cargo.lock）；`app/src-tauri` 用 rust-toolchain 1.88.0，core 声明 rust-version 1.83。
 20. `seattrellis_native` 为实验性绑定，README 声明不发布 wheel。
 

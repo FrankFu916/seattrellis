@@ -26,11 +26,14 @@ pub struct GridCell {
     pub col: i32,
     pub seat_index: usize,
     pub student: Option<String>,
+    /// Optional per-student detail line (height / vision), rendered under
+    /// the name when the privacy options ask for it (C.8).
+    pub detail: Option<String>,
     pub enabled: bool,
 }
 
 /// The full classroom grid recovered from a problem + solved assignment.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SeatingGrid {
     pub title: String,
     pub subtitle: String,
@@ -70,11 +73,13 @@ impl SeatingGrid {
             max_row = max_row.max(row);
             min_col = min_col.min(col);
             max_col = max_col.max(col);
+            let detail = request.students.get(seat_index).and_then(student_detail);
             cells.push(GridCell {
                 row,
                 col,
                 seat_index,
                 student: student_by_seat.get(&seat_index).cloned(),
+                detail,
                 enabled,
             });
         }
@@ -87,7 +92,11 @@ impl SeatingGrid {
             "{} students / {} seats / {}",
             request.student_count,
             seat_count,
-            if response.feasible { "feasible" } else { "infeasible" }
+            if response.feasible {
+                "feasible"
+            } else {
+                "infeasible"
+            }
         );
 
         Ok(SeatingGrid {
@@ -103,7 +112,9 @@ impl SeatingGrid {
 
     /// The seat occupying grid position `(row, col)`, if any.
     pub fn cell_at(&self, row: i32, col: i32) -> Option<&GridCell> {
-        self.cells.iter().find(|cell| cell.row == row && cell.col == col)
+        self.cells
+            .iter()
+            .find(|cell| cell.row == row && cell.col == col)
     }
 }
 
@@ -128,6 +139,29 @@ fn seat_row_col(
 
 /// The display label for a student: `display_name`, else `key`, else
 /// "Student N" — never empty.
+/// Per-student detail line: height and/or vision, ASCII-only so the PDF
+/// renderer can draw it (CJK is a M5-04 render-parity item).
+fn student_detail(student: &seattrellis_core::models::Student) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(height) = student.height_cm {
+        if height.is_finite() && height > 0.0 {
+            parts.push(format!("{} cm", height.round()));
+        }
+    }
+    if let Some(vision) = student
+        .vision
+        .as_deref()
+        .filter(|vision| !vision.is_empty())
+    {
+        parts.push(format!("vision {vision}"));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("  "))
+    }
+}
+
 fn student_label(request: &CoreSolveRequest, index: usize) -> String {
     if !request.students.is_empty() {
         if let Some(student) = request.students.get(index) {
@@ -258,16 +292,23 @@ pub fn render_svg(grid: &SeatingGrid) -> String {
                 Some(cell) => match &cell.student {
                     Some(name) => {
                         let size = name_font_size(name);
-                    out.push_str(&format!(
+                        out.push_str(&format!(
                         "  <rect x=\"{}\" y=\"{}\" width=\"{RECT_W}\" height=\"{RECT_H}\" rx=\"7\" fill=\"#e8f0fe\" stroke=\"#4a7fd4\" stroke-width=\"1.5\"/>\n",
                         x + 4.0,
                         y + 4.0
                     ));
-                    out.push_str(&format!(
+                        out.push_str(&format!(
                         "  <text x=\"{center_x}\" y=\"{center_y}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"sans-serif\" font-size=\"{size}\" fill=\"#1c2733\">{}</text>\n",
                         escape_text(name)
                     ));
-                    out.push_str(&format!(
+                        if let Some(detail) = &cell.detail {
+                            out.push_str(&format!(
+                            "  <text x=\"{center_x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#7b8ea8\">{}</text>\n",
+                            y + CELL_H - 20.0,
+                            escape_text(detail)
+                        ));
+                        }
+                        out.push_str(&format!(
                         "  <text x=\"{center_x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#7b8ea8\">{}</text>\n",
                         y + CELL_H - 9.0,
                         cell.seat_index + 1
@@ -316,18 +357,30 @@ pub fn render_html(grid: &SeatingGrid) -> String {
     out.push_str("<style>\n");
     out.push_str("  body { font-family: -apple-system, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK\", \"Hiragino Sans GB\", sans-serif; margin: 24px; color: #1c2733; }\n");
     out.push_str("  h1 { font-size: 18px; margin: 0 0 4px; text-align: center; }\n");
-    out.push_str("  p.sub { font-size: 12px; color: #5a6b7f; margin: 0 0 12px; text-align: center; }\n");
-    out.push_str("  p.front { font-size: 11px; color: #8a97a6; margin: 0 0 6px; text-align: center; }\n");
-    out.push_str("  table.seating { border-collapse: separate; border-spacing: 6px; margin: 0 auto; }\n");
+    out.push_str(
+        "  p.sub { font-size: 12px; color: #5a6b7f; margin: 0 0 12px; text-align: center; }\n",
+    );
+    out.push_str(
+        "  p.front { font-size: 11px; color: #8a97a6; margin: 0 0 6px; text-align: center; }\n",
+    );
+    out.push_str(
+        "  table.seating { border-collapse: separate; border-spacing: 6px; margin: 0 auto; }\n",
+    );
     out.push_str("  td { width: 92px; height: 54px; text-align: center; vertical-align: middle; border-radius: 7px; font-size: 12px; }\n");
     out.push_str("  td.seat { background: #e8f0fe; border: 1px solid #4a7fd4; }\n");
     out.push_str("  td.seat .name { font-weight: 600; }\n");
-    out.push_str("  td.seat .num { display: block; font-size: 9px; color: #7b8ea8; margin-top: 2px; }\n");
+    out.push_str("  td.seat .detail { display: block; font-size: 9px; color: #7b8ea8; }\n");
+    out.push_str(
+        "  td.seat .num { display: block; font-size: 9px; color: #7b8ea8; margin-top: 2px; }\n",
+    );
     out.push_str("  td.empty { background: #f7f8f9; border: 1px dashed #cfd8e2; color: #9aa7b5; font-size: 10px; }\n");
     out.push_str("  td.void { border: none; }\n");
     out.push_str("</style>\n</head>\n<body>\n");
     out.push_str(&format!("<h1>{}</h1>\n", escape_text(&grid.title)));
-    out.push_str(&format!("<p class=\"sub\">{}</p>\n", escape_text(&grid.subtitle)));
+    out.push_str(&format!(
+        "<p class=\"sub\">{}</p>\n",
+        escape_text(&grid.subtitle)
+    ));
     out.push_str("<p class=\"front\">front of room</p>\n");
     out.push_str("<table class=\"seating\">\n");
 
@@ -337,8 +390,15 @@ pub fn render_html(grid: &SeatingGrid) -> String {
             match grid.cell_at(row, col) {
                 Some(cell) => match &cell.student {
                     Some(name) => {
+                        let detail = cell
+                            .detail
+                            .as_ref()
+                            .map(|detail| {
+                                format!("<span class=\"detail\">{}</span>", escape_text(detail))
+                            })
+                            .unwrap_or_default();
                         out.push_str(&format!(
-                            "    <td class=\"seat\"><span class=\"name\">{}</span><span class=\"num\">{}</span></td>\n",
+                            "    <td class=\"seat\"><span class=\"name\">{}</span>{detail}<span class=\"num\">{}</span></td>\n",
                             escape_text(name),
                             cell.seat_index + 1
                         ));
@@ -420,7 +480,14 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     for row in grid.min_row..=grid.max_row {
         for col in grid.min_col..=grid.max_col {
             let (x, y) = cell_origin(grid, row, col);
-            canvas.rect(x + 4.0, y + 4.0, RECT_W, RECT_H, cell_colors(grid, row, col), 2);
+            canvas.rect(
+                x + 4.0,
+                y + 4.0,
+                RECT_W,
+                RECT_H,
+                cell_colors(grid, row, col),
+                2,
+            );
         }
     }
 
@@ -450,7 +517,11 @@ struct Canvas<'a> {
 
 impl Canvas<'_> {
     fn new(data: &mut [u8], width: u32, height: u32) -> Canvas<'_> {
-        Canvas { data, width, height }
+        Canvas {
+            data,
+            width,
+            height,
+        }
     }
 
     /// Fill `[x, x+w) x [y, y+h)` with `rgb`, clipped to the image bounds.
@@ -483,7 +554,13 @@ impl Canvas<'_> {
         // Outer rect in the stroke color, then the inset area in the fill color.
         self.fill(x0, y0, rw, rh, stroke);
         if rw > border * 2 && rh > border * 2 {
-            self.fill(x0 + border, y0 + border, rw - border * 2, rh - border * 2, fill);
+            self.fill(
+                x0 + border,
+                y0 + border,
+                rw - border * 2,
+                rh - border * 2,
+                fill,
+            );
         }
     }
 }
@@ -567,13 +644,17 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
     let mut bodies: Vec<String> = Vec::new();
     bodies.push("<< /Type /Catalog /Pages 2 0 R >>".to_string()); // obj 1
     bodies.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string()); // obj 2
-    bodies.push(format!( // obj 3
+    bodies.push(format!(
+        // obj 3
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w} {page_h}] \
          /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
         page_w = layout.page_w,
         page_h = layout.page_h
     ));
-    bodies.push(format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len())); // obj 4
+    bodies.push(format!(
+        "<< /Length {} >>\nstream\n{content}\nendstream",
+        content.len()
+    )); // obj 4
     bodies.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string()); // obj 5
 
     let count = bodies.len() + 1;
@@ -626,9 +707,19 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
 
     // Title + subtitle (fall back to ASCII placeholders for non-Latin text).
     let title = pdf_text(&grid.title).unwrap_or("Seating Plan");
-    ops.push_str(&text_op_centered(title, 16.0, layout.page_w / 2.0, layout.page_h - 48.0));
+    ops.push_str(&text_op_centered(
+        title,
+        16.0,
+        layout.page_w / 2.0,
+        layout.page_h - 48.0,
+    ));
     let subtitle = pdf_text(&grid.subtitle).unwrap_or("");
-    ops.push_str(&text_op_centered(subtitle, 11.0, layout.page_w / 2.0, layout.page_h - 66.0));
+    ops.push_str(&text_op_centered(
+        subtitle,
+        11.0,
+        layout.page_w / 2.0,
+        layout.page_h - 66.0,
+    ));
 
     // Front-of-room divider line and label above the grid.
     let front_y = grid_top - 8.0;
@@ -674,6 +765,15 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
                             size,
                             center_x,
                             center_y - size * 0.35,
+                        ));
+                    }
+                    if let Some(detail) = cell.detail.as_deref().and_then(pdf_text) {
+                        // ASCII detail line (height/vision) under the name.
+                        ops.push_str(&text_op_centered(
+                            detail,
+                            7.0,
+                            center_x,
+                            center_y + 9.0 * scale,
                         ));
                     }
                     let num = (cell.seat_index + 1).to_string();
@@ -778,11 +878,28 @@ mod tests {
             cannot_be_adjacent: Vec::new(),
             min_distance: Vec::new(),
             seed: 0,
+            time_limit_seconds: None,
             students: vec![
-                Student { key: "S1".into(), display_name: Some("Alice".into()), ..Student::default() },
-                Student { key: "S2".into(), display_name: Some("Bob".into()), ..Student::default() },
-                Student { key: "S3".into(), display_name: None, ..Student::default() },
-                Student { key: "S4".into(), display_name: Some("张伟".into()), ..Student::default() },
+                Student {
+                    key: "S1".into(),
+                    display_name: Some("Alice".into()),
+                    ..Student::default()
+                },
+                Student {
+                    key: "S2".into(),
+                    display_name: Some("Bob".into()),
+                    ..Student::default()
+                },
+                Student {
+                    key: "S3".into(),
+                    display_name: None,
+                    ..Student::default()
+                },
+                Student {
+                    key: "S4".into(),
+                    display_name: Some("张伟".into()),
+                    ..Student::default()
+                },
             ],
             student_scores: Vec::new(),
             rules: None,
@@ -812,7 +929,10 @@ mod tests {
         assert_eq!(grid.cells.len(), 6);
 
         // Student 0 -> seat 0 at (row 1, col 1).
-        assert_eq!(grid.cell_at(1, 1).unwrap().student.as_deref(), Some("Alice"));
+        assert_eq!(
+            grid.cell_at(1, 1).unwrap().student.as_deref(),
+            Some("Alice")
+        );
         assert_eq!(grid.cell_at(1, 2).unwrap().student.as_deref(), Some("Bob"));
         assert_eq!(grid.cell_at(1, 3).unwrap().student.as_deref(), Some("S3"));
         assert_eq!(grid.cell_at(2, 1).unwrap().student.as_deref(), Some("张伟"));
@@ -825,7 +945,10 @@ mod tests {
     fn svg_is_self_contained_and_self_closing() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
         let svg = render_svg(&grid);
-        assert!(svg.starts_with("<svg "), "document opens with the <svg root");
+        assert!(
+            svg.starts_with("<svg "),
+            "document opens with the <svg root"
+        );
         assert!(svg.contains("viewBox"));
         assert!(svg.ends_with("</svg>\n"));
         assert!(!svg.contains("<script"), "no scripts");
@@ -840,11 +963,17 @@ mod tests {
     fn svg_escapes_special_characters_in_names() {
         let mut request = sample_request();
         request.students[0].display_name = Some("A&B <C>\"'".into());
-        let response = CoreSolveResponse { assignment: vec![[0, 0]], ..sample_response() };
+        let response = CoreSolveResponse {
+            assignment: vec![[0, 0]],
+            ..sample_response()
+        };
         let grid = SeatingGrid::build(&request, &response).unwrap();
         let svg = render_svg(&grid);
         assert!(svg.contains("A&amp;B &lt;C&gt;&quot;&apos;"));
-        assert!(!svg.contains("A&B <C>"), "raw special characters must not appear");
+        assert!(
+            !svg.contains("A&B <C>"),
+            "raw special characters must not appear"
+        );
     }
 
     #[test]
@@ -867,7 +996,10 @@ mod tests {
     fn html_is_self_contained_and_escapes_names() {
         let mut request = sample_request();
         request.students[0].display_name = Some("A&B <C>".into());
-        let response = CoreSolveResponse { assignment: vec![[0, 0]], ..sample_response() };
+        let response = CoreSolveResponse {
+            assignment: vec![[0, 0]],
+            ..sample_response()
+        };
         let grid = SeatingGrid::build(&request, &response).unwrap();
         let html = render_html(&grid);
         assert!(html.starts_with("<!DOCTYPE html>"));
@@ -875,7 +1007,10 @@ mod tests {
         assert!(html.contains("</table>"));
         assert!(!html.contains("<script"), "no scripts");
         assert!(html.contains("A&amp;B &lt;C&gt;"));
-        assert!(!html.contains("A&B <C>"), "raw special characters must not appear");
+        assert!(
+            !html.contains("A&B <C>"),
+            "raw special characters must not appear"
+        );
     }
 
     #[test]
@@ -894,11 +1029,17 @@ mod tests {
         request.seat_positions = vec![[1.0, 1.0], [2.0, 1.0], [4.0, 1.0]];
         request.student_count = 1;
         request.students.truncate(1);
-        let response = CoreSolveResponse { assignment: vec![[0, 0]], ..sample_response() };
+        let response = CoreSolveResponse {
+            assignment: vec![[0, 0]],
+            ..sample_response()
+        };
         let grid = SeatingGrid::build(&request, &response).unwrap();
         assert_eq!((grid.min_col, grid.max_col), (1, 4));
         let html = render_html(&grid);
-        assert!(html.contains("class=\"void\""), "missing grid positions are void");
+        assert!(
+            html.contains("class=\"void\""),
+            "missing grid positions are void"
+        );
         let svg = render_svg(&grid);
         assert!(!svg.contains("<script"));
     }
@@ -927,13 +1068,20 @@ mod tests {
         let mut request = sample_request();
         request.seat_positions.clear();
         let error = SeatingGrid::build(&request, &sample_response()).unwrap_err();
-        assert!(error.contains("seat_positions"), "unexpected error: {error}");
+        assert!(
+            error.contains("seat_positions"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
     fn escape_text_handles_specials_and_control_characters() {
         assert_eq!(escape_text("&<>\"'"), "&amp;&lt;&gt;&quot;&apos;");
-        assert_eq!(escape_text("a\u{1}b\n"), "ab\n", "control chars dropped, LF kept");
+        assert_eq!(
+            escape_text("a\u{1}b\n"),
+            "ab\n",
+            "control chars dropped, LF kept"
+        );
         assert_eq!(escape_text("张伟"), "张伟", "CJK passes through unchanged");
     }
 
@@ -1000,7 +1148,14 @@ mod tests {
         // Locate the xref table via startxref.
         let startxref = pdf.find("startxref").expect("startxref keyword");
         let rest = &pdf[startxref + "startxref".len()..];
-        let xref_offset: usize = rest.trim_start().lines().next().unwrap().trim().parse().unwrap();
+        let xref_offset: usize = rest
+            .trim_start()
+            .lines()
+            .next()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         let xref = &pdf[xref_offset..];
         assert!(xref.starts_with("xref\n"), "xref table at reported offset");
 
@@ -1018,7 +1173,11 @@ mod tests {
             let entry = lines.next().expect("an xref entry per object");
             let offset: usize = entry.split_whitespace().next().unwrap().parse().unwrap();
             let head = format!("{obj_num} 0 obj");
-            assert_eq!(&pdf[offset..offset + head.len()], head, "offset for object {obj_num}");
+            assert_eq!(
+                &pdf[offset..offset + head.len()],
+                head,
+                "offset for object {obj_num}"
+            );
         }
     }
 

@@ -127,7 +127,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Hard,
             keys("rule.fixed_seats.label", "rule.fixed_seats.label"),
             keys("rule.fixed_seats.help", "rule.fixed_seats.help"),
-            keys("rule.fixed_seats.explanation", "rule.fixed_seats.explanation"),
+            keys(
+                "rule.fixed_seats.explanation",
+                "rule.fixed_seats.explanation",
+            ),
             ExplanationCode::FixedSeatConflict,
             params::FixedSeatParam {
                 student: String::new(),
@@ -155,8 +158,14 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             "cannot_be_adjacent",
             1,
             RuleCategory::Hard,
-            keys("rule.cannot_be_adjacent.label", "rule.cannot_be_adjacent.label"),
-            keys("rule.cannot_be_adjacent.help", "rule.cannot_be_adjacent.help"),
+            keys(
+                "rule.cannot_be_adjacent.label",
+                "rule.cannot_be_adjacent.label",
+            ),
+            keys(
+                "rule.cannot_be_adjacent.help",
+                "rule.cannot_be_adjacent.help",
+            ),
             keys(
                 "rule.cannot_be_adjacent.explanation",
                 "rule.cannot_be_adjacent.explanation",
@@ -173,7 +182,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Hard,
             keys("rule.min_distance.label", "rule.min_distance.label"),
             keys("rule.min_distance.help", "rule.min_distance.help"),
-            keys("rule.min_distance.explanation", "rule.min_distance.explanation"),
+            keys(
+                "rule.min_distance.explanation",
+                "rule.min_distance.explanation",
+            ),
             ExplanationCode::MinDistanceViolated,
             params::MinDistanceParam {
                 students: [String::new(), String::new()],
@@ -206,7 +218,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Soft,
             keys("rule.vision_front.label", "rule.vision_front.label"),
             keys("rule.vision_front.help", "rule.vision_front.help"),
-            keys("rule.vision_front.explanation", "rule.vision_front.explanation"),
+            keys(
+                "rule.vision_front.explanation",
+                "rule.vision_front.explanation",
+            ),
             ExplanationCode::SoftObjective,
             params::WeightedRuleParam::default(),
             Some(ObjectiveMeta {
@@ -221,7 +236,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Soft,
             keys("rule.height_back.label", "rule.height_back.label"),
             keys("rule.height_back.help", "rule.height_back.help"),
-            keys("rule.height_back.explanation", "rule.height_back.explanation"),
+            keys(
+                "rule.height_back.explanation",
+                "rule.height_back.explanation",
+            ),
             ExplanationCode::SoftObjective,
             params::WeightedRuleParam::default(),
             Some(ObjectiveMeta {
@@ -251,7 +269,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Soft,
             keys("rule.score_balance.label", "rule.score_balance.label"),
             keys("rule.score_balance.help", "rule.score_balance.help"),
-            keys("rule.score_balance.explanation", "rule.score_balance.explanation"),
+            keys(
+                "rule.score_balance.explanation",
+                "rule.score_balance.explanation",
+            ),
             ExplanationCode::SoftObjective,
             params::WeightedRuleParam::default(),
             Some(ObjectiveMeta {
@@ -266,7 +287,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Soft,
             keys("rule.fair_rotation.label", "rule.fair_rotation.label"),
             keys("rule.fair_rotation.help", "rule.fair_rotation.help"),
-            keys("rule.fair_rotation.explanation", "rule.fair_rotation.explanation"),
+            keys(
+                "rule.fair_rotation.explanation",
+                "rule.fair_rotation.explanation",
+            ),
             ExplanationCode::SoftObjective,
             params::FairRotationParam {
                 enabled: false,
@@ -341,7 +365,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Soft,
             keys("rule.score_position.label", "rule.score_position.label"),
             keys("rule.score_position.help", "rule.score_position.help"),
-            keys("rule.score_position.explanation", "rule.score_position.explanation"),
+            keys(
+                "rule.score_position.explanation",
+                "rule.score_position.explanation",
+            ),
             ExplanationCode::SoftObjective,
             params::ScorePositionParam {
                 enabled: false,
@@ -388,7 +415,10 @@ pub fn rule_specs() -> Vec<RuleSpec> {
             RuleCategory::Soft,
             keys("rule.mentor_pairing.label", "rule.mentor_pairing.label"),
             keys("rule.mentor_pairing.help", "rule.mentor_pairing.help"),
-            keys("rule.mentor_pairing.explanation", "rule.mentor_pairing.explanation"),
+            keys(
+                "rule.mentor_pairing.explanation",
+                "rule.mentor_pairing.explanation",
+            ),
             ExplanationCode::SoftObjective,
             params::MentorPairingParam {
                 enabled: false,
@@ -466,10 +496,18 @@ mod tests {
             assert!(!spec.label.zh.is_empty() && !spec.label.en.is_empty());
             assert!(!spec.help.zh.is_empty() && !spec.help.en.is_empty());
             assert!(!spec.explanation.zh.is_empty() && !spec.explanation.en.is_empty());
-            assert!(spec.param_schema.get("properties").is_some(), "{}: param schema missing properties", spec.id);
+            assert!(
+                spec.param_schema.get("properties").is_some(),
+                "{}: param schema missing properties",
+                spec.id
+            );
             assert!(spec.defaults.is_object(), "{}: defaults missing", spec.id);
             if spec.category == RuleCategory::Soft {
-                assert!(spec.objective.is_some(), "{}: soft rule must declare objective semantics", spec.id);
+                assert!(
+                    spec.objective.is_some(),
+                    "{}: soft rule must declare objective semantics",
+                    spec.id
+                );
             }
         }
     }
@@ -487,7 +525,10 @@ mod tests {
                 result.is_ok(),
                 "{}: defaults violate the param schema: {}",
                 spec.id,
-                result.err().map(|error| error.to_string()).unwrap_or_default(),
+                result
+                    .err()
+                    .map(|error| error.to_string())
+                    .unwrap_or_default(),
             );
         }
     }

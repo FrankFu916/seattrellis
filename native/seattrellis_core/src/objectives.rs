@@ -135,8 +135,7 @@ pub fn compile_soft_objectives(
     match distribution_rule.scope {
         DistributionScope::Row => {
             for seat in &enabled_seats {
-                distribution_buckets
-                    .insert(seat.seat_id.clone(), format!("row:{}", seat.row));
+                distribution_buckets.insert(seat.seat_id.clone(), format!("row:{}", seat.row));
             }
         }
         DistributionScope::Group => {
@@ -368,12 +367,7 @@ pub fn evaluate_soft_objectives(
     }
 }
 
-fn add_weighted_cost(
-    costs: &mut HashMap<String, f64>,
-    name: &str,
-    loss: Option<f64>,
-    weight: i32,
-) {
+fn add_weighted_cost(costs: &mut HashMap<String, f64>, name: &str, loss: Option<f64>, weight: i32) {
     if let Some(loss) = loss {
         costs.insert(name.to_string(), loss * weight as f64 * 100.0);
     }
@@ -439,8 +433,7 @@ pub fn select_mentor_pairs(
                 0
             };
             occurrence_by_pair.insert((mentor_key.clone(), learner_key.clone()), occurrences);
-            let complement_error =
-                (percentiles[mentor_key] + percentiles[learner_key] - 1.0).abs();
+            let complement_error = (percentiles[mentor_key] + percentiles[learner_key] - 1.0).abs();
             // Occurrence count dominates rank complement, which dominates the
             // stable key order. The global assignment avoids greedy dead ends.
             let cost = occurrences as i64 * 1_000_000
@@ -529,9 +522,8 @@ pub fn minimum_cost_bipartite_pairs(
                 if used[column_index] {
                     continue;
                 }
-                let current = matrix[current_row - 1][column_index - 1]
-                    - u[current_row]
-                    - v[column_index];
+                let current =
+                    matrix[current_row - 1][column_index - 1] - u[current_row] - v[column_index];
                 if current < minimum[column_index] {
                     minimum[column_index] = current;
                     previous_column[column_index] = column0;
@@ -626,9 +618,7 @@ fn relation_satisfied(
         _ => return false,
     };
     match relation {
-        PairRelation::DeskMate => {
-            first.row == second.row && (first.col - second.col).abs() == 1
-        }
+        PairRelation::DeskMate => first.row == second.row && (first.col - second.col).abs() == 1,
         PairRelation::AdjacentAny => {
             let edge = normalize_edge(&first.seat_id, &second.seat_id);
             context.adjacency_edges.contains(&edge)
@@ -776,7 +766,11 @@ mod tests {
     fn percentiles_equal_scores_share_tie_group() {
         // Equal scores are one tie group regardless of key ordering:
         // (10,A10), (10,A2) -> avg rank 0.5 -> 0.25 each; B -> 1.0.
-        let students = [student("A10", Some(10.0)), student("A2", Some(10.0)), student("B", Some(20.0))];
+        let students = [
+            student("A10", Some(10.0)),
+            student("A2", Some(10.0)),
+            student("B", Some(20.0)),
+        ];
         let p = score_rank_percentiles(&students);
         assert_eq!(p["A10"], 0.25);
         assert_eq!(p["A2"], 0.25);

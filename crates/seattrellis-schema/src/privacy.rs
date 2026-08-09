@@ -178,7 +178,9 @@ mod tests {
         assert!(keys.contains(&"vision"));
         assert!(!keys.contains(&"row"));
         assert!(!keys.contains(&"seat_id"));
-        assert!(findings.iter().any(|f| f.path == "/students/0/attributes/vision"));
+        assert!(findings
+            .iter()
+            .any(|f| f.path == "/students/0/attributes/vision"));
     }
 
     #[test]
@@ -201,6 +203,9 @@ mod tests {
             serde_json::to_string(&PrivacyVerdict::Indeterminate).unwrap(),
             "\"Indeterminate\""
         );
-        assert_eq!(serde_json::to_string(&PrivacyVerdict::Safe).unwrap(), "\"Safe\"");
+        assert_eq!(
+            serde_json::to_string(&PrivacyVerdict::Safe).unwrap(),
+            "\"Safe\""
+        );
     }
 }

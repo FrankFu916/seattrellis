@@ -31,6 +31,16 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("  Summarize historical seating snapshots.\n    ");
     out.push_str(&styler.cyan("pair-report"));
     out.push_str("     Summarize historical desk-mate / neighbor pairs.\n    ");
+    out.push_str(&styler.cyan("repair"));
+    out.push_str("    Re-solve a snapshot while preserving anchors.\n    ");
+    out.push_str(&styler.cyan("project-info"));
+    out.push_str("  Show a project workspace summary.\n    ");
+    out.push_str(&styler.cyan("project-validate"));
+    out.push_str(" Validate a project and its files.\n    ");
+    out.push_str(&styler.cyan("project-solve"));
+    out.push_str("   Solve a project workspace.\n    ");
+    out.push_str(&styler.cyan("project-export"));
+    out.push_str("  Export a project plan.\n    ");
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));
@@ -111,12 +121,51 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.bold("--within-distance"));
     out.push_str(" <n>  Chebyshev distance threshold (default 2).\n\n");
 
+    out.push_str(&styler.bold("REPAIR:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("repair"));
+    out.push_str(" --problem <problem.json> --snapshot <snapshot.json>\n");
+    out.push_str("              [--lock-student <key>]... [--lock-seat <seat>]... [--affected <key>]... [--output <file>]\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--problem"));
+    out.push_str(" <file>    Solve-request JSON (students/layout/rules). Required.\n      ");
+    out.push_str(&styler.bold("--snapshot"));
+    out.push_str(" <file>  Current snapshot JSON (assignments). Required.\n      ");
+    out.push_str(&styler.bold("--lock-student"));
+    out.push_str(" <key>   Student that keeps its current seat (repeatable).\n      ");
+    out.push_str(&styler.bold("--lock-seat"));
+    out.push_str(" <seat>    Seat whose occupant keeps it (repeatable).\n      ");
+    out.push_str(&styler.bold("--affected"));
+    out.push_str(" <key>    Bounds the re-solve scope (repeatable).\n      ");
+    out.push_str(&styler.bold("--output"));
+    out.push_str(" <file>   Write the repaired snapshot (default: stdout).\n\n");
+
+    out.push_str(&styler.bold("PROJECT:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(
+        " project-info|project-validate|project-solve|project-export --project <project.json>\n",
+    );
+    out.push_str("      ");
+    out.push_str(&styler.bold("--project"));
+    out.push_str(" <file>  Portable project workspace file. Required.\n      ");
+    out.push_str(&styler.bold("--seed"));
+    out.push_str(" <n>        Override the project's solver seed.\n      ");
+    out.push_str(&styler.bold("--format"));
+    out.push_str(" <f>       project-export only: svg|html|png|pdf.\n      ");
+    out.push_str(&styler.bold("--output"));
+    out.push_str(" <file>   project-solve/export write their artifact here.\n\n");
+
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("solve"));
-    out.push_str(" --problem <problem.json> [--seed <n>] [--time-limit <sec>] [--output <result.json>]\n\n");
+    out.push_str(
+        " --problem <problem.json> [--seed <n>] [--time-limit <sec>] [--output <result.json>]\n\n",
+    );
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n      ");
@@ -135,7 +184,9 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" --problem <problem.json> --solution <result.json> \\\n                           --format <svg|html|png|pdf> --output <file>\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
-    out.push_str(" <file>   The same solve-request JSON used for solve (seat grid). Required.\n      ");
+    out.push_str(
+        " <file>   The same solve-request JSON used for solve (seat grid). Required.\n      ",
+    );
     out.push_str(&styler.bold("--solution"));
     out.push_str(" <file>  The solve result JSON (CoreSolveResponse). Required.\n      ");
     out.push_str(&styler.bold("--format"));
@@ -171,6 +222,8 @@ mod tests {
         assert!(text.contains("CANDIDATES:"));
         assert!(text.contains("HISTORY-REPORT:"));
         assert!(text.contains("PAIR-REPORT:"));
+        assert!(text.contains("REPAIR:"));
+        assert!(text.contains("PROJECT:"));
         assert!(text.contains("SOLVE:"));
         assert!(text.contains("EXPORT:"));
         assert!(text.contains("EXIT STATUS:"));
@@ -180,6 +233,9 @@ mod tests {
         assert!(text.contains("candidates"));
         assert!(text.contains("history-report"));
         assert!(text.contains("pair-report"));
+        assert!(text.contains("repair"));
+        assert!(text.contains("project-solve"));
+        assert!(text.contains("project-export"));
         assert!(text.contains("export"));
     }
 

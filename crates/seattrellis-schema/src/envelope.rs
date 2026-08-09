@@ -89,8 +89,7 @@ mod tests {
         let envelope = ArtifactEnvelope::new(ArtifactKind::StudentRoster, roster());
         let mut json = serde_json::to_value(&envelope).unwrap();
         json["sneaky"] = Value::String("field".into());
-        let result: Result<ArtifactEnvelope<StudentRoster>, _> =
-            serde_json::from_value(json);
+        let result: Result<ArtifactEnvelope<StudentRoster>, _> = serde_json::from_value(json);
         assert!(result.is_err(), "unknown envelope fields must be rejected");
     }
 
@@ -99,15 +98,16 @@ mod tests {
         let envelope = ArtifactEnvelope::new(ArtifactKind::StudentRoster, roster());
         let mut json = serde_json::to_value(&envelope).unwrap();
         json["data"]["mystery"] = Value::Bool(true);
-        let result: Result<ArtifactEnvelope<StudentRoster>, _> =
-            serde_json::from_value(json);
+        let result: Result<ArtifactEnvelope<StudentRoster>, _> = serde_json::from_value(json);
         assert!(result.is_err(), "unknown payload fields must be rejected");
     }
 
     #[test]
     fn extensions_round_trip_under_the_namespace() {
         let mut envelope = ArtifactEnvelope::new(ArtifactKind::StudentRoster, roster());
-        envelope.extensions.insert("com.example.note".into(), Value::String("x".into()));
+        envelope
+            .extensions
+            .insert("com.example.note".into(), Value::String("x".into()));
         let json = serde_json::to_string(&envelope).unwrap();
         let parsed: ArtifactEnvelope<StudentRoster> = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.extensions["com.example.note"], "x");

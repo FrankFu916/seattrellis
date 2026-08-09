@@ -55,10 +55,12 @@
 //! The module never panics: every failure is returned as a `String` error that
 //! identifies the offending field, so the server can surface a coarse 400.
 
-use serde::Deserialize;
 use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
+use serde::Deserialize;
 
-use crate::render::{render_html, render_pdf_with, render_png, render_svg, GridCell, PdfLayout, SeatingGrid};
+use crate::render::{
+    render_html, render_pdf_with, render_png, render_svg, GridCell, PdfLayout, SeatingGrid,
+};
 
 // ---------------------------------------------------------------------------
 // Format / template / orientation enums
@@ -248,13 +250,20 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
 
     let grid = SeatingGrid::build(&request.request, &request.response)?;
 
-    // Public template — or explicit anonymization — hides every student name,
-    // leaving a per-seat placeholder so the layout stays readable.
+    // Privacy options (C.8): the public template — or explicit anonymization
+    // — hides every student name; the detail line (height/vision) only shows
+    // when the matching show_* option is set. hide_scores / hide_notes /
+    // hide_special_needs have nothing to hide in this renderer: it never
+    // draws scores, notes or needs, so those exports cannot leak them.
     let hide_names = template == ExportTemplate::Public || request.privacy.anonymize;
     let grid = if hide_names {
         anonymize_grid(&grid, &request.locale)
     } else {
-        grid
+        filter_detail_grid(
+            &grid,
+            request.privacy.show_height,
+            request.privacy.show_vision,
+        )
     };
 
     match format {
@@ -282,17 +291,57 @@ fn parse_export_request(request_json: &str) -> Result<ExportRequest, String> {
     let value: serde_json::Value = serde_json::from_str(request_json)
         .map_err(|error| format!("export request is not valid JSON: {error}"))?;
     serde_json::from_value(value).map_err(|error| {
-        format!(
-            "export request is missing required fields (format, request, response): {error}"
-        )
+        format!("export request is missing required fields (format, request, response): {error}")
     })
 }
 
 fn validate_page_scale(raw: f64) -> Result<f64, String> {
     if !raw.is_finite() || raw <= 0.0 {
-        return Err(format!("invalid page_scale '{raw}' (expected a positive number)"));
+        return Err(format!(
+            "invalid page_scale '{raw}' (expected a positive number)"
+        ));
     }
     Ok(raw)
+}
+
+/// Keep only the detail line parts the privacy options allow: the raw grid
+/// carries height + vision; `show_height`/`show_vision` decide what survives.
+fn filter_detail_grid(grid: &SeatingGrid, show_height: bool, show_vision: bool) -> SeatingGrid {
+    if show_height && show_vision {
+        return grid.clone();
+    }
+    let mut filtered = SeatingGrid {
+        title: grid.title.clone(),
+        subtitle: grid.subtitle.clone(),
+        min_row: grid.min_row,
+        max_row: grid.max_row,
+        min_col: grid.min_col,
+        max_col: grid.max_col,
+        cells: Vec::with_capacity(grid.cells.len()),
+    };
+    for cell in &grid.cells {
+        let detail = match &cell.detail {
+            None => None,
+            Some(detail) if show_height && !show_vision => detail
+                .split("  ")
+                .find(|part| part.ends_with(" cm"))
+                .map(str::to_string),
+            Some(detail) if show_vision && !show_height => detail
+                .split("  ")
+                .find(|part| part.starts_with("vision"))
+                .map(str::to_string),
+            Some(_) => None,
+        };
+        filtered.cells.push(GridCell {
+            row: cell.row,
+            col: cell.col,
+            seat_index: cell.seat_index,
+            student: cell.student.clone(),
+            detail,
+            enabled: cell.enabled,
+        });
+    }
+    filtered
 }
 
 /// Copy of the grid with every occupied seat's label replaced by a locale-aware
@@ -318,6 +367,8 @@ fn anonymize_grid(grid: &SeatingGrid, locale: &str) -> SeatingGrid {
                 col: cell.col,
                 seat_index: cell.seat_index,
                 student: cell.student.as_ref().map(|_| placeholder.to_string()),
+                // Anonymized exports never carry detail lines either.
+                detail: None,
                 enabled: cell.enabled,
             })
             .collect(),
@@ -422,7 +473,10 @@ mod tests {
         let bytes = export_ok(&export_body("pdf", "teacher"));
         let pdf = String::from_utf8(bytes).unwrap();
         assert!(pdf.starts_with("%PDF-1.4"), "PDF header");
-        assert!(pdf.contains("/MediaBox [0 0 595 842]"), "A4 portrait by default");
+        assert!(
+            pdf.contains("/MediaBox [0 0 595 842]"),
+            "A4 portrait by default"
+        );
         assert!(pdf.ends_with("%%EOF\n"), "PDF trailer");
         assert!(pdf.contains("/BaseFont /Helvetica"));
     }
@@ -430,15 +484,24 @@ mod tests {
     #[test]
     fn teacher_template_shows_names_public_hides_them() {
         let teacher = String::from_utf8(export_ok(&export_body("svg", "teacher"))).unwrap();
-        assert!(teacher.contains("Alice"), "teacher export shows the student name");
+        assert!(
+            teacher.contains("Alice"),
+            "teacher export shows the student name"
+        );
         assert!(teacher.contains("Bob"));
         assert!(teacher.contains("张伟"), "CJK names survive in SVG");
 
         let public = String::from_utf8(export_ok(&export_body("svg", "public"))).unwrap();
-        assert!(!public.contains("Alice"), "public export must not leak names");
+        assert!(
+            !public.contains("Alice"),
+            "public export must not leak names"
+        );
         assert!(!public.contains("Bob"));
         assert!(!public.contains("张伟"));
-        assert!(public.contains("学生"), "public export shows the zh placeholder");
+        assert!(
+            public.contains("学生"),
+            "public export shows the zh placeholder"
+        );
     }
 
     #[test]
@@ -446,7 +509,10 @@ mod tests {
         let mut body = export_body("svg", "teacher");
         body["privacy"]["anonymize"] = serde_json::Value::Bool(true);
         let svg = String::from_utf8(export_ok(&body)).unwrap();
-        assert!(!svg.contains("Alice"), "anonymize must hide names regardless of template");
+        assert!(
+            !svg.contains("Alice"),
+            "anonymize must hide names regardless of template"
+        );
         assert!(svg.contains("学生"));
     }
 
@@ -456,14 +522,20 @@ mod tests {
         body["locale"] = serde_json::Value::String("en".into());
         let svg = String::from_utf8(export_ok(&body)).unwrap();
         assert!(!svg.contains("Alice"));
-        assert!(svg.contains(">student<"), "en placeholder is lowercase 'student'");
+        assert!(
+            svg.contains(">student<"),
+            "en placeholder is lowercase 'student'"
+        );
     }
 
     #[test]
     fn invalid_format_is_rejected() {
         let body = export_body("bmp", "teacher");
         let error = export_plan(&body_string(&body)).unwrap_err();
-        assert!(error.contains("unknown export format 'bmp'"), "unexpected error: {error}");
+        assert!(
+            error.contains("unknown export format 'bmp'"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -471,7 +543,10 @@ mod tests {
         let mut body = export_body("svg", "teacher");
         body["template"] = serde_json::Value::String("admin".into());
         let error = export_plan(&body_string(&body)).unwrap_err();
-        assert!(error.contains("unknown export template 'admin'"), "unexpected error: {error}");
+        assert!(
+            error.contains("unknown export template 'admin'"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -479,7 +554,10 @@ mod tests {
         let mut body = export_body("pdf", "teacher");
         body["orientation"] = serde_json::Value::String("square".into());
         let error = export_plan(&body_string(&body)).unwrap_err();
-        assert!(error.contains("unknown export orientation 'square'"), "unexpected error: {error}");
+        assert!(
+            error.contains("unknown export orientation 'square'"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -487,17 +565,26 @@ mod tests {
         let mut body = export_body("svg", "teacher");
         body["page_scale"] = serde_json::Value::from(0.0);
         let error = export_plan(&body_string(&body)).unwrap_err();
-        assert!(error.contains("invalid page_scale"), "unexpected error: {error}");
+        assert!(
+            error.contains("invalid page_scale"),
+            "unexpected error: {error}"
+        );
 
         body["page_scale"] = serde_json::Value::from(-2.0);
         let error = export_plan(&body_string(&body)).unwrap_err();
-        assert!(error.contains("invalid page_scale"), "unexpected error: {error}");
+        assert!(
+            error.contains("invalid page_scale"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
     fn malformed_json_is_rejected() {
         let error = export_plan("not json at all").unwrap_err();
-        assert!(error.contains("not valid JSON"), "unexpected error: {error}");
+        assert!(
+            error.contains("not valid JSON"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -506,7 +593,10 @@ mod tests {
         body.as_object_mut().unwrap().remove("request");
         body.as_object_mut().unwrap().remove("response");
         let error = export_plan(&body_string(&body)).unwrap_err();
-        assert!(error.contains("missing required fields"), "unexpected error: {error}");
+        assert!(
+            error.contains("missing required fields"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -547,5 +637,48 @@ mod tests {
         let svg = String::from_utf8(bytes).unwrap();
         assert!(svg.starts_with("<svg "));
         assert!(svg.contains("Alice"));
+    }
+    #[test]
+    fn detail_line_follows_show_height_and_show_vision() {
+        let request_json = r#"{
+            "format": "svg",
+            "template": "teacher",
+            "privacy": {
+                "hide_scores": false, "hide_notes": false, "hide_special_needs": false,
+                "anonymize": false, "show_height": true, "show_vision": true
+            },
+            "orientation": "portrait", "page_scale": 1.0, "locale": "zh", "show_student_ids": true,
+            "request": {
+                "api_version": 2, "student_count": 1,
+                "seat_positions": [[0.0, 0.0]],
+                "students": [{"key": "S1", "display_name": "Alice", "height_cm": 160.0, "vision": "0.8"}]
+            },
+            "response": {
+                "api_version": 2, "feasible": true, "assignment": [[0, 0]],
+                "attempts_used": 1, "hard_constraints_satisfied": true
+            }
+        }"#;
+        // Both options on: the SVG carries the detail line.
+        let svg =
+            String::from_utf8(render_export(&parse_export_request(request_json).unwrap()).unwrap())
+                .unwrap();
+        assert!(svg.contains("160 cm"), "height detail missing: {svg}");
+        assert!(svg.contains("vision 0.8"), "vision detail missing: {svg}");
+
+        // Only height: the vision part is filtered out.
+        let height_only = request_json.replace("\"show_vision\": true", "\"show_vision\": false");
+        let svg =
+            String::from_utf8(render_export(&parse_export_request(&height_only).unwrap()).unwrap())
+                .unwrap();
+        assert!(svg.contains("160 cm"), "height detail missing: {svg}");
+        assert!(!svg.contains("vision"), "vision must be filtered: {svg}");
+
+        // Anonymized: neither the name nor the detail survives.
+        let anonymized = request_json.replace("\"anonymize\": false", "\"anonymize\": true");
+        let svg =
+            String::from_utf8(render_export(&parse_export_request(&anonymized).unwrap()).unwrap())
+                .unwrap();
+        assert!(!svg.contains("Alice"), "name must be hidden: {svg}");
+        assert!(!svg.contains("160 cm"), "detail must be hidden: {svg}");
     }
 }
