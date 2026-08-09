@@ -76,12 +76,19 @@ pub struct PrecheckArgs {
     pub problem: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct AuditArgs {
+    pub problem: PathBuf,
+    pub solution: PathBuf,
+}
+
 #[derive(Debug, PartialEq)]
 enum Command {
     Help,
     Version,
     Validate(ValidateArgs),
     Precheck(PrecheckArgs),
+    Audit(AuditArgs),
     Solve(SolveArgs),
     Export(ExportArgs),
 }
@@ -229,6 +236,26 @@ fn parse_precheck(tokens: &[String]) -> Result<Command, String> {
     }))
 }
 
+fn parse_audit(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag { name: "--problem", takes_value: true },
+        Flag { name: "--solution", takes_value: true },
+        Flag { name: "--help", takes_value: false },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?
+        .ok_or("audit requires --problem <file>")?;
+    let solution = flag_value(&parsed, "--solution")?
+        .ok_or("audit requires --solution <file>")?;
+    Ok(Command::Audit(AuditArgs {
+        problem: PathBuf::from(problem),
+        solution: PathBuf::from(solution),
+    }))
+}
+
 fn parse_export(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag { name: "--problem", takes_value: true },
@@ -277,6 +304,7 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "--version" | "-V" | "version" => Ok(Command::Version),
         "validate" => parse_validate(&text[1..]),
         "precheck" => parse_precheck(&text[1..]),
+        "audit" => parse_audit(&text[1..]),
         "solve" => parse_solve(&text[1..]),
         "export" => parse_export(&text[1..]),
         other => Err(format!("unknown command '{other}'")),
@@ -329,6 +357,14 @@ fn run_command(command: Command) -> ExitCode {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
                 // Precheck only judges input: InvalidInput (frozen 2).
+                ExitCode::from(2)
+            }
+        },
+        Command::Audit(args) => match commands::run_audit(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
                 ExitCode::from(2)
             }
         },

@@ -867,6 +867,142 @@ pub fn precheck_report_json(request_json: &str) -> Result<String, String> {
         .map_err(|error| format!("could not serialize precheck report: {error}"))
 }
 
+/// Solution audit report (plan §6.5): per hard-rule check status and the
+/// soft-objective breakdown for a solved assignment.
+///
+/// The UI consumes this to explain a candidate: which hard rules were
+/// checked and satisfied, each soft objective's raw loss / weighted cost,
+/// and warnings for rules that could not participate (missing data).
+pub fn audit_report_json(
+    request_json: &str,
+    assignment: &[[usize; 2]],
+) -> Result<String, String> {
+    let request: CoreSolveRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    validate_solve_request(&request)?;
+    let resolved = resolve_group_rules(&request)?;
+    let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+    let graph_distances = build_graph_distance_matrix(&adjacency);
+
+    // Rebuild the student->seat probe and validate independently (M3-05),
+    // so the audit never blesses an illegal assignment.
+    let mut probe: Vec<Option<usize>> = vec![None; request.student_count];
+    for [student, seat] in assignment {
+        if *student >= request.student_count || *seat >= request.seat_positions.len() {
+            return Err(format!(
+                "assignment references unknown student {student} or seat {seat}"
+            ));
+        }
+        probe[*student] = Some(*seat);
+    }
+    if !solve_partial_assignment_valid(&request, &resolved, &probe, &adjacency, &graph_distances) {
+        return Err("assignment violates a hard rule".to_string());
+    }
+
+    // Hard-rule audit: how many rules of each kind were checked, and how
+    // many hold. A full assignment makes every rule checkable.
+    let fixed_ok = request
+        .fixed_seats
+        .iter()
+        .filter(|[student, seat]| probe[*student] == Some(*seat))
+        .count();
+    let must_ok = resolved
+        .must_be_adjacent
+        .iter()
+        .filter(|[a, b]| assigned_students_are_adjacent(&probe, &adjacency, *a, *b))
+        .count();
+    let cannot_ok = resolved
+        .cannot_be_adjacent
+        .iter()
+        .filter(|[a, b]| !assigned_students_are_adjacent(&probe, &adjacency, *a, *b))
+        .count();
+    let distance_ok = request
+        .min_distance
+        .iter()
+        .filter(|rule| {
+            assigned_students_meet_distance(
+                &request.seat_positions,
+                &probe,
+                &graph_distances,
+                rule,
+            )
+        })
+        .count();
+
+    let hard_rules = json!({
+        "fixed_seats": { "checked": request.fixed_seats.len(), "satisfied": fixed_ok },
+        "must_be_adjacent": { "checked": resolved.must_be_adjacent.len(), "satisfied": must_ok },
+        "cannot_be_adjacent": { "checked": resolved.cannot_be_adjacent.len(), "satisfied": cannot_ok },
+        "min_distance": { "checked": request.min_distance.len(), "satisfied": distance_ok },
+    });
+
+    // Soft-objective breakdown (raw loss / weight / weighted cost per rule).
+    let ctx = build_cost_context(&request);
+    let assignment_vec: Vec<usize> = probe.iter().map(|seat| seat.unwrap()).collect();
+    let mut evaluation = evaluate_soft_objectives(
+        &assignment_by_key(&probe, &ctx),
+        &ctx.objective_context,
+        &ctx.rules,
+    );
+    // score_balance is folded into full_solution_total_cost directly (not
+    // through evaluate_soft_objectives); surface its breakdown here so the
+    // audit covers every soft objective (plan §6.5).
+    if ctx.rules.soft.score_balance.enabled && ctx.rules.soft.score_balance.weight != 0 {
+        let mut loss = 0.0;
+        for first in 0..assignment_vec.len() {
+            let Some(first_score) = ctx.students[first].score else {
+                continue;
+            };
+            for second in (first + 1)..assignment_vec.len() {
+                let Some(second_score) = ctx.students[second].score else {
+                    continue;
+                };
+                if adjacency[assignment_vec[first]].contains(&assignment_vec[second]) {
+                    loss += (first_score - second_score).abs();
+                }
+            }
+        }
+        let weight = ctx.rules.soft.score_balance.weight as f64;
+        evaluation
+            .losses
+            .insert("score_balance".to_string(), Some(loss));
+        evaluation
+            .weighted_costs
+            .insert("score_balance".to_string(), -loss * weight);
+    }
+
+    let report = json!({
+        "api_version": NATIVE_API_VERSION,
+        "hard_rules": hard_rules,
+        "soft_objectives": {
+            "losses": evaluation.losses,
+            "weighted_costs": evaluation.weighted_costs,
+            "warnings": evaluation.warnings,
+        },
+        "total_cost": full_solution_total_cost(&assignment_vec, &adjacency, &ctx),
+    });
+    serde_json::to_string(&report)
+        .map_err(|error| format!("could not serialize audit report: {error}"))
+}
+
+/// Map a student->seat probe to `student key -> seat id`, the shape the soft
+/// objective evaluator consumes.
+fn assignment_by_key(
+    probe: &[Option<usize>],
+    ctx: &CostContext,
+) -> std::collections::HashMap<String, String> {
+    let mut by_key = std::collections::HashMap::new();
+    for (student, seat) in probe.iter().enumerate() {
+        if let Some(seat) = seat {
+            by_key.insert(
+                ctx.students[student].key.clone(),
+                ctx.layout.seats[*seat].seat_id.clone(),
+            );
+        }
+    }
+    by_key
+}
+
 /// Validate a solve request without spending the solver's attempt budget.
 ///
 /// This is the native counterpart to the Python CLI's input-only `validate`
@@ -1965,7 +2101,8 @@ mod tests {
         classify_solve_error, full_solution_total_cost, greedy_attempt, local_search,
         evaluate_problem_json, hard_search_with_budget, maximum_candidate_matching,
         resolve_group_rules, seat_distance, solve_problem_json, HARD_SEARCH_NODE_BUDGET,
-        precheck_report_json, validate_assignment, validate_solve_request_json,
+        audit_report_json, precheck_report_json, validate_assignment,
+        validate_solve_request_json,
         SplitMix64,
         CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome,
         SolveStatus, NATIVE_API_VERSION,
@@ -3137,5 +3274,52 @@ mod tests {
         assert!(response.feasible);
         assert_eq!(response.status, SolveStatus::Solved);
         assert!(response.total_cost.unwrap().is_finite());
+    }
+    #[test]
+    fn audit_report_breaks_down_hard_and_soft_rules() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0]],
+            "edges": [[0,1],[1,2],[2,3]],
+            "fixed_seats": [[0, 0]],
+            "must_be_adjacent": [[0, 1]],
+            "students": [
+                {"key":"s0","score":100.0},{"key":"s1","score":10.0},{"key":"s2","score":90.0}
+            ],
+            "rules": {"seed": 42, "soft": {"score_balance": {"enabled": true, "weight": 5}}}
+        }"#;
+        // Legal assignment: s0->0 (fixed), s1->1 (adjacent to s0), s2->2.
+        let assignment: Vec<[usize; 2]> = vec![[0, 0], [1, 1], [2, 2]];
+        let report: serde_json::Value = serde_json::from_str(
+            &audit_report_json(request, &assignment).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(report["hard_rules"]["fixed_seats"]["satisfied"], 1);
+        assert_eq!(report["hard_rules"]["must_be_adjacent"]["satisfied"], 1);
+        assert_eq!(report["hard_rules"]["cannot_be_adjacent"]["satisfied"], 0);
+        // The soft breakdown must carry the score_balance weighted cost.
+        let weighted = &report["soft_objectives"]["weighted_costs"];
+        assert!(
+            weighted.as_object().unwrap().contains_key("score_balance"),
+            "weighted_costs: {weighted}"
+        );
+        assert!(report["total_cost"].is_number());
+    }
+
+    #[test]
+    fn audit_rejects_illegal_assignments() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0,0.0],[1.0,0.0]],
+            "edges": [[0,1]],
+            "cannot_be_adjacent": [[0, 1]]
+        }"#;
+        // Adjacent seats violate the pair rule: the audit must refuse.
+        let assignment: Vec<[usize; 2]> = vec![[0, 0], [1, 1]];
+        let error = audit_report_json(request, &assignment).unwrap_err();
+        assert!(error.contains("violates a hard rule"), "{error}");
     }
 }

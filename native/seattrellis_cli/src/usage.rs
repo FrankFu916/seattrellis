@@ -23,6 +23,8 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" Check a solve-request JSON without running the search.\n    ");
     out.push_str(&styler.cyan("precheck"));
     out.push_str("  Report candidate seat domains and infeasibility reasons.\n    ");
+    out.push_str(&styler.cyan("audit"));
+    out.push_str("     Audit a solved plan: hard-rule status + soft breakdown.\n    ");
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));
@@ -49,6 +51,18 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n\n");
+
+    out.push_str(&styler.bold("AUDIT:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("audit"));
+    out.push_str(" --problem <problem.json> --solution <result.json>\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--problem"));
+    out.push_str(" <file>   The solve-request JSON used for solve. Required.\n      ");
+    out.push_str(&styler.bold("--solution"));
+    out.push_str(" <file>  The solve result JSON (CoreSolveResponse). Required.\n\n");
 
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");
@@ -106,11 +120,13 @@ mod tests {
         assert!(text.contains("USAGE:"));
         assert!(text.contains("COMMANDS:"));
         assert!(text.contains("PRECHECK:"));
+        assert!(text.contains("AUDIT:"));
         assert!(text.contains("SOLVE:"));
         assert!(text.contains("EXPORT:"));
         assert!(text.contains("EXIT STATUS:"));
         assert!(text.contains("solve"));
         assert!(text.contains("precheck"));
+        assert!(text.contains("audit"));
         assert!(text.contains("export"));
     }
 
