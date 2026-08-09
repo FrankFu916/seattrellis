@@ -21,10 +21,10 @@ pub fn spec() -> Value {
             "title": "SeatTrellis loopback API",
             "version": "1.0.0",
             "description": "Loopback-only backend for the SeatTrellis workbench. \
-Every /api/* endpoint except GET /api/v1/session requires \
-`Authorization: Bearer <session token>`. The Host header must be the \
-loopback address the server is bound to; cross-origin requests are \
-rejected (M1-05)."
+    Every /api/* endpoint except GET /api/v1/session requires \
+    `Authorization: Bearer <session token>`. The Host header must be the \
+    loopback address the server is bound to; cross-origin requests are \
+    rejected (M1-05)."
         },
         "servers": [{ "url": "http://127.0.0.1:{port}", "variables": { "port": { "default": "8765" } } }],
         "tags": [
@@ -62,7 +62,7 @@ fn paths() -> Value {
                 "tags": ["system"],
                 "summary": "Bootstrap: issue the session token to a same-origin page",
                 "description": "Host-checked; no Bearer required. The token is injected into the \
-WebView memory by the shell, or fetched here by the browser workspace.",
+    WebView memory by the shell, or fetched here by the browser workspace.",
                 "security": [],
                 "responses": {
                     "200": { "description": "The session token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResponse" } } } },
@@ -89,7 +89,7 @@ WebView memory by the shell, or fetched here by the browser workspace.",
                 "tags": ["classes"],
                 "summary": "Generate seating plans and open an editable draft",
                 "description": "Two request shapes: the raw CoreSolveRequest or the workbench \
-GenerateClassRequest (draft.students + draft.room + draft.goal).",
+    GenerateClassRequest (draft.students + draft.room + draft.goal).",
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "oneOf": [
                     { "$ref": "#/components/schemas/CoreSolveRequest" },
                     { "$ref": "#/components/schemas/GenerateClassRequest" }
@@ -372,7 +372,7 @@ GenerateClassRequest (draft.students + draft.room + draft.goal).",
                 "summary": "Generate a multi-period rotation plan",
                 "x-implemented": false,
                 "description": "NOT IMPLEMENTED in the Rust server (Python-only). Rotation \
-generation is M4-04 work.",
+    generation is M4-04 work.",
                 "responses": { "404": { "$ref": "#/components/responses/NotFound" } }
             }
         },

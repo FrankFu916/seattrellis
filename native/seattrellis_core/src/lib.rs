@@ -567,9 +567,12 @@ pub fn resolve_group_rules(request: &CoreSolveRequest) -> Result<ResolvedHardRul
         }
         for first_offset in 0..members.len() {
             for second in &members[first_offset + 1..] {
-                let first_index = index_by_key.get(members[first_offset]).copied().ok_or_else(
-                    || format!("Unknown student reference: {:?}.", members[first_offset]),
-                )?;
+                let first_index = index_by_key
+                    .get(members[first_offset])
+                    .copied()
+                    .ok_or_else(|| {
+                        format!("Unknown student reference: {:?}.", members[first_offset])
+                    })?;
                 let second_index = index_by_key
                     .get(second)
                     .copied()
@@ -696,7 +699,13 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
         let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
         // Independent validation gate (M3-05): a solver bug must surface as
         // InternalError, never as a silently "feasible" result.
-        validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
+        validate_assignment(
+            request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            &assignment,
+        )?;
         let pairs: Vec<[usize; 2]> = assignment
             .iter()
             .enumerate()
@@ -739,7 +748,13 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
                 &ctx,
                 &mut rng,
             );
-            validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
+            validate_assignment(
+                request,
+                &resolved,
+                &adjacency,
+                &graph_distances,
+                &assignment,
+            )?;
             let total_cost = full_solution_total_cost(&assignment, &adjacency, &ctx);
             let pairs: Vec<[usize; 2]> = assignment
                 .iter()
@@ -819,7 +834,13 @@ pub fn precheck_report_json(request_json: &str) -> Result<String, String> {
                 .first()
                 .map(|(seat, reason)| format!("seat {seat}: {reason}"))
                 .unwrap_or_else(|| "no legal seat".to_string());
-            ("infeasible", Some(format!("student {} has no legal seat ({why})", empty.student)))
+            (
+                "infeasible",
+                Some(format!(
+                    "student {} has no legal seat ({why})",
+                    empty.student
+                )),
+            )
         } else if matching_size < request.student_count {
             (
                 "infeasible",
@@ -876,10 +897,7 @@ pub fn precheck_report_json(request_json: &str) -> Result<String, String> {
 /// The UI consumes this to explain a candidate: which hard rules were
 /// checked and satisfied, each soft objective's raw loss / weighted cost,
 /// and warnings for rules that could not participate (missing data).
-pub fn audit_report_json(
-    request_json: &str,
-    assignment: &[[usize; 2]],
-) -> Result<String, String> {
+pub fn audit_report_json(request_json: &str, assignment: &[[usize; 2]]) -> Result<String, String> {
     let request: CoreSolveRequest = serde_json::from_str(request_json)
         .map_err(|error| format!("invalid native solve request: {error}"))?;
     validate_solve_request(&request)?;
@@ -923,12 +941,7 @@ pub fn audit_report_json(
         .min_distance
         .iter()
         .filter(|rule| {
-            assigned_students_meet_distance(
-                &request.seat_positions,
-                &probe,
-                &graph_distances,
-                rule,
-            )
+            assigned_students_meet_distance(&request.seat_positions, &probe, &graph_distances, rule)
         })
         .count();
 
@@ -1085,13 +1098,13 @@ pub fn repair_json(
     }
     for student in affected_students {
         if locked_students.contains(student) {
-            return Err(format!("Affected students cannot also be locked: {student}."));
+            return Err(format!(
+                "Affected students cannot also be locked: {student}."
+            ));
         }
         if let Some(seat) = seat_by_student.get(student) {
             if locked_seats.contains(seat) {
-                return Err(format!(
-                    "Affected students occupy locked seats: {student}."
-                ));
+                return Err(format!("Affected students occupy locked seats: {student}."));
             }
         }
     }
@@ -1252,7 +1265,11 @@ pub fn history_report_json(request_json: &str, snapshots_json: &str) -> Result<S
                 continue;
             };
             for category in classify_seat_position(seat, &layout) {
-                *per_student.entry(student).or_default().entry(category).or_default() += 1;
+                *per_student
+                    .entry(student)
+                    .or_default()
+                    .entry(category)
+                    .or_default() += 1;
             }
         }
     }
@@ -1269,7 +1286,10 @@ pub fn history_report_json(request_json: &str, snapshots_json: &str) -> Result<S
     }
     let mut category_spread = serde_json::Map::new();
     for (category, (min, max)) in spread {
-        category_spread.insert(category, json!({ "min": min, "max": max, "spread": max - min }));
+        category_spread.insert(
+            category,
+            json!({ "min": min, "max": max, "spread": max - min }),
+        );
     }
 
     let report = json!({
@@ -1470,9 +1490,7 @@ pub fn generate_candidates_json(
     }
 
     if candidates.is_empty() {
-        return Err(
-            "candidate generation did not produce any feasible plan".to_string(),
-        );
+        return Err("candidate generation did not produce any feasible plan".to_string());
     }
     let mut warnings: Vec<String> = Vec::new();
     if candidates.len() < count {
@@ -1616,10 +1634,7 @@ fn effective_layout(request: &CoreSolveRequest) -> Layout {
 
 /// Convert the index-pair request edges into the normalized seat-id edge set the
 /// cost functions expect (mirrors passing `adjacency_edges=problem.edges`).
-fn adjacency_edges_by_seat_id(
-    layout: &Layout,
-    edges: &[[usize; 2]],
-) -> HashSet<(String, String)> {
+fn adjacency_edges_by_seat_id(layout: &Layout, edges: &[[usize; 2]]) -> HashSet<(String, String)> {
     let mut result = HashSet::new();
     for [first, second] in edges {
         if let (Some(first_seat), Some(second_seat)) =
@@ -1788,13 +1803,9 @@ fn local_search(
 
     for _ in 0..LOCAL_SEARCH_ITERATIONS {
         let candidate = random_neighbor(&current, ctx, rng);
-        let Ok(probe) = validate_candidate_move(
-            request,
-            resolved,
-            adjacency,
-            graph_distances,
-            candidate,
-        ) else {
+        let Ok(probe) =
+            validate_candidate_move(request, resolved, adjacency, graph_distances, candidate)
+        else {
             continue;
         };
         let candidate_cost = full_solution_total_cost(&probe, adjacency, ctx);
@@ -1814,11 +1825,7 @@ fn local_search(
 
 /// A candidate neighbor assignment: either a swap of two students' seats or
 /// a move of one student into an empty seat (sampled deterministically).
-fn random_neighbor(
-    assignment: &[usize],
-    ctx: &CostContext,
-    rng: &mut SplitMix64,
-) -> Vec<usize> {
+fn random_neighbor(assignment: &[usize], ctx: &CostContext, rng: &mut SplitMix64) -> Vec<usize> {
     let mut neighbor = assignment.to_vec();
     let seat_count = ctx.layout.seats.len();
     let swap = rng.next_usize(2) == 0;
@@ -1861,7 +1868,10 @@ fn validate_candidate_move(
     }
     // Uniqueness: the neighbor generator only swaps seats or moves into an
     // empty seat, so seats stay unique; double-check for safety.
-    if candidate.iter().any(|seat| candidate.iter().filter(|other| other == &seat).count() > 1) {
+    if candidate
+        .iter()
+        .any(|seat| candidate.iter().filter(|other| other == &seat).count() > 1)
+    {
         return Err("candidate move duplicates a seat".to_string());
     }
     Ok(candidate)
@@ -1915,7 +1925,12 @@ fn greedy_attempt(
         // sample uniformly from the top-3 (mirrors Python `rng.choice`).
         let mut ranked: Vec<(f64, usize)> = candidates
             .iter()
-            .map(|seat| (candidate_ranking_cost(student, *seat, &assignment, ctx), *seat))
+            .map(|seat| {
+                (
+                    candidate_ranking_cost(student, *seat, &assignment, ctx),
+                    *seat,
+                )
+            })
             .collect();
         ranked.sort_by(|a, b| {
             a.0.partial_cmp(&b.0)
@@ -2002,8 +2017,13 @@ fn valid_candidate_seats(
             }
         }
         assignment[student] = Some(seat);
-        let ok =
-            solve_partial_assignment_valid(request, resolved, assignment, adjacency, graph_distances);
+        let ok = solve_partial_assignment_valid(
+            request,
+            resolved,
+            assignment,
+            adjacency,
+            graph_distances,
+        );
         assignment[student] = None;
         if ok {
             candidates.push(seat);
@@ -2134,7 +2154,11 @@ pub fn build_candidate_domains(
                 Some(reason) => excluded.push((seat, reason)),
             }
         }
-        domains.push(CandidateDomain { student, seats, excluded });
+        domains.push(CandidateDomain {
+            student,
+            seats,
+            excluded,
+        });
     }
     domains
 }
@@ -2224,10 +2248,11 @@ fn hard_search_with_budget(
     for [student, seat] in &request.fixed_seats {
         assignment[*student] = Some(*seat);
     }
-    let mut domains: Vec<Vec<usize>> = build_candidate_domains(request, resolved, adjacency, graph_distances)
-        .into_iter()
-        .map(|domain| domain.seats)
-        .collect();
+    let mut domains: Vec<Vec<usize>> =
+        build_candidate_domains(request, resolved, adjacency, graph_distances)
+            .into_iter()
+            .map(|domain| domain.seats)
+            .collect();
     let mut budget = budget;
     backtrack(
         request,
@@ -2400,9 +2425,7 @@ fn first_hard_rule_violation(
     student: usize,
 ) -> Option<String> {
     for [student_index, seat_index] in &request.fixed_seats {
-        if *student_index == student
-            && probe[*student_index] != Some(*seat_index)
-        {
+        if *student_index == student && probe[*student_index] != Some(*seat_index) {
             return Some(format!("fixed seat {seat_index} not honored"));
         }
     }
@@ -2414,7 +2437,11 @@ fn first_hard_rule_violation(
         {
             return Some(format!(
                 "not adjacent to required partner {other}",
-                other = if *first_student == student { second_student } else { first_student }
+                other = if *first_student == student {
+                    second_student
+                } else {
+                    first_student
+                }
             ));
         }
     }
@@ -2426,7 +2453,11 @@ fn first_hard_rule_violation(
         {
             return Some(format!(
                 "adjacent to forbidden partner {other}",
-                other = if *first_student == student { second_student } else { first_student }
+                other = if *first_student == student {
+                    second_student
+                } else {
+                    first_student
+                }
             ));
         }
     }
@@ -2492,7 +2523,9 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
     }
     if let Some(layout) = &request.layout {
         if layout.seats.len() < seat_count {
-            return Err("layout must describe at least as many seats as seat_positions".to_string());
+            return Err(
+                "layout must describe at least as many seats as seat_positions".to_string(),
+            );
         }
     }
     for [first_seat, second_seat] in &request.edges {
@@ -2542,7 +2575,10 @@ fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
     let mut fixed_by_student: HashMap<usize, usize> = HashMap::new();
     let mut fixed_by_seat: HashMap<usize, usize> = HashMap::new();
     for [student_index, seat_index] in &request.fixed_seats {
-        if fixed_by_student.insert(*student_index, *seat_index).is_some() {
+        if fixed_by_student
+            .insert(*student_index, *seat_index)
+            .is_some()
+        {
             return Err(format!(
                 "conflicting hard rules: student {student_index} is fixed to more than one seat"
             ));
@@ -2626,21 +2662,18 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Value;
     use super::{
-        assignment_is_unique, assigned_students_meet_distance, build_candidate_domains,
-        build_cost_context, build_graph_distance_matrix, build_index_adjacency,
-        classify_solve_error, full_solution_total_cost, greedy_attempt, local_search,
-        evaluate_problem_json, hard_search_with_budget, maximum_candidate_matching,
-        resolve_group_rules, seat_distance, solve_problem_json, HARD_SEARCH_NODE_BUDGET,
-        audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
-        precheck_report_json, repair_json,
-        validate_assignment,
-        validate_solve_request_json,
-        SplitMix64,
-        CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome,
-        SolveStatus, NATIVE_API_VERSION,
+        assigned_students_meet_distance, assignment_is_unique, audit_report_json,
+        build_candidate_domains, build_cost_context, build_graph_distance_matrix,
+        build_index_adjacency, classify_solve_error, evaluate_problem_json,
+        full_solution_total_cost, generate_candidates_json, greedy_attempt,
+        hard_search_with_budget, history_report_json, local_search, maximum_candidate_matching,
+        pair_report_json, precheck_report_json, repair_json, resolve_group_rules, seat_distance,
+        solve_problem_json, validate_assignment, validate_solve_request_json,
+        CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome, SolveStatus,
+        SplitMix64, HARD_SEARCH_NODE_BUDGET, NATIVE_API_VERSION,
     };
+    use serde_json::Value;
 
     #[test]
     fn exposes_expected_native_api_version() {
@@ -2794,7 +2827,11 @@ mod tests {
         assert!(response.feasible);
         assert!(response.hard_constraints_satisfied);
         assert_eq!(response.assignment.len(), 3);
-        let mut seats = response.assignment.iter().map(|pair| pair[1]).collect::<Vec<_>>();
+        let mut seats = response
+            .assignment
+            .iter()
+            .map(|pair| pair[1])
+            .collect::<Vec<_>>();
         seats.sort_unstable();
         assert_eq!(seats, vec![0, 1, 2]);
     }
@@ -2954,7 +2991,10 @@ mod tests {
         let response_json = solve_problem_json(feasible_request).expect("request should be valid");
         let value: serde_json::Value = serde_json::from_str(&response_json).unwrap();
         let total_cost = value.get("total_cost").expect("total_cost is serialized");
-        assert!(total_cost.as_f64().is_some(), "feasible solve reports a number");
+        assert!(
+            total_cost.as_f64().is_some(),
+            "feasible solve reports a number"
+        );
 
         let infeasible_request = r#"{
             "api_version": 2,
@@ -2964,9 +3004,13 @@ mod tests {
             "cannot_be_adjacent": [[0, 1]],
             "seed": 1
         }"#;
-        let response_json = solve_problem_json(infeasible_request).expect("request should be valid");
+        let response_json =
+            solve_problem_json(infeasible_request).expect("request should be valid");
         let value: serde_json::Value = serde_json::from_str(&response_json).unwrap();
-        assert!(value.get("total_cost").unwrap_or(&serde_json::Value::Null).is_null());
+        assert!(value
+            .get("total_cost")
+            .unwrap_or(&serde_json::Value::Null)
+            .is_null());
     }
 
     /// Cross-check against the frozen 40-student parity reference: the native
@@ -2982,21 +3026,29 @@ mod tests {
     fn solves_forty_parity_reference_feasibly() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../benchmarks/reference/40-parity.json");
-        let payload_text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("cannot read 40-parity.json at {}: {error}", path.display()));
-        let payload: serde_json::Value = serde_json::from_str(&payload_text)
-            .expect("reference payload should be valid JSON");
-        let problem = payload.get("problem").expect("reference has a problem block");
+        let payload_text = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+            panic!("cannot read 40-parity.json at {}: {error}", path.display())
+        });
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload_text).expect("reference payload should be valid JSON");
+        let problem = payload
+            .get("problem")
+            .expect("reference has a problem block");
         let problem_json = serde_json::to_string(problem).expect("problem block serializes");
 
         let response_json = solve_problem_json(&problem_json).expect("native solve should run");
         let response: CoreSolveResponse =
             serde_json::from_str(&response_json).expect("response should be valid JSON");
 
-        assert!(response.feasible, "40-person parity problem must be feasible");
+        assert!(
+            response.feasible,
+            "40-person parity problem must be feasible"
+        );
         assert!(response.hard_constraints_satisfied);
         assert_eq!(response.assignment.len(), 40);
-        let total_cost = response.total_cost.expect("feasible solve reports total_cost");
+        let total_cost = response
+            .total_cost
+            .expect("feasible solve reports total_cost");
         assert!(total_cost.is_finite());
 
         // Feed the same problem plus the solved assignment to the native
@@ -3072,7 +3124,10 @@ mod tests {
         let resolved = resolve_group_rules(&request).expect("groups resolve");
         // Explicit pairs first, then group-derived pairs in member order:
         // buddies(A,B,C) together → (A,B),(A,C),(B,C).
-        assert_eq!(resolved.must_be_adjacent, vec![[0, 1], [0, 1], [0, 2], [1, 2]]);
+        assert_eq!(
+            resolved.must_be_adjacent,
+            vec![[0, 1], [0, 1], [0, 2], [1, 2]]
+        );
         // rivals(C,D) separate → (C,D); dupe dedupes to (A,B) → (A,B).
         assert_eq!(resolved.cannot_be_adjacent, vec![[2, 3], [0, 1]]);
     }
@@ -3164,7 +3219,10 @@ mod tests {
         let response_json = solve_problem_json(request).expect("request should be valid");
         let response: CoreSolveResponse =
             serde_json::from_str(&response_json).expect("response should be valid JSON");
-        assert!(response.feasible, "groups A/B together and C/D apart must be feasible");
+        assert!(
+            response.feasible,
+            "groups A/B together and C/D apart must be feasible"
+        );
         assert!(response.hard_constraints_satisfied);
 
         let seat_of = |student: usize| -> usize {
@@ -3203,7 +3261,10 @@ mod tests {
         let response_json = solve_problem_json(request).expect("request should be valid");
         let response: CoreSolveResponse =
             serde_json::from_str(&response_json).expect("response should be valid JSON");
-        assert!(!response.feasible, "A and B are pinned apart but must sit together");
+        assert!(
+            !response.feasible,
+            "A and B are pinned apart but must sit together"
+        );
         assert!(response.assignment.is_empty());
     }
 
@@ -3394,7 +3455,10 @@ mod tests {
             "must_be_adjacent": [[0, 1]]
         }"#;
         let error = validate_solve_request_json(must_violated).unwrap_err();
-        assert!(error.contains("do not satisfy a must_be_adjacent rule"), "{error}");
+        assert!(
+            error.contains("do not satisfy a must_be_adjacent rule"),
+            "{error}"
+        );
 
         // Fixed seats 0 and 1 are adjacent, but cannot_be_adjacent forbids it.
         let cannot_violated = r#"{
@@ -3406,7 +3470,10 @@ mod tests {
             "cannot_be_adjacent": [[0, 1]]
         }"#;
         let error = validate_solve_request_json(cannot_violated).unwrap_err();
-        assert!(error.contains("violate a cannot_be_adjacent rule"), "{error}");
+        assert!(
+            error.contains("violate a cannot_be_adjacent rule"),
+            "{error}"
+        );
 
         // Fixed seats 0 and 1 violate a graph min_distance of 2 (they are 1 hop).
         let distance_violated = r#"{
@@ -3558,14 +3625,20 @@ mod tests {
         let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
         let graph_distances = build_graph_distance_matrix(&adjacency);
 
-        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 200_000, None);
+        let outcome = hard_search_with_budget(
+            &request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            200_000,
+            None,
+        );
         let SearchOutcome::Found(assignment) = outcome else {
             panic!("hard search should find the far-apart placement, got {outcome:?}");
         };
         // Student 0 and 1 must be >= 3 hops apart: only opposite corners work
         // in this 2x3 ladder (e.g. 0->seat 0 and 1->seat 5 is 3 hops).
-        let probe: Vec<Option<usize>> =
-            assignment.iter().map(|seat| Some(*seat)).collect();
+        let probe: Vec<Option<usize>> = assignment.iter().map(|seat| Some(*seat)).collect();
         assert!(assigned_students_meet_distance(
             &request.seat_positions,
             &probe,
@@ -3596,7 +3669,8 @@ mod tests {
         let graph_distances = build_graph_distance_matrix(&adjacency);
 
         // A budget of 1 node cannot sweep anything.
-        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 1, None);
+        let outcome =
+            hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 1, None);
         assert_eq!(outcome, SearchOutcome::BudgetExceeded);
 
         // The full budget proves it (and solve_problem reports that).
@@ -3760,12 +3834,26 @@ mod tests {
         let ctx = build_cost_context(&request);
         let mut rng = SplitMix64::new(42);
 
-        let initial = greedy_attempt(&request, &resolved, &adjacency, &graph_distances, &mut rng, &ctx, 0)
-            .expect("greedy should seat everyone");
+        let initial = greedy_attempt(
+            &request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            &mut rng,
+            &ctx,
+            0,
+        )
+        .expect("greedy should seat everyone");
         let before = full_solution_total_cost(&initial, &adjacency, &ctx);
 
         let improved = local_search(
-            &request, &resolved, &adjacency, &graph_distances, &initial, &ctx, &mut rng,
+            &request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            &initial,
+            &ctx,
+            &mut rng,
         );
         let after = full_solution_total_cost(&improved, &adjacency, &ctx);
 
@@ -3776,10 +3864,24 @@ mod tests {
         // Determinism: same seed, same input -> identical output. Replay the
         // same RNG consumption (greedy first, then local search).
         let mut rng2 = SplitMix64::new(42);
-        let _ = greedy_attempt(&request, &resolved, &adjacency, &graph_distances, &mut rng2, &ctx, 0)
-            .expect("greedy should seat everyone");
+        let _ = greedy_attempt(
+            &request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            &mut rng2,
+            &ctx,
+            0,
+        )
+        .expect("greedy should seat everyone");
         let rerun = local_search(
-            &request, &resolved, &adjacency, &graph_distances, &initial, &ctx, &mut rng2,
+            &request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            &initial,
+            &ctx,
+            &mut rng2,
         );
         assert_eq!(improved, rerun, "local search must be deterministic");
     }
@@ -3825,10 +3927,8 @@ mod tests {
         }"#;
         // Legal assignment: s0->0 (fixed), s1->1 (adjacent to s0), s2->2.
         let assignment: Vec<[usize; 2]> = vec![[0, 0], [1, 1], [2, 2]];
-        let report: serde_json::Value = serde_json::from_str(
-            &audit_report_json(request, &assignment).unwrap(),
-        )
-        .unwrap();
+        let report: serde_json::Value =
+            serde_json::from_str(&audit_report_json(request, &assignment).unwrap()).unwrap();
 
         assert_eq!(report["hard_rules"]["fixed_seats"]["satisfied"], 1);
         assert_eq!(report["hard_rules"]["must_be_adjacent"]["satisfied"], 1);
@@ -3871,17 +3971,18 @@ mod tests {
             "rules": {"seed": 42, "soft": {"score_balance": {"enabled": true, "weight": 5}}},
             "seed": 42
         }"#;
-        let report: serde_json::Value = serde_json::from_str(
-            &generate_candidates_json(request, 3).unwrap(),
-        )
-        .unwrap();
+        let report: serde_json::Value =
+            serde_json::from_str(&generate_candidates_json(request, 3).unwrap()).unwrap();
 
         let candidates = report["candidates"].as_array().unwrap();
         assert_eq!(candidates.len(), 3, "requested 3 candidates");
         assert_eq!(report["requested_candidate_count"], 3);
         assert!(report["recommended_candidate_id"].is_string());
         assert_eq!(report["base_seed"], 42);
-        assert_eq!(report["generation_method"], "seeded repeated solve with exact-assignment exclusion");
+        assert_eq!(
+            report["generation_method"],
+            "seeded repeated solve with exact-assignment exclusion"
+        );
 
         // Every candidate is distinct, hard-validated, and carries the
         // reproducibility + diversity metadata.
@@ -3891,8 +3992,12 @@ mod tests {
             assert!(candidate["seed"].is_u64());
             assert!(candidate["total_cost"].is_number());
             assert!(candidate["distance_to_best"].is_number());
-            let assignment: Vec<[usize; 2]> = serde_json::from_value(candidate["assignment"].clone()).unwrap();
-            assert!(!assignments.contains(&assignment), "candidates must be distinct");
+            let assignment: Vec<[usize; 2]> =
+                serde_json::from_value(candidate["assignment"].clone()).unwrap();
+            assert!(
+                !assignments.contains(&assignment),
+                "candidates must be distinct"
+            );
             assignments.push(assignment);
         }
     }
@@ -3913,7 +4018,8 @@ mod tests {
             {"assignments": [{"student_key":"S1","seat_id":"R1C1"},{"student_key":"S2","seat_id":"R1C2"}]},
             {"assignments": [{"student_key":"S1","seat_id":"R1C2"},{"student_key":"S2","seat_id":"R1C1"}]}
         ]"#;
-        let report: Value = serde_json::from_str(&history_report_json(request, snapshots).unwrap()).unwrap();
+        let report: Value =
+            serde_json::from_str(&history_report_json(request, snapshots).unwrap()).unwrap();
         assert_eq!(report["history_count"], 2);
         assert_eq!(report["student_count"], 2);
         // Both students sat in the front zone in both periods.
@@ -3942,7 +4048,8 @@ mod tests {
             {"assignments": [{"student_key":"S1","seat_id":"R1C1"},{"student_key":"S2","seat_id":"R1C2"},{"student_key":"S3","seat_id":"R1C3"}]},
             {"assignments": [{"student_key":"S1","seat_id":"R1C1"},{"student_key":"S2","seat_id":"R1C2"},{"student_key":"S3","seat_id":"R1C3"}]}
         ]"#;
-        let report: Value = serde_json::from_str(&pair_report_json(request, snapshots, 10, 2).unwrap()).unwrap();
+        let report: Value =
+            serde_json::from_str(&pair_report_json(request, snapshots, 10, 2).unwrap()).unwrap();
         assert_eq!(report["history_count"], 2);
         assert!(report["pair_count"].as_u64().unwrap() >= 1);
         assert!(report["repeated_pair_count"].as_u64().unwrap() >= 1);
@@ -4020,8 +4127,14 @@ mod tests {
         assert!(err.contains("unknown"), "{err}");
 
         // Affected and locked cannot overlap.
-        let err = repair_json(request, snapshot, &["S1".to_string()], &["S1".to_string()], &[])
-            .unwrap_err();
+        let err = repair_json(
+            request,
+            snapshot,
+            &["S1".to_string()],
+            &["S1".to_string()],
+            &[],
+        )
+        .unwrap_err();
         assert!(err.contains("cannot also be locked"), "{err}");
 
         // A locked seat must be known.

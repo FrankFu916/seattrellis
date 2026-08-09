@@ -302,7 +302,10 @@ struct RequestFragment<'a> {
 
 /// The canonical ids of every built-in template, in ascending capacity order.
 pub fn list_room_template_ids() -> Vec<&'static str> {
-    STANDARD_ROOM_TEMPLATES.iter().map(|spec| spec.template_id).collect()
+    STANDARD_ROOM_TEMPLATES
+        .iter()
+        .map(|spec| spec.template_id)
+        .collect()
 }
 
 /// Expand a built-in classroom template into a [`RoomGrid`].
@@ -397,9 +400,10 @@ fn derive_edges(layout: &Layout, enabled: &[&Seat]) -> Vec<[usize; 2]> {
         .map(|(index, seat)| (seat.seat_id.as_str(), index))
         .collect();
     for (first_id, second_id) in &adjacency.custom_edges {
-        if let (Some(&first), Some(&second)) =
-            (index_by_id.get(first_id.as_str()), index_by_id.get(second_id.as_str()))
-        {
+        if let (Some(&first), Some(&second)) = (
+            index_by_id.get(first_id.as_str()),
+            index_by_id.get(second_id.as_str()),
+        ) {
             if !edges.contains(&[first, second]) {
                 edges.push([first, second]);
             }
@@ -569,13 +573,21 @@ mod tests {
     #[test]
     fn aisle_is_a_disabled_cell_not_a_seat() {
         let grid = grid("standard-30");
-        let aisle = grid.layout.seat_by_id("AISLE-R1C4").expect("aisle cell exists");
+        let aisle = grid
+            .layout
+            .seat_by_id("AISLE-R1C4")
+            .expect("aisle cell exists");
         assert!(!aisle.enabled);
         assert_eq!(aisle.row, 1);
         assert_eq!(aisle.col, 4);
         assert_eq!(aisle.zone.as_deref(), Some("aisle"));
         // One disabled aisle per row, always at the grid column after logical 3.
-        let disabled: Vec<&Seat> = grid.layout.seats.iter().filter(|seat| !seat.enabled).collect();
+        let disabled: Vec<&Seat> = grid
+            .layout
+            .seats
+            .iter()
+            .filter(|seat| !seat.enabled)
+            .collect();
         assert_eq!(disabled.len(), 5);
         for seat in &disabled {
             assert_eq!(seat.col, 4, "aisle splits row {} at column 4", seat.row);
@@ -623,7 +635,11 @@ mod tests {
     fn seat_positions_map_to_grid_coordinates() {
         let grid = grid("standard-30");
         assert_eq!(grid.seat_positions[0], [1.0, 1.0], "row 1 leftmost");
-        assert_eq!(grid.seat_positions[6], [1.0, 2.0], "row 2 starts at index 6");
+        assert_eq!(
+            grid.seat_positions[6],
+            [1.0, 2.0],
+            "row 2 starts at index 6"
+        );
         assert_eq!(grid.seat_positions[29], [7.0, 5.0], "last row rightmost");
         // seat_positions must be exactly the enabled seats, in layout order.
         let from_layout: Vec<[f64; 2]> = grid
@@ -638,9 +654,16 @@ mod tests {
     #[test]
     fn aliases_resolve_to_the_same_template() {
         let canonical = grid("standard-30");
-        for alias in ["standard-30", "30", "30-seat", "30-seats", "STANDARD_30", " standard-30 ", "30_SEAT"] {
-            let grid = room_template_grid(alias)
-                .unwrap_or_else(|error| panic!("{alias}: {error}"));
+        for alias in [
+            "standard-30",
+            "30",
+            "30-seat",
+            "30-seats",
+            "STANDARD_30",
+            " standard-30 ",
+            "30_SEAT",
+        ] {
+            let grid = room_template_grid(alias).unwrap_or_else(|error| panic!("{alias}: {error}"));
             assert_eq!(grid.layout_id, "standard-30", "alias {alias:?}");
             assert_eq!(grid.seat_positions.len(), 30);
             assert_eq!(grid.name, canonical.name);
@@ -755,7 +778,10 @@ mod tests {
         assert_eq!(first["near_platform"], true);
         assert_eq!(first["near_window"], true);
         assert_eq!(first["near_door"], false);
-        let aisle = value["seats"].as_array().unwrap().iter()
+        let aisle = value["seats"]
+            .as_array()
+            .unwrap()
+            .iter()
             .find(|seat| seat["seat_id"] == "AISLE-R1C4")
             .expect("aisle present");
         assert_eq!(aisle["enabled"], false);

@@ -18,6 +18,8 @@ categories = ["command-line-utilities", "mathematics"]
 # is hand-written straight into the binary (no extra crate) to stay small.
 [dependencies]
 seattrellis_core = { path = "../seattrellis_core", version = "0.1" }
+seattrellis-io = { path = "../../crates/seattrellis-io" }
+seattrellis-export = { path = "../../crates/seattrellis-export" }
 serde_json = "1"
 png = "0.17"
 

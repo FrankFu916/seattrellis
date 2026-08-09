@@ -141,15 +141,24 @@ impl Default for SoftRules {
 }
 
 fn default_vision_front() -> WeightedRule {
-    WeightedRule { enabled: true, weight: 20 }
+    WeightedRule {
+        enabled: true,
+        weight: 20,
+    }
 }
 
 fn default_height_back() -> WeightedRule {
-    WeightedRule { enabled: true, weight: 1 }
+    WeightedRule {
+        enabled: true,
+        weight: 1,
+    }
 }
 
 fn default_randomize() -> WeightedRule {
-    WeightedRule { enabled: true, weight: 1 }
+    WeightedRule {
+        enabled: true,
+        weight: 1,
+    }
 }
 
 /// An enabled flag + non-negative weight shared by most soft rules.

@@ -107,8 +107,14 @@ fn main() -> ExitCode {
     };
 
     let url = format!("http://{}/", server.addr());
-    println!("[seattrellis] SeatTrellis desktop backend (v{})", env!("CARGO_PKG_VERSION"));
-    println!("[seattrellis] serving workbench from {}", config.web_root.display());
+    println!(
+        "[seattrellis] SeatTrellis desktop backend (v{})",
+        env!("CARGO_PKG_VERSION")
+    );
+    println!(
+        "[seattrellis] serving workbench from {}",
+        config.web_root.display()
+    );
     println!("[seattrellis] workbench URL: {url}");
     println!("[seattrellis] health:        {url}api/v1/health");
     println!("[seattrellis] solve:         POST {url}api/v1/classes/generate");
@@ -120,7 +126,10 @@ fn main() -> ExitCode {
         }
     }
 
-    println!("[seattrellis] listening on {} (Ctrl-C to quit)", server.addr());
+    println!(
+        "[seattrellis] listening on {} (Ctrl-C to quit)",
+        server.addr()
+    );
     match server.serve() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

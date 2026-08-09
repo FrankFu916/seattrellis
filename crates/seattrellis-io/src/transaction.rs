@@ -50,8 +50,12 @@ impl FileTransaction {
     /// Begin a transaction rooted at `journal_dir`. The journal file records
     /// every staged replacement so a crash mid-transaction is recoverable.
     pub fn begin(journal_dir: &Path) -> Result<FileTransaction, String> {
-        fs::create_dir_all(journal_dir)
-            .map_err(|error| format!("cannot create journal dir {}: {error}", journal_dir.display()))?;
+        fs::create_dir_all(journal_dir).map_err(|error| {
+            format!(
+                "cannot create journal dir {}: {error}",
+                journal_dir.display()
+            )
+        })?;
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
@@ -110,10 +114,7 @@ impl FileTransaction {
 
     /// Commit: validate (optional), backup, replace, reread. On any failure
     /// the transaction rolls back and the error is returned.
-    pub fn commit(
-        mut self,
-        validate: impl Fn(&Path) -> Result<(), String>,
-    ) -> Result<(), String> {
+    pub fn commit(mut self, validate: impl Fn(&Path) -> Result<(), String>) -> Result<(), String> {
         let result = self.commit_inner(&validate);
         if result.is_err() {
             let _ = self.rollback();
@@ -125,7 +126,10 @@ impl FileTransaction {
         Ok(())
     }
 
-    fn commit_inner(&mut self, validate: &impl Fn(&Path) -> Result<(), String>) -> Result<(), String> {
+    fn commit_inner(
+        &mut self,
+        validate: &impl Fn(&Path) -> Result<(), String>,
+    ) -> Result<(), String> {
         // validate every staged temp first: nothing is touched until the
         // whole batch validates.
         for step in &self.steps {
@@ -143,9 +147,8 @@ impl FileTransaction {
             }
         }
         for step in &self.steps {
-            fs::rename(&step.temp, &step.target).map_err(|error| {
-                format!("cannot replace {}: {error}", step.target.display())
-            })?;
+            fs::rename(&step.temp, &step.target)
+                .map_err(|error| format!("cannot replace {}: {error}", step.target.display()))?;
         }
         // reread: the caller's validator runs on the final paths too.
         for step in &self.steps {

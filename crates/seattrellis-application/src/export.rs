@@ -29,7 +29,9 @@ pub fn export_draft(
         .and_then(Value::as_str)
         .unwrap_or_default();
     if draft_id.is_empty() {
-        return Err(AppError::bad_request("export request is missing a 'draft_id'"));
+        return Err(AppError::bad_request(
+            "export request is missing a 'draft_id'",
+        ));
     }
 
     let request_value = match solve_requests.lock() {
@@ -120,9 +122,10 @@ pub(crate) fn export_response_value(request_value: &Value, state: &editing::Edit
     let mut assignment: Vec<[usize; 2]> = Vec::new();
     for student in &state.students {
         if let Some(seat_id) = &student.seat_id {
-            if let (Some(&student_idx), Some(&seat_idx)) =
-                (student_index.get(&student.student_key), seat_index.get(seat_id))
-            {
+            if let (Some(&student_idx), Some(&seat_idx)) = (
+                student_index.get(&student.student_key),
+                seat_index.get(seat_id),
+            ) {
                 assignment.push([student_idx, seat_idx]);
             }
         }

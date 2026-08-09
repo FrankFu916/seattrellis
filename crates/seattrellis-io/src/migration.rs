@@ -215,14 +215,19 @@ fn detect_artifact(data: &Value, source: &str) -> Result<ArtifactKind, String> {
     {
         return Ok(ArtifactKind::Snapshot);
     }
-    if object.contains_key("students") && object.contains_key("layout") && object.contains_key("rules")
+    if object.contains_key("students")
+        && object.contains_key("layout")
+        && object.contains_key("rules")
     {
         return Ok(ArtifactKind::Project);
     }
     // A ruleset carries only schema metadata plus {seed, hard, soft, groups}.
-    let is_ruleset = object
-        .keys()
-        .all(|key| matches!(key.as_str(), "schema_version" | "seed" | "hard" | "soft" | "groups"));
+    let is_ruleset = object.keys().all(|key| {
+        matches!(
+            key.as_str(),
+            "schema_version" | "seed" | "hard" | "soft" | "groups"
+        )
+    });
     let has_ruleset_data = ["seed", "hard", "soft", "groups"]
         .iter()
         .any(|key| object.contains_key(*key));
@@ -316,7 +321,9 @@ fn merge_normalized(original: &Value, normalized: &Value) -> Value {
             }
             Value::Object(merged)
         }
-        (Value::Array(original), Value::Array(normalized)) if original.len() == normalized.len() => {
+        (Value::Array(original), Value::Array(normalized))
+            if original.len() == normalized.len() =>
+        {
             let merged: Vec<Value> = original
                 .iter()
                 .zip(normalized.iter())
@@ -459,9 +466,12 @@ fn parent_of(path: &Path) -> &Path {
 
 /// Reject reference paths that escape the project workspace.
 fn is_traversal(reference: &str) -> bool {
-    Path::new(reference)
-        .components()
-        .any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+    Path::new(reference).components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    })
 }
 
 /// Check every file or directory a project file references.
@@ -615,14 +625,21 @@ fn write_temp_then_rename(
             }
         })?;
     let mut file = file;
-    let mut bytes = serde_json::to_vec_pretty(data)
-        .map_err(|error| TempWriteError::Other(format!("Could not serialize migrated JSON: {error}")))?;
+    let mut bytes = serde_json::to_vec_pretty(data).map_err(|error| {
+        TempWriteError::Other(format!("Could not serialize migrated JSON: {error}"))
+    })?;
     bytes.push(b'\n');
     file.write_all(&bytes).map_err(|error| {
-        TempWriteError::Other(format!("Could not write migrated JSON file {}: {error}", output.display()))
+        TempWriteError::Other(format!(
+            "Could not write migrated JSON file {}: {error}",
+            output.display()
+        ))
     })?;
     file.sync_all().map_err(|error| {
-        TempWriteError::Other(format!("Could not flush migrated JSON file {}: {error}", output.display()))
+        TempWriteError::Other(format!(
+            "Could not flush migrated JSON file {}: {error}",
+            output.display()
+        ))
     })?;
     drop(file);
     if let Some(mode) = existing_mode {
@@ -644,8 +661,12 @@ fn write_temp_then_rename(
 
 /// Write a complete sibling file before atomically replacing the destination.
 fn write_json_atomic(data: &Value, output: &Path) -> Result<(), String> {
-    fs::create_dir_all(parent_of(output))
-        .map_err(|error| format!("Could not prepare migrated JSON file {}: {error}", output.display()))?;
+    fs::create_dir_all(parent_of(output)).map_err(|error| {
+        format!(
+            "Could not prepare migrated JSON file {}: {error}",
+            output.display()
+        )
+    })?;
     let existing_mode = fs::metadata(output)
         .ok()
         .and_then(|metadata| existing_permission_mode(&metadata));
@@ -757,7 +778,11 @@ fn validate_written_artifact(path: &Path) -> Result<(), String> {
 }
 
 /// Undo one migration whose post-write validation failed.
-fn rollback_single_write(backup_path: &Option<PathBuf>, output_path: &Option<PathBuf>, in_place: bool) {
+fn rollback_single_write(
+    backup_path: &Option<PathBuf>,
+    output_path: &Option<PathBuf>,
+    in_place: bool,
+) {
     let Some(output) = output_path else {
         return;
     };
@@ -769,7 +794,11 @@ fn rollback_single_write(backup_path: &Option<PathBuf>, output_path: &Option<Pat
 }
 
 /// Validate, normalize, and (optionally) write one project artifact.
-fn migrate_internal(source: &Path, in_place: bool, dry_run: bool) -> Result<MigrationResponse, String> {
+fn migrate_internal(
+    source: &Path,
+    in_place: bool,
+    dry_run: bool,
+) -> Result<MigrationResponse, String> {
     if !source.is_file() {
         return Err(format!(
             "The selected project artifact does not exist: {}",
@@ -813,10 +842,7 @@ fn migrate_internal(source: &Path, in_place: bool, dry_run: bool) -> Result<Migr
         Vec::new()
     };
 
-    let schema_version = merged
-        .get("schema_version")
-        .cloned()
-        .unwrap_or(Value::Null);
+    let schema_version = merged.get("schema_version").cloned().unwrap_or(Value::Null);
 
     Ok(MigrationResponse {
         api_version: API_VERSION,
@@ -1046,7 +1072,10 @@ fn migrate_contents(source: &Path, in_place: bool) -> Result<ComputedMigration, 
 /// atomically. A mid-batch failure rolls the whole batch back; a crashed
 /// process leaves a journal that `recover_leftover_transactions` repairs on
 /// the next batch.
-pub fn migration_batch_apply_json(project_paths: &[String], in_place: bool) -> Result<String, String> {
+pub fn migration_batch_apply_json(
+    project_paths: &[String],
+    in_place: bool,
+) -> Result<String, String> {
     validate_batch_paths(project_paths)?;
     let preview = migration_batch_preview_inner(project_paths)?;
     if !preview.ready {
@@ -1074,11 +1103,16 @@ pub fn migration_batch_apply_json(project_paths: &[String], in_place: bool) -> R
             format!("The migration batch was not completed; no changes were written: {error}")
         })?;
     }
-    transaction.commit(validate_written_artifact).map_err(|error| {
-        format!("The migration batch was not completed; no changes were written: {error}")
-    })?;
+    transaction
+        .commit(validate_written_artifact)
+        .map_err(|error| {
+            format!("The migration batch was not completed; no changes were written: {error}")
+        })?;
 
-    let applied: Vec<MigrationResponse> = planned.into_iter().map(|(response, _, _)| response).collect();
+    let applied: Vec<MigrationResponse> = planned
+        .into_iter()
+        .map(|(response, _, _)| response)
+        .collect();
     let response = BatchResponse {
         api_version: API_VERSION,
         projects: applied,
@@ -1112,7 +1146,9 @@ pub fn migration_restore_json(backup_path: &str, destination: &str) -> Result<St
         .unwrap_or_default();
     let expected_prefix = format!("{destination_name}.bak");
     if !backup_name.starts_with(&expected_prefix) {
-        return Err("The migration backup does not belong to the selected project artifact.".to_string());
+        return Err(
+            "The migration backup does not belong to the selected project artifact.".to_string(),
+        );
     }
     let safety_backup = restore_backup(backup, destination, true)?;
     let restored = read_json_file(destination)?;
@@ -1126,7 +1162,9 @@ pub fn migration_restore_json(backup_path: &str, destination: &str) -> Result<St
         project_path: destination.display().to_string(),
         source_path: destination.display().to_string(),
         backup_path: backup.display().to_string(),
-        safety_backup_path: safety_backup.as_ref().map(|path| path.display().to_string()),
+        safety_backup_path: safety_backup
+            .as_ref()
+            .map(|path| path.display().to_string()),
         artifact: kind.label().to_string(),
         schema_version,
         restored_valid: true,
@@ -1234,8 +1272,17 @@ mod tests {
             .iter()
             .map(|change| change["path"].as_str().unwrap())
             .collect();
-        for expected in ["kind", "schema_version", "default_candidates", "default_candidate", "default_export_format"] {
-            assert!(paths.contains(&expected), "missing change for {expected}: {paths:?}");
+        for expected in [
+            "kind",
+            "schema_version",
+            "default_candidates",
+            "default_candidate",
+            "default_export_format",
+        ] {
+            assert!(
+                paths.contains(&expected),
+                "missing change for {expected}: {paths:?}"
+            );
         }
         assert!(changes.iter().all(|change| change["change"] == "added"));
         let checks = value["reference_checks"].as_array().unwrap();
@@ -1255,7 +1302,10 @@ mod tests {
 
         let scalar = dir.write("scalar.json", r#"[1, 2, 3]"#);
         let error = migration_preview_json(&scalar.display().to_string()).unwrap_err();
-        assert!(error.contains("top-level value must be an object"), "unexpected: {error}");
+        assert!(
+            error.contains("top-level value must be an object"),
+            "unexpected: {error}"
+        );
     }
 
     #[test]
@@ -1275,7 +1325,10 @@ mod tests {
         let value: Value = serde_json::from_str(&json).unwrap();
         assert!(!value["dry_run"].as_bool().unwrap());
         let output = value["output_path"].as_str().unwrap().to_string();
-        assert!(output.ends_with("project.migrated.json"), "unexpected output: {output}");
+        assert!(
+            output.ends_with("project.migrated.json"),
+            "unexpected output: {output}"
+        );
         assert!(Path::new(&output).is_file());
         assert!(value["backup_path"].is_null());
         assert_eq!(value["after_valid"].as_bool(), Some(true));
@@ -1283,8 +1336,7 @@ mod tests {
         // The source artifact is left untouched.
         assert_eq!(fs::read_to_string(&project).unwrap(), original_source);
         // The output carries the normalized fields.
-        let written: Value =
-            serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+        let written: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
         assert_eq!(written["kind"], "seattrellis_project");
         assert_eq!(written["schema_version"], 1);
         assert_eq!(written["default_candidates"], 5);
@@ -1297,9 +1349,15 @@ mod tests {
         let original_source = fs::read_to_string(&project).unwrap();
         let json = migration_apply_json(&project.display().to_string(), true).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(value["output_path"].as_str().unwrap(), value["source_path"].as_str().unwrap());
+        assert_eq!(
+            value["output_path"].as_str().unwrap(),
+            value["source_path"].as_str().unwrap()
+        );
         let backup = value["backup_path"].as_str().unwrap().to_string();
-        assert!(backup.ends_with("project.json.bak"), "unexpected backup: {backup}");
+        assert!(
+            backup.ends_with("project.json.bak"),
+            "unexpected backup: {backup}"
+        );
         assert!(Path::new(&backup).is_file());
         assert_eq!(fs::read_to_string(&backup).unwrap(), original_source);
         assert_eq!(value["after_valid"].as_bool(), Some(true));
@@ -1320,7 +1378,10 @@ mod tests {
         let json = migration_apply_json(&project.display().to_string(), false).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
         let output = value["output_path"].as_str().unwrap();
-        assert!(output.ends_with("project.migrated-2.json"), "unexpected: {output}");
+        assert!(
+            output.ends_with("project.migrated-2.json"),
+            "unexpected: {output}"
+        );
         assert!(Path::new(output).is_file());
     }
 
@@ -1498,7 +1559,10 @@ mod tests {
         fs::set_permissions(&dir_b, fs::Permissions::from_mode(0o755)).unwrap();
 
         let error = result.unwrap_err();
-        assert!(error.contains("no changes were written"), "unexpected: {error}");
+        assert!(
+            error.contains("no changes were written"),
+            "unexpected: {error}"
+        );
         // Nothing was written: the transaction never committed, so the first
         // project is untouched and no backup was created.
         assert_eq!(
@@ -1507,7 +1571,10 @@ mod tests {
         );
         assert!(!dir_a.join("project.json.bak").is_file());
         // The second project was never modified.
-        assert_eq!(fs::read_to_string(dir_b.join("project.json")).unwrap(), PROJECT_FIXTURE);
+        assert_eq!(
+            fs::read_to_string(dir_b.join("project.json")).unwrap(),
+            PROJECT_FIXTURE
+        );
     }
 
     #[test]
@@ -1528,22 +1595,31 @@ mod tests {
         let mut transaction = FileTransaction::begin(&journal_dir).unwrap();
         let target_a = dir_a.join("project.json");
         let target_b = dir_b.join("project.json");
-        transaction.stage(&target_a, b"{\"schema_version\": 1}").unwrap();
-        transaction.stage(&target_b, b"{\"schema_version\": 1}").unwrap();
+        transaction
+            .stage(&target_a, b"{\"schema_version\": 1}")
+            .unwrap();
+        transaction
+            .stage(&target_b, b"{\"schema_version\": 1}")
+            .unwrap();
         transaction.commit(|_| Ok(())).unwrap();
 
         // Simulate a crash between staging and commit of a second batch:
         // begin again, stage (creating temps + journal), then drop without
         // commit while a backup exists from the first commit.
         let mut crashed = FileTransaction::begin(&journal_dir).unwrap();
-        crashed.stage(&target_a, b"{\"schema_version\": 1, \"partial\": true}").unwrap();
+        crashed
+            .stage(&target_a, b"{\"schema_version\": 1, \"partial\": true}")
+            .unwrap();
         // Simulate a crash: forget the transaction so no rollback runs and
         // the journal + temps survive on disk, exactly like a killed process.
         std::mem::forget(crashed);
 
         // Recovery finds the leftover journal; the target is untouched.
         let recovered = recover_leftover_transactions(&journal_dir).unwrap();
-        assert!(recovered >= 1, "expected a leftover journal to be recovered");
+        assert!(
+            recovered >= 1,
+            "expected a leftover journal to be recovered"
+        );
         assert_eq!(
             parse_json(&fs::read_to_string(&target_a).unwrap()),
             parse_json(&original_a)
@@ -1567,7 +1643,10 @@ mod tests {
         assert_eq!(value["artifact"], "project");
         assert_eq!(value["schema_version"], 1);
         let safety = value["safety_backup_path"].as_str().unwrap();
-        assert!(safety.ends_with("project.json.pre-restore.bak"), "unexpected safety: {safety}");
+        assert!(
+            safety.ends_with("project.json.pre-restore.bak"),
+            "unexpected safety: {safety}"
+        );
         assert!(Path::new(safety).is_file());
         assert_eq!(
             parse_json(&fs::read_to_string(&project).unwrap()),
@@ -1625,7 +1704,10 @@ mod tests {
         assert!(value["changes"].as_array().unwrap().is_empty());
         assert!(value["reference_checks"].as_array().unwrap().is_empty());
 
-        let ruleset = dir.write("ruleset.json", r#"{"seed": 42, "hard": [], "soft": [], "groups": {}}"#);
+        let ruleset = dir.write(
+            "ruleset.json",
+            r#"{"seed": 42, "hard": [], "soft": [], "groups": {}}"#,
+        );
         let json = migration_preview_json(&ruleset.display().to_string()).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["artifact"], "ruleset");

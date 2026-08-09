@@ -11,8 +11,8 @@ use crate::class_generation::{
     build_history_json, frontend_class_request_to_core, new_draft_id, seat_id_for_index,
     seat_specs, student_keys, DEFAULT_SEED,
 };
-use seattrellis_domain::editing::{self, EditorDraftStore};
 use crate::{AppError, SolveRequestStore};
+use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of a rotation-plan request: the plan document plus an editable
 /// draft for the first period (the transport formats the response).
@@ -90,8 +90,7 @@ pub fn generate_rotation_plan(
         let mut period_request = core_request.clone();
         period_request["seed"] = json!(base_seed + period as u64 - 1);
         if !snapshots.is_empty() {
-            if let Some((history, pair_history)) =
-                build_history_json(&students, &grid, &snapshots)
+            if let Some((history, pair_history)) = build_history_json(&students, &grid, &snapshots)
             {
                 period_request["history"] = history;
                 period_request["pair_history"] = pair_history;
@@ -102,10 +101,8 @@ pub fn generate_rotation_plan(
             Ok(response) => response,
             Err(message) => return Err(AppError::solve_invalid_input(message)),
         };
-        let response: seattrellis_core::CoreSolveResponse =
-            serde_json::from_str(&response).map_err(|_| {
-                AppError::internal("core returned a malformed solve response")
-            })?;
+        let response: seattrellis_core::CoreSolveResponse = serde_json::from_str(&response)
+            .map_err(|_| AppError::internal("core returned a malformed solve response"))?;
         if !response.feasible {
             // Heuristic exhaustion / proven infeasibility on a period: the
             // plan cannot be completed; surface the honest status.

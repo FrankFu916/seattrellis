@@ -9,6 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
+use serde_json::json;
+
 use seattrellis_core::{
     audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
     precheck_report_json, repair_json, solve_problem_json, validate_solve_request_json,
@@ -17,11 +19,12 @@ use seattrellis_core::{
 
 use crate::render::SeatingGrid;
 use crate::style::Styler;
+use crate::ValidateArgs;
 use crate::{
     AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, HistoryReportArgs, PairReportArgs,
-    PrecheckArgs, RepairArgs, SolveArgs,
+    PrecheckArgs, ProjectArgs, RepairArgs, SolveArgs,
 };
-use crate::ValidateArgs;
+use seattrellis_export::export::export_plan;
 
 pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
     let styler = Styler::stdout();
@@ -50,7 +53,7 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
                 + problem.must_be_adjacent.len()
                 + problem.cannot_be_adjacent.len()
                 + problem.min_distance.len())
-                .to_string(),
+            .to_string(),
         )
     );
     Ok(())
@@ -58,6 +61,107 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
 
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
 /// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+/// `project-solve`: compile the project workspace into a solve request and
+/// run the solver (plan §5.5 project lifecycle).
+pub fn run_project_solve(args: &ProjectArgs) -> Result<SolveStatus, String> {
+    let mut request = crate::project::build_request(&args.project)?;
+    if let Some(seed) = args.seed {
+        request["seed"] = serde_json::Value::from(seed);
+    }
+    let request_json = serde_json::to_string(&request)
+        .map_err(|error| format!("could not serialize the compiled request: {error}"))?;
+    let response_json = solve_problem_json(&request_json)
+        .map_err(|error| format!("solver rejected the problem: {error}"))?;
+    let response: CoreSolveResponse = serde_json::from_str(&response_json)
+        .map_err(|error| format!("solver returned malformed JSON: {error}"))?;
+
+    let styler = Styler::stdout();
+    println!(
+        "{}: {}",
+        styler.bold("feasible"),
+        if response.feasible {
+            styler.green("true")
+        } else {
+            styler.red("false")
+        }
+    );
+    println!(
+        "{}: {}",
+        styler.bold("status"),
+        styler.cyan(response.status.as_str())
+    );
+    println!(
+        "{}: {}",
+        styler.bold("total_cost"),
+        styler.cyan(
+            &response
+                .total_cost
+                .map(|cost| cost.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        )
+    );
+    println!(
+        "{}: {}",
+        styler.bold("students seated"),
+        styler.cyan(&response.assignment.len().to_string())
+    );
+    if let Some(output) = &args.output {
+        std::fs::write(output, &response_json)
+            .map_err(|error| format!("could not write {}: {error}", output.display()))?;
+        println!("wrote result JSON to '{}'", output.display());
+    }
+    Ok(response.status)
+}
+
+/// `project-export`: solve the project workspace and render the requested
+/// format to the output file (plan §5.5 project lifecycle).
+pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
+    let format = args
+        .format
+        .as_deref()
+        .ok_or("project-export requires --format <svg|html|png|pdf>")?;
+    let output = args
+        .output
+        .clone()
+        .ok_or("project-export requires --output <file>")?;
+    let mut request = crate::project::build_request(&args.project)?;
+    if let Some(seed) = args.seed {
+        request["seed"] = serde_json::Value::from(seed);
+    }
+    let request_json = serde_json::to_string(&request)
+        .map_err(|error| format!("could not serialize the compiled request: {error}"))?;
+    let response_json = solve_problem_json(&request_json)
+        .map_err(|error| format!("solver rejected the problem: {error}"))?;
+
+    let export_document = json!({
+        "draft_id": "project-export",
+        "format": format,
+        "template": "teacher",
+        "privacy": {
+            "hide_scores": false, "hide_notes": false, "hide_special_needs": false,
+            "anonymize": false, "show_height": true, "show_vision": true
+        },
+        "orientation": "portrait",
+        "page_scale": 1.0,
+        "locale": "zh",
+        "show_student_ids": true,
+        "request": serde_json::from_str::<serde_json::Value>(&request_json)
+            .map_err(|error| format!("request re-encode failed: {error}"))?,
+        "response": serde_json::from_str::<serde_json::Value>(&response_json)
+            .map_err(|error| format!("response re-encode failed: {error}"))?,
+    });
+    let export_json = serde_json::to_string(&export_document)
+        .map_err(|error| format!("could not serialize the export request: {error}"))?;
+    let bytes =
+        seattrellis_core::solve_problem_json(&request_json).map_err(|error| error.to_string())?;
+    let _ = bytes;
+    let bytes = export_plan(&export_json).map_err(|error| error.to_string())?;
+    std::fs::write(&output, &bytes)
+        .map_err(|error| format!("could not write {}: {error}", output.display()))?;
+    println!("wrote {} to '{}'", format, output.display());
+    Ok(())
+}
+
 /// Re-solve a snapshot while preserving requested anchors (D.11 repair).
 pub fn run_repair(args: &RepairArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
@@ -203,7 +307,11 @@ pub fn run_solve(args: &SolveArgs) -> Result<SolveStatus, String> {
         styler.bold("students seated"),
         styler.cyan(&response.assignment.len().to_string())
     );
-    println!("{}: {}", styler.bold("status"), styler.cyan(response.status.as_str()));
+    println!(
+        "{}: {}",
+        styler.bold("status"),
+        styler.cyan(response.status.as_str())
+    );
 
     if let Some(output) = &args.output {
         let pretty = serde_json::to_string_pretty(&response)

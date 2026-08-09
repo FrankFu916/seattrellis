@@ -11,11 +11,11 @@ use std::time::SystemTime;
 use serde_json::{json, Value};
 
 use crate::{AppError, SolveRequestStore};
-use seattrellis_domain::editing::{self, EditorDraftStore, EditorSeatSpec};
 use seattrellis_core::cost::{
     classify_seat_position, detect_neighbor_relation_types, student_pair_key,
 };
 use seattrellis_core::CoreSolveRequest;
+use seattrellis_domain::editing::{self, EditorDraftStore, EditorSeatSpec};
 
 /// The result of a class-generation request: everything the transport layer
 /// needs to format the response (the 409/200 split is DTO formatting, M1-02).
@@ -37,7 +37,6 @@ pub fn generate_class(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
 ) -> Result<GenerateClassOutcome, AppError> {
-
     // Expand the workbench's GenerateClassRequest into the core solve shape;
     // anything without a `draft.room.template_id` is already a CoreSolveRequest.
     let (core_request, goal_id) = if is_frontend_class_request(raw_request) {
@@ -53,7 +52,11 @@ pub fn generate_class(
 
     let request: CoreSolveRequest = match serde_json::from_value(core_request.clone()) {
         Ok(request) => request,
-        Err(_) => return Err(AppError::bad_request("request body is not a valid solve problem")),
+        Err(_) => {
+            return Err(AppError::bad_request(
+                "request body is not a valid solve problem",
+            ))
+        }
     };
 
     let response = match seattrellis_core::solve_problem(&request) {
@@ -169,11 +172,15 @@ pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, App
     let room = draft
         .get("room")
         .and_then(Value::as_object)
-        .ok_or_else(|| AppError::unprocessable("invalid_class_draft", "missing 'draft.room' object"))?;
+        .ok_or_else(|| {
+            AppError::unprocessable("invalid_class_draft", "missing 'draft.room' object")
+        })?;
     let goal = draft
         .get("goal")
         .and_then(Value::as_object)
-        .ok_or_else(|| AppError::unprocessable("invalid_class_draft", "missing 'draft.goal' object"))?;
+        .ok_or_else(|| {
+            AppError::unprocessable("invalid_class_draft", "missing 'draft.goal' object")
+        })?;
 
     // Room source: a built-in template id or an explicit custom layout.
     let grid = if let Some(layout) = room.get("layout") {
@@ -210,7 +217,10 @@ pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, App
         {
             Some(custom_rules) => custom_rules.clone(),
             None => {
-                return Err(AppError::unprocessable("invalid_class_draft", "the custom goal requires draft.goal.custom_rules",))
+                return Err(AppError::unprocessable(
+                    "invalid_class_draft",
+                    "the custom goal requires draft.goal.custom_rules",
+                ))
             }
         }
     } else {
@@ -224,7 +234,10 @@ pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, App
     // the base rules, mirroring `presets._deep_merge`.
     if let Some(overlay) = goal.get("rules_overlay") {
         if !overlay.is_object() {
-            return Err(AppError::unprocessable("invalid_class_draft", "rules_overlay must be an object",));
+            return Err(AppError::unprocessable(
+                "invalid_class_draft",
+                "rules_overlay must be an object",
+            ));
         }
         deep_merge_value(&mut rules, overlay);
     }
@@ -275,8 +288,8 @@ pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, App
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let (history, pair_history) =
-        build_history_json(&students, &grid, &history_snapshots).unwrap_or((Value::Null, Value::Null));
+    let (history, pair_history) = build_history_json(&students, &grid, &history_snapshots)
+        .unwrap_or((Value::Null, Value::Null));
 
     let mut request = json!({
         "api_version": 2,
@@ -315,10 +328,7 @@ fn resolve_hard_rules(
     students: &[Value],
     grid: &seattrellis_domain::room_templates::RoomGrid,
 ) -> Result<ResolvedHardRules, AppError> {
-    let Some(hard) = goal
-        .get("hard_rules")
-        .filter(|value| !value.is_null())
-    else {
+    let Some(hard) = goal.get("hard_rules").filter(|value| !value.is_null()) else {
         return Ok(ResolvedHardRules {
             fixed_seats: Vec::new(),
             must_be_adjacent: Vec::new(),
@@ -327,7 +337,10 @@ fn resolve_hard_rules(
         });
     };
     if !hard.is_object() {
-        return Err(AppError::unprocessable("invalid_class_draft", "hard_rules must be an object",));
+        return Err(AppError::unprocessable(
+            "invalid_class_draft",
+            "hard_rules must be an object",
+        ));
     }
 
     let student_index: HashMap<&str, usize> = students
@@ -353,11 +366,15 @@ fn resolve_hard_rules(
         let student = entry.get("student").and_then(Value::as_str).unwrap_or("");
         let seat_id = entry.get("seat_id").and_then(Value::as_str).unwrap_or("");
         let student_index = *student_index.get(student).ok_or_else(|| {
-            AppError::unprocessable("invalid_class_draft", format!("hard rule references unknown student {student:?}"),
+            AppError::unprocessable(
+                "invalid_class_draft",
+                format!("hard rule references unknown student {student:?}"),
             )
         })?;
         let seat_index = *seat_index.get(seat_id).ok_or_else(|| {
-            AppError::unprocessable("invalid_class_draft", format!("hard rule references unknown seat {seat_id:?}"),
+            AppError::unprocessable(
+                "invalid_class_draft",
+                format!("hard rule references unknown seat {seat_id:?}"),
             )
         })?;
         fixed_seats.push([student_index, seat_index]);
@@ -369,7 +386,12 @@ fn resolve_hard_rules(
         ("must_be_adjacent", &mut must_be_adjacent),
         ("cannot_be_adjacent", &mut cannot_be_adjacent),
     ] {
-        for entry in hard.get(field).and_then(Value::as_array).into_iter().flatten() {
+        for entry in hard
+            .get(field)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             let pair = resolve_student_pair(entry, &student_index)?;
             out.push(pair);
         }
@@ -388,7 +410,10 @@ fn resolve_hard_rules(
             .and_then(Value::as_f64)
             .filter(|value| value.is_finite() && *value > 0.0)
             .ok_or_else(|| {
-                AppError::unprocessable("invalid_class_draft", "min_distance needs a positive distance")
+                AppError::unprocessable(
+                    "invalid_class_draft",
+                    "min_distance needs a positive distance",
+                )
             })?;
         let metric = match entry.get("metric").and_then(Value::as_str) {
             Some("euclidean") => "euclidean",
@@ -424,15 +449,22 @@ fn resolve_student_pair(
     let first = names.first().and_then(Value::as_str).unwrap_or("");
     let second = names.get(1).and_then(Value::as_str).unwrap_or("");
     let first_index = *student_index.get(first).ok_or_else(|| {
-        AppError::unprocessable("invalid_class_draft", format!("pair rule references unknown student {first:?}"),
+        AppError::unprocessable(
+            "invalid_class_draft",
+            format!("pair rule references unknown student {first:?}"),
         )
     })?;
     let second_index = *student_index.get(second).ok_or_else(|| {
-        AppError::unprocessable("invalid_class_draft", format!("pair rule references unknown student {second:?}"),
+        AppError::unprocessable(
+            "invalid_class_draft",
+            format!("pair rule references unknown student {second:?}"),
         )
     })?;
     if first_index == second_index {
-        return Err(AppError::unprocessable("invalid_class_draft", "a pair rule must reference two different students",));
+        return Err(AppError::unprocessable(
+            "invalid_class_draft",
+            "a pair rule must reference two different students",
+        ));
     }
     Ok([first_index.min(second_index), first_index.max(second_index)])
 }
@@ -441,7 +473,10 @@ fn resolve_student_pair(
 /// [`core_student_value`]: `student_id` if present, else `name`, falling back
 /// to the already-mapped `key` when the record is core-shaped).
 pub(crate) fn core_student_key(student: &Value) -> Option<&str> {
-    let student_id = student.get("student_id").and_then(Value::as_str).unwrap_or("");
+    let student_id = student
+        .get("student_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let name = student.get("name").and_then(Value::as_str).unwrap_or("");
     if !student_id.is_empty() {
         Some(student_id)
@@ -458,7 +493,8 @@ pub(crate) fn core_student_key(student: &Value) -> Option<&str> {
 /// Recursive deep merge: object values merge key-by-key, any other value
 /// replaces the target (mirrors `presets._deep_merge`).
 fn deep_merge_value(target: &mut Value, patch: &Value) {
-    let (Some(target_object), Some(patch_object)) = (target.as_object_mut(), patch.as_object()) else {
+    let (Some(target_object), Some(patch_object)) = (target.as_object_mut(), patch.as_object())
+    else {
         *target = patch.clone();
         return;
     };
@@ -553,13 +589,8 @@ pub fn build_history_json(
             for second in (first + 1)..known.len() {
                 let (first_key, first_seat) = known[first];
                 let (second_key, second_seat) = known[second];
-                let relations = detect_neighbor_relation_types(
-                    first_seat,
-                    second_seat,
-                    &core_layout,
-                    None,
-                    2,
-                );
+                let relations =
+                    detect_neighbor_relation_types(first_seat, second_seat, &core_layout, None, 2);
                 if relations.is_empty() {
                     continue;
                 }
@@ -603,9 +634,16 @@ pub(crate) const DEFAULT_SEED: u64 = 42;
 fn core_student_value(student: &Value) -> Value {
     let mut result = serde_json::Map::new();
     // The core `key` mirrors Python's `student_id or name or ""`.
-    let student_id = student.get("student_id").and_then(Value::as_str).unwrap_or("");
+    let student_id = student
+        .get("student_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let name = student.get("name").and_then(Value::as_str).unwrap_or("");
-    let key = if !student_id.is_empty() { student_id } else { name };
+    let key = if !student_id.is_empty() {
+        student_id
+    } else {
+        name
+    };
     if !key.is_empty() {
         result.insert("key".to_string(), json!(key));
     }

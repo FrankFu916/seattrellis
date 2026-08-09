@@ -42,7 +42,10 @@ const SCHEMA_ARTIFACTS: &[(&str, ArtifactKind)] = &[
     ("ruleset", ArtifactKind::RuleSet),
     ("snapshot", ArtifactKind::SeatingSnapshot),
     ("project", ArtifactKind::Project),
-    ("project-bundle-manifest", ArtifactKind::ProjectBundleManifest),
+    (
+        "project-bundle-manifest",
+        ArtifactKind::ProjectBundleManifest,
+    ),
 ];
 
 fn repo_root() -> PathBuf {
@@ -89,12 +92,8 @@ fn schema_artifacts() -> Vec<(String, String)> {
         .iter()
         .map(|(slug, kind)| {
             let schema = match kind {
-                ArtifactKind::StudentRoster => {
-                    schema_for_envelope::<StudentRoster>(kind)
-                }
-                ArtifactKind::ClassroomLayout => {
-                    schema_for_envelope::<ClassroomLayout>(kind)
-                }
+                ArtifactKind::StudentRoster => schema_for_envelope::<StudentRoster>(kind),
+                ArtifactKind::ClassroomLayout => schema_for_envelope::<ClassroomLayout>(kind),
                 ArtifactKind::RuleSet => schema_for_envelope::<RuleSetArtifact>(kind),
                 ArtifactKind::SeatingSnapshot => {
                     schema_for_envelope::<SeatingSnapshotArtifact>(kind)
@@ -476,7 +475,8 @@ fn main() -> ExitCode {
             eprintln!("unknown xtask command; expected `contract`");
             ExitCode::from(2)
         }
-    }}
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -488,10 +488,9 @@ mod tests {
     fn generated_schemas_validate_against_the_metaschema() {
         // Vendored copy of https://json-schema.org/draft-07/schema so the
         // check runs offline in CI.
-        let metaschema: serde_json::Value = serde_json::from_str(include_str!(
-            "../fixtures/draft-07-metaschema.json"
-        ))
-        .expect("vendored metaschema parses");
+        let metaschema: serde_json::Value =
+            serde_json::from_str(include_str!("../fixtures/draft-07-metaschema.json"))
+                .expect("vendored metaschema parses");
         let validator = jsonschema::validator_for(&metaschema).expect("metaschema is valid");
         for (relative, content) in schema_artifacts() {
             let document: serde_json::Value =
@@ -500,7 +499,10 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "{relative} is not a valid draft-07 schema: {}",
-                result.err().map(|error| error.to_string()).unwrap_or_default(),
+                result
+                    .err()
+                    .map(|error| error.to_string())
+                    .unwrap_or_default(),
             );
         }
     }

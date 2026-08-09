@@ -292,8 +292,8 @@ pub fn rotation_save_json(project_path: &str, rotation_plan_json: &str) -> Resul
         .map_err(|e| format!("Invalid rotation plan JSON: {e}"))?;
     validate_rotation_plan(&plan)?;
     // Stronger typed validation with clear per-period errors.
-    let _plan: RotationPlanData = serde_json::from_value(plan.clone())
-        .map_err(|e| format!("Invalid rotation plan: {e}"))?;
+    let _plan: RotationPlanData =
+        serde_json::from_value(plan.clone()).map_err(|e| format!("Invalid rotation plan: {e}"))?;
 
     let (project_file, project) = load_project_file(project_path)?;
     let root = parent_dir(&project_file);
@@ -382,9 +382,7 @@ pub fn group_register_preview_json(
 /// escaped so names cannot inject markup.
 pub fn group_register_html_json(project_path: &str, period_index: i64) -> Result<Vec<u8>, String> {
     let LoadedPeriod {
-        plan_name,
-        period,
-        ..
+        plan_name, period, ..
     } = load_period(project_path, period_index)?;
     let rows = register_rows(&period);
     let html = render_register_html(&plan_name, &period.label, &rows);
@@ -396,10 +394,7 @@ pub fn group_register_html_json(project_path: &str, period_index: i64) -> Result
 /// with a single quote so opening the file cannot execute them. The output is
 /// UTF-8 with a BOM (`utf-8-sig`) for Excel compatibility.
 pub fn group_register_csv_json(project_path: &str, period_index: i64) -> Result<Vec<u8>, String> {
-    let LoadedPeriod {
-        period,
-        ..
-    } = load_period(project_path, period_index)?;
+    let LoadedPeriod { period, .. } = load_period(project_path, period_index)?;
     let rows = register_rows(&period);
     Ok(render_register_csv(&rows))
 }
@@ -408,8 +403,8 @@ pub fn group_register_csv_json(project_path: &str, period_index: i64) -> Result<
 /// return the `RegisterSaveResponse` JSON. The groups payload may be a JSON
 /// array or an object with a `groups` array.
 pub fn group_register_save_json(project_path: &str, groups_json: &str) -> Result<String, String> {
-    let groups: Value = serde_json::from_str(groups_json)
-        .map_err(|e| format!("Invalid groups JSON: {e}"))?;
+    let groups: Value =
+        serde_json::from_str(groups_json).map_err(|e| format!("Invalid groups JSON: {e}"))?;
     let group_count = count_groups(&groups)?;
 
     let (project_file, project) = load_project_file(project_path)?;
@@ -445,7 +440,9 @@ fn validate_rotation_plan(value: &Value) -> Result<(), String> {
         .and_then(Value::as_array)
         .ok_or_else(|| "Invalid rotation plan: missing \"periods\" array.".to_string())?;
     if periods.is_empty() {
-        return Err("Invalid rotation plan: \"periods\" must contain at least one period.".to_string());
+        return Err(
+            "Invalid rotation plan: \"periods\" must contain at least one period.".to_string(),
+        );
     }
     Ok(())
 }
@@ -480,10 +477,7 @@ fn read_rotation_plan(path: &Path) -> Result<Value, String> {
     let bytes = fs::read(path)
         .map_err(|e| format!("Could not read rotation plan {}: {e}", path.display()))?;
     if bytes.len() as u64 > MAX_ROTATION_PLAN_BYTES {
-        return Err(format!(
-            "Rotation plan too large: {}",
-            path.display()
-        ));
+        return Err(format!("Rotation plan too large: {}", path.display()));
     }
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid rotation plan file {}: {e}", path.display()))?;
@@ -492,10 +486,7 @@ fn read_rotation_plan(path: &Path) -> Result<Value, String> {
 }
 
 /// Locate one period by its 1-based period number, or a clear out-of-range error.
-fn find_period(
-    plan: &RotationPlanData,
-    period_index: i64,
-) -> Result<&RotationPeriodData, String> {
+fn find_period(plan: &RotationPlanData, period_index: i64) -> Result<&RotationPeriodData, String> {
     if plan.periods.is_empty() {
         return Err("Rotation plan contains no periods.".to_string());
     }
@@ -509,7 +500,9 @@ fn find_period(
         .iter()
         .find(|period| period.period == period_index)
         .ok_or_else(|| {
-            format!("Rotation period {period_index} is out of range (plan has periods 1..={highest}).")
+            format!(
+                "Rotation period {period_index} is out of range (plan has periods 1..={highest})."
+            )
         })
 }
 
@@ -526,8 +519,8 @@ fn load_period(project_path: &str, period_index: i64) -> Result<LoadedPeriod, St
         ));
     }
     let plan = read_rotation_plan(&artifact_path)?;
-    let plan_data: RotationPlanData = serde_json::from_value(plan)
-        .map_err(|e| format!("Invalid saved rotation plan: {e}"))?;
+    let plan_data: RotationPlanData =
+        serde_json::from_value(plan).map_err(|e| format!("Invalid saved rotation plan: {e}"))?;
     let plan_name = plan_data.name.clone().unwrap_or_default();
     let period_count = plan_data.periods.len();
     let period = find_period(&plan_data, period_index)?.clone();
@@ -671,7 +664,11 @@ fn build_register_members(snapshot: &SnapshotData) -> Vec<RegisterMember> {
 
 /// Best display name for a student: the assignment's stored name, then the
 /// roster name, then the key itself.
-fn student_display_name(snapshot: &SnapshotData, key: &str, assignment_name: Option<&str>) -> String {
+fn student_display_name(
+    snapshot: &SnapshotData,
+    key: &str,
+    assignment_name: Option<&str>,
+) -> String {
     if let Some(name) = assignment_name {
         let name = name.trim();
         if !name.is_empty() {
@@ -734,7 +731,10 @@ fn group_by_column(members: &[RegisterMember]) -> Vec<MemberGroup> {
 
 /// Contiguous-run grouping over a sorted member list using a key extractor,
 /// with groups ordered by key (seated first, unseated `None` last).
-fn group_by_key(members: &[RegisterMember], key: impl Fn(&RegisterMember) -> Option<i64>) -> Vec<MemberGroup> {
+fn group_by_key(
+    members: &[RegisterMember],
+    key: impl Fn(&RegisterMember) -> Option<i64>,
+) -> Vec<MemberGroup> {
     let mut groups: Vec<MemberGroup> = Vec::new();
     for member in members {
         let member_key = key(member);
@@ -830,10 +830,7 @@ fn render_register_csv(rows: &[Vec<String>]) -> Vec<u8> {
 /// exported file cannot run them when opened.
 fn sanitize_cell(value: &str) -> String {
     let leading = value.trim_start();
-    if leading.starts_with('=')
-        || leading.starts_with('+')
-        || leading.starts_with('@')
-    {
+    if leading.starts_with('=') || leading.starts_with('+') || leading.starts_with('@') {
         format!("'{value}")
     } else {
         value.to_string()
@@ -881,19 +878,36 @@ fn load_project_file(project_path: &str) -> Result<(PathBuf, Value), String> {
     let project_file = fs::canonicalize(project_path)
         .map_err(|e| format!("Project file not found or unreadable: {project_path} ({e})"))?;
     if !project_file.is_file() {
-        return Err(format!("Project file not found: {}", project_file.display()));
+        return Err(format!(
+            "Project file not found: {}",
+            project_file.display()
+        ));
     }
-    let metadata = fs::metadata(&project_file)
-        .map_err(|e| format!("Could not stat project file {}: {e}", project_file.display()))?;
+    let metadata = fs::metadata(&project_file).map_err(|e| {
+        format!(
+            "Could not stat project file {}: {e}",
+            project_file.display()
+        )
+    })?;
     if metadata.len() > MAX_PROJECT_FILE_BYTES {
-        return Err(format!("Project file too large: {}", project_file.display()));
+        return Err(format!(
+            "Project file too large: {}",
+            project_file.display()
+        ));
     }
-    let bytes = fs::read(&project_file)
-        .map_err(|e| format!("Could not read project file {}: {e}", project_file.display()))?;
+    let bytes = fs::read(&project_file).map_err(|e| {
+        format!(
+            "Could not read project file {}: {e}",
+            project_file.display()
+        )
+    })?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid project file: {} ({e})", project_file.display()))?;
     let obj = value.as_object().ok_or_else(|| {
-        format!("Invalid project file: {} (not a JSON object)", project_file.display())
+        format!(
+            "Invalid project file: {} (not a JSON object)",
+            project_file.display()
+        )
     })?;
     if obj.get("kind").and_then(Value::as_str) != Some("seattrellis_project") {
         return Err(format!(
@@ -929,15 +943,18 @@ fn resolve_outputs_dir(root: &Path, project: &Value) -> Result<PathBuf, String> 
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("outputs");
-    let looks_absolute =
-        Path::new(relative).is_absolute() || (relative.len() >= 2 && relative.as_bytes()[1] == b':');
+    let looks_absolute = Path::new(relative).is_absolute()
+        || (relative.len() >= 2 && relative.as_bytes()[1] == b':');
     if looks_absolute {
         return Err("Project field \"outputs_dir\" must be a relative path.".to_string());
     }
     let candidate = root.join(relative);
     if candidate.is_symlink() || candidate.exists() {
         let resolved = fs::canonicalize(&candidate).map_err(|e| {
-            format!("Could not resolve outputs directory {}: {e}", candidate.display())
+            format!(
+                "Could not resolve outputs directory {}: {e}",
+                candidate.display()
+            )
         })?;
         if !resolved.is_dir() {
             return Err(format!(
@@ -967,9 +984,8 @@ fn resolve_lexically_inside(candidate: &Path, root: &Path, label: &str) -> Resul
             break;
         }
     }
-    let anchor = fs::canonicalize(&probe).map_err(|e| {
-        format!("Could not resolve {} ({e})", candidate.display())
-    })?;
+    let anchor = fs::canonicalize(&probe)
+        .map_err(|e| format!("Could not resolve {} ({e})", candidate.display()))?;
     let resolved = tail.iter().rev().fold(anchor, |mut path, name| {
         path.push(name);
         path
@@ -1000,7 +1016,9 @@ fn next_rotation_output_path(outputs_dir: &Path) -> PathBuf {
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_else(|| "rotation-plan".to_string());
-    let extension = base.extension().map(|ext| ext.to_string_lossy().into_owned());
+    let extension = base
+        .extension()
+        .map(|ext| ext.to_string_lossy().into_owned());
     for index in 2..MAX_OUTPUT_SUFFIX_ATTEMPTS {
         let candidate = match &extension {
             Some(extension) => outputs_dir.join(format!("{stem}-{index}.{extension}")),
@@ -1017,8 +1035,12 @@ fn next_rotation_output_path(outputs_dir: &Path) -> PathBuf {
 /// over `output`, preserving the destination's permissions when it exists.
 fn atomic_write_json(output: &Path, value: &Value) -> Result<(), String> {
     let parent = output.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)
-        .map_err(|e| format!("Could not prepare output directory {}: {e}", parent.display()))?;
+    fs::create_dir_all(parent).map_err(|e| {
+        format!(
+            "Could not prepare output directory {}: {e}",
+            parent.display()
+        )
+    })?;
     let existing_mode = fs::metadata(output)
         .ok()
         .and_then(|metadata| existing_permission_mode(&metadata));
@@ -1044,7 +1066,11 @@ fn temp_sibling_path(output: &Path) -> PathBuf {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "artifact".to_string());
     let parent = parent_dir(output);
-    parent.join(format!(".{name}.{}.{}.tmp", std::process::id(), now_nanos()))
+    parent.join(format!(
+        ".{name}.{}.{}.tmp",
+        std::process::id(),
+        now_nanos()
+    ))
 }
 
 /// Errors from a single atomic-write attempt.
@@ -1075,9 +1101,8 @@ fn write_temp_then_rename(
             }
         })?;
     let mut file = file;
-    let mut bytes = serde_json::to_vec_pretty(data).map_err(|error| {
-        TempWriteError::Other(format!("Could not serialize JSON: {error}"))
-    })?;
+    let mut bytes = serde_json::to_vec_pretty(data)
+        .map_err(|error| TempWriteError::Other(format!("Could not serialize JSON: {error}")))?;
     bytes.push(b'\n');
     file.write_all(&bytes).map_err(|error| {
         TempWriteError::Other(format!(
@@ -1132,12 +1157,17 @@ fn iso_from_epoch_secs(seconds: i64) -> String {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let day_of_era = z - era * 146_097;
-    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
     let year = year_of_era + era * 400;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let month_prime = (5 * day_of_year + 2) / 153;
     let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
-    let month = if month_prime < 10 { month_prime + 3 } else { month_prime - 9 };
+    let month = if month_prime < 10 {
+        month_prime + 3
+    } else {
+        month_prime - 9
+    };
     let year = if month <= 2 { year + 1 } else { year };
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}+00:00")
 }
@@ -1244,11 +1274,8 @@ mod tests {
     fn save_and_load_round_trip() {
         let root = temp_root("round-trip");
         let project_file = write_project(&root, "outputs");
-        let saved_json = rotation_save_json(
-            project_file.to_str().unwrap(),
-            &plan_json(&sample_plan()),
-        )
-        .unwrap();
+        let saved_json =
+            rotation_save_json(project_file.to_str().unwrap(), &plan_json(&sample_plan())).unwrap();
         let saved: Value = serde_json::from_str(&saved_json).unwrap();
         assert_eq!(saved["api_version"], "1");
         assert_eq!(saved["period_count"], 2);
@@ -1272,16 +1299,22 @@ mod tests {
     fn save_never_overwrites_and_uses_suffix() {
         let root = temp_root("suffix");
         let project_file = write_project(&root, "outputs");
-        let first = rotation_save_json(project_file.to_str().unwrap(), &plan_json(&sample_plan()))
-            .unwrap();
+        let first =
+            rotation_save_json(project_file.to_str().unwrap(), &plan_json(&sample_plan())).unwrap();
         let first_path: Value = serde_json::from_str(&first).unwrap();
-        assert!(first_path["output_path"].as_str().unwrap().ends_with("rotation-plan.json"));
+        assert!(first_path["output_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("rotation-plan.json"));
 
-        let second = rotation_save_json(project_file.to_str().unwrap(), &plan_json(&sample_plan()))
-            .unwrap();
+        let second =
+            rotation_save_json(project_file.to_str().unwrap(), &plan_json(&sample_plan())).unwrap();
         let second_path: Value = serde_json::from_str(&second).unwrap();
         assert!(
-            second_path["output_path"].as_str().unwrap().ends_with("rotation-plan-2.json"),
+            second_path["output_path"]
+                .as_str()
+                .unwrap()
+                .ends_with("rotation-plan-2.json"),
             "second save must not overwrite the first artifact"
         );
 
@@ -1421,7 +1454,11 @@ mod tests {
         let error = rotation_save_json(project_file.to_str().unwrap(), &plan_json(&sample_plan()))
             .expect_err("escaping outputs_dir must be rejected");
         assert!(error.contains("outputs_dir"), "unexpected error: {error}");
-        assert!(!root.join("..").join("escape").join(ROTATION_PLAN_FILE).exists());
+        assert!(!root
+            .join("..")
+            .join("escape")
+            .join(ROTATION_PLAN_FILE)
+            .exists());
     }
 
     #[test]
@@ -1442,19 +1479,19 @@ mod tests {
         let project_file = write_project(&root, "outputs");
         assert!(rotation_save_json(project_file.to_str().unwrap(), "not json").is_err());
         assert!(rotation_save_json(project_file.to_str().unwrap(), "{}").is_err());
-        assert!(
-            rotation_save_json(
-                project_file.to_str().unwrap(),
-                &plan_json(&json!({"kind": "rotation_plan", "periods": []}))
-            )
-            .is_err()
-        );
+        assert!(rotation_save_json(
+            project_file.to_str().unwrap(),
+            &plan_json(&json!({"kind": "rotation_plan", "periods": []}))
+        )
+        .is_err());
         // A period without an assignments snapshot is malformed.
         let bad_period = json!({
             "kind": "rotation_plan",
             "periods": [{"period": 1, "label": "Week 1", "snapshot": {"solver_status": "ok"}}]
         });
-        assert!(rotation_save_json(project_file.to_str().unwrap(), &plan_json(&bad_period)).is_err());
+        assert!(
+            rotation_save_json(project_file.to_str().unwrap(), &plan_json(&bad_period)).is_err()
+        );
     }
 
     #[test]
@@ -1465,11 +1502,8 @@ mod tests {
             {"name": "Row 1", "members": ["STU001", "STU002"]},
             {"name": "Row 2", "members": ["STU003"]}
         ]);
-        let saved_json = group_register_save_json(
-            project_file.to_str().unwrap(),
-            &plan_json(&groups),
-        )
-        .unwrap();
+        let saved_json =
+            group_register_save_json(project_file.to_str().unwrap(), &plan_json(&groups)).unwrap();
         let saved: Value = serde_json::from_str(&saved_json).unwrap();
         assert_eq!(saved["api_version"], "1");
         assert_eq!(saved["group_count"], 2);

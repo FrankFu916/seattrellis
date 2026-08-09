@@ -29,24 +29,44 @@ pub struct AppError {
 
 impl AppError {
     pub fn bad_request(message: impl Into<String>) -> AppError {
-        AppError { status: 400, code: "bad_request", message: message.into() }
+        AppError {
+            status: 400,
+            code: "bad_request",
+            message: message.into(),
+        }
     }
 
     pub fn not_found(message: impl Into<String>) -> AppError {
-        AppError { status: 404, code: "not_found", message: message.into() }
+        AppError {
+            status: 404,
+            code: "not_found",
+            message: message.into(),
+        }
     }
 
     pub fn unprocessable(code: &'static str, message: impl Into<String>) -> AppError {
-        AppError { status: 422, code, message: message.into() }
+        AppError {
+            status: 422,
+            code,
+            message: message.into(),
+        }
     }
 
     pub fn internal(message: impl Into<String>) -> AppError {
-        AppError { status: 500, code: "internal_error", message: message.into() }
+        AppError {
+            status: 500,
+            code: "internal_error",
+            message: message.into(),
+        }
     }
 
     /// A core solve rejection: input validation failures are InvalidInput
     /// (the transport adds the frozen `status` field, M1-03).
     pub fn solve_invalid_input(message: impl Into<String>) -> AppError {
-        AppError { status: 400, code: "invalid_solve_request", message: message.into() }
+        AppError {
+            status: 400,
+            code: "invalid_solve_request",
+            message: message.into(),
+        }
     }
 }

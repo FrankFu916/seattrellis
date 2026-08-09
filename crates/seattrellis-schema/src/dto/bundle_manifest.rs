@@ -63,7 +63,10 @@ pub fn is_safe_entry_path(path: &str) -> bool {
 /// Verify a manifest against the actual files under `base_dir`: every entry
 /// must exist, have the recorded size and the recorded SHA-256. Returns the
 /// list of problems (empty = fully verified).
-pub fn verify_manifest(manifest: &ProjectBundleManifest, base_dir: &std::path::Path) -> Vec<ManifestIssue> {
+pub fn verify_manifest(
+    manifest: &ProjectBundleManifest,
+    base_dir: &std::path::Path,
+) -> Vec<ManifestIssue> {
     let mut issues = Vec::new();
     for entry in &manifest.files {
         if !is_safe_entry_path(&entry.path) {
@@ -87,7 +90,11 @@ pub fn verify_manifest(manifest: &ProjectBundleManifest, base_dir: &std::path::P
         if metadata.len() != entry.size {
             issues.push(ManifestIssue {
                 entry: entry.path.clone(),
-                problem: format!("size mismatch: expected {} bytes, found {}", entry.size, metadata.len()),
+                problem: format!(
+                    "size mismatch: expected {} bytes, found {}",
+                    entry.size,
+                    metadata.len()
+                ),
             });
             continue;
         }
