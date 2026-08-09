@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use crate::application::{AppError, SolveRequestStore};
-use crate::editing::{self, EditorDraftStore};
+use crate::{AppError, SolveRequestStore};
+use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of an export request: the rendered bytes plus the content
 /// metadata the transport layer turns into headers (M1-02).
@@ -58,11 +58,11 @@ pub fn export_draft(
     }
     let export_string = export_json.to_string();
 
-    let format = match crate::export::format_of(&export_string) {
+    let format = match seattrellis_export::export::format_of(&export_string) {
         Ok(format) => format,
         Err(message) => return Err(AppError::bad_request(&message)),
     };
-    let bytes = match crate::export::export_plan(&export_string) {
+    let bytes = match seattrellis_export::export::export_plan(&export_string) {
         Ok(bytes) => bytes,
         Err(message) => return Err(AppError::bad_request(&message)),
     };

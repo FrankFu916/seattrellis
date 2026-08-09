@@ -819,7 +819,7 @@ fn build_draft_from_request(value: &JsonValue) -> Result<LayoutDraft, String> {
     }
 
     let (draft_rows, draft_columns, cells) = if let Some(template_id) = &template_id {
-        let grid = crate::room_templates::room_template_grid(template_id)?;
+        let grid = seattrellis_domain::room_templates::room_template_grid(template_id)?;
         (
             grid.rows,
             grid.grid_columns,
@@ -840,7 +840,7 @@ fn build_draft_from_request(value: &JsonValue) -> Result<LayoutDraft, String> {
 
 /// Map a template's full layout (every cell, including disabled aisles) onto
 /// editor cells.
-fn cells_from_template_layout(layout: &crate::room_templates::Layout) -> HashMap<(i32, i32), LayoutCell> {
+fn cells_from_template_layout(layout: &seattrellis_domain::room_templates::Layout) -> HashMap<(i32, i32), LayoutCell> {
     let mut cells = HashMap::new();
     for seat in &layout.seats {
         let kind = if seat.enabled {

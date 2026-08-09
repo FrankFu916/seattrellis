@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
-use crate::editing::{self, EditorDraftStore};
+use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// Compiled React workbench location resolved at build time. Used as a
 /// fallback so the binary serves assets regardless of the launch directory.
@@ -43,7 +43,7 @@ const EMBEDDED_WEB_STATIC: &str = "<embedded>/src/seattrellis/web_static";
 
 /// The solve-request store now lives in the application layer (M1-02);
 /// re-exported here so the transport keeps a single import path.
-pub(crate) use crate::application::SolveRequestStore;
+pub(crate) use seattrellis_application::SolveRequestStore;
 
 /// Errors surfaced by [`resolve_web_root`] and [`Server::bind`].
 #[derive(Debug)]
@@ -285,7 +285,7 @@ fn path_segments(path: &str) -> Vec<&str> {
 
 /// Map an application-layer error onto an HTTP response (M1-02). The
 /// `invalid_solve_request` code carries the frozen SolveStatus (M1-03).
-fn app_error_response(error: crate::application::AppError) -> Response {
+fn app_error_response(error: seattrellis_application::AppError) -> Response {
     let mut body = json!({
         "error": error.code,
         "message": error.message,
@@ -299,7 +299,7 @@ fn app_error_response(error: crate::application::AppError) -> Response {
 }
 
 /// `POST /api/v1/classes/generate` (and `/api/v1/solve`): thin transport
-/// adapter - the orchestration lives in [`crate::application::class_generation`].
+/// adapter - the orchestration lives in [`seattrellis_application::class_generation`].
 fn generate_response(
     body: &[u8],
     editor_store: &EditorDraftStore,
@@ -312,7 +312,7 @@ fn generate_response(
         Ok(value) => value,
         Err(_) => return json_error(400, "request body is not valid JSON"),
     };
-    match crate::application::class_generation::generate_class(
+    match seattrellis_application::class_generation::generate_class(
         &raw_request,
         editor_store,
         solve_requests,
@@ -354,7 +354,7 @@ fn generate_response(
 }
 
 /// `POST /api/v1/exports`: thin transport adapter - the orchestration lives
-/// in [`crate::application::export`].
+/// in [`seattrellis_application::export`].
 fn export_response(
     body: &[u8],
     editor_store: &EditorDraftStore,
@@ -367,7 +367,7 @@ fn export_response(
         Ok(value) => value,
         Err(_) => return json_error(400, "export request is not valid JSON"),
     };
-    match crate::application::export::export_draft(&value, editor_store, solve_requests) {
+    match seattrellis_application::export::export_draft(&value, editor_store, solve_requests) {
         Ok(outcome) => Response {
             status: 200,
             content_type: Some(outcome.content_type),
@@ -622,8 +622,8 @@ fn localized(zh: &str, en: &str) -> Value {
 /// 2. The React workbench's `GenerateClassRequest`
 ///    (`draft.students` + `draft.room.template_id` + `draft.goal.goal_id`),
 ///    detected by the presence of `draft.room.template_id` and expanded into
-///    a `CoreSolveRequest` via [`crate::room_templates::room_template_grid`]
-///    and [`crate::goal_rules::goal_rules`] before solving.
+///    a `CoreSolveRequest` via [`seattrellis_domain::room_templates::room_template_grid`]
+///    and [`seattrellis_domain::goal_rules::goal_rules`] before solving.
 ///
 /// Returns the frontend `GenerateClassResponse` shape (`class_name`, `goal`,
 /// `warnings`, `recommended_candidate_id`, `candidates`, `editor`). When the
@@ -2345,7 +2345,7 @@ mod tests {
     /// so fair_rotation and recent-neighbor costs see past placements.
     #[test]
     fn history_snapshots_forward_fair_rotation_and_pair_data() {
-        let grid = crate::room_templates::grid_from_layout(&line_of_four_layout())
+        let grid = seattrellis_domain::room_templates::grid_from_layout(&line_of_four_layout())
             .expect("line layout is valid");
         let students: Vec<Value> = json!([{ "key": "S1" }, { "key": "S2" }])
             .as_array()
@@ -2363,7 +2363,7 @@ mod tests {
         .clone();
 
         let (history, pair_history) =
-            crate::application::class_generation::build_history_json(&students, &grid, &snapshots).expect("snapshots build");
+            seattrellis_application::class_generation::build_history_json(&students, &grid, &snapshots).expect("snapshots build");
         assert_eq!(history["history_count"], 1);
         let s1 = &history["students"]["S1"];
         assert_eq!(s1["records"].as_array().map(Vec::len), Some(1));

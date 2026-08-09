@@ -21,8 +21,12 @@ getrandom = "0.3"
 serde_json = "1"
 # serde derive for the export domain request types (ExportDraftRequest shape).
 serde = { version = "1", features = ["derive"] }
-# PNG export (matches the CLI's render module, which app/src/render.rs mirrors).
-png = "0.17"
+# M1-02: export/render moved out of the app crate.
+seattrellis-export = { path = "../crates/seattrellis-export" }
+# M1-02: domain layer (editing / room_templates / goal_rules) moved out.
+seattrellis-domain = { path = "../crates/seattrellis-domain" }
+# M1-02: application layer (use-case orchestration) moved out.
+seattrellis-application = { path = "../crates/seattrellis-application" }
 # Zip archive I/O for project bundles (pack/restore). zip's own `deflate`
 # feature enables flate2 (rust_backend) + crc32fast — both already in the tree
 # for PNG export — and additionally pulls zopfli (compiled but unused since we

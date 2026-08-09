@@ -82,7 +82,7 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 | M1-04 axum | ✅ 合并 | 适配层 `app/src/http.rs`，52 路由测试零改动；413/并发 64/优雅停机 |
 | M1-05 安全边界 | ✅ 合并 | token/Host/Origin/Bearer/CSP（详见上文） |
 | M1-06 契约生成链 | ✅ 合并 | xtask + OpenAPI/TS codegen + CI drift |
-| M1-02 crate 拆分 | ⏳ 最后做 | 7 个单体 → domain/rules/solver/planning/storage/export/application |
+| M1-02 crate 拆分 | 🚧 进行中 | `crates/seattrellis-export`（render+export）、`crates/seattrellis-domain`（editing/room_templates/goal_rules）、`crates/seattrellis-application`（generate/export/AppError）已拆出（PR #92）；app 余下 layouts/migration/projects/roster/rotation/transaction/server 待拆 |
 
 ## M2 里程碑状态（2026-08-08）
 

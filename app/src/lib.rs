@@ -7,23 +7,17 @@
 //!
 //! See [`server`] for the HTTP implementation and routes.
 
-pub mod application;
-pub mod editing;
 mod embedded_web;
 pub mod http;
-pub mod export;
-pub mod goal_rules;
 pub mod layouts;
 pub mod migration;
 pub mod projects;
-pub mod render;
 pub mod rotation;
-pub mod room_templates;
 pub mod roster;
 pub mod server;
 pub mod transaction;
 
-pub use editing::{
+pub use seattrellis_domain::editing::{
     apply_command, apply_command_in_store, build_editor_state, create_draft, fetch_state,
     get_draft, new_draft_store, store_draft, EditorCommandEnvelope, EditorDraft,
     EditorDraftStore, EditorSeatSpec, EditorState,
