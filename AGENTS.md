@@ -111,7 +111,8 @@ M1 Exit Gate 核查：workspace 统一 ✅ / PyO3 隔离 ✅ / 未认证、DNS r
 | M3-06 feasibility report | ✅ | `precheck_report_json` + CLI `precheck` 子命令：候选域/排除原因/最紧张学生/匹配大小/clean|infeasible+原因（PR #94） |
 
 M3 已合并 PR #94（预检四层+validator+report）、#95（时间预算，TIMEOUT gap 关闭）、#96（6.2 local search，40 人 case cost 改进 31.7%）、#97（6.5 audit：hard 规则状态 + soft breakdown + score_balance 显式化，CLI `audit` 子命令）。
-M3 剩余：6.3 candidate engine（diversity/assignment distance/reproducibility metadata）、6.6 质量门槛基准（相对 OR-Tools regret ≤5%，用 scripts/benchmark_parity.py 测量）。
+M3 全部完成（PR #94/#95/#96/#97/#98 + 6.6 测量）：6.3 candidate engine 已合并（PR #98，seeded 重复求解 + 精确 assignment 排除 + distance_to_best/seed 派生/recommendation）。
+6.6 质量门槛测量（scripts/measure_rust_quality.py，OR-Tools 30s 预算）：6 个 case（40/50/60 × light/dense）Rust 全部优于 OR-Tools，regret 中位数 **-13.84%**、P95 **-9.28%**（门槛 中位数≤5%、P95≤15%，PASS；负值 = Rust 更优）。
 
 ## 已知陷阱
 
