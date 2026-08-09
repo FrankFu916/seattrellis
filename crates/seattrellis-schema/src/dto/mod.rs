@@ -6,4 +6,5 @@
 
 pub mod bundle_manifest;
 pub mod classroom_layout;
+pub mod rule_set;
 pub mod student_roster;
