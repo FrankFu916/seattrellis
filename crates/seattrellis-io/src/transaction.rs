@@ -1489,9 +1489,32 @@ fn hex_digest(bytes: &[u8]) -> String {
 
 fn sync_entry(path: &Path, kind: EntryKind) -> Result<(), String> {
     match kind {
-        EntryKind::File => File::open(path)
-            .and_then(|file| file.sync_all())
-            .map_err(|error| format!("cannot sync file {}: {error}", path.display())),
+        EntryKind::File => {
+            // FlushFileBuffers on Windows requires a writable handle; a
+            // read-only handle fails with ERROR_ACCESS_DENIED. Files this
+            // module creates are writable, so the writable open is the
+            // primary path; read-only originals are synced best-effort.
+            let mut options = OpenOptions::new();
+            options.read(true).write(true);
+            match options.open(path).and_then(|file| file.sync_all()) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                    match File::open(path).and_then(|file| file.sync_all()) {
+                        Ok(()) => Ok(()),
+                        // Windows cannot flush read-only handles; NTFS
+                        // journals the directory rename that follows anyway.
+                        #[cfg(windows)]
+                        Err(_) => Ok(()),
+                        #[cfg(not(windows))]
+                        Err(read_error) => Err(format!(
+                            "cannot sync read-only file {}: {read_error} (write flush: {error})",
+                            path.display()
+                        )),
+                    }
+                }
+                Err(error) => Err(format!("cannot sync file {}: {error}", path.display())),
+            }
+        }
         EntryKind::Directory => sync_tree(path),
     }
 }
