@@ -7,16 +7,20 @@
 //! `run_export` reads both the problem and the solve result, recovers the seat
 //! grid, and renders SVG or HTML through `render`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use seattrellis_core::{
-    audit_report_json, generate_candidates_json, precheck_report_json, solve_problem_json,
-    validate_solve_request_json, CoreSolveRequest, CoreSolveResponse, SolveStatus,
+    audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
+    precheck_report_json, solve_problem_json, validate_solve_request_json, CoreSolveRequest,
+    CoreSolveResponse, SolveStatus,
 };
 
 use crate::render::SeatingGrid;
 use crate::style::Styler;
-use crate::{AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, PrecheckArgs, SolveArgs};
+use crate::{
+    AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, HistoryReportArgs, PairReportArgs,
+    PrecheckArgs, SolveArgs,
+};
 use crate::ValidateArgs;
 
 pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
@@ -54,6 +58,43 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
 
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
 /// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+/// Summarize historical seating snapshots (fairness report, ledger B.5).
+pub fn run_history_report(args: &HistoryReportArgs) -> Result<(), String> {
+    let problem_text = read_text(&args.problem)?;
+    let snapshots = load_snapshot_documents(&args.history)?;
+    let report = history_report_json(&problem_text, &snapshots)
+        .map_err(|error| format!("history report failed: {error}"))?;
+    println!("{report}");
+    Ok(())
+}
+
+/// Summarize historical desk-mate / neighbor pairs (ledger B.5).
+pub fn run_pair_report(args: &PairReportArgs) -> Result<(), String> {
+    let problem_text = read_text(&args.problem)?;
+    let snapshots = load_snapshot_documents(&args.history)?;
+    let report = pair_report_json(&problem_text, &snapshots, args.top, args.within_distance)
+        .map_err(|error| format!("pair report failed: {error}"))?;
+    println!("{report}");
+    Ok(())
+}
+
+/// Read one or more snapshot JSON files into a single JSON array document.
+fn load_snapshot_documents(paths: &[PathBuf]) -> Result<String, String> {
+    let mut documents: Vec<serde_json::Value> = Vec::new();
+    for path in paths {
+        let text = read_text(path)?;
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|error| format!("'{}' is not valid JSON: {error}", path.display()))?;
+        if let Some(list) = value.as_array() {
+            documents.extend(list.clone());
+        } else {
+            documents.push(value);
+        }
+    }
+    serde_json::to_string(&documents)
+        .map_err(|error| format!("could not serialize snapshots: {error}"))
+}
+
 /// Generate a diverse candidate set and print the JSON report (plan §6.3).
 pub fn run_candidates(args: &CandidatesArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
