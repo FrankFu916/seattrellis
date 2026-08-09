@@ -615,6 +615,22 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
         });
     }
 
+    // Global matching precheck (plan §6.1 third layer): even when every
+    // student has candidates, they may not be jointly seatable. A maximum
+    // bipartite matching smaller than the class size is a sound proof of
+    // infeasibility (Hall's theorem); a full matching proves nothing yet.
+    if maximum_candidate_matching(&domains) < request.student_count {
+        return Ok(CoreSolveResponse {
+            api_version: NATIVE_API_VERSION,
+            feasible: false,
+            status: SolveStatus::ProvenInfeasible,
+            assignment: Vec::new(),
+            attempts_used: 0,
+            hard_constraints_satisfied: false,
+            total_cost: None,
+        });
+    }
+
     let attempts = (request.student_count * 12).max(40);
     let mut rng = SplitMix64::new(request.seed);
     let ctx = build_cost_context(request);
@@ -1136,6 +1152,56 @@ pub fn build_candidate_domains(
     domains
 }
 
+/// Global matching precheck (plan §6.1 third layer): maximum bipartite
+/// matching between students and their candidate seats.
+///
+/// When the maximum matching cannot seat every student, no complete
+/// assignment exists (each student must take one of their own candidates,
+/// seats are unique) — a sound `ProvenInfeasible` proof. The converse is not
+/// asserted: a full matching does not prove feasibility, because pair rules
+/// may still conflict across students (that is the hard search's job).
+pub fn maximum_candidate_matching(domains: &[CandidateDomain]) -> usize {
+    let seat_count = domains
+        .iter()
+        .flat_map(|domain| domain.seats.iter().copied())
+        .max()
+        .map_or(0, |max| max + 1);
+    let mut seat_owner: Vec<Option<usize>> = vec![None; seat_count];
+    let mut matched = 0;
+    for student in 0..domains.len() {
+        let mut visited = vec![false; seat_count];
+        if augment_matching(student, domains, &mut visited, &mut seat_owner) {
+            matched += 1;
+        }
+    }
+    matched
+}
+
+/// Kuhn's augmenting-path step: try to reassign seats so `student` gets one.
+fn augment_matching(
+    student: usize,
+    domains: &[CandidateDomain],
+    visited: &mut [bool],
+    seat_owner: &mut [Option<usize>],
+) -> bool {
+    for &seat in &domains[student].seats {
+        if visited[seat] {
+            continue;
+        }
+        visited[seat] = true;
+        if let Some(previous) = seat_owner[seat] {
+            if augment_matching(previous, domains, visited, seat_owner) {
+                seat_owner[seat] = Some(student);
+                return true;
+            }
+        } else {
+            seat_owner[seat] = Some(student);
+            return true;
+        }
+    }
+    false
+}
+
 /// Find the first hard rule violated by `probe[student] = Some(seat)`.
 ///
 /// Returns a human-readable reason naming the rule, mirroring the order the
@@ -1378,9 +1444,10 @@ fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {
 mod tests {
     use super::{
         assignment_is_unique, build_candidate_domains, build_graph_distance_matrix,
-        build_index_adjacency, classify_solve_error, evaluate_problem_json, resolve_group_rules,
-        seat_distance, solve_problem_json, validate_solve_request_json, CoreEvaluationResponse,
-        CoreSolveRequest, CoreSolveResponse, SolveStatus, NATIVE_API_VERSION,
+        build_index_adjacency, classify_solve_error, evaluate_problem_json,
+        maximum_candidate_matching, resolve_group_rules, seat_distance, solve_problem_json,
+        validate_solve_request_json, CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse,
+        SolveStatus, NATIVE_API_VERSION,
     };
 
     #[test]
@@ -2224,5 +2291,52 @@ mod tests {
         assert_eq!(response.status, SolveStatus::ProvenInfeasible);
         assert_eq!(response.attempts_used, 0);
         assert!(response.assignment.is_empty());
+    }
+
+    // ---- M3-03: global matching precheck (plan §6.1 third layer) ----
+
+    #[test]
+    fn maximum_matching_counts_jointly_seatable_students() {
+        let request: CoreSolveRequest = serde_json::from_str(
+            r#"{
+                "api_version": 2,
+                "student_count": 3,
+                "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+                "edges": [[0, 1], [1, 2], [2, 3]],
+                "fixed_seats": [[0, 0]],
+                "must_be_adjacent": [[0, 1]]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_group_rules(&request).unwrap();
+        let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
+        let graph_distances = build_graph_distance_matrix(&adjacency);
+        let domains = build_candidate_domains(&request, &resolved, &adjacency, &graph_distances);
+        // domains: student0={0}, student1={1}, student2={0,1,2,3} — a full
+        // matching of size 3 exists (0->0, 1->1, 2->2).
+        assert_eq!(maximum_candidate_matching(&domains), 3);
+    }
+
+    #[test]
+    fn matching_precheck_proves_infeasibility_when_seats_are_overbooked() {
+        // Three students, three seats. Students 0/1 are fixed to seats 0/1;
+        // student 2 must not sit adjacent to student 0, which rules out seat
+        // 2 (its only neighbor) but not seats 0/1 (no edges). Every domain is
+        // non-empty, yet seats 0/1 are both taken: maximum matching = 2 < 3.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 2]],
+            "fixed_seats": [[0, 0], [1, 1]],
+            "cannot_be_adjacent": [[0, 2]]
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should validate");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+
+        assert!(!response.feasible);
+        assert_eq!(response.status, SolveStatus::ProvenInfeasible);
+        assert_eq!(response.attempts_used, 0);
     }
 }
