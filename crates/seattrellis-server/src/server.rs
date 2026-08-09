@@ -478,6 +478,12 @@ pub(crate) fn route(
         ("POST", ["api", "v1", "projects", "history"]) => {
             project_history_response(&request.body)
         }
+        ("POST", ["api", "v1", "projects", "artifacts", "compare"]) => {
+            artifact_compare_response(&request.body)
+        }
+        ("POST", ["api", "v1", "projects", "artifacts", "restore"]) => {
+            artifact_restore_response(&request.body)
+        }
         ("POST", ["api", "v1", "projects", "privacy"]) => {
             project_privacy_response(&request.body)
         }
@@ -911,6 +917,58 @@ fn project_history_response(body: &[u8]) -> Response {
     };
     let project_path = resolve_request_path(&project_path);
     project_result_response(seattrellis_io::projects::project_history_json(&project_path))
+}
+
+/// `POST /api/v1/projects/artifacts/compare`: compare two project artifacts
+/// without returning student data (M2 parity, ledger A.2).
+fn artifact_compare_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let artifact_path = match required_string(&value, "artifact_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let compare_to = match required_string(&value, "compare_to_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    let artifact_path = resolve_request_path(&artifact_path);
+    let compare_to = resolve_request_path(&compare_to);
+    project_result_response(seattrellis_io::projects::compare_artifacts_json(
+        &project_path,
+        &artifact_path,
+        &compare_to,
+    ))
+}
+
+/// `POST /api/v1/projects/artifacts/restore`: restore an artifact as a new
+/// output snapshot (M2 parity, ledger A.3).
+fn artifact_restore_response(body: &[u8]) -> Response {
+    let value = match parse_body_json(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = match required_string(&value, "project_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let artifact_path = match required_string(&value, "artifact_path") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let project_path = resolve_request_path(&project_path);
+    let artifact_path = resolve_request_path(&artifact_path);
+    project_result_response(seattrellis_io::projects::restore_artifact_json(
+        &project_path,
+        &artifact_path,
+    ))
 }
 
 /// `POST /api/v1/projects/privacy`: scan a project for sensitive fields
@@ -2242,6 +2300,76 @@ mod tests {
         let plan = &body_json(&response)["rotation_plan"];
         assert_eq!(plan["base_history_count"], 1, "one base snapshot");
         assert_eq!(plan["fairness_summary"]["history_count"], 3, "base + 2 generated periods");
+    }
+
+
+    #[test]
+    fn artifact_compare_and_restore_routes_work() {
+        let root = test_web_root();
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis_artifact_route_test_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("project.json"), r#"{
+            "kind": "seattrellis_project",
+            "name": "Demo",
+            "students": "students.csv",
+            "layout": "classroom.json",
+            "rules": "rules.json",
+            "outputs_dir": "outputs"
+        }"#).unwrap();
+        fs::write(dir.join("a.json"), r#"{
+            "kind": "snapshot",
+            "created_at": "2026-08-09T00:00:00Z",
+            "students": [{"student_id": "S1", "name": "Alice"}],
+            "layout": {"layout_id": "l", "seats": [
+                {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+                {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+            ]},
+            "rules": {"seed": 42},
+            "assignments": [{"student_key": "S1", "student_name": "Alice", "seat_id": "R1C1"}],
+            "solver_status": "FEASIBLE"
+        }"#).unwrap();
+        fs::write(dir.join("b.json"), r#"{
+            "kind": "snapshot",
+            "created_at": "2026-08-09T01:00:00Z",
+            "students": [{"student_id": "S1", "name": "Alice"}],
+            "layout": {"layout_id": "l", "seats": [
+                {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+                {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+            ]},
+            "rules": {"seed": 42},
+            "assignments": [{"student_key": "S1", "student_name": "Alice", "seat_id": "R1C2"}],
+            "solver_status": "FEASIBLE"
+        }"#).unwrap();
+
+        // compare
+        let body = serde_json::to_vec(&json!({
+            "project_path": dir.join("project.json"),
+            "artifact_path": dir.join("a.json"),
+            "compare_to_path": dir.join("b.json"),
+        })).unwrap();
+        let response = route_one(&request("POST", "/api/v1/projects/artifacts/compare", &body), &root);
+        assert_eq!(response.status, 200, "body: {}", String::from_utf8_lossy(&response.body));
+        let value = body_json(&response);
+        assert_eq!(value["diff"]["assignment_changes"], 1);
+        assert_eq!(value["diff"]["assignment_details"][0]["change"], "moved");
+
+        // restore
+        let body = serde_json::to_vec(&json!({
+            "project_path": dir.join("project.json"),
+            "artifact_path": dir.join("a.json"),
+        })).unwrap();
+        let response = route_one(&request("POST", "/api/v1/projects/artifacts/restore", &body), &root);
+        assert_eq!(response.status, 200, "body: {}", String::from_utf8_lossy(&response.body));
+        let value = body_json(&response);
+        let restored = value["restored_artifact"].as_str().unwrap();
+        assert!(restored.ends_with("restored-a.snapshot.json"), "{restored}");
+        assert!(Path::new(restored).is_file());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
