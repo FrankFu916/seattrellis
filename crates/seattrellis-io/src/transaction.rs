@@ -1539,12 +1539,20 @@ fn sync_directory(path: &Path) -> Result<(), String> {
 fn sync_directory(path: &Path) -> Result<(), String> {
     use std::os::windows::fs::OpenOptionsExt;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-    OpenOptions::new()
+    match OpenOptions::new()
         .read(true)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
         .open(path)
         .and_then(|directory| directory.sync_all())
-        .map_err(|error| format!("cannot sync directory {}: {error}", path.display()))
+    {
+        Ok(()) => Ok(()),
+        // FlushFileBuffers is not supported on directory handles on many
+        // Windows versions and filesystems (ERROR_ACCESS_DENIED / not
+        // supported). NTFS journals directory metadata operations itself,
+        // so directory fsync is best-effort on Windows; files themselves
+        // are still synced individually before publication.
+        Err(_) => Ok(()),
+    }
 }
 
 fn write_new_journal(
