@@ -510,21 +510,21 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 ### C. 语义缺口（§8/§12）
 7. `cooling` 为两语言共同的近似实现（`cooling_period`→`lookback`）— 需 v2 产品决策（保留近似 or 强化语义）。
-8. Export 隐私粒度：Rust 仅 `anonymize` 生效，`hide_scores/hide_notes/hide_special_needs/show_height/show_vision` 与 report 模板渲染无差异。
+8. Export 隐私粒度：✅ `show_height`/`show_vision` 控制每座 detail 行（SVG/HTML/PDF），`anonymize`/public 清空；`hide_scores/hide_notes/hide_special_needs` 无对应渲染（渲染器不画分数/备注/需求，天然无泄漏）——见 C.9 渲染保真项（PNG 无文字/PDF 无 CJK 属 M5-04）。
 9. 渲染保真：PNG 无文字、PDF 无 CJK、print-html 退化为 html、SVG/HTML/PNG 无打印版页面选项。
 
 ### D. 覆盖缺口（§1/§2/§9/§11/§14）
-10. Rust CLI 命令面（6 vs 30）：`validate`/`solve`/`export` + M3 新增 `precheck`/`audit`/`candidates`（PR #94/#97/#98）；history/project/migration 命令仍列为 roadmap（对应本表 B 类）。
-11. Repair（受约束重解）无 Rust 对应。
-12. 文件级 edit/export/validate 的 preset/history 警告语义无 Rust CLI 对应。
+10. Rust CLI 命令面（14 vs 30）：`validate`/`solve`/`export`/`precheck`/`audit`/`candidates`/`history-report`/`pair-report`/`repair`/`project-info`/`project-validate`/`project-solve`/`project-export` + `help`/`version`；project 生命周期闭环（PR #103）。
+11. Repair（受约束重解）— ✅ `repair` 命令 + `core::repair_json`（PR #103）：locked student/seat + affected scope + 硬规则闭包；已知差距：空座位锁（Python reserve 语义）不支持。
+12. 文件级 edit/export/validate — ✅ `project-solve`/`project-export` 编译项目文件（CSV+layout+rules→core request）；preset 警告语义部分保留（`project-validate` 报引用缺失）。
 13. Teacher goals：app 仅 4 goal（6/10 soft 规则），Python 15 preset 中 11 个不可达。
 14. Tauri 壳无原生文件对话框；desktop 文件工作流依赖 Web 上传/下载。
 15. Roster mapping 启发式（表头指纹、身份列推断）、roster_fingerprint 未确认镜像。
 16. Rust 无 JSON Schema 生成器（`schema list/export` Python-only）。
 
 ### E. 工程债务（非 parity，但影响 v2 交付）
-17. `seattrellis_native.pyi` 缺 `solve_problem` 声明（native/seattrellis_native/src/lib.rs:40 vs .pyi:4-17）。
-18. CI 无 `cargo fmt` 步骤；无 deny.toml（无 cargo-deny 依赖审计）（.github/workflows/rust.yml）。
+17. `seattrellis_native.pyi` — ✅ 已补 `solve_problem` 声明（PR #103）。
+18. CI — ✅ 新增 `cargo fmt --check` 与 `cargo-deny`（deny.toml：advisories/未知 registry deny、许可证白名单）（PR #103）。
 19. `app/` 与 `native/` 为两个独立 workspace（各自 Cargo.lock）；`app/src-tauri` 用 rust-toolchain 1.88.0，core 声明 rust-version 1.83。
 20. `seattrellis_native` 为实验性绑定，README 声明不发布 wheel。
 
