@@ -110,7 +110,8 @@ M1 Exit Gate 核查：workspace 统一 ✅ / PyO3 隔离 ✅ / 未认证、DNS r
 | M3-05 独立 validator | ✅ | `validate_assignment` 在两条 Solved 路径出口复核 uniqueness/边界/全部硬规则；违规 → InternalError 而非静默 feasible |
 | M3-06 feasibility report | ✅ | `precheck_report_json` + CLI `precheck` 子命令：候选域/排除原因/最紧张学生/匹配大小/clean|infeasible+原因（PR #94） |
 
-PR #94 待合并；M3 剩余：6.2 soft optimizer（local search）、6.3 candidate engine（diversity/reproducibility metadata）、6.5 audit/explanation 输出、6.6 质量门槛基准（相对 OR-Tools regret ≤5%）、CLI 时间预算（M3-04 已知 gap 项）。
+M3 已合并 PR #94（预检四层+validator+report）、#95（时间预算，TIMEOUT gap 关闭）、#96（6.2 local search，40 人 case cost 改进 31.7%）、#97（6.5 audit：hard 规则状态 + soft breakdown + score_balance 显式化，CLI `audit` 子命令）。
+M3 剩余：6.3 candidate engine（diversity/assignment distance/reproducibility metadata）、6.6 质量门槛基准（相对 OR-Tools regret ≤5%，用 scripts/benchmark_parity.py 测量）。
 
 ## 已知陷阱
 
