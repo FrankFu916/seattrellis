@@ -4,6 +4,12 @@
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+    # gtk-rs GTK3 bindings: unmaintained upstream, but pinned transitively by
+    # the Tauri 2 Linux stack (tauri/tao/wry). No patched successor exists for
+    # the GTK3 line; the desktop shell targets macOS/Windows in practice.
+    "RUSTSEC-2024-0413",
+]
 
 [bans]
 multiple-versions = "warn"
