@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 use crate::application::{AppError, SolveRequestStore};
-use crate::editing::{self, EditorDraftStore};
+use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of an export request: the rendered bytes plus the content
 /// metadata the transport layer turns into headers (M1-02).

@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use serde_json::{json, Value};
 
 use crate::application::{AppError, SolveRequestStore};
-use crate::editing::{self, EditorDraftStore, EditorSeatSpec};
+use seattrellis_domain::editing::{self, EditorDraftStore, EditorSeatSpec};
 use seattrellis_core::cost::{
     classify_seat_position, detect_neighbor_relation_types, student_pair_key,
 };
@@ -177,7 +177,7 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
 
     // Room source: a built-in template id or an explicit custom layout.
     let grid = if let Some(layout) = room.get("layout") {
-        match crate::room_templates::grid_from_layout(layout) {
+        match seattrellis_domain::room_templates::grid_from_layout(layout) {
             Ok(grid) => grid,
             Err(message) => return Err(AppError::unprocessable("invalid_class_draft", &message)),
         }
@@ -189,7 +189,7 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
             .ok_or_else(|| {
                 AppError::unprocessable("invalid_class_draft", "missing draft.room.template_id")
             })?;
-        match crate::room_templates::room_template_grid(template_id) {
+        match seattrellis_domain::room_templates::room_template_grid(template_id) {
             Ok(grid) => grid,
             Err(message) => return Err(AppError::unprocessable("room_not_found", &message)),
         }
@@ -214,7 +214,7 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
             }
         }
     } else {
-        match crate::goal_rules::goal_rules(&goal_id) {
+        match seattrellis_domain::goal_rules::goal_rules(&goal_id) {
             Ok(rules) => rules,
             Err(message) => return Err(AppError::unprocessable("unknown_goal", &message)),
         }
@@ -246,7 +246,7 @@ fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
     // The grid's full layout also carries disabled cells, so hand the request
     // the *enabled* seats in layout order (which `room_templates` guarantees
     // are exactly `seat_positions`, in order).
-    let layout = crate::room_templates::Layout {
+    let layout = seattrellis_domain::room_templates::Layout {
         layout_id: grid.layout.layout_id.clone(),
         name: grid.layout.name.clone(),
         seats: grid
@@ -313,7 +313,7 @@ struct ResolvedHardRules {
 fn resolve_hard_rules(
     goal: &serde_json::Map<String, Value>,
     students: &[Value],
-    grid: &crate::room_templates::RoomGrid,
+    grid: &seattrellis_domain::room_templates::RoomGrid,
 ) -> Result<ResolvedHardRules, AppError> {
     let Some(hard) = goal
         .get("hard_rules")
@@ -483,7 +483,7 @@ fn deep_merge_value(target: &mut Value, patch: &Value) {
 /// an unknown seat are skipped, exactly like Python's missing-student handling.
 pub(crate) fn build_history_json(
     students: &[Value],
-    grid: &crate::room_templates::RoomGrid,
+    grid: &seattrellis_domain::room_templates::RoomGrid,
     snapshots: &[Value],
 ) -> Option<(Value, Value)> {
     if snapshots.is_empty() {

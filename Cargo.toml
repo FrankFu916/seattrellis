@@ -17,6 +17,7 @@ members = [
     "crates/seattrellis-schema",
     "crates/seattrellis-rules",
     "crates/seattrellis-export",
+    "crates/seattrellis-domain",
 ]
 default-members = [
     "native/seattrellis_core",

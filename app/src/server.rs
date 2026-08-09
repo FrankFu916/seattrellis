@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
-use crate::editing::{self, EditorDraftStore};
+use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// Compiled React workbench location resolved at build time. Used as a
 /// fallback so the binary serves assets regardless of the launch directory.
@@ -622,8 +622,8 @@ fn localized(zh: &str, en: &str) -> Value {
 /// 2. The React workbench's `GenerateClassRequest`
 ///    (`draft.students` + `draft.room.template_id` + `draft.goal.goal_id`),
 ///    detected by the presence of `draft.room.template_id` and expanded into
-///    a `CoreSolveRequest` via [`crate::room_templates::room_template_grid`]
-///    and [`crate::goal_rules::goal_rules`] before solving.
+///    a `CoreSolveRequest` via [`seattrellis_domain::room_templates::room_template_grid`]
+///    and [`seattrellis_domain::goal_rules::goal_rules`] before solving.
 ///
 /// Returns the frontend `GenerateClassResponse` shape (`class_name`, `goal`,
 /// `warnings`, `recommended_candidate_id`, `candidates`, `editor`). When the
@@ -2345,7 +2345,7 @@ mod tests {
     /// so fair_rotation and recent-neighbor costs see past placements.
     #[test]
     fn history_snapshots_forward_fair_rotation_and_pair_data() {
-        let grid = crate::room_templates::grid_from_layout(&line_of_four_layout())
+        let grid = seattrellis_domain::room_templates::grid_from_layout(&line_of_four_layout())
             .expect("line layout is valid");
         let students: Vec<Value> = json!([{ "key": "S1" }, { "key": "S2" }])
             .as_array()

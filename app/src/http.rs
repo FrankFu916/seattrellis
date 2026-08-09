@@ -26,7 +26,7 @@ use axum::Router;
 use serde_json::json;
 use tower::limit::ConcurrencyLimitLayer;
 
-use crate::editing::EditorDraftStore;
+use seattrellis_domain::editing::EditorDraftStore;
 use crate::server::{route, Request, Response, SolveRequestStore};
 
 /// Maximum accepted request body size (matches the old `MAX_BODY_BYTES`).
@@ -287,7 +287,7 @@ mod tests {
     fn test_state() -> AppState {
         AppState {
             web_root: Arc::new(PathBuf::from("/nonexistent")),
-            editor_store: Arc::new(crate::editing::new_draft_store()),
+            editor_store: Arc::new(seattrellis_domain::editing::new_draft_store()),
             solve_requests: Arc::new(Mutex::new(HashMap::new())),
             shutdown: Arc::new(AtomicBool::new(false)),
             session_token: Arc::new("0123456789abcdef0123456789abcdef".to_string()),
