@@ -55,12 +55,14 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("solve"));
-    out.push_str(" --problem <problem.json> [--seed <n>] [--output <result.json>]\n\n");
+    out.push_str(" --problem <problem.json> [--seed <n>] [--time-limit <sec>] [--output <result.json>]\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n      ");
     out.push_str(&styler.bold("--seed"));
     out.push_str(" <n>        Override the problem's solver seed.\n      ");
+    out.push_str(&styler.bold("--time-limit"));
+    out.push_str(" <sec>   Wall-clock budget; exhausted searches report Timeout.\n      ");
     out.push_str(&styler.bold("--output"));
     out.push_str(" <file>   Also write the full result JSON (CoreSolveResponse) to <file>.\n\n");
 

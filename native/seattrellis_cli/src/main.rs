@@ -50,10 +50,11 @@ impl ExportFormat {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct SolveArgs {
     pub problem: PathBuf,
     pub seed: Option<u64>,
+    pub time_limit: Option<f64>,
     pub output: Option<PathBuf>,
 }
 
@@ -75,7 +76,7 @@ pub struct PrecheckArgs {
     pub problem: PathBuf,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 enum Command {
     Help,
     Version,
@@ -147,6 +148,7 @@ fn parse_solve(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag { name: "--problem", takes_value: true },
         Flag { name: "--seed", takes_value: true },
+        Flag { name: "--time-limit", takes_value: true },
         Flag { name: "--output", takes_value: true },
         Flag { name: "--help", takes_value: false },
     ];
@@ -163,10 +165,23 @@ fn parse_solve(tokens: &[String]) -> Result<Command, String> {
         ),
         None => None,
     };
+    let time_limit = match flag_value(&parsed, "--time-limit")? {
+        Some(raw) => {
+            let seconds = raw
+                .parse::<f64>()
+                .map_err(|error| format!("invalid --time-limit '{raw}': {error}"))?;
+            if !seconds.is_finite() || seconds <= 0.0 {
+                return Err("--time-limit must be a positive number of seconds".to_string());
+            }
+            Some(seconds)
+        }
+        None => None,
+    };
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     Ok(Command::Solve(SolveArgs {
         problem: PathBuf::from(problem),
         seed,
+        time_limit,
         output,
     }))
 }

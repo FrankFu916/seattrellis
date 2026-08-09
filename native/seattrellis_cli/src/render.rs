@@ -720,6 +720,7 @@ mod tests {
             cannot_be_adjacent: Vec::new(),
             min_distance: Vec::new(),
             seed: 0,
+            time_limit_seconds: None,
             students: vec![
                 Student { key: "S1".into(), display_name: Some("Alice".into()), ..Student::default() },
                 Student { key: "S2".into(), display_name: Some("Bob".into()), ..Student::default() },

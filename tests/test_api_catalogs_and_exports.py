@@ -197,7 +197,11 @@ def test_public_export_keeps_sensitive_fields_hidden() -> None:
 
     assert export.status_code == 200
     assert "PRIVATE-SECRET" not in export.text
-    assert "178" not in export.text
+    # The height field must not render at all under the public template.
+    # Assert on the field label instead of the value "178": the export embeds
+    # a generation timestamp whose random microseconds can contain "178",
+    # which made the value assertion flaky (CI hit 469178+00:00 once).
+    assert "身高" not in export.text
     assert "quiet" not in export.text
 
 

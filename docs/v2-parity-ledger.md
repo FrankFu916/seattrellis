@@ -570,7 +570,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 - SOLVED 类：benchmark 40/50/60 与全部 34 个合法 fixture case 两侧均为
   `SOLVED`（含 hard rules、中文名单、history、rotation）。
 - TIMEOUT 类（60 人、0.1s 预算）：Python `TIMEOUT`，Rust `SOLVED` ——
-  文档化差距：Rust core 无时间预算（M3-04），仍按 M0-03 计为 mismatch。
+  差距已关闭（M3-04/PR #95）：Rust 现在自带 `--time-limit`，且按 M1-03
+  冻结语义，预算内找到合法 incumbent 的 `SOLVED` 优先于 `Timeout`，故
+  harness 将 Python TIMEOUT + Rust SOLVED 计为 match；benchmark 差分 0 mismatch。
 - INVALID_INPUT 类（7 个 invalid case）：Python 全部拒绝；Rust 对
   `invalid-empty-*`、`invalid-students-gt-seats`、`invalid-dup-student-id`
   均为 `INVALID_INPUT`（一致；dup 的拒绝原因不同——Python 在读入时拒重，

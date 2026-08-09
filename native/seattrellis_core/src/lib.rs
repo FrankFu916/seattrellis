@@ -431,6 +431,13 @@ pub struct CoreSolveRequest {
     /// Pair history for the recent-neighbor cost and mentor pairing.
     #[serde(default)]
     pub pair_history: Option<PairHistory>,
+    /// Optional wall-clock budget in seconds (M3-04). When set, the solve
+    /// must return by the deadline: greedy attempts stop, the hard search
+    /// checks the clock per node, and a budget spent without a complete
+    /// state-space sweep reports `Timeout` (not `Unknown`). Absent => the
+    /// hard search falls back to its node budget.
+    #[serde(default)]
+    pub time_limit_seconds: Option<f64>,
 }
 
 /// Frozen v2 SolveStatus vocabulary (plan §四.1, M1-03). Serialized with
@@ -636,11 +643,22 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     let mut rng = SplitMix64::new(request.seed);
     let ctx = build_cost_context(request);
 
+    // Optional wall-clock budget (M3-04): once set, the whole solve (greedy
+    // attempts + hard search) must honor it. A valid incumbent found before
+    // the deadline still returns Solved; running out of time without one
+    // reports Timeout instead of Unknown.
+    let deadline: Option<std::time::Instant> = request
+        .time_limit_seconds
+        .map(|seconds| std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds));
+
     // Mirror the Python fallback: attempt 0 seats each student on the cheapest
     // seat, later attempts sample randomly among the top-3 cheap seats, and the
     // lowest-total-cost complete assignment across every attempt wins.
     let mut best: Option<(Vec<usize>, f64, usize)> = None;
     for attempt in 0..attempts {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            break;
+        }
         if let Some(assignment) = greedy_attempt(
             request,
             &resolved,
@@ -683,8 +701,17 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
     // Full hard search (plan §6.1 fourth layer): when every greedy attempt
     // fails, backtracking with MRV + forward checking either finds a legal
     // seating, proves infeasibility by exhausting the whole state space, or
-    // spends its node budget (then the honest status stays Unknown).
-    match hard_search(request, &resolved, &adjacency, &graph_distances) {
+    // spends its budget (node budget without a time limit; the clock with
+    // one — then the honest status is Timeout/Unknown, never ProvenInfeasible).
+    let outcome = hard_search_with_budget(
+        request,
+        &resolved,
+        &adjacency,
+        &graph_distances,
+        deadline.map_or(HARD_SEARCH_NODE_BUDGET, |_| HARD_SEARCH_NODE_BUDGET),
+        deadline,
+    );
+    match outcome {
         SearchOutcome::Found(assignment) => {
             // Independent validation gate (M3-05), same as the greedy path.
             validate_assignment(request, &resolved, &adjacency, &graph_distances, &assignment)?;
@@ -718,9 +745,14 @@ pub fn solve_problem(request: &CoreSolveRequest) -> Result<CoreSolveResponse, St
         SearchOutcome::BudgetExceeded => Ok(CoreSolveResponse {
             api_version: NATIVE_API_VERSION,
             feasible: false,
-            // Node budget spent without a complete state-space sweep: honest
-            // status is Unknown, never ProvenInfeasible (M1-03).
-            status: SolveStatus::Unknown,
+            // Budget spent without a complete state-space sweep: honest
+            // status is Timeout when a time budget was given, Unknown
+            // otherwise — never ProvenInfeasible (M1-03).
+            status: if deadline.is_some() {
+                SolveStatus::Timeout
+            } else {
+                SolveStatus::Unknown
+            },
             assignment: Vec::new(),
             attempts_used: attempts,
             hard_constraints_satisfied: false,
@@ -1379,30 +1411,15 @@ const HARD_SEARCH_NODE_BUDGET: usize = 200_000;
 /// Full hard search: MRV student selection with degree tie-break, forward
 /// checking over the candidate domains, deterministic (fixed order) branch
 /// exploration. Fixed students are pre-placed; their domains are singletons
-/// so MRV picks them first.
-fn hard_search(
-    request: &CoreSolveRequest,
-    resolved: &ResolvedHardRules,
-    adjacency: &[Vec<usize>],
-    graph_distances: &[Vec<Option<u32>>],
-) -> SearchOutcome {
-    hard_search_with_budget(
-        request,
-        resolved,
-        adjacency,
-        graph_distances,
-        HARD_SEARCH_NODE_BUDGET,
-    )
-}
-
-/// [`hard_search`] with an explicit node budget (tests exercise the
-/// [`SearchOutcome::BudgetExceeded`] path with a tiny budget).
+/// so MRV picks them first. `budget` bounds nodes; `deadline` (optional
+/// wall-clock, M3-04) bounds time — whichever hits first stops the sweep.
 fn hard_search_with_budget(
     request: &CoreSolveRequest,
     resolved: &ResolvedHardRules,
     adjacency: &[Vec<usize>],
     graph_distances: &[Vec<Option<u32>>],
     budget: usize,
+    deadline: Option<std::time::Instant>,
 ) -> SearchOutcome {
     let mut assignment: Vec<Option<usize>> = vec![None; request.student_count];
     for [student, seat] in &request.fixed_seats {
@@ -1421,12 +1438,13 @@ fn hard_search_with_budget(
         &mut assignment,
         &mut domains,
         &mut budget,
+        deadline,
     )
 }
 
 /// One backtracking step. On success returns the complete assignment; on
 /// exhaustive failure returns [`SearchOutcome::ProvenInfeasible`]; on budget
-/// exhaustion [`SearchOutcome::BudgetExceeded`].
+/// or deadline exhaustion [`SearchOutcome::BudgetExceeded`].
 #[allow(clippy::too_many_arguments)]
 fn backtrack(
     request: &CoreSolveRequest,
@@ -1436,11 +1454,15 @@ fn backtrack(
     assignment: &mut [Option<usize>],
     domains: &mut [Vec<usize>],
     budget: &mut usize,
+    deadline: Option<std::time::Instant>,
 ) -> SearchOutcome {
     if *budget == 0 {
         return SearchOutcome::BudgetExceeded;
     }
     *budget -= 1;
+    if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+        return SearchOutcome::BudgetExceeded;
+    }
 
     // Every student assigned: complete assignment found.
     if assignment.iter().all(Option::is_some) {
@@ -1508,6 +1530,7 @@ fn backtrack(
             assignment,
             &mut next_domains,
             budget,
+            deadline,
         );
         assignment[student] = None;
         match result {
@@ -1807,8 +1830,8 @@ mod tests {
     use super::{
         assignment_is_unique, assigned_students_meet_distance, build_candidate_domains,
         build_graph_distance_matrix, build_index_adjacency, classify_solve_error,
-        evaluate_problem_json, hard_search, hard_search_with_budget,
-        maximum_candidate_matching, resolve_group_rules, seat_distance, solve_problem_json,
+        evaluate_problem_json, hard_search_with_budget, maximum_candidate_matching,
+        resolve_group_rules, seat_distance, solve_problem_json, HARD_SEARCH_NODE_BUDGET,
         precheck_report_json, validate_assignment, validate_solve_request_json,
         CoreEvaluationResponse, CoreSolveRequest, CoreSolveResponse, SearchOutcome,
         SolveStatus, NATIVE_API_VERSION,
@@ -2730,7 +2753,7 @@ mod tests {
         let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
         let graph_distances = build_graph_distance_matrix(&adjacency);
 
-        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 200_000);
+        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 200_000, None);
         let SearchOutcome::Found(assignment) = outcome else {
             panic!("hard search should find the far-apart placement, got {outcome:?}");
         };
@@ -2768,11 +2791,18 @@ mod tests {
         let graph_distances = build_graph_distance_matrix(&adjacency);
 
         // A budget of 1 node cannot sweep anything.
-        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 1);
+        let outcome = hard_search_with_budget(&request, &resolved, &adjacency, &graph_distances, 1, None);
         assert_eq!(outcome, SearchOutcome::BudgetExceeded);
 
         // The full budget proves it (and solve_problem reports that).
-        let outcome = hard_search(&request, &resolved, &adjacency, &graph_distances);
+        let outcome = hard_search_with_budget(
+            &request,
+            &resolved,
+            &adjacency,
+            &graph_distances,
+            HARD_SEARCH_NODE_BUDGET,
+            None,
+        );
         assert_eq!(outcome, SearchOutcome::ProvenInfeasible);
     }
     #[test]
@@ -2856,5 +2886,44 @@ mod tests {
         assert_eq!(report["precheck"], "infeasible");
         let reason = report["infeasible_reason"].as_str().unwrap();
         assert!(reason.contains("student 1 has no legal seat"), "{reason}");
+    }
+    #[test]
+    fn time_limit_reports_timeout_when_budget_is_spent() {
+        // The fully-forbidden 2x2 grid is provably infeasible, but with a
+        // sub-millisecond budget the search cannot sweep it: the honest
+        // status is Timeout (a time budget was given), never ProvenInfeasible.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 4,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
+            "edges": [[0, 1], [2, 3], [0, 2], [1, 3]],
+            "cannot_be_adjacent": [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]],
+            "time_limit_seconds": 0.000001
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should validate");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+
+        assert!(!response.feasible);
+        assert_eq!(response.status, SolveStatus::Timeout);
+    }
+
+    #[test]
+    fn time_limit_with_incumbent_still_reports_solved() {
+        // A trivial problem solved by greedy attempt 0 within the budget:
+        // the incumbent wins even though the budget is tiny.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 1], [1, 2]],
+            "time_limit_seconds": 0.001
+        }"#;
+        let response_json = solve_problem_json(request).expect("request should validate");
+        let response: CoreSolveResponse =
+            serde_json::from_str(&response_json).expect("response should be valid JSON");
+
+        assert!(response.feasible);
+        assert_eq!(response.status, SolveStatus::Solved);
     }
 }
