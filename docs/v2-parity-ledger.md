@@ -713,6 +713,10 @@ Rust 实现（`PYTHON_ONLY`）、`stability_score`、计划比较报告、500 �
 fixed-assignment scoring parity、性能回归 ≤10% 门槛、PlanScore 七维
 评分、500 次编辑/长跑期间的峰值内存细化曲线。
 
+> 本条证据以 merge commit `b4374ed`（PR #106，分支 `feature/long-run-gates`）
+> 为起点；`long-run-gates` CI job 在 ubuntu/release 下实测通过
+> （36m17s，含 candidates gate + long-run gate + rotation gate）。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
