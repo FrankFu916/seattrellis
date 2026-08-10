@@ -23,7 +23,8 @@ use crate::style::Styler;
 use crate::ValidateArgs;
 use crate::{
     AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, HistoryReportArgs, PairReportArgs,
-    PrecheckArgs, ProjectArgs, RepairArgs, ScoreArgs, SolveArgs,
+    PrecheckArgs, ProjectArgs, ProjectInitArgs, ProjectListArgs, ProjectPackArgs,
+    ProjectPrivacyArgs, ProjectRestoreArgs, RepairArgs, ScoreArgs, SolveArgs,
 };
 use seattrellis_export::export::export_plan;
 
@@ -341,6 +342,135 @@ pub fn run_score(args: &ScoreArgs) -> Result<(), String> {
     )
     .map_err(|error| format!("scoring failed: {error}"))?;
     println!("{report}");
+    Ok(())
+}
+
+/// `doctor`: environment diagnostics (plan §5.5 CLI surface).
+pub fn run_doctor() -> Result<(), String> {
+    let styler = Styler::stdout();
+    println!("{}: {}", styler.bold("binary"), env!("CARGO_PKG_NAME"));
+    println!("{}: {}", styler.bold("version"), env!("CARGO_PKG_VERSION"));
+    println!(
+        "{}: {}",
+        styler.bold("core api version"),
+        seattrellis_core::NATIVE_API_VERSION
+    );
+    let temp = std::env::temp_dir();
+    let probe = temp.join(format!(
+        "seattrellis-doctor-{}-{}.tmp",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    ));
+    match std::fs::write(&probe, b"ok") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            println!("{}: {} (writable)", styler.bold("temp dir"), temp.display());
+        }
+        Err(error) => {
+            println!(
+                "{}: {} not writable ({error})",
+                styler.bold("temp dir"),
+                temp.display()
+            );
+            return Err(format!("temp dir is not writable: {error}"));
+        }
+    }
+    Ok(())
+}
+
+/// `project-init`: create a `seattrellis_project` workspace file in a
+/// directory that already carries `students.csv` / `layout.json` /
+/// `rules.json` (plan §5.5 project lifecycle).
+pub fn run_project_init(args: &ProjectInitArgs) -> Result<(), String> {
+    let dir = args
+        .dir
+        .canonicalize()
+        .map_err(|error| format!("could not resolve {}: {error}", args.dir.display()))?;
+    if !dir.is_dir() {
+        return Err(format!("{} is not a directory", dir.display()));
+    }
+    let project_file = dir.join("seattrellis.project.json");
+    if project_file.exists() {
+        return Err(format!(
+            "project file already exists: {}",
+            project_file.display()
+        ));
+    }
+    let mut references = serde_json::Map::new();
+    for (field, name) in [
+        ("students", "students.csv"),
+        ("layout", "layout.json"),
+        ("rules", "rules.json"),
+    ] {
+        if !dir.join(name).is_file() {
+            return Err(format!(
+                "{name} is missing; project-init needs an existing workspace"
+            ));
+        }
+        references.insert(
+            field.to_string(),
+            serde_json::Value::String(name.to_string()),
+        );
+    }
+    let document = serde_json::json!({
+        "kind": "seattrellis_project",
+        "schema_version": 1,
+        "name": dir.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| "SeatTrellis Project".to_string()),
+        "students": references["students"],
+        "layout": references["layout"],
+        "rules": references["rules"],
+        "outputs_dir": "outputs",
+    });
+    write_output_atomically(&project_file, document.to_string().as_bytes())?;
+    println!("wrote '{}'", project_file.display());
+    Ok(())
+}
+
+/// `project-list`: list recent projects under a root (io layer).
+pub fn run_project_list(args: &ProjectListArgs) -> Result<String, String> {
+    seattrellis_io::projects::list_projects_json(
+        args.root.to_str().ok_or("root path is not valid UTF-8")?,
+        args.limit,
+    )
+}
+
+/// `project-privacy`: scan a project for sensitive fields (io layer).
+pub fn run_project_privacy(args: &ProjectPrivacyArgs) -> Result<String, String> {
+    seattrellis_io::projects::project_privacy_json(
+        args.project
+            .to_str()
+            .ok_or("project path is not valid UTF-8")?,
+    )
+}
+
+/// `project-pack`: pack a project workspace into a `.seattrellis.zip` bundle.
+pub fn run_project_pack(args: &ProjectPackArgs) -> Result<(), String> {
+    let bundle = seattrellis_io::projects::pack_project_json(
+        args.project
+            .to_str()
+            .ok_or("project path is not valid UTF-8")?,
+    )?;
+    write_output_atomically(&args.output, &bundle)?;
+    println!("wrote '{}'", args.output.display());
+    Ok(())
+}
+
+/// `project-restore`: restore a bundle into an output directory (journaled
+/// directory transaction; `--force` overwrites a non-empty destination).
+pub fn run_project_restore(args: &ProjectRestoreArgs) -> Result<(), String> {
+    let bundle = std::fs::read(&args.bundle)
+        .map_err(|error| format!("could not read {}: {error}", args.bundle.display()))?;
+    let restored = seattrellis_io::projects::restore_project_bundle(
+        &bundle,
+        args.output_dir
+            .to_str()
+            .ok_or("output dir is not valid UTF-8")?,
+        args.force,
+    )?;
+    println!("restored '{}'", restored.display());
     Ok(())
 }
 
