@@ -417,6 +417,127 @@ def run_fixture_classes() -> list[tuple[str, str, str, str, list[str]]]:
 
 # --- reporting --------------------------------------------------------------
 
+def run_rust_candidates(
+    request: dict[str, object], count: int, tmp: Path
+) -> tuple[str, str, int | None]:
+    """Run the Rust CLI ``candidates`` command; return (status, detail, count).
+
+    The report is printed to stdout; a generation failure exits 2. The count
+    is the number of distinct feasible plans actually generated.
+    """
+    problem_file = tmp / "rust-candidates-problem.json"
+    problem_file.write_text(json.dumps(request), encoding="utf-8")
+    proc = subprocess.run(
+        [str(CLI), "candidates", "--problem", str(problem_file), "--count", str(count)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode == 0:
+        try:
+            report = json.loads(proc.stdout)
+            generated = int(report.get("candidate_count", 0))
+            detail = f"candidates={generated}"
+            return STATUS_SOLVED, detail, generated
+        except (OSError, ValueError):
+            return STATUS_INTERNAL_ERROR, proc.stdout.strip()[:200], None
+    detail = proc.stderr.strip()[:200] or proc.stdout.strip()[:200]
+    if any(token in detail.lower() for token in INVALID_TOKENS):
+        return STATUS_INVALID_INPUT, detail, None
+    return STATUS_INTERNAL_ERROR, detail, None
+
+
+def run_python_candidates(case_dir: Path, count: int, tmp: Path) -> tuple[str, str, int | None]:
+    """Run the Python oracle CLI ``solve --candidates N`` on a fixture case;
+    return (status, detail, generated count). The candidate set document is
+    written to the ``--output`` file (stdout carries a human summary)."""
+    output_file = tmp / f"python-candidates-{case_dir.name}-{count}.json"
+    flags = [
+        str(PY_CLI), "solve",
+        "--students", str(case_dir / "students.csv"),
+        "--layout", str(case_dir / "classroom.json"),
+        "--rules", str(case_dir / "rules.json"),
+        "--backend", SOLVER_BACKEND, "--seed", "42",
+        "--time-limit", "3",
+        "--candidates", str(count),
+        "--output", str(output_file),
+    ]
+    if (case_dir / "history").is_dir():
+        flags += ["--history-dir", str(case_dir / "history")]
+    proc = subprocess.run(flags, capture_output=True, text=True)
+    if proc.returncode == 0 and output_file.exists():
+        try:
+            report = json.loads(output_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return STATUS_INTERNAL_ERROR, proc.stdout.strip()[:200], None
+        candidates = report.get("candidates")
+        if candidates is None:
+            # --candidates 1 writes a plain snapshot document (a CandidateSet
+            # with exactly one entry), not a candidate-set envelope.
+            if report.get("assignments") is not None:
+                generated = 1
+                return STATUS_SOLVED, "candidates=1", generated
+            return STATUS_INTERNAL_ERROR, proc.stdout.strip()[:200], None
+        generated = len(candidates)
+        return STATUS_SOLVED, f"candidates={generated}", generated
+    status = classify_python_cli(proc)
+    return status, (proc.stderr + proc.stdout).strip()[:200], None
+
+
+# Fixture cases exercising the candidate sizes required by the M3 Exit Gate
+# (ledger §17.4): 20/40/50/60/80 students × 1/5/20 requested candidates.
+CANDIDATES_FIXTURE_CASES = [
+    "p20-rect-exact-none",
+    "p40-rect-exact-sparse",
+    "p50-custom-adj-sparse",
+    "p60-rect-exact-dense",
+    "p80-rect-exact-dense",
+]
+CANDIDATES_COUNTS = [1, 5, 20]
+
+
+def run_candidates_class() -> list[tuple[str, str, str, str, list[str]]]:
+    """Python↔Rust candidate-set parity: same fixture, same base seed, same
+    requested count. The comparison is status class + generated count; the
+    assignments themselves differ (independent solvers), so per-candidate
+    content parity is out of scope (ledger §19.3.4). When both sides solve
+    but generate different numbers of distinct plans, the count is embedded
+    in the status token so the generic reporter flags a mismatch."""
+    rows: list[tuple[str, str, str, str, list[str]]] = []
+    if not CLI.exists():
+        raise SystemExit(f"Rust CLI not found: {CLI}; build it first")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for case_name in CANDIDATES_FIXTURE_CASES:
+            case_dir = INPUTS / case_name
+            for count in CANDIDATES_COUNTS:
+                cid = f"{case_name}-cand{count}"
+                py_status, py_detail, py_generated = run_python_candidates(
+                    case_dir, count, tmp_path
+                )
+                request, _ = fixture_to_request(case_dir)
+                request["seed"] = 42
+                rust_status, rust_detail, rust_generated = run_rust_candidates(
+                    request, count, tmp_path
+                )
+                py_label = (
+                    f"{py_status}({py_generated})"
+                    if py_generated is not None
+                    else py_status
+                )
+                rust_label = (
+                    f"{rust_status}({rust_generated})"
+                    if rust_generated is not None
+                    else rust_status
+                )
+                notes: list[str] = []
+                if py_detail and py_generated is None:
+                    notes.append(f"python: {py_detail}")
+                if rust_generated is None and rust_detail:
+                    notes.append(f"rust: {rust_detail}")
+                rows.append((cid, py_label, rust_label, rust_detail, notes))
+    return rows
+
+
 def report(rows: list[tuple[str, str, str, str, list[str]]], allow_documented: bool = False) -> int:
     mismatches = 0
     documented = 0
@@ -465,6 +586,11 @@ def main() -> int:
     parser.add_argument("--time-limit", type=float, default=3.0)
     parser.add_argument("--fixtures", action="store_true", help="run the fixtures/parity status classes")
     parser.add_argument(
+        "--candidates",
+        action="store_true",
+        help="run the candidate-set parity class (20/40/50/60/80 x 1/5/20)",
+    )
+    parser.add_argument(
         "--allow-documented-gaps",
         action="store_true",
         help="CI mode: tolerate exactly the case-level documented corpus gaps "
@@ -475,9 +601,12 @@ def main() -> int:
     if not PY_CLI.exists():
         raise SystemExit(f"Python CLI not found: {PY_CLI}; activate the project venv")
 
+    rows: list[tuple[str, str, str, str, list[str]]] = []
     if args.fixtures:
-        rows = run_fixture_classes()
-    else:
+        rows.extend(run_fixture_classes())
+    if args.candidates:
+        rows.extend(run_candidates_class())
+    if not rows:
         sizes = [int(item) for item in args.sizes.split(",")]
         rows = run_benchmark_classes(sizes, args.time_limit)
     return report(rows, allow_documented=args.allow_documented_gaps)

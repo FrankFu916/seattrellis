@@ -649,6 +649,32 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 - `DOCUMENTED_CORPUS_GAPS` 清空（机制保留供未来登记）；CI 差分 job 跑严格模式。
 - 新增 io 测试 `workspace_request_builder_rejects_unknown_rules_and_bad_adjacency`。
 
+### 19.6 2026-08-10：candidate-engine Gate 证据（§6.3/§6.7）
+
+候选引擎的证据缺口按两条路径补齐：
+
+1. **Rust 候选 Gate（release，CI ubuntu job）**：新增集成测试
+   `native/seattrellis_core/tests/candidates_gate.rs`，覆盖
+   **20/40/50/60/80 人 × 1/5/20 候选**（15 组合）：
+   - 每组生成**恰好请求数**的互异可行方案（exact-assignment exclusion 下
+     重复直接报错）；
+   - 每个候选通过**公开 `validate_solve_response` 独立复核**（不信任生成器
+     内部检查）；
+   - 同 seed 重跑**逐字节可复现**（三平台确定性由 CI 跑同一测试覆盖）；
+   - recommended 必须是生成的候选之一。
+   测试标记 `#[ignore]`（80×20 在 debug 下需数分钟），CI 用
+   `cargo test --release ... -- --ignored` 在 ubuntu 上显式执行
+   （rust.yml `Candidate gate (release)` 步骤）。
+2. **Python↔Rust 候选差分**：`rust_python_diff.py --candidates` 在 5 个
+   fixture case（20/40/50/60/80 人）× 1/5/20 上与 Python oracle（fallback
+   backend、同 base seed 42、每尝试 3s）对比**状态类 + 生成数量**（候选
+   内容本身因求解器独立而不比较，见 §19.3.4）。结果：**15/15 match**。
+   CI 差分 job 改为 `--fixtures --candidates`（timeout 90min）。
+
+仍缺的候选证据（不因本条目改变状态）：PlanScore/breakdown 七维评分的
+Rust 实现（`PYTHON_ONLY`）、`stability_score`、计划比较报告、500 次长跑
+与内存门槛（§6.6）。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）

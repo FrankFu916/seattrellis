@@ -43,6 +43,14 @@ jobs:
         run: cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
       - name: Clippy (app)
         run: cargo clippy --all-targets -p seattrellis_app -- -D warnings
+      - name: Candidate gate (release)
+        # M3 §6.3/§6.7 evidence: 20/40/50/60/80 students x 1/5/20 candidates,
+        # every candidate independently validated, deterministic, distinct.
+        # Release-only (the 80x20 combination costs minutes in debug); one
+        # platform suffices for the gate, three-platform solver determinism
+        # is covered by the parity corpus elsewhere.
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo test --release --locked -p seattrellis_core --test candidates_gate -- --ignored
 
   contract-drift:
     # M1-06: the OpenAPI document and the generated TypeScript client must
