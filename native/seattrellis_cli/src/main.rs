@@ -83,6 +83,17 @@ pub struct AuditArgs {
     pub solution: PathBuf,
 }
 
+/// `score`: fixed-assignment PlanScore breakdown (plan §6.2/§6.6 parity
+/// evidence). `assignment` is an inline JSON array of `[student, seat]`
+/// index pairs; `latest_snapshot` and `diversity` are optional.
+#[derive(Debug, PartialEq)]
+pub struct ScoreArgs {
+    pub problem: PathBuf,
+    pub assignment: String,
+    pub latest_snapshot: Option<PathBuf>,
+    pub diversity: Option<f64>,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct CandidatesArgs {
     pub problem: PathBuf,
@@ -131,6 +142,7 @@ enum Command {
     Validate(ValidateArgs),
     Precheck(PrecheckArgs),
     Audit(AuditArgs),
+    Score(ScoreArgs),
     Candidates(CandidatesArgs),
     HistoryReport(HistoryReportArgs),
     PairReport(PairReportArgs),
@@ -333,6 +345,53 @@ fn parse_audit(tokens: &[String]) -> Result<Command, String> {
     Ok(Command::Audit(AuditArgs {
         problem: PathBuf::from(problem),
         solution: PathBuf::from(solution),
+    }))
+}
+
+fn parse_score(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--assignment",
+            takes_value: true,
+        },
+        Flag {
+            name: "--latest-snapshot",
+            takes_value: true,
+        },
+        Flag {
+            name: "--diversity",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?.ok_or("score requires --problem <file>")?;
+    let assignment = flag_value(&parsed, "--assignment")?
+        .ok_or("score requires --assignment <json>")?
+        .to_string();
+    let latest_snapshot = flag_value(&parsed, "--latest-snapshot")?.map(PathBuf::from);
+    let diversity = match flag_value(&parsed, "--diversity")? {
+        Some(raw) => Some(
+            raw.parse::<f64>()
+                .map_err(|error| format!("invalid --diversity '{raw}': {error}"))?,
+        ),
+        None => None,
+    };
+    Ok(Command::Score(ScoreArgs {
+        problem: PathBuf::from(problem),
+        assignment,
+        latest_snapshot,
+        diversity,
     }))
 }
 
@@ -645,6 +704,7 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "validate" => parse_validate(&text[1..]),
         "precheck" => parse_precheck(&text[1..]),
         "audit" => parse_audit(&text[1..]),
+        "score" => parse_score(&text[1..]),
         "candidates" => parse_candidates(&text[1..]),
         "history-report" => parse_history_report(&text[1..]),
         "pair-report" => parse_pair_report(&text[1..]),
@@ -717,6 +777,14 @@ fn run_command(command: Command) -> ExitCode {
             }
         },
         Command::Audit(args) => match commands::run_audit(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::Score(args) => match commands::run_score(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 let styler = Styler::stderr();

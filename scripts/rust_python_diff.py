@@ -411,11 +411,287 @@ def run_fixture_classes() -> list[tuple[str, str, str, str, list[str]]]:
                 notes = notes + list(rust_notes.values())
             else:
                 rust_status, detail, _ = run_rust(request, tmp_path)
+            # Quality baseline (plan §6.6 item 6): on every case where both
+            # sides solve, Rust's total cost must not exceed the Python
+            # fallback's golden objective (within a 5% tolerance that absorbs
+            # the randomize rule's deterministic-but-different RNG draws; a
+            # real regression is a mismatch).
+            if py_status == rust_status == STATUS_SOLVED:
+                golden_path = GOLDENS / cid / "snapshot.json"
+                result_path = tmp_path / "rust-result.json"
+                if golden_path.is_file() and result_path.exists():
+                    try:
+                        golden = json.loads(golden_path.read_text(encoding="utf-8"))
+                        fallback_cost = golden.get("objective_value")
+                        rust_cost = json.loads(
+                            result_path.read_text(encoding="utf-8")
+                        ).get("total_cost")
+                    except (OSError, ValueError):
+                        fallback_cost = rust_cost = None
+                    if (
+                        fallback_cost is not None
+                        and rust_cost is not None
+                        and fallback_cost > 0
+                    ):
+                        ratio = rust_cost / fallback_cost
+                        notes.append(
+                            f"cost vs fallback: rust={rust_cost:.1f} "
+                            f"fallback={fallback_cost:.1f} ratio={ratio:.3f}"
+                        )
+                        if rust_cost > fallback_cost * 1.05:
+                            rust_status = "SOLVED(COST_REGRESSION)"
             rows.append((cid, py_status, rust_status, detail, notes))
     return rows
 
 
 # --- reporting --------------------------------------------------------------
+
+def scoring_request_from_golden(
+    snapshot_document: dict[str, object],
+) -> dict[str, object]:
+    """Build a CoreSolveRequest from a golden snapshot document (which embeds
+    students/layout/rules) for the fixed-assignment scoring parity class."""
+    from seattrellis.models.snapshot import SeatingSnapshot
+    from seattrellis.solver.precompute import precompute_topology
+
+    snapshot = SeatingSnapshot.model_validate(snapshot_document)
+    topology = precompute_topology(snapshot.students, snapshot.layout)
+    layout = json.loads(snapshot.layout.model_dump_json())
+    layout["seats"] = [seat.model_dump(mode="json") for seat in topology.seats]
+    request: dict[str, object] = {
+        "api_version": NATIVE_API_VERSION,
+        "student_count": len(snapshot.students),
+        "seat_positions": [[float(seat.x), float(seat.y)] for seat in topology.seats],
+        "edges": [list(edge) for edge in sorted(topology.adjacent_seat_index_pairs)],
+        "students": [
+            {
+                "key": student.key,
+                "display_name": student.display_name,
+                "score": student.score,
+                "height_cm": student.height_cm,
+                "vision": str(student.vision) if student.vision else None,
+                "tags": list(student.tags),
+                "needs": list(student.needs),
+            }
+            for student in snapshot.students
+        ],
+        "layout": layout,
+        "rules": {
+            "seed": snapshot.rules.seed,
+            "soft": json.loads(snapshot.rules.soft.model_dump_json()),
+        },
+        "seed": snapshot.rules.seed,
+    }
+    return request
+
+
+def fixture_history_context(
+    case_dir: Path,
+) -> tuple[dict[str, object] | None, dict[str, object] | None, dict[str, object] | None]:
+    """Build (history, pair_history, latest_snapshot) from a fixture's
+    history directory for the scoring class (None when absent)."""
+    from seattrellis.history import build_pair_history, build_seat_history
+    from seattrellis.io.json_files import load_layout, load_rules
+    from seattrellis.io.students import read_students
+    from seattrellis.models.snapshot import SeatingSnapshot
+
+    history_dir = case_dir / "history"
+    if not history_dir.is_dir():
+        return None, None, None
+    students = read_students(case_dir / "students.csv")
+    layout = load_layout(case_dir / "classroom.json")
+    rules = load_rules(case_dir / "rules.json")
+    snapshot_files = sorted(history_dir.glob("*.snapshot.json"))
+    if not snapshot_files:
+        return None, None, None
+    snapshots = [
+        SeatingSnapshot.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        for path in snapshot_files
+    ]
+    history = build_seat_history(students, layout, snapshots)
+    pair_history = build_pair_history(students, layout, snapshots)
+    latest = json.loads(snapshot_files[-1].read_text(encoding="utf-8"))
+    return (
+        json.loads(history.model_dump_json()),
+        json.loads(pair_history.model_dump_json()),
+        latest,
+    )
+
+
+def run_rust_score(
+    request: dict[str, object],
+    pairs: list[list[int]],
+    latest_snapshot: dict[str, object] | None,
+    tmp: Path,
+) -> tuple[str, dict[str, object]]:
+    """Run the Rust CLI ``score`` command; return (status, report)."""
+    problem_file = tmp / "rust-score-problem.json"
+    problem_file.write_text(json.dumps(request), encoding="utf-8")
+    cmd = [
+        str(CLI), "score",
+        "--problem", str(problem_file),
+        "--assignment", json.dumps(pairs),
+    ]
+    if latest_snapshot is not None:
+        latest_file = tmp / "rust-score-latest.json"
+        latest_file.write_text(json.dumps(latest_snapshot), encoding="utf-8")
+        cmd += ["--latest-snapshot", str(latest_file)]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return STATUS_INTERNAL_ERROR, {}
+    try:
+        return STATUS_SOLVED, json.loads(proc.stdout)
+    except (OSError, ValueError):
+        return STATUS_INTERNAL_ERROR, {}
+
+
+def run_scoring_class() -> list[tuple[str, str, str, str, list[str]]]:
+    """Fixed-assignment scoring parity (plan §6.6 item 4): for every valid
+    fixture case, score the golden snapshot's assignment with Python
+    ``score_snapshot`` and the Rust CLI ``score`` command, then compare the
+    PlanScore breakdown dimension by dimension (status, score within 0.01,
+    weight) plus the hard-constraint summary. History-bearing cases also
+    exercise fair_rotation / avoid_recent_neighbors / stability."""
+    from seattrellis.models.snapshot import SeatingSnapshot
+    from seattrellis.scoring import score_snapshot
+
+    rows: list[tuple[str, str, str, str, list[str]]] = []
+    if not CLI.exists():
+        raise SystemExit(f"Rust CLI not found: {CLI}; build it first")
+    golden_dirs = sorted(
+        GOLDENS / case_dir.name
+        for case_dir in INPUTS.iterdir()
+        if case_dir.is_dir() and (GOLDENS / case_dir.name / "snapshot.json").is_file()
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for golden_dir in golden_dirs:
+            cid = golden_dir.name
+            golden = json.loads((golden_dir / "snapshot.json").read_text(encoding="utf-8"))
+            request = scoring_request_from_golden(golden)
+            # Merge the fixture's compiled hard rules (index pairs) so the
+            # hard-constraint summary counts the same rule set Python
+            # validates against.
+            fixture_request, _ = fixture_to_request(INPUTS / cid)
+            for key in ("fixed_seats", "must_be_adjacent", "cannot_be_adjacent", "min_distance"):
+                if fixture_request.get(key):
+                    request[key] = fixture_request[key]
+            snapshot = SeatingSnapshot.model_validate(golden)
+            seat_index = {
+                seat["seat_id"]: index
+                for index, seat in enumerate(request["layout"]["seats"])
+            }
+            student_index = {
+                student["key"]: index
+                for index, student in enumerate(request["students"])
+            }
+            try:
+                pairs = [
+                    [student_index[assignment["student_key"]], seat_index[assignment["seat_id"]]]
+                    for assignment in golden["assignments"]
+                ]
+            except KeyError as error:
+                rows.append((cid, "SKIP", "SKIP", f"golden references unknown key: {error}", []))
+                continue
+
+            history, pair_history, latest = fixture_history_context(INPUTS / cid)
+            if history is not None:
+                request["history"] = history
+                request["pair_history"] = pair_history
+            latest_model = (
+                SeatingSnapshot.model_validate(latest) if latest is not None else None
+            )
+            from seattrellis.models.history import PairHistory, SeatHistory
+
+            py_score = json.loads(
+                score_snapshot(
+                    snapshot,
+                    history=SeatHistory.model_validate(history) if history else None,
+                    pair_history=PairHistory.model_validate(pair_history)
+                    if pair_history
+                    else None,
+                    latest_snapshot=latest_model,
+                ).model_dump_json()
+            )
+            rust_status, rust_score = run_rust_score(request, pairs, latest, tmp_path)
+            if rust_status != STATUS_SOLVED:
+                rows.append((cid, "SOLVED", rust_status, "rust score command failed", []))
+                continue
+
+            notes: list[str] = []
+            mismatches = compare_plan_scores(py_score, rust_score, notes)
+            rows.append(
+                (
+                    cid,
+                    "SOLVED",
+                    "SOLVED",
+                    "" if not mismatches else f"{mismatches} mismatches",
+                    notes,
+                )
+            )
+    return rows
+
+
+def compare_plan_scores(
+    python: dict[str, object], rust: dict[str, object], notes: list[str]
+) -> int:
+    """Compare two PlanScore documents; append human-readable notes and
+    return the number of mismatching fields (status / score / weight /
+    total / hard summary)."""
+    mismatches = 0
+
+    def check(label: str, left: object, right: object, tolerance: float = 0.0) -> None:
+        nonlocal mismatches
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+            if abs(float(left) - float(right)) > tolerance:
+                mismatches += 1
+                notes.append(f"{label}: python={left} rust={right}")
+            return
+        if left != right:
+            mismatches += 1
+            notes.append(f"{label}: python={left} rust={right}")
+
+    check("total", python.get("total"), rust.get("total"), tolerance=0.01)
+    py_breakdown = python.get("breakdown", {})
+    rust_breakdown = rust.get("breakdown", {})
+    for key in (
+        "fair_rotation_score",
+        "avoid_recent_neighbors_score",
+        "score_balance_score",
+        "height_preference_score",
+        "vision_preference_score",
+        "diversity_score",
+        "stability_score",
+    ):
+        py_dim = py_breakdown.get(key, {})
+        rust_dim = rust_breakdown.get(key, {})
+        check(f"{key}.status", py_dim.get("status"), rust_dim.get("status"))
+        check(f"{key}.score", py_dim.get("score"), rust_dim.get("score"), tolerance=0.01)
+        check(f"{key}.weight", py_dim.get("weight"), rust_dim.get("weight"), tolerance=0.001)
+    for key in ("score_position_score", "score_distribution_score", "mentor_pairing_score"):
+        py_dim = py_breakdown.get("rule_scores", {}).get(key, {})
+        rust_dim = rust_breakdown.get("rule_scores", {}).get(key, {})
+        check(f"rule_scores.{key}.status", py_dim.get("status"), rust_dim.get("status"))
+        check(
+            f"rule_scores.{key}.score",
+            py_dim.get("score"),
+            rust_dim.get("score"),
+            tolerance=0.01,
+        )
+        check(
+            f"rule_scores.{key}.weight",
+            py_dim.get("weight"),
+            rust_dim.get("weight"),
+            tolerance=0.001,
+        )
+    for key in ("satisfied", "checked_rule_count", "violation_count"):
+        check(
+            f"hard_constraint_summary.{key}",
+            py_breakdown.get("hard_constraint_summary", {}).get(key),
+            rust_breakdown.get("hard_constraint_summary", {}).get(key),
+        )
+    return mismatches
+
 
 def run_rust_candidates(
     request: dict[str, object], count: int, tmp: Path
@@ -591,6 +867,11 @@ def main() -> int:
         help="run the candidate-set parity class (20/40/50/60/80 x 1/5/20)",
     )
     parser.add_argument(
+        "--scoring",
+        action="store_true",
+        help="run the fixed-assignment PlanScore parity class (all valid fixture cases)",
+    )
+    parser.add_argument(
         "--allow-documented-gaps",
         action="store_true",
         help="CI mode: tolerate exactly the case-level documented corpus gaps "
@@ -606,6 +887,8 @@ def main() -> int:
         rows.extend(run_fixture_classes())
     if args.candidates:
         rows.extend(run_candidates_class())
+    if args.scoring:
+        rows.extend(run_scoring_class())
     if not rows:
         sizes = [int(item) for item in args.sizes.split(",")]
         rows = run_benchmark_classes(sizes, args.time_limit)

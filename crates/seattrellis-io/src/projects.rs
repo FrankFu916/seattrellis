@@ -2462,6 +2462,9 @@ mod tests {
         fs::write(root.join("rules.json"), r#"{"seed":7,"soft":{}}"#).unwrap();
 
         let mut last_restored = project_file.clone();
+        // One isolated parent for every restore so the journal anchor is not
+        // shared with other tests (and other cycles) in the temp dir.
+        let restore_parent = temp_root("long-run-restore-parent");
         for cycle in 0..100 {
             // Open: load and validate the project document.
             let (document, _) = load_project_document(&last_restored).unwrap();
@@ -2475,7 +2478,7 @@ mod tests {
             // Pack + restore into a fresh directory (journaled directory
             // transaction); the restored project must open again.
             let bundle = pack_project_json(&last_restored.display().to_string()).unwrap();
-            let dest = temp_root(&format!("long-run-restore-{cycle}"));
+            let dest = restore_parent.join(format!("restored-{cycle}"));
             let restored_json = restore_project_json(&bundle, dest.to_str().unwrap()).unwrap();
             let restored: Value = serde_json::from_str(&restored_json).unwrap();
             last_restored = PathBuf::from(restored["project_path"].as_str().unwrap());
@@ -2503,7 +2506,10 @@ mod tests {
         assert!(bytes.len() >= 4);
         assert_eq!(&bytes[..2], b"PK");
 
-        let dest = temp_root("roundtrip-out");
+        // The destination lives in its own parent so the restore journal
+        // anchor is isolated from other tests sharing the temp dir.
+        let parent = temp_root("roundtrip-parent");
+        let dest = parent.join("restored");
         let json = restore_project_json(&bytes, dest.to_str().unwrap()).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["api_version"], "1");

@@ -717,6 +717,47 @@ fixed-assignment scoring parity、性能回归 ≤10% 门槛、PlanScore 七维
 > 为起点；`long-run-gates` CI job 在 ubuntu/release 下实测通过
 > （36m17s，含 candidates gate + long-run gate + rotation gate）。
 
+### 19.8 2026-08-10：PlanScore、评分 parity 与求解性能（§6.2/§6.6）
+
+1. **求解性能修复（贪心停滞早退）**：greedy attempt 循环在连续
+   `GREEDY_STAGNATION_LIMIT=48` 次无改进后提前退出（保持确定性：attempt
+   顺序由 seed 驱动，同输入同 seed 结果可复现）。实测 n=40/50/60/80
+   求解时间 **0.05/0.17/0.17/0.41s**（修复前 0.54/1.3/2.5/8s），全部交互级
+   （§6.6 item 7）。质量不降反升：6 样本 vs OR-Tools normalized regret
+   **median -19.29%（Gate ≤5%）、P95 -17.07%（Gate ≤15%），PASS**
+   （修复前 -13.84%）。
+2. **PlanScore Rust 实现**（`score_assignment_json`，Python `score_snapshot`
+   逐字段镜像）：七维（fair_rotation / avoid_recent_neighbors /
+   score_balance / height_preference / vision_preference / diversity /
+   stability）+ `rule_scores`（score_position / score_distribution /
+   mentor_pairing）+ `hard_constraint_summary` + weighted `total`
+   （0..100，违规即 0）。CLI 新增 `score` 命令。
+3. **固定 assignment 评分 parity（§6.6 item 4）**：`rust_python_diff.py
+   --scoring` 对全部 34 个合法 fixture 的 golden assignment 逐维度对比
+   （status/score±0.01/weight/total/hard summary），**34/34 match，0
+   mismatch**；6 个含 history 的 case 同时覆盖 fair_rotation /
+   avoid_recent_neighbors / stability 维度。
+4. **candidates 携带 plan_score**：`generate_candidates_json` 每候选输出
+   `plan_score`（diversity = 对其它候选的平均 assignment 距离，镜像
+   `apply_diversity_scores`；stability 因 core history 模型不含原始 seat_id
+   而为 not_available——固定 assignment 路径已覆盖 stability parity）；
+   **推荐改为 max plan_score total**（镜像 Python `refresh_recommendation`
+   的 -total_score 排序，替代原先的 min total_cost，关闭 §19.3.4 登记的
+   推荐分歧）。
+5. **质量基线 vs Python fallback（§6.6 item 6）**：fixture 差分在双侧
+   SOLVED 时对比 Rust `total_cost` 与 golden `objective_value`（fallback
+   成本），5% 容差吸收 randomize 规则的 RNG 噪声；实测 34 case 全部
+   ≤1.05（多数 0.95–0.99，两例 0.27/0.44 大幅更优），0 回归。
+6. **audit 最大贡献者（§6.5）**：`audit_report_json` 的 soft_objectives
+   增加 `top_contributors`（学生软成本贡献 = individual cost + 涉及该生
+   的 pair 成本之半，top-3）。
+7. **CI**：差分 job 改为 `--fixtures --candidates --scoring`（90 case /
+   0 mismatch 实测）；CLI usage 增加 SCORE 段。
+
+仍缺的 §6.6 证据：PlanScore 已实现但候选集的 stability 维度、官方
+known-feasible 语料（现为 planted 构造）、`rule registry` 端到端消费
+（capability API 对账，§4.3）、500 次编辑的峰值内存细化曲线。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）

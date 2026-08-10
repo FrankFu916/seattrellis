@@ -23,7 +23,7 @@ use crate::style::Styler;
 use crate::ValidateArgs;
 use crate::{
     AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, HistoryReportArgs, PairReportArgs,
-    PrecheckArgs, ProjectArgs, RepairArgs, SolveArgs,
+    PrecheckArgs, ProjectArgs, RepairArgs, ScoreArgs, SolveArgs,
 };
 use seattrellis_export::export::export_plan;
 
@@ -319,6 +319,27 @@ pub fn run_audit(args: &AuditArgs) -> Result<(), String> {
         .map_err(|error| format!("'{}' is not valid JSON: {error}", args.solution.display()))?;
     let report = audit_report_json(&problem_text, &solution.assignment)
         .map_err(|error| format!("audit failed: {error}"))?;
+    println!("{report}");
+    Ok(())
+}
+
+/// Score a fixed assignment with the Python-parity PlanScore breakdown
+/// (plan §6.2/§6.6 item 4: Rust/Python scoring parity evidence).
+pub fn run_score(args: &ScoreArgs) -> Result<(), String> {
+    let problem_text = read_text(&args.problem)?;
+    let assignment: Vec<[usize; 2]> = serde_json::from_str(&args.assignment)
+        .map_err(|error| format!("--assignment is not a valid JSON array of pairs: {error}"))?;
+    let latest_snapshot = match &args.latest_snapshot {
+        Some(path) => read_text(path)?,
+        None => String::new(),
+    };
+    let report = seattrellis_core::score_assignment_json(
+        &problem_text,
+        &assignment,
+        &latest_snapshot,
+        args.diversity,
+    )
+    .map_err(|error| format!("scoring failed: {error}"))?;
     println!("{report}");
     Ok(())
 }
