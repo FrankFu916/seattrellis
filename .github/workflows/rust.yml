@@ -99,7 +99,7 @@ jobs:
       - name: Candidate + long-run gates
         run: cargo test --release --locked -p seattrellis_core --test candidates_gate --test long_run_gate -- --ignored
       - name: Rotation gate
-        run: cargo test --release --locked -p seattrellis_application --test rotation_gate -- --ignored
+        run: cargo test --release --locked -p seattrellis-application --test rotation_gate -- --ignored
 
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}
