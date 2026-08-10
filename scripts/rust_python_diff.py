@@ -83,11 +83,14 @@ KNOWN_RUST_GAPS: dict[str, str] = {}
 # apples-to-apples and each case carries an explicit ledger reference.
 # Without `--allow-documented-gaps` the run still fails on them (M0-03);
 # with the flag (used by CI) only NEW mismatches fail the run.
-DOCUMENTED_CORPUS_GAPS: dict[str, str] = {
-    "invalid-unknown-rule": "ledger 附 M0: unknown rule kinds dropped by the degraded request; core serde ignores unknown fields",
-    "invalid-unknown-soft-objective": "ledger 附 M0: unknown soft objectives dropped by the degraded request",
-    "invalid-bad-adjacency-ref": "ledger 附 M0: CLI cannot express a bad-adjacency layout; degraded request solves",
-}
+#
+# All three original entries (invalid-unknown-rule, invalid-unknown-soft-
+# objective, invalid-bad-adjacency-ref) were CLOSED on 2026-08-10: the Rust
+# project-workspace compiler now rejects unknown hard rule kinds, unknown
+# soft objectives and bad adjacency references (mirroring Python's
+# extra="forbid" models), and the harness validates those cases through the
+# CLI's project-validate path (ledger §19.5, fixture evidence 41/41 match).
+DOCUMENTED_CORPUS_GAPS: dict[str, str] = {}
 
 INVALID_TOKENS = (
     "validation",
@@ -198,8 +201,10 @@ def fixture_to_request(case_dir: Path) -> tuple[dict[str, object], list[str]]:
         resolved = resolve_hard_rules(students, layout, rules, topology=topology)
         compiled = compile_hard_rules(resolved)
     except Exception as exc:  # invalid-input cases reject during load/resolve
-        notes.append(f"Python load/resolver rejected the input "
-                     f"({exc.__class__.__name__}); sending a degraded minimal request")
+        notes.append(
+            f"Python load/resolver rejected the input ({exc.__class__.__name__}); "
+            "the Rust side validates the raw workspace via project-validate"
+        )
         return degraded_request_raw(case_dir), notes
     request: dict[str, object] = {
         "api_version": NATIVE_API_VERSION,
@@ -303,6 +308,47 @@ def run_rust(
     return status, detail, {}
 
 
+def run_rust_workspace_validate(case_dir: Path, tmp: Path) -> tuple[str, str, dict[str, str]]:
+    """Run the Rust CLI ``project-validate`` on a synthesized project
+    workspace referencing the case's raw files.
+
+    This exercises the same import surface as the Python oracle's
+    load/resolve: unknown rule kinds, unknown soft objectives, malformed
+    layouts and bad adjacency references surface here instead of being
+    degraded away by the index-space request builder. A workspace the
+    compiler rejects exits 2 (InvalidInput); a valid workspace exits 0.
+    """
+    workspace = tmp / f"workspace-{case_dir.name}"
+    workspace.mkdir(exist_ok=True)
+    project_document = {
+        "kind": "seattrellis_project",
+        "schema_version": 1,
+        "name": case_dir.name,
+        "students": "students.csv",
+        "layout": "classroom.json",
+        "rules": "rules.json",
+        "outputs_dir": "outputs",
+    }
+    (workspace / "project.json").write_text(
+        json.dumps(project_document), encoding="utf-8"
+    )
+    for name in ("students.csv", "classroom.json", "rules.json"):
+        source = case_dir / name
+        if source.is_file():
+            (workspace / name).write_bytes(source.read_bytes())
+    proc = subprocess.run(
+        [str(CLI), "project-validate", "--project", str(workspace / "project.json")],
+        capture_output=True,
+        text=True,
+    )
+    detail = proc.stderr.strip()[:200] or proc.stdout.strip()[:200]
+    if proc.returncode == 0:
+        return STATUS_SOLVED, detail, {}
+    if proc.returncode == 2:
+        return STATUS_INVALID_INPUT, detail, {}
+    return STATUS_INTERNAL_ERROR, detail, {}
+
+
 # --- status classes ---------------------------------------------------------
 
 def run_benchmark_classes(sizes: list[int], time_limit: float) -> list[tuple[str, str, str, str, list[str]]]:
@@ -353,7 +399,18 @@ def run_fixture_classes() -> list[tuple[str, str, str, str, list[str]]]:
             py_proc = subprocess.run(flags, capture_output=True, text=True)
             py_status = classify_python_cli(py_proc)
             request, notes = fixture_to_request(case_dir)
-            rust_status, detail, _ = run_rust(request, tmp_path)
+            if notes:
+                # Python's load/resolver rejected the raw input. Compare the
+                # same import surface on the Rust side: a synthesized project
+                # workspace validated by the CLI (unknown rule kinds, bad
+                # adjacency references, malformed rosters must all be
+                # rejected there, exactly like Python).
+                rust_status, detail, rust_notes = run_rust_workspace_validate(
+                    case_dir, tmp_path
+                )
+                notes = notes + list(rust_notes.values())
+            else:
+                rust_status, detail, _ = run_rust(request, tmp_path)
             rows.append((cid, py_status, rust_status, detail, notes))
     return rows
 

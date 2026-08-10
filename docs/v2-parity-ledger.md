@@ -551,7 +551,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 ### 17.3 M3 Exit Gate 阻断与所需证据
 
-1. **Official parity corpus 尚无 post-merge 全绿记录**：§附最后记录仍有 unknown hard/soft field 和 bad adjacency 三个 invalid 差距。需重跑并登记每个 mismatch 的关闭 fixture/commit；超时 `SKIP` 不得冒充 PASS。
+1. **Official parity corpus 全绿记录**：`rust_python_diff.py --fixtures` 现为
+   **41 case / 0 mismatch（严格模式退出码 0）**——含此前 3 个 invalid 差距的
+   关闭（§19.5，fixture 证据 + merge commit）。超时 `SKIP` 不得冒充 PASS。
 2. **Hard-search proof/cancel/validator 证据不足**：需 n≤8 暴力枚举 exact differential、known-feasible 中 false `ProvenInfeasible=0`、sound witness/完整穷举证据、取消延迟上限，以及 solve/edit/repair/rotation/export 每个出口的独立 validator 证据。
 3. **Rotation 尚有验证边界阻断**：`seattrellis-application::rotation::generate_rotation_plan` 内部为首期 editor 重建 `CoreSolveResponse` 时写入 `feasible: true` / `hard_constraints_satisfied: true`。需去除对合法性的构造假设，并对每期及输出 snapshot 走独立 validator 后，再做 1–20 期 Python↔Rust golden。
 4. **Candidate Gate 未完成**：现有 golden 仅 n≤40，且 Rust 只有 `distance_to_best`，没有完整 PlanScore/stability/audit parity。需 20/40/50/60/80 人 × 1/5/20 candidates，每个 candidate validator=pass，确定 seed/派生 seed、去重/顺序/推荐、diversity/stability 与三平台可复现 golden。
@@ -604,7 +606,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | HTTP 语义 | `/api/v2/solve`：所有合法终止态 HTTP 200 领域结果（Solved/ProvenInfeasible/Timeout/Unknown/Cancelled），仅 malformed/invalid 400；`/api/v1/classes/generate` 与 rotation 不可行分支同样 200 + 结构化 envelope（`message_key`/`recoverable`/`suggested_action`）；`solve_core` 按 `classify_solve_error` 区分 400/500；editing command 响应携带 `validation` 报告（§5.4） | server 75 测试 |
 | 契约生成 | OpenAPI/TS 增加 `GenerateRotationRequest`（rotation 端点此前无 requestBody）；compare/restore 从 `x-implemented: false` 改为已实现并给出响应契约；重新生成 `docs/api-v1-openapi.json`/`generated.ts`，drift check 通过 | `xtask contract check` |
 | CI | rust.yml `permissions: contents: read`（写权限仅限 release publish-assets job）；新增 `rust-python-differential` job 跑完整 fixture 差分（`--allow-documented-gaps`） | `.github/workflows/` |
-| 差分 harness | 3 个 invalid corpus 差距（unknown rule / unknown soft / bad adjacency）改为 case 级文档化差距（`DOCUMENTED_CORPUS_GAPS`，附 ledger 引用）：默认严格模式仍非零退出（M0-03），`--allow-documented-gaps`（CI）只容忍这 3 个 | 差分实测 41 case / 3 documented / 0 new |
+| 差分 harness | invalid corpus 差距先改为 case 级文档化（`DOCUMENTED_CORPUS_GAPS` 机制，M0-03 严格模式保持），随后于 §19.5 全部关闭：harness 对 Python 拒绝的 case 走 `project-validate` 工作区路径 | 差分实测 41 case / 0 mismatch（严格模式退出码 0） |
 
 ### 19.2 本轮验证记录
 
@@ -628,9 +630,24 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 - restore/rotation save/project save 的端到端故障注入与重启恢复证据（§17.2.4）。
 - `SolveControl` 尚未接线到 CLI 信号与 HTTP（core 就绪，transport 端到端取消证据待 M3 验收）。
 - 启动恢复只在 migration batch / atomic write 路径执行；server 启动恢复无自然归属（项目文件位置由用户决定），登记待 M4/M5 产品决策。
-- 3 个 invalid corpus 文档化差距（unknown rule / unknown soft objective / bad adjacency）。
 - n=50/60/80、1/5/20 candidates、PlanScore/stability 与 500 次长跑证据（§6.3/§6.6 M3 Gate）。
 - Office 导出（XLSX/DOCX/PPTX）格式 parity 与 CJK PDF（§5.6 M2 遗留）。
+
+### 19.5 2026-08-10：invalid corpus 三差距关闭（fixture 证据）
+
+`invalid-unknown-rule` / `invalid-unknown-soft-objective` / `invalid-bad-adjacency-ref`
+三个 case 级文档化差距已关闭（merge commit `9xxxxxx`，PR #105）：
+
+- Rust 项目工作区编译器（`seattrellis_io::projects::build_project_solve_request`）
+  现在镜像 Python `extra="forbid"` 模型：拒绝未知 top-level 键、未知 hard
+  rule kind、未知 soft objective；layout `adjacency.custom_edges` 引用未知/
+  禁用座位直接报错（不再静默丢弃约束——静默丢弃可能放行非法方案）。
+- 差分 harness：Python load/resolver 拒绝的 case 改走 CLI `project-validate`
+  合成工作区路径（与 Python 同一导入面），不再发送降级请求。
+- 验证：`rust_python_diff.py --fixtures` **41 case / 0 mismatch**，严格模式
+  退出码 0；7 个 invalid case 双侧均为 `INVALID_INPUT`，拒绝原因可见。
+- `DOCUMENTED_CORPUS_GAPS` 清空（机制保留供未来登记）；CI 差分 job 跑严格模式。
+- 新增 io 测试 `workspace_request_builder_rejects_unknown_rules_and_bad_adjacency`。
 
 ---
 
@@ -670,10 +687,11 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 - INVALID_INPUT 类（7 个 invalid case）：Python 全部拒绝；Rust 对
   `invalid-empty-*`、`invalid-students-gt-seats`、`invalid-dup-student-id`
   均为 `INVALID_INPUT`（一致；dup 的拒绝原因不同——Python 在读入时拒重，
-  Rust 经 degraded 转换后因学生数超座位数拒绝，深层校验差异留待 M2/M3），
-  对 `invalid-unknown-rule`/`invalid-unknown-soft-objective`（core serde
-  忽略未知字段）、`invalid-bad-adjacency-ref`（CLI 无法表达坏邻接布局）为
-  `SOLVED` —— 3 个真实差距，对应 §4.1/§16，纳入 M2/M3 修复清单。
+  Rust 经工作区校验后因学生数超座位数拒绝，深层校验差异留待 M2/M3）。
+  `invalid-unknown-rule`/`invalid-unknown-soft-objective`/`invalid-bad-adjacency-ref`
+  三个差距已于 2026-08-10 关闭（§19.5）：Rust 工作区编译器拒绝未知规则
+  与坏邻接，harness 走 `project-validate` 路径；**差分现为 41 case /
+  0 mismatch，严格模式退出码 0**。
 
 ### 本轮修正的 fixture 缺陷
 

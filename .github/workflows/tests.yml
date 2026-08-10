@@ -272,9 +272,8 @@ jobs:
       - name: Build the release CLI
         run: cargo build --release --locked -p seattrellis_cli
       - name: Run the fixture differential
-        # CI mode tolerates exactly the case-level documented corpus gaps
-        # (invalid-unknown-rule / invalid-unknown-soft-objective /
-        # invalid-bad-adjacency-ref, tracked in the parity ledger); any new
-        # mismatch fails the run. The script must run from the venv that
-        # carries the installed oracle package.
-        run: .venv/bin/python scripts/rust_python_diff.py --fixtures --allow-documented-gaps
+        # Strict M0-03 mode: the corpus is fully green (41/41) since the
+        # invalid-rule/bad-adjacency gaps closed (ledger §19.5); any mismatch
+        # fails the run. The script must run from the venv that carries the
+        # installed oracle package.
+        run: .venv/bin/python scripts/rust_python_diff.py --fixtures

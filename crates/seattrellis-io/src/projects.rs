@@ -516,6 +516,32 @@ pub fn build_project_solve_request(project_path: &Path) -> Result<Value, String>
                 .map(|seat_id| (seat_id, index))
         })
         .collect();
+    // Layout adjacency: reject custom edges that reference unknown or
+    // disabled seats. The Python oracle rejects these at load time; a
+    // silently dropped edge would weaken the constraint set and could let an
+    // illegal plan through.
+    if let Some(adjacency) = layout.get("adjacency").and_then(Value::as_object) {
+        if let Some(edges) = adjacency.get("custom_edges").and_then(Value::as_array) {
+            for edge in edges {
+                let list = edge.as_array().ok_or_else(|| {
+                    "custom_edges entries must be [seat_id, seat_id] pairs".to_string()
+                })?;
+                let first = list
+                    .first()
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "custom_edges entry is missing its first seat_id".to_string())?;
+                let second = list.get(1).and_then(Value::as_str).ok_or_else(|| {
+                    "custom_edges entry is missing its second seat_id".to_string()
+                })?;
+                let known = |seat_id: &str| seat_index_by_id.contains_key(seat_id);
+                if !known(first) || !known(second) {
+                    return Err(format!(
+                        "layout adjacency references unknown seat_id {first:?} or {second:?}"
+                    ));
+                }
+            }
+        }
+    }
     // The core requires layout.seats to be aligned with seat_positions
     // (layout.seats[i] <-> seat_positions[i]), so strip disabled seats.
     let core_layout_value = json!({
@@ -545,6 +571,51 @@ pub fn build_project_solve_request(project_path: &Path) -> Result<Value, String>
         .map_err(|error| format!("could not read {}: {error}", workspace.rules.display()))?;
     let rules: Value = serde_json::from_str(&rules_text)
         .map_err(|error| format!("rules file is not valid JSON: {error}"))?;
+    // Strict schema mirroring the Python RuleSet models (extra="forbid"):
+    // unknown rule kinds / soft objectives must never be silently dropped —
+    // a dropped constraint changes the plan the teacher asked for.
+    if let Some(object) = rules.as_object() {
+        const KNOWN_TOP: [&str; 5] = ["schema_version", "seed", "hard", "soft", "groups"];
+        for key in object.keys() {
+            if !KNOWN_TOP.contains(&key.as_str()) {
+                return Err(format!("rules file contains unknown top-level key {key:?}"));
+            }
+        }
+    }
+    let hard = rules.get("hard").cloned().unwrap_or_else(|| json!({}));
+    if let Some(object) = hard.as_object() {
+        const KNOWN_HARD: [&str; 4] = [
+            "fixed_seats",
+            "must_be_adjacent",
+            "cannot_be_adjacent",
+            "min_distance",
+        ];
+        for key in object.keys() {
+            if !KNOWN_HARD.contains(&key.as_str()) {
+                return Err(format!("unknown hard rule kind {key:?} in rules file"));
+            }
+        }
+    }
+    let soft = rules.get("soft").cloned().unwrap_or_else(|| json!({}));
+    if let Some(object) = soft.as_object() {
+        const KNOWN_SOFT: [&str; 10] = [
+            "vision_front",
+            "height_back",
+            "randomize",
+            "score_balance",
+            "score_position",
+            "score_distribution",
+            "mentor_pairing",
+            "fair_rotation",
+            "avoid_recent_neighbors",
+            "cooling",
+        ];
+        for key in object.keys() {
+            if !KNOWN_SOFT.contains(&key.as_str()) {
+                return Err(format!("unknown soft objective {key:?} in rules file"));
+            }
+        }
+    }
     let student_index: HashMap<&str, usize> = core_students
         .iter()
         .enumerate()
@@ -2433,6 +2504,67 @@ mod tests {
         ]);
         let err = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
         assert!(err.contains("Unsafe project bundle path"), "got: {err}");
+    }
+
+    #[test]
+    fn workspace_request_builder_rejects_unknown_rules_and_bad_adjacency() {
+        // The workspace compiler mirrors Python's extra="forbid" rule models:
+        // unknown rule kinds / soft objectives and bad adjacency references
+        // must be rejected instead of silently dropped (a dropped constraint
+        // would change the plan the teacher asked for).
+        let root = temp_root("workspace-strict");
+        let project_file = root.join("project.json");
+        fs::write(
+            &project_file,
+            r#"{"kind":"seattrellis_project","schema_version":1,"students":"students.csv","layout":"classroom.json","rules":"rules.json","outputs_dir":"outputs"}"#,
+        )
+        .unwrap();
+        fs::write(root.join("students.csv"), "id,name\n1,A\n2,B\n3,C\n4,D\n").unwrap();
+        let layout = r#"{"layout_id":"l","name":"Room","seats":[
+            {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},
+            {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true},
+            {"seat_id":"R2C1","row":2,"col":1,"x":0.0,"y":1.0,"enabled":true},
+            {"seat_id":"R2C2","row":2,"col":2,"x":1.0,"y":1.0,"enabled":true}
+        ],"adjacency":{"edges":[["R1C1","R1C2"]]}}"#;
+        fs::write(root.join("classroom.json"), layout).unwrap();
+
+        // A valid workspace builds.
+        fs::write(root.join("rules.json"), r#"{"seed":7,"soft":{}}"#).unwrap();
+        assert!(build_project_solve_request(&project_file).is_ok());
+
+        // Unknown top-level key.
+        fs::write(root.join("rules.json"), r#"{"mode":"default"}"#).unwrap();
+        let err = build_project_solve_request(&project_file).unwrap_err();
+        assert!(err.contains("unknown top-level key"), "got: {err}");
+
+        // Unknown hard rule kind (Python HardRules extra="forbid").
+        fs::write(
+            root.join("rules.json"),
+            r#"{"hard":{"teleport_students":[{"student":"1"}]}}"#,
+        )
+        .unwrap();
+        let err = build_project_solve_request(&project_file).unwrap_err();
+        assert!(err.contains("unknown hard rule kind"), "got: {err}");
+
+        // Unknown soft objective (Python SoftRules extra="forbid").
+        fs::write(
+            root.join("rules.json"),
+            r#"{"soft":{"magic_seating":{"enabled":true,"weight":5}}}"#,
+        )
+        .unwrap();
+        let err = build_project_solve_request(&project_file).unwrap_err();
+        assert!(err.contains("unknown soft objective"), "got: {err}");
+
+        // Bad adjacency: a custom edge referencing an unknown seat must be
+        // rejected, not silently dropped.
+        let bad_layout = layout.replace(
+            r#""edges":[["R1C1","R1C2"]]"#,
+            r#""custom_edges":[["R1C1","R99C99"]]"#,
+        );
+        fs::write(root.join("classroom.json"), bad_layout).unwrap();
+        fs::write(root.join("rules.json"), r#"{"seed":7,"soft":{}}"#).unwrap();
+        let err = build_project_solve_request(&project_file).unwrap_err();
+        assert!(err.contains("unknown seat_id"), "got: {err}");
     }
 
     #[test]
