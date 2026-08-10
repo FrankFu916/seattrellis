@@ -83,10 +83,57 @@ pub struct AuditArgs {
     pub solution: PathBuf,
 }
 
+/// `score`: fixed-assignment PlanScore breakdown (plan §6.2/§6.6 parity
+/// evidence). `assignment` is an inline JSON array of `[student, seat]`
+/// index pairs; `latest_snapshot` and `diversity` are optional.
+#[derive(Debug, PartialEq)]
+pub struct ScoreArgs {
+    pub problem: PathBuf,
+    pub assignment: String,
+    pub latest_snapshot: Option<PathBuf>,
+    pub diversity: Option<f64>,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct CandidatesArgs {
     pub problem: PathBuf,
     pub count: usize,
+}
+
+/// `doctor`: environment diagnostics (plan §5.5 CLI surface).
+#[derive(Debug, PartialEq, Eq)]
+pub struct DoctorArgs {}
+
+/// `project-init`: create a `seattrellis_project` workspace file in a
+/// directory that already carries `students.csv` / `layout.json` /
+/// `rules.json` (plan §5.5 project lifecycle).
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProjectInitArgs {
+    pub dir: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProjectListArgs {
+    pub root: PathBuf,
+    pub limit: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProjectPrivacyArgs {
+    pub project: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProjectPackArgs {
+    pub project: PathBuf,
+    pub output: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProjectRestoreArgs {
+    pub bundle: PathBuf,
+    pub output_dir: PathBuf,
+    pub force: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -131,7 +178,14 @@ enum Command {
     Validate(ValidateArgs),
     Precheck(PrecheckArgs),
     Audit(AuditArgs),
+    Score(ScoreArgs),
     Candidates(CandidatesArgs),
+    Doctor(DoctorArgs),
+    ProjectInit(ProjectInitArgs),
+    ProjectList(ProjectListArgs),
+    ProjectPrivacy(ProjectPrivacyArgs),
+    ProjectPack(ProjectPackArgs),
+    ProjectRestore(ProjectRestoreArgs),
     HistoryReport(HistoryReportArgs),
     PairReport(PairReportArgs),
     Repair(RepairArgs),
@@ -336,6 +390,53 @@ fn parse_audit(tokens: &[String]) -> Result<Command, String> {
     }))
 }
 
+fn parse_score(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--problem",
+            takes_value: true,
+        },
+        Flag {
+            name: "--assignment",
+            takes_value: true,
+        },
+        Flag {
+            name: "--latest-snapshot",
+            takes_value: true,
+        },
+        Flag {
+            name: "--diversity",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let problem = flag_value(&parsed, "--problem")?.ok_or("score requires --problem <file>")?;
+    let assignment = flag_value(&parsed, "--assignment")?
+        .ok_or("score requires --assignment <json>")?
+        .to_string();
+    let latest_snapshot = flag_value(&parsed, "--latest-snapshot")?.map(PathBuf::from);
+    let diversity = match flag_value(&parsed, "--diversity")? {
+        Some(raw) => Some(
+            raw.parse::<f64>()
+                .map_err(|error| format!("invalid --diversity '{raw}': {error}"))?,
+        ),
+        None => None,
+    };
+    Ok(Command::Score(ScoreArgs {
+        problem: PathBuf::from(problem),
+        assignment,
+        latest_snapshot,
+        diversity,
+    }))
+}
+
 fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag {
@@ -522,6 +623,154 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
     })
 }
 
+fn parse_doctor(tokens: &[String]) -> Result<Command, String> {
+    if tokens.iter().any(|token| token == "--help") {
+        return Ok(Command::Help);
+    }
+    if !tokens.is_empty() {
+        return Err(format!("doctor takes no arguments: {tokens:?}"));
+    }
+    Ok(Command::Doctor(DoctorArgs {}))
+}
+
+fn parse_project_init(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--dir",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let dir = flag_value(&parsed, "--dir")?.ok_or("project-init requires --dir <directory>")?;
+    Ok(Command::ProjectInit(ProjectInitArgs {
+        dir: PathBuf::from(dir),
+    }))
+}
+
+fn parse_project_list(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--root",
+            takes_value: true,
+        },
+        Flag {
+            name: "--limit",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let root = flag_value(&parsed, "--root")?.unwrap_or(".").to_string();
+    let limit = match flag_value(&parsed, "--limit")? {
+        Some(raw) => raw
+            .parse::<usize>()
+            .map_err(|error| format!("invalid --limit '{raw}': {error}"))?,
+        None => 20,
+    };
+    Ok(Command::ProjectList(ProjectListArgs {
+        root: PathBuf::from(root),
+        limit,
+    }))
+}
+
+fn parse_project_privacy(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--project",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let project =
+        flag_value(&parsed, "--project")?.ok_or("project-privacy requires --project <file>")?;
+    Ok(Command::ProjectPrivacy(ProjectPrivacyArgs {
+        project: PathBuf::from(project),
+    }))
+}
+
+fn parse_project_pack(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--project",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let project =
+        flag_value(&parsed, "--project")?.ok_or("project-pack requires --project <file>")?;
+    let output = flag_value(&parsed, "--output")?.ok_or("project-pack requires --output <file>")?;
+    Ok(Command::ProjectPack(ProjectPackArgs {
+        project: PathBuf::from(project),
+        output: PathBuf::from(output),
+    }))
+}
+
+fn parse_project_restore(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--bundle",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output-dir",
+            takes_value: true,
+        },
+        Flag {
+            name: "--force",
+            takes_value: false,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let bundle =
+        flag_value(&parsed, "--bundle")?.ok_or("project-restore requires --bundle <file>")?;
+    let output_dir = flag_value(&parsed, "--output-dir")?
+        .ok_or("project-restore requires --output-dir <directory>")?;
+    let force = parsed.iter().any(|(name, _)| name == "--force");
+    Ok(Command::ProjectRestore(ProjectRestoreArgs {
+        bundle: PathBuf::from(bundle),
+        output_dir: PathBuf::from(output_dir),
+        force,
+    }))
+}
+
 fn parse_repair(tokens: &[String]) -> Result<Command, String> {
     const FLAGS: &[Flag] = &[
         Flag {
@@ -645,10 +894,17 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "validate" => parse_validate(&text[1..]),
         "precheck" => parse_precheck(&text[1..]),
         "audit" => parse_audit(&text[1..]),
+        "score" => parse_score(&text[1..]),
+        "doctor" => parse_doctor(&text[1..]),
         "candidates" => parse_candidates(&text[1..]),
         "history-report" => parse_history_report(&text[1..]),
         "pair-report" => parse_pair_report(&text[1..]),
         "repair" => parse_repair(&text[1..]),
+        "project-init" => parse_project_init(&text[1..]),
+        "project-list" => parse_project_list(&text[1..]),
+        "project-privacy" => parse_project_privacy(&text[1..]),
+        "project-pack" => parse_project_pack(&text[1..]),
+        "project-restore" => parse_project_restore(&text[1..]),
         "project-info" => parse_project_command("project-info", &text[1..]),
         "project-validate" => parse_project_command("project-validate", &text[1..]),
         "project-solve" => parse_project_command("project-solve", &text[1..]),
@@ -717,6 +973,68 @@ fn run_command(command: Command) -> ExitCode {
             }
         },
         Command::Audit(args) => match commands::run_audit(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::Score(args) => match commands::run_score(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::Doctor(_) => match commands::run_doctor() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectInit(args) => match commands::run_project_init(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectList(args) => match commands::run_project_list(&args) {
+            Ok(json) => {
+                println!("{json}");
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectPrivacy(args) => match commands::run_project_privacy(&args) {
+            Ok(json) => {
+                println!("{json}");
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectPack(args) => match commands::run_project_pack(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectRestore(args) => match commands::run_project_restore(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 let styler = Styler::stderr();
@@ -1205,5 +1523,81 @@ mod tests {
             "unexpected error: {error}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn project_lifecycle_init_pack_restore_and_privacy() {
+        // §5.5 full project lifecycle through the CLI: init -> info ->
+        // solve -> privacy -> pack -> restore -> list.
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-lifecycle2-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("students.csv"), "id,name\n1,A\n2,B\n3,C\n4,D\n").unwrap();
+        std::fs::write(
+            dir.join("layout.json"),
+            r#"{"layout_id":"l","name":"Room","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true},
+                {"seat_id":"R2C1","row":2,"col":1,"x":0.0,"y":1.0,"enabled":true},
+                {"seat_id":"R2C2","row":2,"col":2,"x":1.0,"y":1.0,"enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R2C1","R2C2"],["R1C1","R2C1"],["R1C2","R2C2"]]}}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("rules.json"), r#"{"seed":7,"soft":{}}"#).unwrap();
+
+        // init
+        commands::run_project_init(&ProjectInitArgs { dir: dir.clone() }).unwrap();
+        let project = dir.join("seattrellis.project.json");
+        assert!(project.is_file());
+        // info
+        let info = crate::project::project_info(&project).unwrap();
+        assert!(info.contains("students   students.csv (ok)"), "got: {info}");
+        // solve (project-solve writes the snapshot)
+        commands::run_project_solve(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: None,
+            output: Some(dir.join("snapshot.json")),
+            snapshot: None,
+        })
+        .unwrap();
+        // privacy: fail-closed verdict on a teacher project
+        let privacy = commands::run_project_privacy(&ProjectPrivacyArgs {
+            project: project.clone(),
+        })
+        .unwrap();
+        assert!(privacy.contains("\"verdict\""), "got: {privacy}");
+        // pack + restore into a fresh dir
+        let bundle = dir.join("bundle.zip");
+        commands::run_project_pack(&ProjectPackArgs {
+            project: project.clone(),
+            output: bundle.clone(),
+        })
+        .unwrap();
+        let restored_root = std::env::temp_dir().join(format!(
+            "seattrellis-cli-restored-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        commands::run_project_restore(&ProjectRestoreArgs {
+            bundle: bundle.clone(),
+            output_dir: restored_root.clone(),
+            force: false,
+        })
+        .unwrap();
+        let restored_project = restored_root.join("seattrellis.project.json");
+        assert!(restored_project.is_file());
+        assert!(crate::project::project_validate(&restored_project).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&restored_root);
     }
 }

@@ -80,6 +80,22 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.bold("--solution"));
     out.push_str(" <file>  The solve result JSON (CoreSolveResponse). Required.\n\n");
 
+    out.push_str(&styler.bold("SCORE:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("score"));
+    out.push_str(" --problem <problem.json> --assignment <json> [--latest-snapshot <file>] [--diversity <f>]\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--problem"));
+    out.push_str(" <file>    Solve-request JSON (CoreSolveRequest). Required.\n      ");
+    out.push_str(&styler.bold("--assignment"));
+    out.push_str(" <json>  Inline [[student, seat], ...] index pairs. Required.\n      ");
+    out.push_str(&styler.bold("--latest-snapshot"));
+    out.push_str(" <file>  Optional snapshot for the stability dimension.\n      ");
+    out.push_str(&styler.bold("--diversity"));
+    out.push_str(" <f>       Optional diversity score for the diversity dimension.\n\n");
+
     out.push_str(&styler.bold("CANDIDATES:"));
     out.push_str("\n    ");
     out.push_str(&styler.cyan("seattrellis_cli"));
