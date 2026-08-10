@@ -678,6 +678,41 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 Rust 实现（`PYTHON_ONLY`）、`stability_score`、计划比较报告、500 次长跑
 与内存门槛（§6.6）。
 
+### 19.7 2026-08-10：long-run 与质量门禁证据（§11.9/§6.6）
+
+新增三个 release-only Gate（CI `long-run-gates` job，ubuntu，timeout 90min）
+与两个 debug 长跑测试：
+
+1. **`long_run_gate.rs`（core）**：
+   - **500 次连续 solve**（n=40，planted 实例）：全部 `Solved`，总耗时受限，
+     期间 Linux `VmRSS` 峰值增长 < 64MiB（内存单调泄漏监测，§11.9）；
+   - **取消延迟**：80 人求解在另一线程运行，cancel 后 **< 5s 内返回
+     `Cancelled`**，随后同一请求正常 `Solved`（§6.1 可取消、§11.9
+     "取消正在运行的 solve 后再次 solve"）；
+   - **planted 可行语料**：20/40/50/60/80 人 × 20 实例（从随机 assignment
+     派生 hard 约束，构造上必可行）——实测 **100/100 `Solved`（100%），
+     `ProvenInfeasible`=0，`Unknown`=0**（§6.6 随机可行率 ≥99.5% 且
+     false-infeasible=0 的证据）。
+2. **`rotation_gate.rs`（application）**：1/3/5/10/20 期确定性（同 seed
+   计划逐字节可复现，editor 除新生成 id 外一致）、每期 assignment 走共享
+   `solve_core` 独立验证、不可行期返回诚实领域结果（`feasible=false` +
+   `failed_period`，绝不伪造 Solved）、修正请求后立即可生成完整计划。
+3. **io 长跑**（debug 测试）：100 次项目打开/保存（migration 原位）/打包/
+   恢复循环，最终工作区仍可编译成合法 solve request（§11.9 100 次项目
+   打开/保存）。
+4. **domain 长跑**（debug 测试）：1000 次随机编辑命令——revision 严格
+   单调、无重复占座、undo 恢复前一 assignment、redo 重放、失败命令
+   （锁定学生/空 undo 栈）原子回滚（§5.4 property 测试、§11.9 1000 次
+   编辑命令）。
+
+验证记录：long_run_gate release 655s 全过（planted 100/100、RSS 稳定、
+取消 <5s）；rotation gate release 通过；io 100 周期 15.9s、domain 1000
+命令 0.03s（debug）。
+
+仍缺的 §6.6 证据：官方 known-feasible 100%（现为 planted 构造语料）、
+fixed-assignment scoring parity、性能回归 ≤10% 门槛、PlanScore 七维
+评分、500 次编辑/长跑期间的峰值内存细化曲线。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）

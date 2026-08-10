@@ -2120,6 +2120,7 @@ fn iso_from_epoch_secs(secs: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::migration::migration_apply_json;
 
     fn temp_root(name: &str) -> PathBuf {
         let mut dir = std::env::temp_dir();
@@ -2433,6 +2434,58 @@ mod tests {
         let manifest: Value = serde_json::from_str(&manifest_text).unwrap();
         assert_eq!(manifest["privacy"]["verdict"], "Indeterminate");
         assert_eq!(manifest["privacy"]["safe_for_public_sharing"], false);
+    }
+
+    #[test]
+    fn one_hundred_open_save_pack_restore_cycles_are_stable() {
+        // §11.9: 100 consecutive project open/save (migrate) plus pack/
+        // restore cycles; the workspace must stay valid throughout and the
+        // final artifact must still compile into a solve request.
+        let root = temp_root("long-run-project");
+        let project_file = root.join("project.seattrellis.json");
+        fs::write(
+            &project_file,
+            r#"{"kind":"seattrellis_project","schema_version":1,"name":"LongRun","students":"students.csv","layout":"classroom.json","rules":"rules.json","outputs_dir":"outputs"}"#,
+        )
+        .unwrap();
+        fs::write(root.join("students.csv"), "id,name\n1,A\n2,B\n3,C\n4,D\n").unwrap();
+        fs::write(
+            root.join("classroom.json"),
+            r#"{"layout_id":"l","name":"Room","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true},
+                {"seat_id":"R2C1","row":2,"col":1,"x":0.0,"y":1.0,"enabled":true},
+                {"seat_id":"R2C2","row":2,"col":2,"x":1.0,"y":1.0,"enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R2C1","R2C2"],["R1C1","R2C1"],["R1C2","R2C2"]]}}"#,
+        )
+        .unwrap();
+        fs::write(root.join("rules.json"), r#"{"seed":7,"soft":{}}"#).unwrap();
+
+        let mut last_restored = project_file.clone();
+        for cycle in 0..100 {
+            // Open: load and validate the project document.
+            let (document, _) = load_project_document(&last_restored).unwrap();
+            assert_eq!(document["kind"], "seattrellis_project");
+
+            // Save: apply the migration in place (journaled, with backup).
+            let json = migration_apply_json(&last_restored.display().to_string(), true).unwrap();
+            let value: Value = serde_json::from_str(&json).unwrap();
+            assert!(value["backup_path"].as_str().is_some());
+
+            // Pack + restore into a fresh directory (journaled directory
+            // transaction); the restored project must open again.
+            let bundle = pack_project_json(&last_restored.display().to_string()).unwrap();
+            let dest = temp_root(&format!("long-run-restore-{cycle}"));
+            let restored_json = restore_project_json(&bundle, dest.to_str().unwrap()).unwrap();
+            let restored: Value = serde_json::from_str(&restored_json).unwrap();
+            last_restored = PathBuf::from(restored["project_path"].as_str().unwrap());
+            let (restored_document, _) = load_project_document(&last_restored).unwrap();
+            assert_eq!(restored_document["kind"], "seattrellis_project");
+        }
+
+        // The final workspace still compiles into a valid solve request.
+        assert!(build_project_solve_request(&project_file).is_ok());
+        assert!(build_project_solve_request(&last_restored).is_ok());
     }
 
     #[test]

@@ -43,14 +43,6 @@ jobs:
         run: cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
       - name: Clippy (app)
         run: cargo clippy --all-targets -p seattrellis_app -- -D warnings
-      - name: Candidate gate (release)
-        # M3 §6.3/§6.7 evidence: 20/40/50/60/80 students x 1/5/20 candidates,
-        # every candidate independently validated, deterministic, distinct.
-        # Release-only (the 80x20 combination costs minutes in debug); one
-        # platform suffices for the gate, three-platform solver determinism
-        # is covered by the parity corpus elsewhere.
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo test --release --locked -p seattrellis_core --test candidates_gate -- --ignored
 
   contract-drift:
     # M1-06: the OpenAPI document and the generated TypeScript client must
@@ -91,6 +83,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.88
       - name: Test the core at MSRV
         run: cargo test --locked -p seattrellis_core
+
+  long-run-gates:
+    # M3 evidence that is release-only (the 80x20 candidate combination and
+    # the 20-period rotation cost minutes in debug): candidate gate, long-run
+    # solver gate (500 solves + RSS stability + cancel latency + planted
+    # corpus >=99.5% with zero false infeasible) and the rotation gate
+    # (1/3/5/10/20 periods, deterministic, per-period validated).
+    name: Long-run gates (release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Candidate + long-run gates
+        run: cargo test --release --locked -p seattrellis_core --test candidates_gate --test long_run_gate -- --ignored
+      - name: Rotation gate
+        run: cargo test --release --locked -p seattrellis_application --test rotation_gate -- --ignored
 
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}
