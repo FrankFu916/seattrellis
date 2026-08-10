@@ -636,7 +636,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 ### 19.5 2026-08-10：invalid corpus 三差距关闭（fixture 证据）
 
 `invalid-unknown-rule` / `invalid-unknown-soft-objective` / `invalid-bad-adjacency-ref`
-三个 case 级文档化差距已关闭（merge commit `9xxxxxx`，PR #105）：
+三个 case 级文档化差距已关闭（commit `5d21c84`，直接合入 main）：
 
 - Rust 项目工作区编译器（`seattrellis_io::projects::build_project_solve_request`）
   现在镜像 Python `extra="forbid"` 模型：拒绝未知 top-level 键、未知 hard
@@ -670,6 +670,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
    backend、同 base seed 42、每尝试 3s）对比**状态类 + 生成数量**（候选
    内容本身因求解器独立而不比较，见 §19.3.4）。结果：**15/15 match**。
    CI 差分 job 改为 `--fixtures --candidates`（timeout 90min）。
+
+> 本条证据以 merge commit `73cea0c`（PR #105，分支 `feature/candidates-evidence`）
+> 为起点。
 
 仍缺的候选证据（不因本条目改变状态）：PlanScore/breakdown 七维评分的
 Rust 实现（`PYTHON_ONLY`）、`stability_score`、计划比较报告、500 次长跑
