@@ -3012,6 +3012,7 @@ name = "seattrellis-export"
 version = "0.1.0"
 dependencies = [
  "png 0.17.16",
+ "proptest",
  "quick-xml",
  "seattrellis_core",
  "serde",
@@ -3023,6 +3024,7 @@ dependencies = [
 name = "seattrellis-io"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "seattrellis-schema",
  "seattrellis_core",
  "serde",

@@ -14,4 +14,5 @@ png = "0.17"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
+proptest = "1"
 quick-xml = "0.41"
