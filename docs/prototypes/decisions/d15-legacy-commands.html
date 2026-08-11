@@ -3,129 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>D15 · 遗留命令去留 — SeatTrellis v2 原型</title>
+<title>D15 · 遗留命令去留（融合方案）— SeatTrellis v2 原型</title>
 <link rel="stylesheet" href="../assets/prototypes.css">
 <style>
   .cmd-table { width:100%; border-collapse:collapse; font-size:12.5px; }
   .cmd-table th, .cmd-table td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
   .cmd-table th { color:var(--ink-3); font-size:11px; background:var(--surface-2); }
   .cmd-table .cmd { font-family:var(--mono); font-weight:700; white-space:nowrap; }
-  .impact { font-size:11.5px; color:var(--ink-2); }
-  .impact .warn { color:var(--bad); font-weight:600; }
-  .impact .ok { color:var(--ok); font-weight:600; }
+  .impact { font-size:11.5px; }
+  .impact .rm { color:var(--bad); font-weight:700; }
 </style>
 </head>
 <body>
 
 <header class="pt-topbar">
   <a href="../index.html">← 决策总览</a>
-  <span class="crumb">/ <b>D15 · 遗留命令去留</b></span>
+  <span class="crumb">/ <b>D15 · 遗留命令去留（融合方案）</b></span>
   <span class="spacer"></span>
-  <span class="progress-chip">15 / 15 · 决策 D15</span>
+  <span class="progress-chip">15 / 15 · D15 已决策 → 确认融合形态</span>
 </header>
 
 <main class="pt-main">
   <section class="dec-head">
-    <span class="kicker">Decision D15 · ledger §1 PYTHON_ONLY / INTENTIONALLY_REMOVED_V2 候选</span>
-    <h1>遗留命令去留：init-demo / presets / workspace / desktop</h1>
-    <p class="task">v1 CLI 有 4 组命令在 v2 无对应实现（ledger PYTHON_ONLY）：<code>init-demo</code>（生成示例班级）、<code>presets</code>（规则预设）、<code>workspace</code>（启动工作台服务器）、<code>desktop</code>（启动桌面）。本决策确定各自去留；移除项需登记 <code>INTENTIONALLY_REMOVED_V2</code>（含理由、迁移方案、用户影响，ledger §0）。</p>
-    <div class="constraints"><b>判定标准</b>：v2 功能覆盖（Tauri 壳替代 desktop、Rust app server 替代 workspace）→ 移除合理；有独立价值且无替代（示例数据/规则预设）→ 考虑保留并 Rust 化；移除必须附迁移说明。</div>
+    <span class="kicker">PD-D15-LEGACYCMDS · ledger §1 / INTENTIONALLY_REMOVED_V2</span>
+    <h1>遗留命令 — 融合方案：4 项全部移除（REMOVED_V2）</h1>
+    <p class="task">v1 CLI 的 <code>init-demo / presets / workspace / desktop</code> 全部移除（"没必要的历史技术债和累赘要清除"）。<b>每项按 ledger §0 登记：理由、迁移方案、用户影响。</b></p>
+    <div class="constraints"><b>不可违反约束</b>：INTENTIONALLY_REMOVED_V2 登记必须附书面理由、迁移方案、用户影响（ledger §0）；v2 final 移除 Python 运行时（红线）；示例价值由 D10 内嵌示例名单承接（内嵌资产，非命令）。</div>
   </section>
 
   <section class="variants wide">
-
-    <!-- Variant A: remove all -->
-    <div class="variant" id="vA">
+    <div class="variant" id="vFinal">
       <div class="v-head">
-        <span class="v-badge">A</span>
-        <div><div class="v-title">全部移除（INTENTIONALLY_REMOVED_V2）</div>
-        <div class="v-sub">4 组命令全部登记移除；文档与迁移指南说明替代路径。</div></div>
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态（移除登记）</div>
+        <div class="v-sub">4 项命令从 v2 CLI 清单移除，ledger 登记 REMOVED_V2；文档与迁移指南说明替代路径。</div></div>
       </div>
       <div class="v-visual"><div class="inner">
         <table class="cmd-table">
-          <tr><th>命令</th><th>v1 用途</th><th>v2 替代与影响</th></tr>
-          <tr><td class="cmd">init-demo</td><td>生成示例班级（名单/教室/规则）</td><td><span class="impact ok">无替代</span>——示例数据价值可被 D10 引导方案承接（若 D10 选示例班级则需 Rust 化）；当前影响：CLI 用户失去一键示例</td></tr>
-          <tr><td class="cmd">presets</td><td>规则预设模板（3 个）</td><td><span class="impact ok">无替代</span>——规则模板价值被 D3 句式模板承接（预置句式）；当前影响：JSON 预设文件不可用</td></tr>
-          <tr><td class="cmd">workspace</td><td>启动 Python 工作台服务器</td><td><span class="impact ok">已替代</span>——Rust app server（loopback HTTP）承担；影响：无（v2 已不同架构）</td></tr>
-          <tr><td class="cmd">desktop</td><td>pywebview 桌面壳</td><td><span class="impact ok">已替代</span>——Tauri 2 壳承担；影响：无（v2 final 移除 pywebview 为红线）</td></tr>
+          <tr><th>命令</th><th>v1 用途</th><th>移除理由</th><th>迁移方案 / 用户影响</th></tr>
+          <tr><td class="cmd">init-demo</td><td>生成示例班级目录</td><td><span class="impact rm">REMOVED_V2</span> 示例价值由 D10 内嵌示例名单承接（内嵌资产 + 隔离标记，优于命令行生成）</td><td>CLI 用户可用「临时工作台 + 示例名单」达到同等效果；示例资产不依赖命令</td></tr>
+          <tr><td class="cmd">presets</td><td>规则预设模板（list/show/export）</td><td><span class="impact rm">REMOVED_V2</span> 规则模板价值由 D3 句式模板承接；预设本质是规则 JSON，用户可直接维护规则文件</td><td>UI 用户走 D3 句式模板；CLI 自动化用户直接用规则 JSON 文件（现有 solve 输入契约）</td></tr>
+          <tr><td class="cmd">workspace</td><td>启动 Python 工作台服务器</td><td><span class="impact rm">REMOVED_V2</span> 由 Rust app server（loopback HTTP）替代，架构已完全不同</td><td>启动方式改为 Rust app server / Tauri 桌面应用；无数据影响</td></tr>
+          <tr><td class="cmd">desktop</td><td>pywebview 桌面壳</td><td><span class="impact rm">REMOVED_V2</span> 由 Tauri 2 壳替代；pywebview 是 v2 final 移除红线</td><td>桌面入口改为 Tauri 应用；无数据影响</td></tr>
         </table>
-        <div class="note mt8">移除理由：workspace/desktop 有明确替代；init-demo/presets 的价值以 UI 形态（示例班级/句式模板）在 v2 呈现，命令行形态移除。</div>
+        <div class="note mt8">ledger 状态更新：init-demo + presets×3（PYTHON_ONLY 4 项）、workspace/desktop（RUST_PARTIAL 2 项）→ INTENTIONALLY_REMOVED_V2（§11 登记）。</div>
       </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>CLI 面最小、文档一致；与「v2 final 无 Python 运行时」红线完全一致；ledger 4 项 PYTHON_ONLY 一次清账。</div>
-        <div class="con"><span class="t-label">代价</span>命令行用户失去 init-demo/presets 的脚本化能力；若 D10 未选示例班级，示例数据价值完全丢失（需在 D10 中兜底）。</div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">移除范围</td><td>init-demo / presets（list/show/export）/ workspace / desktop 共 6 条 ledger 条目 → REMOVED_V2</td></tr>
+          <tr><td class="src">价值承接</td><td>示例 → D10 内嵌示例名单；规则模板 → D3 句式模板 + 规则 JSON；服务器/桌面 → Rust app server / Tauri</td></tr>
+          <tr><td class="src">文档</td><td>迁移指南说明替代路径；v1 行为仅存历史记录（v1.x-maintenance 分支保留）</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>CLI 命令清单缩减；无 API 契约变化</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待研究（不冻结）：</p>
+        <ul class="pending-list">
+          <li>迁移指南文案（面向 CLI 自动化用户的替代说明）</li>
+        </ul>
       </div>
     </div>
-
-    <!-- Variant B: keep init-demo -->
-    <div class="variant" id="vB">
-      <div class="v-head">
-        <span class="v-badge">B</span>
-        <div><div class="v-title">保留 init-demo（Rust 化）</div>
-        <div class="v-sub">init-demo 用 Rust 重写（生成示例班级目录），presets/workspace/desktop 移除。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <table class="cmd-table">
-          <tr><th>命令</th><th>决定</th><th>理由</th></tr>
-          <tr><td class="cmd">init-demo</td><td><span class="impact ok">保留（Rust 化）</span></td><td>示例数据对新手/演示/dogfood 有价值；Rust 化成本低（静态资产 + 目录写入）；与 D10「示例班级」可共用同一套资产</td></tr>
-          <tr><td class="cmd">presets</td><td><span class="impact warn">移除</span></td><td>规则模板价值由 D3 句式模板承接</td></tr>
-          <tr><td class="cmd">workspace</td><td><span class="impact warn">移除</span></td><td>由 Rust app server 替代</td></tr>
-          <tr><td class="cmd">desktop</td><td><span class="impact warn">移除</span></td><td>由 Tauri 壳替代（v2 红线）</td></tr>
-        </table>
-        <div class="note mt8">示例资产同时服务 CLI 与 UI（D10 选项 A）——资产复用是保留的最大理由。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>示例数据成为共享资产（CLI + 引导 + dogfood）；一键体验完整流程；Rust 化成本可控（静态资源 + 校验）。</div>
-        <div class="con"><span class="t-label">代价</span>多一个 CLI 命令与测试面；示例资产需维护（与真实 fixture 数据隔离，防止误当真实数据）。</div>
-      </div>
-    </div>
-
-    <!-- Variant C: keep presets -->
-    <div class="variant" id="vC">
-      <div class="v-head">
-        <span class="v-badge">C</span>
-        <div><div class="v-title">保留 presets（规则预设）</div>
-        <div class="v-sub">presets 用 Rust 化保留（list/show/export 规则预设），init-demo/workspace/desktop 移除。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <table class="cmd-table">
-          <tr><th>命令</th><th>决定</th><th>理由</th></tr>
-          <tr><td class="cmd">presets</td><td><span class="impact ok">保留（Rust 化）</span></td><td>规则预设对 CLI 自动化（脚本批量排座）有用；Rust registry 已有 goal 预设基础（goal_rules.rs），扩展为完整 preset 全集成本可控</td></tr>
-          <tr><td class="cmd">init-demo</td><td><span class="impact warn">移除</span></td><td>示例价值由 D10 决策承接</td></tr>
-          <tr><td class="cmd">workspace</td><td><span class="impact warn">移除</span></td><td>由 Rust app server 替代</td></tr>
-          <tr><td class="cmd">desktop</td><td><span class="impact warn">移除</span></td><td>由 Tauri 壳替代（v2 红线）</td></tr>
-        </table>
-        <div class="note mt8">presets 与 D3 句式模板的关系：UI 用句式模板，CLI 用 preset JSON——同一规则语义的两种入口。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>CLI 自动化保留规则模板能力；Rust registry 基础已存在，扩展成本低；脚本用户迁移平滑。</div>
-        <div class="con"><span class="t-label">代价</span>preset 全集需要与 Python v1 全集逐项对账并补 golden（约 3 个预设）；CLI 面多一组子命令。</div>
-      </div>
-    </div>
-
-    <!-- Variant D: keep workspace/desktop -->
-    <div class="variant" id="vD">
-      <div class="v-head">
-        <span class="v-badge">D</span>
-        <div><div class="v-title">保留 workspace / desktop</div>
-        <div class="v-sub">workspace/desktop 命令保留（作为启动 Rust app server / Tauri 壳的命令别名），init-demo/presets 移除。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <table class="cmd-table">
-          <tr><th>命令</th><th>决定</th><th>理由</th></tr>
-          <tr><td class="cmd">workspace</td><td><span class="impact ok">保留（别名）</span></td><td>`seattrellis workspace` 作为启动 Rust app server 的命令别名，脚本/文档迁移零成本</td></tr>
-          <tr><td class="cmd">desktop</td><td><span class="impact ok">保留（别名）</span></td><td>`seattrellis desktop` 启动 Tauri 壳（或提示用桌面应用），保持 CLI 入口习惯</td></tr>
-          <tr><td class="cmd">init-demo</td><td><span class="impact warn">移除</span></td><td>示例价值由 D10 承接</td></tr>
-          <tr><td class="cmd">presets</td><td><span class="impact warn">移除</span></td><td>由 D3 句式模板承接</td></tr>
-        </table>
-        <div class="note mt8">注意：workspace/desktop 在 v1 是 Python 长驻进程入口；v2 作为别名指向 Rust 实现（行为兼容层）。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>v1 脚本/文档的 `seattrellis workspace/desktop` 调用无需修改；CLI 入口习惯延续。</div>
-        <div class="con"><span class="t-label">代价</span>别名层增加维护与文档负担；「desktop 别名」与 Tauri 应用本身存在双入口困惑；与「移除 pywebview/Python 运行时」红线无冲突但语义重叠。</div>
-      </div>
-    </div>
-
   </section>
 </main>
 
@@ -134,7 +71,7 @@
 <script src="../assets/data.js"></script>
 <script src="../assets/prototypes.js"></script>
 <script>
-  PTUI.initDecision("d15", ["全部移除", "保留 init-demo", "保留 presets", "保留 workspace/desktop"]);
+  PTUI.initDecision("d15");
 </script>
 </body>
 </html>

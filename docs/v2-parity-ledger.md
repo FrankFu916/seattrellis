@@ -48,9 +48,9 @@ Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）在 `0057a
 | 命令 | Python 位置 | 参数要点 | Rust 现状 | 状态 |
 |---|---|---|---|---|
 | `doctor` | cli.py:191-193 → `run_doctor()` service.py:861 | 无 | Rust CLI `doctor`（binary/core version、temp dir 可写）；输出契约无 golden | `RUST_PARTIAL` |
-| `workspace` | cli.py:195-230 → `workspace_server.run_workspace_server` | `--host/--port/--open-browser`（长驻进程） | v2 由 Rust app server 替代（见 §14） | `RUST_PARTIAL` |
-| `desktop` | cli.py:232-246 → `desktop.run_desktop_app` | `--width/--height`（pywebview） | v2 由 Tauri 壳替代（见 §14） | `RUST_PARTIAL` |
-| `init-demo` | cli.py:248-253 → `init_demo` service.py:1023 | `--output-dir/--force` | 无对应 | `PYTHON_ONLY` |
+| `workspace` | cli.py:195-230 → `workspace_server.run_workspace_server` | `--host/--port/--open-browser`（长驻进程） | v2 由 Rust app server 替代（见 §14）；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
+| `desktop` | cli.py:232-246 → `desktop.run_desktop_app` | `--width/--height`（pywebview） | v2 由 Tauri 壳替代（见 §14）；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
+| `init-demo` | cli.py:248-253 → `init_demo` service.py:1023 | `--output-dir/--force` | 示例价值由 D10 内嵌示例名单承接；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
 | `solve` | cli.py:255-300 → `solve_with_report` service.py:569 | `--students/--layout/--rules/--preset/--history(-dir)/--time-limit/--backend/--candidates(1-20)/--seed/--report` | Rust CLI `solve`（CoreSolveRequest JSON、`--seed`/`--time-limit`/`--output`）；七状态语义冻结；precheck/audit/candidates 子命令补齐诊断与候选集；**41 fixtures 七状态差分 0 mismatch（§19.5）** | `RUST_VERIFIED` |
 | `rotation-plan` | cli.py:302-339 → `generate_rotation_plan` service.py:647 | `--periods(1-20)/--label/--name/...` | 由 `project-rotate` CLI + application 轮换路径承担；**rotation 差分 34/34 0 mismatch（§19.14）**；CLI stdout 契约无 golden | `RUST_VERIFIED` |
 | `validate` | cli.py:341-367 → `run_validate` service.py:944 | `--strict` | Rust CLI `validate` 存在（core `evaluate_problem` 已验证），但无 preset/history 警告语义 | `RUST_PARTIAL` |
@@ -76,9 +76,9 @@ Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）在 `0057a
 
 | 命令 | Python 位置 | 参数要点 | Rust 现状 | 状态 |
 |---|---|---|---|---|
-| `presets list` | cli.py:128-130 | 无 | 无对应（app goal_rules.rs 仅 4 个 goal，非 preset 全集） | `PYTHON_ONLY` |
-| `presets show <preset>` | cli.py:132-136 | 位置参数 | 无对应 | `PYTHON_ONLY` |
-| `presets export <preset>` | cli.py:138-145 | `--output` | 无对应 | `PYTHON_ONLY` |
+| `presets list` | cli.py:128-130 | 无 | 规则模板价值由 D3 句式模板承接；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
+| `presets show <preset>` | cli.py:132-136 | 位置参数 | 同上 | `INTENTIONALLY_REMOVED_V2` |
+| `presets export <preset>` | cli.py:138-145 | `--output` | 同上 | `INTENTIONALLY_REMOVED_V2` |
 | `schema list` | cli.py:147-149 | 无 | Rust CLI `schema-list`（v2 registry 12 kind，§19.12） | `RUST_PARTIAL` |
 | `schema export` | cli.py:151-165 | `--output-dir` | Rust CLI `schema-export`（编译期嵌入 `schemas/*.v2.json`，§19.12） | `RUST_PARTIAL` |
 | `schema migrate` | cli.py:167-189 → `schema_migration.migrate_json_file` | `--input/--output/--in-place/--dry-run/--backup` | Rust CLI `schema-migrate`（`seattrellis-schema::migrate_v1_to_v2`，§19.12） | `RUST_PARTIAL` |
@@ -413,9 +413,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 |---|---|---|---|---|
 | SVG | exporters/svg.py:23 | template/privacy/candidate/locale（固定 16:9，不接受 page） | render.rs:215（export.rs:69-74）；**exports 差分 + E2E 下载校验（§19.11）** | `RUST_VERIFIED` |
 | HTML | exporters/html.py:9 | 无选项 | render.rs:310；exports 差分独立 reader 校验 | `RUST_VERIFIED` |
-| print-html | exporters/print_html.py:88 | page/locale（A4 打印模板） | **退化**：Rust 服务端归一化为普通 html（server.rs:1512-1516） | `RUST_PARTIAL` |
-| PNG | exporters/png.py:9 | 无选项 | render.rs:404（**无任何文字**，纯色块，render.rs:400-402） | `RUST_PARTIAL` |
-| PDF | exporters/pdf.py:69 | template/privacy/page/orientation/scale/paper_size/margin_mm/locale | render.rs:559（手写 PDF；**CJK 名退化为 "?"**，render.rs:556-558；无 margin/paper_size 选项） | `RUST_PARTIAL` |
+| print-html | exporters/print_html.py:88 | page/locale（A4 打印模板） | **退化**：Rust 服务端归一化为普通 html（server.rs:1512-1516）；**PD-D11 决策恢复独立 print 版式（M5 实现，规范待研究）** | `RUST_PARTIAL` |
+| PNG | exporters/png.py:9 | 无选项 | render.rs:404（**无任何文字**，纯色块，render.rs:400-402）；**PD-D13 决策渲染学生姓名（M5 实现，复用 D12 字体发现）** | `RUST_PARTIAL` |
+| PDF | exporters/pdf.py:69 | template/privacy/page/orientation/scale/paper_size/margin_mm/locale | render.rs:559（手写 PDF；**CJK 名退化为 "?"**，render.rs:556-558；无 margin/paper_size 选项）；**PD-D12 决策系统字体智能引用（M5 实现，无嵌入无 fallback）** | `RUST_PARTIAL` |
 | DOCX | exporters/docx_export.py:26 | page 生效 | office.rs `render_docx`（标题+边框座位表格）；**python-docx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | PPTX | exporters/pptx.py:22 | 单页 16:9 可编辑形状 | office.rs `render_pptx`（screen16x9 + roundRect 座位形状）；**python-pptx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | Excel | exporters/excel.py:9 | Seating+Assignments 两 sheet | office.rs `render_xlsx`（两 sheet、行号连续）；**openpyxl 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
@@ -468,7 +468,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | `seattrellis desktop`（pywebview 桌面壳） | cli.py:232-246；desktop.py:355 | Tauri 壳替代（app/src-tauri） | `RUST_PARTIAL` |
 | `seattrellis-desktop`（独立 argparse CLI） | desktop_app.py:12-60 | Tauri 壳替代 | `RUST_PARTIAL` |
 | Tauri 壳能力 | — | **空壳**：0 个 `#[tauri::command]`、无文件对话框/托盘/菜单/IPC（src-tauri/lib.rs:15-65），仅 WebView 加载 loopback HTTP；capabilities 仅 `core:default` | `RUST_PARTIAL` |
-| 原生文件打开/保存对话框（桌面工作流核心体验） | desktop.py（pywebview 文件对话框） | **无对应**（依赖前端 `<input type=file>` + HTTP 上传/下载） | `PYTHON_ONLY` |
+| 原生文件打开/保存对话框（桌面工作流核心体验） | desktop.py（pywebview 文件对话框） | **无对应**（依赖前端 `<input type=file>` + HTTP 上传/下载）；**PD-D14 决策三入口融合（拖拽 + Tauri 系统对话框 + 可信根内路径输入），M5 实现** | `PYTHON_ONLY` |
 | Rust app server 整体（27 路由） | — | server.rs:427-524 | `RUST_PARITY_PENDING` |
 | 前端静态资源内嵌 | — | embedded_web.rs:7/:13 | `RUST_PARITY_PENDING`（非 parity 项，仅记录） |
 
@@ -478,7 +478,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 | 领域 | 条目数 | PYTHON_ONLY | RUST_PARTIAL | RUST_PARITY_PENDING | RUST_VERIFIED | INTENTIONALLY_REMOVED_V2 |
 |---|---|---|---|---|---|---|
-| §1 CLI（30 命令 + 契约） | 31 | 4 | 23 | 0 | 4 | 0 |
+| §1 CLI（30 命令 + 契约） | 31 | 0 | 21 | 0 | 4 | 6 |
 | §2 service/application | 39 | 2 | 15 | 12 | 10 | 0 |
 | §3 React `/api/v1/*`（31 调用） | 31 | 0 | 3 | 28 | 0 | 0 |
 | §4 Schema（10 文件 + 协议机制） | 16 | 2 | 5 | 9 | 0 | 0 |
@@ -492,7 +492,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §12 export（格式/隐私/页面） | 18 | 1 | 9 | 1 | 7 | 0 |
 | §13 migration/backup/restore | 9 | 0 | 2 | 7 | 0 | 0 |
 | §14 desktop workflows | 7 | 1 | 3 | 3 | 0 | 0 |
-| **合计** | **198** | **11** | **69** | **93** | **25** | **0** |
+| **合计** | **198** | **7** | **67** | **93** | **25** | **6** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（`RUST_PARTIAL`）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条 `RUST_PARTIAL`。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
@@ -573,11 +573,18 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 ---
 
-## 18. INTENTIONALLY_REMOVED_V2 登记（当前为空）
+## 18. INTENTIONALLY_REMOVED_V2 登记
+
+> 登记日期：2026-08-10（批 2 决策 `PD-D15-LEGACYCMDS`，见
+> `docs/product-decisions/2026-08-10-batch2-export-wrapup.md`）。变更随
+> 引入该决策记录的 commit 提交（`git log -- docs/product-decisions/2026-08-10-batch2-export-wrapup.md`）。
 
 | 条目 | 理由 | 迁移方案 | 用户影响 | 状态 |
 |---|---|---|---|---|
-| （无） | — | — | — | — |
+| `init-demo`（CLI） | 示例价值由 D10 内嵌示例名单承接（内嵌资产 + 隔离标记，优于命令行生成）；v2 以 UI 引导形态呈现 | CLI 用户经「临时工作台 + 示例名单」达到同等效果；示例资产不依赖命令 | 命令行一键示例入口消失（低频） | `INTENTIONALLY_REMOVED_V2` |
+| `presets`（list/show/export，CLI） | 规则模板价值由 D3 句式模板承接；预设本质是规则 JSON，用户可直接维护规则文件 | UI 用户走 D3 句式模板；CLI 自动化用户直接用规则 JSON（现有 solve 输入契约） | CLI 预设模板命令消失；规则模板以 UI 句式模板形式保留 | `INTENTIONALLY_REMOVED_V2` |
+| `workspace`（CLI） | 由 Rust app server（loopback HTTP）替代，架构已完全不同（§14） | 启动方式改为 Rust app server / Tauri 桌面应用 | 无（功能由等价启动器承接） | `INTENTIONALLY_REMOVED_V2` |
+| `desktop`（CLI） | 由 Tauri 2 壳替代；pywebview 是 v2 final 移除红线 | 桌面入口改为 Tauri 应用 | 无 | `INTENTIONALLY_REMOVED_V2` |
 
 > 注：`gender` 相关规则在 Python 与 Rust 两侧均不存在（仅为学生数据字段），不属于"移除"，如 v2 需要属于新增设计。
 
@@ -1028,6 +1035,23 @@ presets ×3、候选集比较报告、plan-comparison-report、原生文件对�
    的同一实现）。新增单测
    `candidates_stability_activates_with_latest_snapshot`（无快照
    not_available / 有快照 available）。
+
+### 19.17 2026-08-10：M4 批 2 决策与 ledger 状态变更（§1/§12/§14/§15/§18）
+
+批 2 决策（`docs/product-decisions/2026-08-10-batch2-export-wrapup.md`，
+方向冻结、版式与 UI 细节待研究）对账本的变更：
+
+- **§1.1/§1.2**：`workspace`、`desktop`、`init-demo`、`presets`×3
+  共 6 条 → `INTENTIONALLY_REMOVED_V2`（§18 登记：理由/迁移/用户影响）。
+- **§12.1**：print-html（PD-D11 恢复独立版式）、PNG（PD-D13 渲染姓名）、
+  PDF（PD-D12 系统字体智能引用）三条保持 `RUST_PARTIAL`，注明 M5 实现计划。
+- **§14**：原生文件对话框（PD-D14 三入口融合：拖拽 + Tauri 对话框 +
+  可信根内路径输入，安全红线）保持 `PYTHON_ONLY`，注明 M5 实现计划。
+- **§15 计数**：`PYTHON_ONLY` 11→7、`RUST_PARTIAL` 69→67、
+  `INTENTIONALLY_REMOVED_V2` 0→6。
+
+**注意**：以上为决策状态变更，不是 parity 证据；print-html/PNG/PDF/
+原生对话框的实现与 golden 属 M5 阶段工作，不得因"决策已定"宣称 parity。
 
 ---
 

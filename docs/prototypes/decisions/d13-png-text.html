@@ -3,82 +3,75 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>D13 · PNG 文字渲染 — SeatTrellis v2 原型</title>
+<title>D13 · PNG 文字渲染（融合方案）— SeatTrellis v2 原型</title>
 <link rel="stylesheet" href="../assets/prototypes.css">
 <style>
   .png-card { background:#f1f5f9; border:1px solid var(--line-2); border-radius:8px; padding:14px; display:flex; gap:14px; align-items:center; }
-  .png-mini { display:grid; grid-template-columns:repeat(4, 46px); gap:5px; }
-  .png-mini .px { width:46px; height:34px; border-radius:5px; border:1.5px solid var(--line-2); background:#fff; display:grid; place-items:center; font-size:9.5px; }
-  .png-mini .px.text { font-weight:600; }
-  .png-mini .px.blank { background:repeating-linear-gradient(45deg,#fff,#fff 4px,#f1f5f9 4px,#f1f5f9 8px); }
-  .note-px { font-size:11px; color:var(--ink-3); max-width:220px; }
+  .png-mini { display:grid; grid-template-columns:repeat(4, 52px); gap:5px; }
+  .png-mini .px { width:52px; height:38px; border-radius:5px; border:1.5px solid var(--line-2); background:#fff; display:grid; place-items:center; font-size:9.5px; font-weight:600; text-align:center; line-height:1.25; padding:0 2px; }
+  .png-mini .px.masked { background:repeating-linear-gradient(45deg,#fff,#fff 4px,#f1f5f9 4px,#f1f5f9 8px); color:var(--ink-3); font-weight:500; }
+  .png-mini .px .sub { display:block; font-size:8px; font-weight:400; color:var(--ink-3); }
 </style>
 </head>
 <body>
 
 <header class="pt-topbar">
   <a href="../index.html">← 决策总览</a>
-  <span class="crumb">/ <b>D13 · PNG 文字渲染</b></span>
+  <span class="crumb">/ <b>D13 · PNG 文字渲染（融合方案）</b></span>
   <span class="spacer"></span>
-  <span class="progress-chip">13 / 15 · 决策 D13</span>
+  <span class="progress-chip">13 / 15 · D13 已决策 → 确认融合形态</span>
 </header>
 
 <main class="pt-main">
   <section class="dec-head">
-    <span class="kicker">Decision D13 · ledger §12 登记分歧</span>
-    <h1>PNG 文字渲染：渲染学生姓名 vs 无文字（纯座位图）</h1>
-    <p class="task">真实任务：教师把座位表导出 PNG 发微信群/家长群。当前 v1 PNG 无文字（纯色块）。是否在 PNG 上渲染学生姓名。</p>
-    <div class="constraints"><b>不可违反约束</b>：PNG 是位图输出，字体渲染需引入光栅化路径（Rust 侧当前无）；隐私语义（public 模板匿名化）对位图同样适用；导出产物须经独立 validator 复核。</div>
+    <span class="kicker">PD-D13-PNGTEXT · ledger §12 登记分歧</span>
+    <h1>PNG 文字渲染 — 融合方案：渲染学生姓名（复用字体发现 + 隐私生效）</h1>
+    <p class="task">真实任务不变：PNG 座位表发微信群，家长直接可读姓名。<b>PNG 座位块内绘制学生姓名（中文），复用 D12 的系统字体发现基础设施；隐私开关对位图同样生效（public 匿名化 → 打码）。</b></p>
+    <div class="constraints"><b>不可违反约束</b>：字体光栅化需新增 Rust 路径（建议纯 Rust 无依赖：fontdue/ttf-parser 类，符合最小依赖政策 §5.6）；隐私语义对位图生效；产物经独立 validator 复核。</div>
   </section>
 
-  <section class="variants">
-
-    <!-- Variant A: render names -->
-    <div class="variant" id="vA">
+  <section class="variants wide">
+    <div class="variant" id="vFinal">
       <div class="v-head">
-        <span class="v-badge">A</span>
-        <div><div class="v-title">渲染学生姓名</div>
-        <div class="v-sub">PNG 座位块内绘制学生姓名（中文），家长群直接可读。</div></div>
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态</div>
+        <div class="v-sub">teacher 模板：座位块内渲染姓名 + 学号；public 模板：姓名打码为「学生A/B/C」。</div></div>
       </div>
       <div class="v-visual"><div class="inner">
         <div class="png-card">
           <div class="png-mini">
-            <div class="px text">学生丁001</div><div class="px text">学生丅005</div><div class="px text">学生上010</div><div class="px text">学生下011</div>
-            <div class="px text">学生丆006</div><div class="px text">学生丏015</div><div class="px text">学生一020</div><div class="px text">学生丌012</div>
+            <div class="px">学生丁001<span class="sub">STU001</span></div>
+            <div class="px">学生丅005<span class="sub">STU005</span></div>
+            <div class="px">学生上010<span class="sub">STU010</span></div>
+            <div class="px">学生下011<span class="sub">STU011</span></div>
+            <div class="px masked">学生 A<span class="sub">—</span></div>
+            <div class="px masked">学生 B<span class="sub">—</span></div>
+            <div class="px masked">学生 C<span class="sub">—</span></div>
+            <div class="px masked">学生 D<span class="sub">—</span></div>
           </div>
-          <div class="note-px">PNG 内文字随位图直接显示，任何看图软件可读；需 CJK 字体光栅化（约 1–2 周 + 字体资产）。</div>
+          <div style="max-width:240px">
+            <div class="row mb8"><span class="chip green">teacher 模板 · 显示姓名</span><span class="chip gray">public 模板 · 匿名化</span></div>
+            <div class="note-px">字体光栅化复用 D12 字体发现（同一系统字体模块）；2x 分辨率输出保证手机清晰度。</div>
+          </div>
         </div>
-        <div class="note mt8">隐私开关对位图同样生效：public 模板 + 匿名化时名字打码为「学生 A/B/C」。</div>
+        <div class="note mt8">长名字（4–5 字）字号自适应；座位块内两行：姓名 + 学号（teacher 模板）。</div>
       </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>家长群/微信群直接可读，无需打开 PDF；PNG 是最通用格式，教师高频使用场景。</div>
-        <div class="con"><span class="t-label">代价</span>需要 Rust 字体光栅化路径（新依赖/实现面）；小尺寸座位块里长名（4 字+）可能溢出，需字号自适应。</div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">光栅化</td><td>Rust 新增文本光栅化（fontdue/ttf-parser 类，纯 Rust 无依赖）；字体来自 D12 字体发现模块</td></tr>
+          <tr><td class="src">隐私生效</td><td>public 模板 + 匿名化：姓名打码「学生A/B/C」；隐藏成绩等开关对位图同样过滤</td></tr>
+          <tr><td class="src">清晰度</td><td>2x 分辨率输出（微信缩略图可读）</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>Rust PNG 渲染路径扩展；导出契约（PNG 语义：含文字）</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待研究（不冻结）：</p>
+        <ul class="pending-list">
+          <li>字号自适应规则（4–5 字长名）与打码样式</li>
+          <li>60 座级光栅化性能</li>
+        </ul>
       </div>
     </div>
-
-    <!-- Variant B: no text -->
-    <div class="variant" id="vB">
-      <div class="v-head">
-        <span class="v-badge">B</span>
-        <div><div class="v-title">无文字（纯座位图）</div>
-        <div class="v-sub">PNG 只有座位色块与区域标识（v1 现状），姓名需要配合 HTML/PDF 使用。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <div class="png-card">
-          <div class="png-mini">
-            <div class="px blank"></div><div class="px blank"></div><div class="px blank"></div><div class="px blank"></div>
-            <div class="px blank"></div><div class="px blank"></div><div class="px blank"></div><div class="px blank"></div>
-          </div>
-          <div class="note-px">纯色块座位图：保留教室空间结构，但无法从图中识别人名——v1 现状。</div>
-        </div>
-        <div class="note mt8">保持现状：PNG 仅用于"教室结构示意"，名单以 HTML/PDF/XLSX 提供。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>零实现成本；无字体依赖；隐私天然安全（无名字可泄漏）。</div>
-        <div class="con"><span class="t-label">代价</span>PNG 用途受限（发家长群需要配合文字说明）；教师需另用 PDF——v1 已知体验缺口。</div>
-      </div>
-    </div>
-
   </section>
 </main>
 
@@ -87,7 +80,7 @@
 <script src="../assets/data.js"></script>
 <script src="../assets/prototypes.js"></script>
 <script>
-  PTUI.initDecision("d13", ["渲染学生姓名", "无文字（纯座位图）"]);
+  PTUI.initDecision("d13");
 </script>
 </body>
 </html>

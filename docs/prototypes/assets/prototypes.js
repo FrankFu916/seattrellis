@@ -32,21 +32,21 @@ window.PTUI = (function () {
       merged: "历史回顾（时间线）+ 轮换计划 双视图" },
     { id: "d8", n: 8, title: "导入确认流程", file: "decisions/d8-import.html", mode: "confirm",
       merged: "步骤条 + 映射/预览同屏（班级上下文内面板）" },
-    // ---- batch 2: export & wrap-up (open decisions) ----
-    { id: "d9", n: 9, title: "导出面板分层", file: "decisions/d9-export.html", mode: "choose",
-      variants: ["快速导出菜单", "高级版式面板"] },
-    { id: "d10", n: 10, title: "新手引导", file: "decisions/d10-onboarding.html", mode: "choose",
-      variants: ["示例班级", "内嵌任务", "首次运行 checklist"] },
-    { id: "d11", n: 11, title: "print-html 版式", file: "decisions/d11-print-html.html", mode: "choose",
-      variants: ["保留独立 print 版式", "归一化 html + 打印样式"] },
-    { id: "d12", n: 12, title: "PDF CJK 字体", file: "decisions/d12-pdf-cjk.html", mode: "choose",
-      variants: ["嵌入全字体", "子集嵌入", "系统字体 fallback"] },
-    { id: "d13", n: 13, title: "PNG 文字渲染", file: "decisions/d13-png-text.html", mode: "choose",
-      variants: ["渲染学生姓名", "无文字（纯座位图）"] },
-    { id: "d14", n: 14, title: "原生文件对话框", file: "decisions/d14-native-dialogs.html", mode: "choose",
-      variants: ["Tauri 原生对话框", "前端 input 上传/下载"] },
-    { id: "d15", n: 15, title: "遗留命令去留", file: "decisions/d15-legacy-commands.html", mode: "choose",
-      variants: ["全部移除", "保留 init-demo", "保留 presets", "保留 workspace/desktop"] }
+    // ---- batch 2: export & wrap-up (decided, merged target forms) ----
+    { id: "d9", n: 9, title: "导出面板分层", file: "decisions/d9-export.html", mode: "confirm",
+      merged: "快速导出菜单 + 默认值矩阵（默认值/高级设置分层）" },
+    { id: "d10", n: 10, title: "新手引导", file: "decisions/d10-onboarding.html", mode: "confirm",
+      merged: "内嵌任务引导 + 内嵌示例名单兜底（示例数据隔离）" },
+    { id: "d11", n: 11, title: "print-html 版式", file: "decisions/d11-print-html.html", mode: "confirm",
+      merged: "独立 print 版式 + 打印版式设计规范" },
+    { id: "d12", n: 12, title: "PDF CJK 字体", file: "decisions/d12-pdf-cjk.html", mode: "confirm",
+      merged: "系统字体智能引用（质量优先级 + 导出警告，无嵌入无 fallback）" },
+    { id: "d13", n: 13, title: "PNG 文字渲染", file: "decisions/d13-png-text.html", mode: "confirm",
+      merged: "PNG 渲染学生姓名（复用字体发现 + 隐私生效）" },
+    { id: "d14", n: 14, title: "原生文件对话框", file: "decisions/d14-native-dialogs.html", mode: "confirm",
+      merged: "拖拽 + 系统对话框 + 可信根路径输入（三入口融合）" },
+    { id: "d15", n: 15, title: "遗留命令去留", file: "decisions/d15-legacy-commands.html", mode: "confirm",
+      merged: "init-demo / presets / workspace / desktop 全部移除（REMOVED_V2）" }
   ];
 
   var REDESIGN = { key: "R", label: "都不满意，重新设计" };
@@ -210,15 +210,16 @@ window.PTUI = (function () {
         : "- D" + d.n + " " + d.title + ": _pending_ — " + d.merged;
       lines.push(line);
     });
-    lines.push("", "## Batch 2（待冻结）", "");
+    lines.push("", "## Batch 2（方向已冻结，细节待研究）", "");
     DECISIONS.filter(function (d) { return d.n > 8; }).forEach(function (d) {
       var choice = state[d.id];
-      var line = choice
-        ? "- D" + d.n + " " + d.title + ": **" + choice + "** — " + (choice === REDESIGN.key ? REDESIGN.label : d.variants[choice.charCodeAt(0) - 65])
-        : "- D" + d.n + " " + d.title + ": _pending_";
+      var line = choice === CONFIRMED ? "- D" + d.n + " " + d.title + ": **confirmed** — " + d.merged
+        : choice === REVISE ? "- D" + d.n + " " + d.title + ": **changes requested** — " + d.merged
+        : "- D" + d.n + " " + d.title + ": _pending_ — " + d.merged;
       lines.push(line);
     });
     lines.push("", "Batch-1 record: docs/product-decisions/2026-08-10-batch1-core-workflow.md");
+    lines.push("Batch-2 record: docs/product-decisions/2026-08-10-batch2-export-wrapup.md");
     document.getElementById("idxSummaryText").value = lines.join("\n");
   }
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>D10 · 新手引导 — SeatTrellis v2 原型</title>
+<title>D10 · 新手引导（融合方案）— SeatTrellis v2 原型</title>
 <link rel="stylesheet" href="../assets/prototypes.css">
 <style>
   .task-card { display:flex; gap:10px; align-items:flex-start; border:1px solid var(--line); border-radius:8px; background:#fff; padding:9px 11px; margin-bottom:7px; }
@@ -13,71 +13,32 @@
   .task-card .t-title { font-weight:600; font-size:12.5px; }
   .task-card .t-desc { font-size:11.5px; color:var(--ink-2); }
   .task-card .t-go { margin-left:auto; align-self:center; }
+  .sample-strip { display:flex; align-items:center; gap:10px; border:1px dashed var(--brand); background:var(--brand-soft); border-radius:8px; padding:9px 12px; font-size:12.5px; color:var(--brand-ink); }
 </style>
 </head>
 <body>
 
 <header class="pt-topbar">
   <a href="../index.html">← 决策总览</a>
-  <span class="crumb">/ <b>D10 · 新手引导</b></span>
+  <span class="crumb">/ <b>D10 · 新手引导（融合方案）</b></span>
   <span class="spacer"></span>
-  <span class="progress-chip">10 / 15 · 决策 D10</span>
+  <span class="progress-chip">10 / 15 · D10 已决策 → 确认融合形态</span>
 </header>
 
 <main class="pt-main">
   <section class="dec-head">
-    <span class="kicker">Decision D10 · 计划 §7.1 项 10 / §7.4</span>
-    <h1>新手引导：示例班级 / 内嵌任务 / 首次运行 checklist</h1>
-    <p class="task">真实任务：一位从未用过排座工具的班主任第一次打开应用，需要在 10 分钟内完成「导入名单 → 生成第一个方案」。</p>
-    <div class="constraints"><b>不可违反约束（§7.4）</b>：示例数据<b>不得污染真实班级</b>（示例与真实数据严格隔离，删除示例班级不影响任何真实数据）；引导不得要求注册/联网；引导不能拦截老用户的既有工作流。</div>
+    <span class="kicker">PD-D10-ONBOARDING · 计划 §7.1 项 10 / §7.4</span>
+    <h1>新手引导 — 融合方案：内嵌任务 + 内嵌示例名单兜底</h1>
+    <p class="task">真实任务不变：新班主任 10 分钟内完成「导入名单 → 生成第一个方案」。<b>任务卡内嵌真实流程，完成打勾、可关闭；名单不在手边时一键载入内置示例名单兜底（隔离标记，删除即清零）。</b></p>
+    <div class="constraints"><b>不可违反约束（§7.4）</b>：示例数据不得污染真实班级（显式隔离标记、删除不影响真实数据）；引导不要求注册/联网；不得拦截老用户工作流。示例名单是应用内嵌静态资产（与 D15 移除 init-demo 命令不冲突）。</div>
   </section>
 
-  <section class="variants">
-
-    <!-- Variant A: sample class -->
-    <div class="variant" id="vA">
+  <section class="variants wide">
+    <div class="variant" id="vFinal">
       <div class="v-head">
-        <span class="v-badge">A</span>
-        <div><div class="v-title">示例班级</div>
-        <div class="v-sub">首次进入预置一个「示例班级」（30 人 + 教室 + 规则），用户直接在示例里体验完整流程，随时可删除。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <div class="mock-app">
-          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/workspace</span></div>
-          <div class="workbench" style="display:flex;min-height:300px">
-            <div class="sidebar">
-              <div class="s-sec">我的班级</div>
-              <div class="s-item"><span>🏫</span>示例班级 <span class="count" style="background:var(--brand-soft);color:var(--brand-ink)">示例</span></div>
-              <div class="s-sec">班级内容</div>
-              <div class="s-item"><span>👥</span>学生名单</div>
-              <div class="s-item"><span>🪑</span>教室布局</div>
-              <div class="s-item"><span>📐</span>规则与目标</div>
-              <div class="s-item"><span>📊</span>历史 / 轮换</div>
-              <div class="s-item" style="color:var(--ink-3);border-top:1px solid var(--line);margin-top:8px;padding-top:8px"><span>🗑</span>删除示例班级</div>
-            </div>
-            <div class="panel grow" style="margin:12px">
-              <div class="panel-head">示例班级 <span class="chip blue">示例数据</span><span class="sub">30 人 · 6×5 教室 · 3 条规则 · 已生成 1 个方案</span></div>
-              <div class="panel-body">
-                <div class="row mb8"><span class="chip green">完整流程可体验</span><span class="small muted">导入/规则/生成/导出全部可用，删除后不留痕迹</span></div>
-                <div class="ctx-bar"><span>💡 试着做一遍完整流程：① 看名单 → ② 改规则 → ③ 生成方案 → ④ 导出 PDF</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="note mt8">示例班级标记「示例」，删除操作只影响示例数据（§7.4 隔离要求）。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>真实环境直接上手，学习成本最低；删除即清零，零污染（有隔离标记）；与 D1 侧栏/临时工作台语义天然兼容。</div>
-        <div class="con"><span class="t-label">代价</span>需要维护一份示例数据资产（名单/教室/规则/方案）；新用户可能误把示例当真班级（需显式标记）；「开始用真实班级」的转化路径需设计。</div>
-      </div>
-    </div>
-
-    <!-- Variant B: embedded tasks -->
-    <div class="variant" id="vB">
-      <div class="v-head">
-        <span class="v-badge">B</span>
-        <div><div class="v-title">内嵌任务</div>
-        <div class="v-sub">不预置数据：用户建自己的班级，引导以「任务卡」形式内嵌在真实流程里（建班级 → 导入名单 → 设规则 → 生成），完成打勾。</div></div>
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态</div>
+        <div class="v-sub">任务卡 4 步（建班级→导入→设规则→生成）内嵌真实流程；导入步骤提供「先用示例名单试试」兜底。</div></div>
       </div>
       <div class="v-visual"><div class="inner">
         <div class="mock-app">
@@ -93,64 +54,49 @@
               <div><div class="t-title">创建班级</div><div class="t-desc">已创建「初二（3）班」</div></div>
               <span class="chip green t-go">完成</span>
             </div>
-            <div class="task-card done">
-              <span class="t-n">✓</span>
-              <div><div class="t-title">导入学生名单</div><div class="t-desc">20 人已导入（students-v2.csv）</div></div>
-              <span class="chip green t-go">完成</span>
-            </div>
             <div class="task-card">
+              <span class="t-n">2</span>
+              <div><div class="t-title">导入学生名单</div><div class="t-desc">选择你的 CSV/XLSX 名单文件</div></div>
+              <button class="btn primary t-go" style="font-size:11px">选择文件</button>
+            </div>
+            <div class="sample-strip">
+              <span>📄 名单不在手边？</span>
+              <span class="small">内置一份 20 人示例名单（带性别/身高/成绩/视力属性），载入后完成整个流程，随时可删除</span>
+              <span class="spacer"></span>
+              <button class="btn" style="font-size:11px;border-color:var(--brand)">先用示例名单</button>
+            </div>
+            <div class="task-card" style="opacity:.6">
               <span class="t-n">3</span>
-              <div><div class="t-title">设置规则与目标</div><div class="t-desc">用句式构建器添加一条规则试试</div></div>
-              <button class="btn primary t-go" style="font-size:11px">去设置 →</button>
+              <div><div class="t-title">设置规则与目标</div><div class="t-desc">用句式构建器添加一条规则</div></div>
+              <button class="btn t-go" style="font-size:11px" disabled>等待上一步</button>
             </div>
-            <div class="task-card">
+            <div class="task-card" style="opacity:.6">
               <span class="t-n">4</span>
               <div><div class="t-title">生成第一个方案</div><div class="t-desc">生成 5 个候选并选择</div></div>
-              <button class="btn primary t-go" style="font-size:11px">去生成 →</button>
+              <button class="btn t-go" style="font-size:11px" disabled>等待上一步</button>
             </div>
-            <div class="note mt8">任务卡与真实流程同屏：点「去设置」直接跳到规则页并展开对应面板。</div>
+            <div class="note mt8">示例名单载入后显示「示例」徽章；删除示例名单不影响任何真实班级（§7.4 隔离）。</div>
           </div>
         </div>
-        <div class="note mt8">内嵌任务 = 用真实数据完成真实任务，无示例污染问题。</div>
+        <div class="note mt8">任务卡与真实流程同屏：「选择文件」直接打开 D14 三入口文件选择；「先用示例名单」载入内嵌资产。</div>
       </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>无示例数据维护成本；用户从第一天就用真实数据；任务卡可随时关闭（老用户无感）；与 D1 上下文操作条/首次任务清单一致。</div>
-        <div class="con"><span class="t-label">代价</span>新用户若名单不在手边会被卡住（可提供「试用示例名单」兜底）；引导节奏取决于用户自己导入数据的速度。</div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">内嵌任务</td><td>4 步任务卡：完成打勾、可关闭（持久化）、不拦截老用户</td></tr>
+          <tr><td class="src">示例名单兜底</td><td>内嵌静态资产（20 人，含常用属性）；「示例」隔离标记；删除即清零（§7.4）</td></tr>
+          <tr><td class="src">与 D15 一致性</td><td>示例名单是内嵌资产而非 CLI 命令——D15 移除 init-demo 不冲突</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>无新 API；示例名单资产（Rust 或前端嵌入）</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待研究（不冻结）：</p>
+        <ul class="pending-list">
+          <li>示例名单规模与内容（"恰到好处"的定义）</li>
+          <li>任务卡收起时机与「关闭引导」持久化</li>
+          <li>与 D1 首次任务清单的关系（合并还是分层）</li>
+        </ul>
       </div>
     </div>
-
-    <!-- Variant C: first-run checklist -->
-    <div class="variant" id="vC">
-      <div class="v-head">
-        <span class="v-badge">C</span>
-        <div><div class="v-title">首次运行 checklist</div>
-        <div class="v-sub">独立欢迎页：清单式介绍功能（排座/轮换/导出/隐私），带「开始使用」入口；之后不再出现。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <div class="mock-app">
-          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/welcome</span></div>
-          <div style="padding:20px;text-align:center">
-            <div style="font-size:18px;font-weight:800;color:var(--brand-ink)">欢迎使用席序 SeatTrellis</div>
-            <div class="muted small" style="margin:4px 0 14px">课堂排座工具 · 本地优先 · 数据不出设备</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left">
-              <div class="task-card"><span class="t-n">1</span><div><div class="t-title">创建班级</div><div class="t-desc">导入名单，开始排座</div></div></div>
-              <div class="task-card"><span class="t-n">2</span><div><div class="t-title">设置规则</div><div class="t-desc">固定座位、视力前排、成绩搭配</div></div></div>
-              <div class="task-card"><span class="t-n">3</span><div><div class="t-title">生成方案</div><div class="t-desc">候选比较，推荐选择</div></div></div>
-              <div class="task-card"><span class="t-n">4</span><div><div class="t-title">轮换与导出</div><div class="t-desc">多期轮换、PDF/打印</div></div></div>
-              <div class="task-card"><span class="t-n">5</span><div><div class="t-title">隐私保护</div><div class="t-desc">成绩/备注导出前可隐藏</div></div></div>
-              <div class="task-card"><span class="t-n">6</span><div><div class="t-title">历史与恢复</div><div class="t-desc">快照自动保存，可恢复</div></div></div>
-            </div>
-            <button class="btn primary" style="margin-top:14px;font-size:13px;padding:8px 22px">开始使用 →</button>
-          </div>
-        </div>
-        <div class="note mt8">一次性欢迎页：之后不再出现（老用户无感），但「帮助」入口可重新打开。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>实现最简单；一次性成本低；功能全景介绍清楚（含隐私/恢复等卖点）。</div>
-        <div class="con"><span class="t-label">代价</span>静态介绍 ≠ 动手体验，学习转化率最低；「之后不再出现」意味着引导与真实使用脱节；列表过长反而记不住。</div>
-      </div>
-    </div>
-
   </section>
 </main>
 
@@ -159,7 +105,7 @@
 <script src="../assets/data.js"></script>
 <script src="../assets/prototypes.js"></script>
 <script>
-  PTUI.initDecision("d10", ["示例班级", "内嵌任务", "首次运行 checklist"]);
+  PTUI.initDecision("d10");
 </script>
 </body>
 </html>

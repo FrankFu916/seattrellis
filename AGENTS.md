@@ -132,9 +132,14 @@ official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修�
   `docs/product-decisions/2026-08-10-batch1-core-workflow.md`**（含 G-1 去术语化
   文案资产、G-2 多视图共享编辑状态与 undo 栈、G-3 复现信息可查、G-4 默认值
   证据要求、G-5 临时工作台语义；PD-D3-ADJ-1 规则 JSON 仅只读）。
+- 批 2 决策已由产品负责人逐项选择/融合（**方向冻结**，含 G-6 UI 设计准则：
+  专业简洁易用、无 AI 味、克制动效、颜色语义化；PD-D12 PDF 系统字体智能引用
+  （无嵌入无 fallback）；PD-D14 文件选择三入口融合，手动路径仅限可信根内——
+  安全红线），记录见 `docs/product-decisions/2026-08-10-batch2-export-wrapup.md`。
+  **版式格式细节与 UI 交互/视觉细节明确为"待进一步研究讨论"，不冻结**。
 - 批 1 仍为"交互契约草案"：待目标形态页在真实浏览器确认与 dogfood 验证后
-  才算冻结（§7.9）。批 2（导出面板、新手引导、print-html、PDF CJK 字体、
-  PNG 文字、原生对话框、遗留命令去留）未开始。
+  才算冻结（§7.9）。批 2 方向已冻结，版式/UI 细节待研究；全部 15 项决策
+  完成后进入 M5 实现（决策项逐一过 Rust contract + React E2E）。
 
 ### 2026-08-09 post-merge acceptance audit
 
