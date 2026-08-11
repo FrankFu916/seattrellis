@@ -1382,6 +1382,17 @@ def main() -> int:
         "privacy checks)",
     )
     parser.add_argument(
+        "--cli-golden",
+        action="store_true",
+        help="run the CLI stdout/stderr/exit-code golden class (Rust contract "
+        "vs registered goldens + Python exit-code semantics)",
+    )
+    parser.add_argument(
+        "--cli-golden-record",
+        action="store_true",
+        help="(re)record the CLI golden files under fixtures/cli-goldens",
+    )
+    parser.add_argument(
         "--allow-documented-gaps",
         action="store_true",
         help="CI mode: tolerate exactly the case-level documented corpus gaps "
@@ -1403,11 +1414,143 @@ def main() -> int:
         rows.extend(run_rotation_class())
     if args.exports:
         rows.extend(run_exports_class())
+    if args.cli_golden or args.cli_golden_record:
+        with tempfile.TemporaryDirectory(prefix="cli-golden-") as tmpdir:
+            rows.extend(run_cli_golden_class(record=args.cli_golden_record, tmp=Path(tmpdir)))
+        if args.cli_golden_record:
+            return report(rows, allow_documented=args.allow_documented_gaps)
     if not rows:
         sizes = [int(item) for item in args.sizes.split(",")]
         rows = run_benchmark_classes(sizes, args.time_limit)
     return report(rows, allow_documented=args.allow_documented_gaps)
+# ---------------------------------------------------------------------------
+# CLI stdout/stderr/exit-code golden class (plan §5.5 / ledger §1 "输出契约无
+# golden"): register the Rust CLI's output contract for representative
+# commands, then re-run and compare byte-for-byte (JSON normalized). Python
+# side participates with an exit-code *semantic* comparison (0 vs non-zero)
+# where a Python command exists; the six v1 commands removed by PD-D15
+# (workspace/desktop/init-demo/presets) are excluded by design.
+# ---------------------------------------------------------------------------
+
+CLI_GOLDENS = ROOT / "fixtures" / "cli-goldens"
+
+
+def _strip_tmp_paths(text: str, tmp: Path) -> str:
+    """Temporary directories differ between runs; canonicalize them."""
+    return text.replace(str(tmp), "<tmp>")
+
+
+def _normalize_cli_output(text: str, tmp: Path | None = None) -> str:
+    """Canonicalize CLI output: stable JSON key order, no timestamps."""
+    if tmp is not None:
+        text = _strip_tmp_paths(text, tmp)
+    stripped = text.strip()
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        return stripped
+    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
+def _cli_case_commands(tmp: Path) -> list[dict]:
+    """The representative command matrix. Each entry: name, rust argv,
+    optional python argv (exit-code semantics only), optional JSON keys that
+    must agree between the two sides."""
+    solve_problem = tmp / "solve-problem.json"
+    fixture = INPUTS / "p20-rect-exact-none"
+    request, _notes = fixture_to_request(fixture)
+    solve_problem.write_text(json.dumps(request), encoding="utf-8")
+    snapshot = tmp / "snapshot.json"
+    subprocess.run(
+        [str(CLI), "solve", "--problem", str(solve_problem), "--output", str(snapshot)],
+        capture_output=True, text=True, check=False,
+    )
+    hist = GOLDENS / "hist-short" / "snapshot.json"
+    return [
+        {"name": "help", "rust": ["--help"]},
+        {"name": "version", "rust": ["--version"]},
+        {"name": "solve", "rust": ["solve", "--problem", str(solve_problem)],
+         "python": ["solve", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"),
+                    "--rules", str(fixture / "rules.json"), "--seed", "168996"],
+         "json_keys": ["status"]},
+        {"name": "validate", "rust": ["validate", "--problem", str(solve_problem)]},
+        {"name": "precheck", "rust": ["precheck", "--problem", str(solve_problem)]},
+        {"name": "audit", "rust": ["audit", "--problem", str(solve_problem),
+                                   "--snapshot", str(snapshot)]},
+        {"name": "candidates", "rust": ["candidates", "--problem", str(solve_problem), "--count", "3"]},
+        {"name": "history-report", "rust": ["history-report", "--problem", str(solve_problem),
+                                            "--history", str(GOLDENS / "hist-short")],
+         "python": ["history-report", "--problem", str(solve_problem),
+                    "--history", str(GOLDENS / "hist-short")]},
+        {"name": "pair-report", "rust": ["pair-report", "--problem", str(solve_problem),
+                                         "--history", str(GOLDENS / "hist-short")],
+         "python": ["pair-report", "--problem", str(solve_problem),
+                    "--history", str(GOLDENS / "hist-short")]},
+        {"name": "repair", "rust": ["repair", "--problem", str(solve_problem),
+                                    "--snapshot", str(snapshot)]},
+        {"name": "schema-list", "rust": ["schema-list"]},
+        {"name": "schema-export", "rust": ["schema-export", "--kind", "student_roster", "--output", str(tmp / "roster.v2.json")]},
+        {"name": "schema-migrate", "rust": ["schema-migrate", "--input", str(fixture / "students.csv"), "--dry-run"],
+         "skip_python": True},
+    ]
+
+
+def _run_cli(argv: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run([str(CLI), *argv], capture_output=True, text=True, check=False)
+
+
+def _python_exit_code(argv: list[str]) -> int | None:
+    proc = subprocess.run([str(PY_CLI), *argv], capture_output=True, text=True, check=False)
+    return proc.returncode
+
+
+def run_cli_golden_class(record: bool, tmp: Path) -> list[tuple[str, str, str, str, list[str]]]:
+    if not CLI.exists():
+        raise SystemExit(f"Rust CLI not found: {CLI}; build it first (cargo build --release -p seattrellis_cli)")
+    rows: list[tuple[str, str, str, str, list[str]]] = []
+    CLI_GOLDENS.mkdir(parents=True, exist_ok=True)
+    for case in _cli_case_commands(tmp):
+        name = case["name"]
+        rust = _run_cli(case["rust"])
+        golden_path = CLI_GOLDENS / f"{name}.json"
+        if record:
+            golden_path.write_text(
+                json.dumps(
+                    {
+                        "stdout": _strip_tmp_paths(rust.stdout, tmp),
+                        "stderr": _strip_tmp_paths(rust.stderr, tmp),
+                        "exit": rust.returncode,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            continue
+        if not golden_path.exists():
+            rows.append((name, "SKIP", "golden missing (record first)", "cli-golden", []))
+            continue
+        golden = json.loads(golden_path.read_text(encoding="utf-8"))
+        problems: list[str] = []
+        if _normalize_cli_output(rust.stdout, tmp) != _normalize_cli_output(golden["stdout"], tmp):
+            problems.append("stdout mismatch")
+        if rust.returncode != golden["exit"]:
+            problems.append(f"exit {rust.returncode} != golden {golden['exit']}")
+        # Python exit-code semantics (0 vs non-zero) where a command exists.
+        if not case.get("skip_python") and "python" in case:
+            py_exit = _python_exit_code(case["python"])
+            py_ok = py_exit == 0
+            rust_ok = rust.returncode == 0
+            if py_ok != rust_ok:
+                problems.append(f"python exit semantics differ (python {py_exit}, rust {rust.returncode})")
+        status = "OK" if not problems else "MISMATCH"
+        rows.append((name, status, status, "; ".join(problems) if problems else "stdout+exit match", []))
+    return rows
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

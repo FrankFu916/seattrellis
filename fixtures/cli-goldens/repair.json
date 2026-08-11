@@ -1,0 +1,5 @@
+{
+  "stdout": "",
+  "stderr": "error: repair failed: invalid repair snapshot: missing assignments\n",
+  "exit": 2
+}
