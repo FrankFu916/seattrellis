@@ -479,7 +479,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | 领域 | 条目数 | PYTHON_ONLY | RUST_PARTIAL | RUST_PARITY_PENDING | RUST_VERIFIED | INTENTIONALLY_REMOVED_V2 |
 |---|---|---|---|---|---|---|
 | §1 CLI（30 命令 + 契约） | 31 | 0 | 15 | 6 | 4 | 6 |
-| §2 service/application | 39 | 2 | 15 | 12 | 10 | 0 |
+| §2 service/application | 39 | 0 | 15 | 12 | 12 | 0 |
 | §3 React `/api/v1/*`（31 调用） | 31 | 0 | 3 | 28 | 0 | 0 |
 | §4 Schema（10 文件 + 协议机制） | 16 | 0 | 5 | 9 | 2 | 0 |
 | §5 roster | 8 | 0 | 3 | 5 | 0 | 0 |
@@ -492,7 +492,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §12 export（格式/隐私/页面） | 18 | 1 | 9 | 1 | 7 | 0 |
 | §13 migration/backup/restore | 9 | 0 | 2 | 7 | 0 | 0 |
 | §14 desktop workflows | 7 | 1 | 3 | 3 | 0 | 0 |
-| **合计** | **198** | **5** | **61** | **99** | **27** | **6** |
+| **合计** | **198** | **3** | **61** | **99** | **29** | **6** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（`RUST_PARTIAL`）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条 `RUST_PARTIAL`。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
