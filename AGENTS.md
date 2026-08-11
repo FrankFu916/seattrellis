@@ -116,7 +116,8 @@ M1 “实现路径存在”不等于自动 parity 或 Final Gate；验收以修�
 ### 2026-08-09 post-merge acceptance audit
 
 - `0057a7b` 合并了 repair/reports/project/rotation/privacy 等实现路径；`320b68f` 只更改 ledger 状态，未增加 golden 等价证据。
-- 详细阻断项、逐领域所需证据和可复算状态计数见 `docs/v2-parity-ledger.md`。当前 `RUST_VERIFIED = 0`。
+- 详细阻断项、逐领域所需证据和可复算状态计数见 `docs/v2-parity-ledger.md`。
+  2026-08-10 ledger 批量提升后 `RUST_VERIFIED = 25`（328 项自动差分 0 mismatch，§19.14）。
 - repair、project lifecycle、history/pair reports、rotation、candidates、privacy/export 全部仍是 `RUST_PARTIAL`/`RUST_PARITY_PENDING` 或 `PYTHON_ONLY`，不得称已完成。
 
 ### 2026-08-09 acceptance-fix round（ledger §19）
