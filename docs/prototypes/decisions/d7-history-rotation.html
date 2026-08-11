@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D7 · 历史 / 轮换模型 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .hist-layout { display:grid; grid-template-columns: 1fr 260px; gap:12px; padding:12px; }
+  .hl-side { display:flex; flex-direction:column; gap:8px; }
+  .hl-side .pair-row { font-size:11.5px; border:1px solid var(--line); border-radius:7px; padding:7px 9px; background:#fff; }
+  .mini-seats { display:grid; grid-template-columns:repeat(4, 34px); gap:3px; }
+  .mini-seats .ms { width:34px; height:26px; border-radius:4px; border:1px solid var(--line-2); background:#fff; font-size:7.5px; display:grid; place-items:center; overflow:hidden; }
+  .mini-seats .ms b { font-weight:700; color:var(--brand-ink); }
+  .mini-seats .ms.moved { border-color:var(--warn); background:var(--warn-soft); }
+  .version-row { display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-bottom:7px; }
+  .version-row .v-name { font-weight:700; font-size:12.5px; }
+  .version-row .v-meta { font-size:11px; color:var(--ink-3); }
+  .version-row.current { border-color:var(--brand); box-shadow:0 0 0 2px var(--brand-soft); }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D7 · 历史 / 轮换模型</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">7 / 8 · 决策 D7</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D7 · 计划 §7.1 项 7 / §7.4</span>
+    <h1>历史 / 轮换模型：时间线 / 版本列表 / 周期计划</h1>
+    <p class="task">真实任务：初二（3）班已按每两周一次轮换运行 3 期。教师想回答：「上期谁坐在谁旁边？」「这期为什么这样轮换？」「能不能把 4 期轮换一起生成、批量保存？」——三个变体给出三种「历史是什么」的心智模型。</p>
+    <div class="constraints"><b>领域约束（已冻结）</b>：轮换计划由 Rust 生成（每期独立求解、seed 逐期推进、历史快照参与公平轮换与近期邻座评估）；历史参与 fairness/avoid_recent_neighbors 评分（§0.2）；批量轮换结果可批量保存/导出（§7.4）；快照文件（v1.x）必须持续可读。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: timeline -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">时间线</div>
+        <div class="v-sub">历史 = 沿时间轴展开的事件流；每期一个节点，可回看任意期的座位图与变更摘要。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/history</span></div>
+          <div class="cand-head">
+            <span class="chip blue">初二（3）班 · 座位历史</span>
+            <span class="small muted">每两周轮换 · 共 3 期</span>
+            <span class="spacer"></span><button class="btn" style="font-size:11.5px">生成下期方案</button>
+          </div>
+          <div class="hist-layout">
+            <div class="timeline" style="padding:12px 12px 4px 26px">
+              <div class="tl-item current">
+                <div class="tl-head"><span class="tl-title">第 3 期 · 当前方案</span><span class="chip green">当前</span><span class="tl-meta">2026-03-17 · seed 168996 · 硬规则全部满足</span></div>
+                <div class="tl-desc">6 名学生轮换位置；学生丌012、学生丒018 连续靠前（fair_rotation 提示下期后移）。</div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-head"><span class="tl-title">第 2 期</span><span class="tl-meta">2026-03-03 · seed 168995</span></div>
+                <div class="tl-desc">学生丄004 × 学生丌012 曾同桌（当前已分开）；6 名学生轮换位置。</div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-head"><span class="tl-title">第 1 期</span><span class="tl-meta">2026-02-17 · seed 168994</span></div>
+                <div class="tl-desc">开学首次排座；学生万007 × 学生丈008 曾相邻（当前仍相邻，违反 min_distance 建议）。</div>
+              </div>
+            </div>
+            <div class="hl-side">
+              <div class="panel"><div class="panel-head">近期同桌记录</div><div class="panel-body" style="padding:8px">
+                <div class="pair-row"><b>学生丂002 × 学生与014</b><br>连续 2 期同桌 · 最近第 2 期</div>
+                <div class="pair-row"><b>学生万007 × 学生丈008</b><br>第 1 期相邻 · 当前仍相邻</div>
+                <div class="pair-row"><b>学生丄004 × 学生专019</b><br>第 2 期相邻</div>
+              </div></div>
+              <div class="note">时间线节点点击可展开该期完整座位图（本演示静态）。</div>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">时间线强调「沿时间发生了什么」；与历史报告（history-report）数据契约一致。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>直观回答「过去发生了什么」；时间顺序自然；每期变更摘要可读；适合叙事性回顾。</div>
+        <div class="con"><span class="t-label">代价</span>「回看某期完整座位」需要点击展开（多一步）；多期对比（第 1 vs 第 3 期）缺乏并排能力；对「规划未来轮换」帮助有限。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: version list -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">版本列表</div>
+        <div class="v-sub">历史 = 方案版本库；每期一个「版本」，支持查看 / 对比（diff）/ 恢复 / 导出——像文档版本管理。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/versions</span></div>
+          <div class="cand-head">
+            <span class="chip blue">方案版本库</span>
+            <span class="small muted">3 个版本 · 自动保存</span>
+            <span class="spacer"></span><button class="btn" style="font-size:11.5px">对比版本</button><button class="btn primary" style="font-size:11.5px">新建版本</button>
+          </div>
+          <div style="padding:12px">
+            <div class="version-row current">
+              <span class="chip green">当前</span>
+              <div><div class="v-name">v3 · 2026-03-17</div><div class="v-meta">seed 168996 · 20 人 · 硬规则全部满足 · 距 v2 变化 6 座</div></div>
+              <span class="spacer"></span>
+              <button class="btn" style="font-size:11px">查看</button><button class="btn" style="font-size:11px">与 v2 对比</button><button class="btn" style="font-size:11px">导出</button>
+            </div>
+            <div class="version-row">
+              <span class="chip gray">历史</span>
+              <div><div class="v-name">v2 · 2026-03-03</div><div class="v-meta">seed 168995 · 距 v1 变化 6 座</div></div>
+              <span class="spacer"></span>
+              <button class="btn" style="font-size:11px">查看</button><button class="btn" style="font-size:11px">恢复此版本</button><button class="btn" style="font-size:11px">导出</button>
+            </div>
+            <div class="version-row">
+              <span class="chip gray">历史</span>
+              <div><div class="v-name">v1 · 2026-02-17</div><div class="v-meta">seed 168994 · 开学首排</div></div>
+              <span class="spacer"></span>
+              <button class="btn" style="font-size:11px">查看</button><button class="btn" style="font-size:11px">恢复此版本</button><button class="btn" style="font-size:11px">导出</button>
+            </div>
+            <div class="note mt8">「对比版本」调用 Rust 差分（assignment distance + 评分对比），与候选比较（D5）共用比较组件。</div>
+          </div>
+        </div>
+        <div class="note mt8">版本模型与「快照文件 + 项目」存储模型最贴近（每个版本 = 一个 snapshot 文档）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>「版本」操作语义清晰：查看/对比/恢复/导出；与快照存储模型一一对应，实现成本最低；误操作可恢复（§7.4 快速恢复最近班级）。</div>
+        <div class="con"><span class="t-label">代价</span>弱化「时间/轮换」概念——历史仅作为版本堆叠，教师需自己记忆轮换节奏；「恢复」与「回退」语义需确认是否影响历史链。</div>
+      </div>
+    </div>
+
+    <!-- Variant C: rotation plan cards -->
+    <div class="variant" id="vC">
+      <div class="v-head">
+        <span class="v-badge">C</span>
+        <div><div class="v-title">周期计划</div>
+        <div class="v-sub">历史 + 未来 = 一个「周期计划」：多期方案并排生成、整体查看与批量保存/导出。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/rotation</span></div>
+          <div class="cand-head">
+            <span class="chip blue">轮换计划：2026 春季（4 期）</span>
+            <span class="small muted">每两周一期 · 由 Rust 逐期求解（seed 逐期推进）</span>
+            <span class="spacer"></span><button class="btn primary" style="font-size:11.5px">批量保存全部</button>
+          </div>
+          <div style="padding:12px">
+            <div class="period-cards">
+              <div class="period-card">
+                <div class="pc-head"><span>第 1 期</span><span class="chip green">已确认</span></div>
+                <div class="mini-seats" id="msP1"></div>
+                <div class="small muted mt8">2026-02-17 · seed 168994</div>
+              </div>
+              <div class="period-card">
+                <div class="pc-head"><span>第 2 期</span><span class="chip green">已确认</span></div>
+                <div class="mini-seats" id="msP2"></div>
+                <div class="small muted mt8">2026-03-03 · seed 168995</div>
+              </div>
+              <div class="period-card" style="border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft)">
+                <div class="pc-head"><span>第 3 期</span><span class="chip blue">当前</span></div>
+                <div class="mini-seats" id="msP3"></div>
+                <div class="small muted mt8">2026-03-17 · seed 168996</div>
+              </div>
+            </div>
+            <div class="row mt12">
+              <button class="btn primary">＋ 生成第 4 期</button>
+              <span class="small muted">将基于历史快照（fair_rotation / avoid_recent_neighbors）继续推进</span>
+              <span class="spacer"></span><button class="btn" style="font-size:11.5px">导出全部（PDF / 打印）</button>
+            </div>
+            <div class="note mt8">「批量保存」= 每期一个 snapshot 文档 + 一个计划元数据（plan name / period count / base seed），一次事务写入（§7.4 批量保存）。</div>
+          </div>
+        </div>
+        <div class="note mt8">周期计划直接映射 Rust rotation 产物（period_count / labels / base_seed / period_editors）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>「轮换」作为一等公民：多期并排、整体生成/保存/导出；直接映射 Rust rotation 契约；回答「下期怎么排」最直接。</div>
+        <div class="con"><span class="t-label">代价</span>每期小图在 60 人班级上信息密度不足（需缩放）；「历史回顾」叙事弱于时间线；与版本模型（B）的互操作需要设计（计划 vs 版本如何互相引用）。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+(function () {
+  "use strict";
+  // Mini per-period seat maps: show the 4 front seats (row 1) with names,
+  // marking students who moved in that period.
+  var periodSeats = [
+    { R1C1: "学生丁001", R1C2: "学生丅005", R1C3: "学生上010", R1C4: "学生下011",
+      moved: ["STU001", "STU005", "STU011", "STU015", "STU004", "STU019"] },
+    { R1C1: "学生丁001", R1C2: "学生丅005", R1C3: "学生上010", R1C4: "学生下011",
+      moved: ["STU002", "STU006", "STU010", "STU014", "STU007", "STU008"] },
+    { R1C1: "学生丁001", R1C2: "学生丅005", R1C3: "学生上010", R1C4: "学生下011",
+      moved: ["STU003", "STU009", "STU013", "STU016", "STU012", "STU020"] }
+  ];
+  periodSeats.forEach(function (period, pi) {
+    var holder = document.getElementById("msP" + (pi + 1));
+    var html = "";
+    ["R1C1", "R1C2", "R1C3", "R1C4"].forEach(function (sid) {
+      var name = period[sid];
+      var moved = period.moved.some(function (id) { return name.indexOf(id.slice(4)) !== -1 || id === "STU" + (name.length > 3 ? name.slice(3) : ""); });
+      html += '<div class="ms' + (moved ? " moved" : "") + '">' + name + "</div>";
+    });
+    holder.innerHTML = html;
+  });
+})();
+</script>
+<script>
+  PTUI.initDecision("d7", ["时间线", "版本列表", "周期计划"]);
+</script>
+</body>
+</html>

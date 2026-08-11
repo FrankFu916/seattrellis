@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D3 · Rule builder — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .rb-palette { display:flex; gap:6px; flex-wrap:wrap; padding:10px 12px; background:#f8fafc; border-bottom:1px solid var(--line); }
+  .rb-palette .tag-src { font-size:11px; color:var(--ink-3); width:100%; }
+  .preview-line { font-family: var(--mono); font-size:11px; color:var(--ink-3); background:var(--surface-2); border:1px dashed var(--line-2); border-radius:6px; padding:5px 9px; }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D3 · Rule builder</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">3 / 8 · 决策 D3</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D3 · 计划 §7.3</span>
+    <h1>Rule builder：句式构建器 / 规则卡片 / 分层表单</h1>
+    <p class="task">真实任务：教师想新增一条规则——「学生丄004 和学生丌012 最近闹矛盾，不要坐在一起（距离 ≥ 2）」；再确认现有「固定座位」与「前排优先（视力）」两条规则。普通教师<b>不得被迫编辑 JSON</b>。</p>
+    <div class="constraints"><b>可表达性（§7.3，全部变体必须满足）</b>：常用 hard/soft 规则可创建/修改/删除；标签、区域、关系、距离、成绩/属性、历史目标可组合；<b>规则参数 schema 的唯一来源是 Rust RuleSpec/metadata</b>；UI 能立即发现未知学生/座位、字段缺失、明显冲突；生成前能查看 feasibility summary。<br>
+    <b>红线</b>：React 不得自编译规则（M6 删除项），UI 只负责收集参数并提交 Rust 编译。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: sentence builder -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">句式构建器</div>
+        <div class="v-sub">自然语言句式 + 可点槽位；每个槽位由 Rust rule metadata 驱动（可选值来自规则注册表）。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/rules</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 规则与目标</small></span>
+            <span class="spacer"></span><button class="btn-sm primary">保存规则</button></div>
+          <div class="rb-palette">
+            <span class="tag-src">句式组件（来自 Rust rule registry，点击可填入）：</span>
+            <span class="chip blue" style="cursor:pointer" data-ins="学生">学生</span>
+            <span class="chip blue" style="cursor:pointer" data-ins="座位">座位</span>
+            <span class="chip purple" style="cursor:pointer" data-ins="标签">标签</span>
+            <span class="chip purple" style="cursor:pointer" data-ins="区域">区域</span>
+            <span class="chip amber" style="cursor:pointer" data-ins="距离 ≥">距离 ≥</span>
+            <span class="chip amber" style="cursor:pointer" data-ins="相邻">相邻</span>
+            <span class="chip amber" style="cursor:pointer" data-ins="成绩">成绩</span>
+          </div>
+          <div class="body column" style="padding:12px;gap:10px">
+            <div class="rule-sentence" id="sentenceA">
+              <span class="chip red">HARD</span>
+              <span class="seg">让</span>
+              <span class="slot" data-slot="student">选择学生…</span>
+              <span class="seg">与</span>
+              <span class="slot" data-slot="student">选择学生…</span>
+              <span class="seg">的距离</span>
+              <span class="slot amber" data-slot="dist">≥</span>
+              <span class="seg">（座）</span>
+              <span class="add-slot">+ 条件</span>
+            </div>
+            <div class="row">
+              <span class="muted small">已配置规则（来自班级）：</span>
+              <span class="spacer"></span>
+              <span class="chip green" id="validBadgeA">等待编译</span>
+            </div>
+            <div class="rule-card hard">
+              <div class="rc-head"><span class="chip red">HARD</span><span class="rc-title">固定座位</span>
+                <span class="rc-actions"><button class="btn" style="font-size:11px">编辑</button><button class="btn" style="font-size:11px">删除</button></span>
+              </div>
+              <div class="rc-desc">学生丁001（STU001）→ 座位 R1C1</div>
+            </div>
+            <div class="rule-card soft">
+              <div class="rc-head"><span class="chip amber">SOFT</span><span class="rc-title">前排优先（视力）</span><span class="chip gray">权重 20</span>
+                <span class="rc-actions"><button class="btn" style="font-size:11px">编辑</button><button class="btn" style="font-size:11px">删除</button></span>
+              </div>
+              <div class="rc-desc">标记了「需要前排」的学生尽量安排在教室前排区域</div>
+            </div>
+            <div class="preview-line" id="previewA">— 未填写完整，尚不能编译 —</div>
+          </div>
+        </div>
+        <div class="note mt8"><b>试一下</b>：点击句中「选择学生…」槽位会弹出学生列表（本演示直接填入）；槽位填充完整后显示「可编译」。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>零学习成本，句法与教师自然表达一致；槽位值全部来自 Rust 注册表，天然防止拼写错误；最适合「距离/关系/属性」类规则。</div>
+        <div class="con"><span class="t-label">代价</span>复杂组合（多条件 AND/OR、嵌套）超出句子表达能力时需退回卡片/表单；句式模板本身需要维护一套本地化文案。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: rule cards -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">规则卡片</div>
+        <div class="v-sub">每条规则一张卡片（hard/soft 用色区分），拖拽排序、直接编辑、一键启用/停用。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/rules</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 规则与目标</small></span>
+            <span class="spacer"></span><button class="btn-sm">+ 新建规则</button><button class="btn-sm primary">保存规则</button></div>
+          <div class="body column" style="padding:12px;gap:8px">
+            <div class="row"><span class="chip red">HARD 规则</span><span class="muted small">违反 = 方案不可用</span><span class="spacer"></span><span class="chip green">1 条启用</span></div>
+            <div class="rule-card hard">
+              <div class="rc-head">
+                <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" checked> <span class="rc-title">固定座位</span></label>
+                <span class="spacer"></span>
+                <button class="btn" style="font-size:11px">✎ 编辑</button><button class="btn danger" style="font-size:11px">删除</button>
+              </div>
+              <div class="rc-desc">学生丁001（STU001）→ 座位 R1C1 · 由 Rust 编译器校验</div>
+              <div class="row mt8"><span class="chip green small">校验通过</span><span class="small muted">2 个参数</span></div>
+            </div>
+            <div class="row mt8"><span class="chip amber">SOFT 目标</span><span class="muted small">权重可调，驱动优化方向</span><span class="spacer"></span><span class="chip green">1 条启用</span></div>
+            <div class="rule-card soft">
+              <div class="rc-head">
+                <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" checked> <span class="rc-title">前排优先（视力）</span></label>
+                <span class="chip gray">权重 <b>20</b></span><span class="spacer"></span>
+                <button class="btn" style="font-size:11px">✎ 编辑</button><button class="btn danger" style="font-size:11px">删除</button>
+              </div>
+              <div class="rc-desc">「需要前排」的学生安排在教室前排 · 4 名学生命中</div>
+            </div>
+            <div class="rule-card soft" style="opacity:.65;border-style:dashed">
+              <div class="rc-head">
+                <label style="display:flex;gap:6px;align-items:center"><input type="checkbox"> <span class="rc-title">公平轮换（跨期）</span></label>
+                <span class="chip gray">权重 10</span><span class="spacer"></span>
+                <button class="btn" style="font-size:11px">✎ 编辑</button>
+              </div>
+              <div class="rc-desc">停用中 · 需要历史快照才能评估（当前班级无历史）</div>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">卡片列表与座位画布可联动：点「编辑」在画布上高亮相关学生/座位（§7.3 上下文操作）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>一屏总览全部规则及启用状态；hard/soft 分层清楚；增删改查路径最短；与「规则卡片」心智匹配现有 React 卡片 UI，迁移平滑。</div>
+        <div class="con"><span class="t-label">代价</span>编辑复杂规则需弹窗/展开（多一层）；规则很多（10+）时列表变长；「拖拽排序」对触控不友好。</div>
+      </div>
+    </div>
+
+    <!-- Variant C: layered form -->
+    <div class="variant" id="vC">
+      <div class="v-head">
+        <span class="v-badge">C</span>
+        <div><div class="v-title">分层表单</div>
+        <div class="v-sub">主表单按「学生/位置/距离/历史」分组；规则类型选好后只显示相关字段（渐进披露）。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/rules/new</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 新建规则</small></span><span class="spacer"></span><button class="btn-sm primary">创建</button></div>
+          <div class="body column" style="padding:12px;gap:10px">
+            <div class="rule-form">
+              <div class="rf-row">
+                <div class="field"><label>规则类型</label>
+                  <select class="input" id="ruleTypeC">
+                    <option>学生间距（距离约束）</option>
+                    <option>固定座位</option>
+                    <option>标签分组</option>
+                    <option>成绩平衡</option>
+                    <option>历史/轮换目标</option>
+                  </select>
+                </div>
+                <div class="field"><label>性质</label>
+                  <select class="input"><option>HARD（必须满足）</option><option>SOFT（尽量满足）</option></select>
+                </div>
+              </div>
+              <div class="field"><label>学生 1</label>
+                <select class="input"><option>学生丄004（STU004）</option><option>学生丂002（STU002）</option><option>…（20 人）</option></select>
+              </div>
+              <div class="field"><label>学生 2</label>
+                <select class="input"><option>学生丌012（STU012）</option><option>学生丆006（STU006）</option><option>…（20 人）</option></select>
+              </div>
+              <div class="rf-row">
+                <div class="field"><label>最小距离（座）</label><input class="input" type="number" value="2" min="0" max="5"></div>
+                <div class="field"><label>相邻判定</label>
+                  <select class="input"><option>仅上下左右</option><option>含斜对角</option></select>
+                </div>
+              </div>
+              <div class="note">参数 Schema 来自 Rust rule registry：<span class="num">{"rule":"min_distance","student_a":..,"student_b":..,"min":2}</span></div>
+            </div>
+            <div class="preview-line">校验：学生丄004 与学生丌012 均存在 · 距离值合法 · 与现有规则无冲突 → <span class="bold" style="color:var(--ok)">可编译</span></div>
+          </div>
+        </div>
+        <div class="note mt8">表单按所选类型渐进披露字段；类型、性质、参数名全部来自 Rust metadata，UI 不重复定义规则语义。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>字段完整、无歧义；最适合参数多的复杂规则；渐进披露避免信息过载；自动化测试最容易覆盖。</div>
+        <div class="con"><span class="t-label">代价</span>「表单感」较重，与教学场景的自然语言有距离；规则类型列表需要维护与本地化；新手仍可能选错类型。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+(function () {
+  "use strict";
+  // Variant A sentence-builder micro-interaction: clicking a slot fills it.
+  var sentence = document.getElementById("sentenceA");
+  var preview = document.getElementById("previewA");
+  var badge = document.getElementById("validBadgeA");
+  var filled = { student: 0, dist: false };
+
+  sentence.addEventListener("click", function (e) {
+    var slot = e.target.closest(".slot");
+    if (!slot) return;
+    var kind = slot.getAttribute("data-slot");
+    if (kind === "student") {
+      var pool = ["学生丄004", "学生丌012", "学生丆006", "学生万007", "学生丈008"];
+      var name = pool[filled.student % pool.length];
+      slot.textContent = name;
+      filled.student++;
+    } else if (kind === "dist") {
+      slot.textContent = "≥ 2";
+      filled.dist = true;
+    }
+    if (filled.student >= 2 && filled.dist) {
+      badge.textContent = "可编译 ✓（Rust 校验通过）";
+      badge.style.background = "var(--ok-soft)";
+      badge.style.color = "#166534";
+      preview.textContent = 'RuleSpec 预览：{"rule":"min_distance","student_a":"STU004","student_b":"STU012","min":2,"hard":true}';
+    } else {
+      preview.textContent = "— 未填写完整，尚不能编译 —";
+    }
+  });
+})();
+</script>
+<script>
+  PTUI.initDecision("d3", ["句式构建器", "规则卡片", "分层表单"]);
+</script>
+</body>
+</html>

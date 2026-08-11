@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D5 · 候选方案比较 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .cand-head { display:flex; align-items:center; gap:12px; padding:12px 14px; border-bottom:1px solid var(--line); }
+  .cand-head .rec { display:inline-flex; align-items:center; gap:5px; background:var(--ok-soft); color:#166534; font-weight:700; font-size:11.5px; padding:2px 9px; border-radius:999px; }
+  .side-by-side { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .side-by-side .panel { overflow:auto; }
+  .rule-detail { border:1px solid var(--line); border-radius:8px; background:#fff; margin-bottom:7px; }
+  .rule-detail summary { padding:8px 12px; cursor:pointer; font-size:12.5px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .rule-detail .rd-body { padding:8px 12px; border-top:1px dashed var(--line); font-size:12px; color:var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D5 · 候选方案比较</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">5 / 8 · 决策 D5</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D5 · 计划 §7.7</span>
+    <h1>候选方案比较：表格 / 雷达图 / 差异高亮 / 逐规则列表</h1>
+    <p class="task">真实任务：系统为「初二（3）班」生成 5 个候选，推荐方案 A（总分 84.4）。教师需要回答四个问题：<b>① 为什么推荐 A？② A 与 B 的主要 objective 差异？③ 硬规则是否全部满足？④ 两个方案在座位分配上差多少？</b></p>
+    <div class="constraints"><b>数据契约（§7.7，冻结中）</b>：比较数据来自 Rust 的 PlanScore（七维 + rule_scores + hard_constraint_summary）与 candidate distance 去重信息；「表格、雷达图、差异高亮、逐规则列表」的<b>呈现方式</b>正是本决策要冻结的对象——最终以理解速度与误读率（可用性记录）为准。</div>
+  </section>
+
+  <section class="variants wide">
+
+    <!-- Variant A: comparison table -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">对比表格</div>
+        <div class="v-sub">七维分数逐行并排，差值着色（▲ 优于 / ▼ 劣于），总分排序；硬规则状态独立成行。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/candidates</span></div>
+          <div class="cand-head">
+            <span class="chip green">候选集 5 个</span>
+            <span class="small muted">seed 168996 · 生成 2026-03-17 10:24</span>
+            <span class="spacer"></span><button class="btn" style="font-size:11.5px">重新生成</button><button class="btn" style="font-size:11.5px">导出对比</button>
+          </div>
+          <div class="panel-body" style="padding:10px 14px">
+            <table class="mini">
+              <tr>
+                <th style="width:140px">维度</th>
+                <th style="width:110px">方案 A <span class="chip green" style="margin-left:4px">推荐</span></th>
+                <th style="width:110px">方案 B</th>
+                <th style="width:110px">方案 C</th>
+                <th>解读</th>
+              </tr>
+              <tr><td><b>总分</b></td><td class="num" style="font-weight:800;color:var(--brand-ink)">84.4</td><td class="num">82.9</td><td class="num">81.5</td><td class="muted small">PlanScore 加权总分（0–100）</td></tr>
+              <tr><td>fair_rotation</td><td class="num">82.4</td><td class="num">78.1 <span class="delta down" style="color:var(--bad)">▼ 4.3</span></td><td class="num">79.0</td><td class="muted small">基于 3 期历史</td></tr>
+              <tr><td>avoid_recent_neighbors</td><td class="num">91.0</td><td class="num">86.3 <span style="color:var(--bad)">▼ 4.7</span></td><td class="num">88.0</td><td class="muted small">避免近期同桌/相邻</td></tr>
+              <tr><td>score_balance</td><td class="num">76.5</td><td class="num">81.2 <span style="color:var(--ok)">▲ 4.7</span></td><td class="num">77.1</td><td class="muted small">相邻座位成绩混合度</td></tr>
+              <tr><td>height_back</td><td class="num">88.2</td><td class="num">85.0</td><td class="num">86.4</td><td class="muted small">高个靠后</td></tr>
+              <tr><td>vision_front</td><td class="num">96.8</td><td class="num">96.8</td><td class="num">78.2 <span style="color:var(--bad)">▼ 18.6</span></td><td class="muted small">视力需求者靠前</td></tr>
+              <tr><td>diversity</td><td class="num">70.1</td><td class="num">74.6 <span style="color:var(--ok)">▲ 4.5</span></td><td class="num">71.0</td><td class="muted small">与候选集平均差异度</td></tr>
+              <tr><td>stability</td><td class="num">85.6</td><td class="num">79.3 <span style="color:var(--bad)">▼ 6.3</span></td><td class="num">83.0</td><td class="muted small">与上一期方案相似度</td></tr>
+              <tr><td><b>硬规则</b></td><td><span class="chip green">全部满足</span></td><td><span class="chip green">全部满足</span></td><td><span class="chip red">2 项违反</span></td><td class="muted small">fixed_seats / min_distance</td></tr>
+            </table>
+            <div class="note mt8">推荐规则：硬规则全部满足 → 总分最高；同分时依次比较稳定性、多样性（与 Rust recommended 选择逻辑一致）。</div>
+          </div>
+        </div>
+        <div class="note mt8">表格可直接回答 ①②③；「④ 座位差多少」需要切换到座位视图。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>信息密度最高、可扫描；差值着色让「主要 objective 差异」一目了然；导出/打印友好；无障碍成本低。</div>
+        <div class="con"><span class="t-label">代价</span>维度多时横向拥挤；「为什么推荐 A」需要额外解读规则说明；教师可能被无关维度干扰。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: radar chart -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">雷达图</div>
+        <div class="v-sub">七维雷达图直观呈现「形状差异」，总分与硬规则状态在卡片底部。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/candidates</span></div>
+          <div class="cand-head">
+            <span class="chip green">候选集 5 个</span>
+            <span class="spacer"></span>
+            <span class="small"><span class="legend-dot" style="background:var(--brand)"></span>方案 A（推荐）84.4</span>
+            <span class="small"><span class="legend-dot" style="background:#7c3aed"></span>方案 B 82.9</span>
+            <span class="small"><span class="legend-dot" style="background:#0891b2"></span>方案 C 81.5</span>
+          </div>
+          <div class="radar-wrap" id="radarB" style="padding:14px"></div>
+          <div class="panel-body" style="padding:6px 14px 12px">
+            <div class="row"><span class="chip green">硬规则：全部满足（A/B）</span><span class="chip red">C：2 项违反</span><span class="spacer"></span><button class="btn" style="font-size:11.5px">选择方案 A</button></div>
+          </div>
+        </div>
+        <div class="note mt8">雷达图回答「形状差异」最快；数值精确性低于表格——需要 hover/点击显示数值（本演示为静态）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>一眼看出「A 在公平轮换/稳定性更强，B 在成绩混合更强」；视觉记忆性好；适合演示与分享。</div>
+        <div class="con"><span class="t-label">代价</span>维度多时蜘蛛网难以阅读；颜色区分对色弱用户不友好（需形状+文字双编码）；精确数值需二次操作；实现成本最高。</div>
+      </div>
+    </div>
+
+    <!-- Variant C: diff highlight -->
+    <div class="variant" id="vC">
+      <div class="v-head">
+        <span class="v-badge">C</span>
+        <div><div class="v-title">差异高亮（座位图）</div>
+        <div class="v-sub">两方案座位图并排，发生变动的座位高亮标色；回答「到底差在哪」。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/candidates</span></div>
+          <div class="cand-head">
+            <span class="chip green">A vs B 对比</span>
+            <span class="small muted">4 个座位发生变化（16 个相同）</span>
+            <span class="spacer"></span>
+            <select class="input" style="width:150px"><option>A vs B</option><option>A vs C</option><option>B vs C</option></select>
+          </div>
+          <div class="side-by-side" style="padding:12px">
+            <div class="panel"><div class="panel-head">方案 A · 84.4 <span class="chip green">推荐</span></div><div class="panel-body" id="gridCA"></div></div>
+            <div class="panel"><div class="panel-head">方案 B · 82.9</div><div class="panel-body" id="gridCB"></div></div>
+          </div>
+          <div class="diff-legend" style="padding:0 14px 12px">
+            <span><span class="legend-dot" style="background:var(--warn)"></span>该座与另一方案不同</span>
+            <span><span class="legend-dot" style="background:var(--purple, #7c3aed)"></span>固定座位</span>
+            <span class="small muted">A 优势：fair_rotation +4.3 · stability +6.3；B 优势：score_balance +4.7</span>
+          </div>
+        </div>
+        <div class="note mt8">差异高亮直接回答「④ 座位分配差多少」；可与表格/雷达组合（混合视图也是候选方向之一，可选 R 注明）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>把「分数差异」翻译成「谁坐哪」的具体事实，教师最关心；与画布（D2）复用同一渲染组件。</div>
+        <div class="con"><span class="t-label">代价</span>只适合两两对比（3+ 方案需要多图）；「为什么 A 更好」仍需分数信息支撑；空间小（40 座）时可读性下降。</div>
+      </div>
+    </div>
+
+    <!-- Variant D: per-rule list -->
+    <div class="variant" id="vD">
+      <div class="v-head">
+        <span class="v-badge">D</span>
+        <div><div class="v-title">逐规则列表（可展开）</div>
+        <div class="v-sub">按规则/维度逐条展开：每条含分数、命中学生、原因说明与改进建议——最大信息量。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/candidates</span></div>
+          <div class="cand-head">
+            <span class="chip green">方案 A 明细</span>
+            <span class="small muted">总分 84.4 · 硬规则全部满足</span>
+            <span class="spacer"></span><button class="btn" style="font-size:11.5px">导出报告</button>
+          </div>
+          <div style="padding:10px 14px">
+            <div class="rule-detail"><summary><span class="chip red">HARD</span>固定座位 <span style="margin-left:auto" class="chip green">满足</span></summary>
+              <div class="rd-body">学生丁001（STU001）→ R1C1 ✓ · 校验规则数 1 · 违反 0</div></div>
+            <div class="rule-detail"><summary><span class="chip amber">SOFT</span>fair_rotation <span class="num" style="margin-left:auto">82.4 / 100</span></summary>
+              <div class="rd-body">基于 3 期历史：12 名学生轮换位置变化 ≥ 2 座；学生丌012、学生丒018 连续靠前，建议下期后移（影响 +2.1）。</div></div>
+            <div class="rule-detail"><summary><span class="chip amber">SOFT</span>avoid_recent_neighbors <span class="num" style="margin-left:auto">91.0 / 100</span></summary>
+              <div class="rd-body">1 组近期相邻仍保留：学生丄004 × 学生丌012（上期同桌）。</div></div>
+            <div class="rule-detail"><summary><span class="chip amber">SOFT</span>score_balance <span class="num" style="margin-left:auto">76.5 / 100</span></summary>
+              <div class="rd-body">相邻座位成绩差均值 18.3；第 4 排（学生丂002/学生七003）成绩相近，可调。</div></div>
+            <div class="rule-detail"><summary><span class="chip amber">SOFT</span>vision_front <span class="num" style="margin-left:auto">96.8 / 100</span></summary>
+              <div class="rd-body">4 名视力需求学生（STU005/010/011/015）全部位于前 2 排 ✓。</div></div>
+            <div class="rule-detail"><summary><span class="chip amber">SOFT</span>stability <span class="num" style="margin-left:auto">85.6 / 100</span></summary>
+              <div class="rd-body">与上一期方案 16/20 座位相同（合理保留 + 定向调整）。</div></div>
+          </div>
+        </div>
+        <div class="note mt8">每条规则自带「原因 + 受影响学生 + 改进建议」，直接对应 Rust audit 的 suggested_actions（message_key + args）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>回答问题 ①②③ 最彻底；建议可操作（「下期后移」「第 4 排可调」）；与诊断（D6）共用数据契约。</div>
+        <div class="con"><span class="t-label">代价</span>信息过载风险最高；教师逐条阅读耗时；需要优秀的信息架构避免「什么都展开」。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* Variant B: radar chart drawn from the real PlanScore dimension names. */
+  var dims = ["fair_rotation", "avoid_recent_neighbors", "score_balance",
+    "height_back", "vision_front", "diversity", "stability"];
+  var radar = document.getElementById("radarB");
+  var cx = 150, cy = 130, R = 86;
+  var colors = { A: "#2563eb", B: "#7c3aed", C: "#0891b2" };
+  var plans = { A: PT.scoresA, B: PT.scoresB, C: PT.scoresC };
+
+  function point(angle, r) {
+    return [cx + r * Math.sin(angle), cy - r * Math.cos(angle)];
+  }
+  function poly(score, color, opacity) {
+    var pts = dims.map(function (d, k) {
+      var angle = (2 * Math.PI * k) / dims.length;
+      var r = (score[d] / 100) * R;
+      return point(angle, r).map(function (v) { return v.toFixed(1); }).join(",");
+    }).join(" ");
+    return '<polygon points="' + pts + '" fill="' + color + '" fill-opacity="' + opacity +
+      '" stroke="' + color + '" stroke-width="2"/>';
+  }
+
+  var grid = "";
+  for (var ring = 1; ring <= 4; ring++) {
+    var rr = (ring / 4) * R;
+    grid += '<polygon points="' + dims.map(function (d, k) {
+      return point((2 * Math.PI * k) / dims.length, rr).map(function (v) { return v.toFixed(1); }).join(",");
+    }).join(" ") + '" fill="none" stroke="#e2e8f0" stroke-width="1"/>';
+  }
+  var axes = "";
+  var labels = "";
+  dims.forEach(function (d, k) {
+    var angle = (2 * Math.PI * k) / dims.length;
+    var p = point(angle, R);
+    axes += '<line x1="' + cx + '" y1="' + cy + '" x2="' + p[0].toFixed(1) + '" y2="' + p[1].toFixed(1) + '" stroke="#e2e8f0" stroke-width="1"/>';
+    var lp = point(angle, R + 16);
+    var anchor = Math.abs(p[0] - cx) < 6 ? "middle" : (p[0] > cx ? "start" : "end");
+    labels += '<text x="' + lp[0].toFixed(1) + '" y="' + (lp[1] + 4).toFixed(1) + '" font-size="10" fill="#64748b" text-anchor="' + anchor + '">' + d + "</text>";
+  });
+  radar.innerHTML =
+    '<svg width="300" height="280" viewBox="0 0 300 280" role="img" aria-label="方案 A/B/C 七维雷达图">' +
+    grid + axes +
+    poly(plans.C, colors.C, 0.10) + poly(plans.B, colors.B, 0.12) + poly(plans.A, colors.A, 0.16) +
+    labels + "</svg>";
+
+  /* Variant C: side-by-side seat grids with changed seats highlighted. */
+  var changed = {};
+  Object.keys(PT.planA.assignment).forEach(function (sid) {
+    if (PT.planA.assignment[sid] !== PT.planB.assignment[sid]) changed[sid] = true;
+  });
+  PTUI.renderSeatGrid(document.getElementById("gridCA"), {
+    plan: PT.planA, locks: ["R1C1"], tags: changed
+  });
+  PTUI.renderSeatGrid(document.getElementById("gridCB"), {
+    plan: PT.planB, locks: ["R1C1"], tags: changed
+  });
+  // The shared renderer adds a "视" tag for vision needs; override tags for diff seats:
+  ["gridCA", "gridCB"].forEach(function (id) {
+    document.getElementById(id).querySelectorAll(".seat").forEach(function (seat) {
+      var sid = seat.getAttribute("title").split(" ")[0];
+      var tag = seat.querySelector(".s-tag");
+      if (changed[sid]) {
+        if (tag) tag.remove();
+        var t = document.createElement("span");
+        t.className = "s-tag";
+        t.style.background = "var(--warn)";
+        t.textContent = "变动";
+        seat.appendChild(t);
+        seat.style.borderColor = "var(--warn)";
+      }
+    });
+  });
+})();
+</script>
+<script>
+  PTUI.initDecision("d5", ["对比表格", "雷达图", "差异高亮", "逐规则列表"]);
+</script>
+</body>
+</html>

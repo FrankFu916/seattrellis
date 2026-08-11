@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D1 · 班级主导航 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D1 · 班级主导航</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">1 / 8 · 决策 D1</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D1 · 计划 §7.1 项 1</span>
+    <h1>班级主导航：单页工作台 / 步骤向导 / 侧栏工作区</h1>
+    <p class="task">真实任务：教师打开班级 <b>「初二（3）班」</b>（20 人 · 教学楼 302），要完成「期中调座」——查看当前座位、修改规则、重新生成方案、确认并导出。三种方案都要让教师在不迷失的情况下完成这一连串操作。</p>
+    <div class="constraints"><b>不可违反的约束</b>：React 普通流程必须完全绕过 Python（M2）；导入/保存/迁移/编辑的事务语义在 Rust 层冻结，UI 只决定呈现与触发方式（§7.5）；现有主流程（v1.9.x）不得因导航重构回退（§4.5）。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: single-page workbench -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">单页工作台</div>
+        <div class="v-sub">顶部 Tab 切换领域：名单 / 教室 / 规则 / 生成 / 结果；所有上下文常驻顶部栏。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class/class-302</span></div>
+          <div class="appbar">
+            <span class="logo">席序<small>· 初二（3）班</small></span>
+            <span class="nav-item active">名单 <span class="n">20</span></span>
+            <span class="nav-item">教室</span>
+            <span class="nav-item">规则 <span class="chip amber">2 条</span></span>
+            <span class="nav-item">生成方案</span>
+            <span class="nav-item">历史/轮换</span>
+            <span class="spacer"></span>
+            <button class="btn-sm">导出</button>
+            <button class="btn-sm primary">保存</button>
+          </div>
+          <div class="body">
+            <div class="panel grow" style="margin:12px">
+              <div class="panel-head">学生名单 <span class="sub">共 20 人 · 最近导入 2026-02-10</span>
+                <span class="spacer" style="flex:1"></span><button class="btn" style="font-size:11.5px">导入</button><button class="btn" style="font-size:11.5px">编辑</button>
+              </div>
+              <div class="panel-body" style="padding:0">
+                <table class="mini">
+                  <tr><th>学号</th><th>姓名</th><th>性别</th><th>身高</th><th>成绩</th><th>视力</th><th>标签</th><th>备注</th></tr>
+                  <tr><td class="num">STU001</td><td>学生丁001</td><td>女</td><td class="num">154</td><td class="num">91.6</td><td>—</td><td><span class="chip blue">leader</span></td><td>—</td></tr>
+                  <tr><td class="num">STU002</td><td>学生丂002</td><td>男</td><td class="num">173</td><td class="num">76.3</td><td>—</td><td>—</td><td>—</td></tr>
+                  <tr><td class="num">STU003</td><td>学生七003</td><td>女</td><td class="num">131</td><td class="num">61.0</td><td>—</td><td>—</td><td>—</td></tr>
+                  <tr><td class="num">STU004</td><td>学生丄004</td><td>男</td><td class="num">180</td><td class="num">97.5</td><td>—</td><td>—</td><td>—</td></tr>
+                  <tr><td class="num">STU005</td><td>学生丅005</td><td>女</td><td class="num">142</td><td class="num">79.0</td><td class="num">0.6</td><td>—</td><td>—</td></tr>
+                  <tr><td class="num">STU006</td><td>学生丆006</td><td>男</td><td class="num">161</td><td class="num">96.8</td><td>—</td><td>—</td><td><span class="chip red">特别关注</span></td></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">跨领域操作（规则 → 生成 → 结果）通过 Tab 跳转；切换 Tab 不丢上下文。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>所有领域一键可达；适合频繁在名单/规则/结果间来回微调的老手；实现路径最接近当前 React 工作台，迁移风险最低。</div>
+        <div class="con"><span class="t-label">代价</span>新手容易迷失「下一步该做什么」；长流程（导入→排座→导出）缺乏线性指引；Tab 过多时顶部拥挤。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: step wizard -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">步骤向导</div>
+        <div class="v-sub">左侧步骤条：名单 → 教室 → 规则 → 生成 → 结果；一次只聚焦一步，可回退修改。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/wizard/class-302</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 期中调座向导</small></span><span class="spacer"></span><span class="chip blue">步骤 3 / 5</span></div>
+          <div class="body">
+            <div class="wizard-steps" style="flex:1;display:block;border:none">
+              <div class="row" style="padding:6px 4px">
+                <span class="step done"><span class="n">✓</span>学生名单</span>
+                <span class="step done"><span class="n">✓</span>教室</span>
+                <span class="step active"><span class="n">3</span>规则与目标</span>
+                <span class="step"><span class="n">4</span>生成方案</span>
+                <span class="step"><span class="n">5</span>结果与导出</span>
+              </div>
+            </div>
+          </div>
+          <div class="body">
+            <div class="panel grow" style="margin:0 12px 12px">
+              <div class="panel-head">规则与目标 <span class="sub">基于「初二（3）班」当前配置 · 由 Rust 规则引擎校验</span></div>
+              <div class="panel-body">
+                <div class="row mb8"><span class="chip red">HARD</span><b>固定座位</b><span class="muted small">学生丁001 → R1C1</span><span class="spacer"></span><button class="btn" style="font-size:11.5px">编辑</button></div>
+                <div class="row mb8"><span class="chip amber">SOFT</span><b>前排优先（视力）</b><span class="muted small">权重 20</span><span class="spacer"></span><button class="btn" style="font-size:11.5px">编辑</button></div>
+                <div class="note">提示：未配置历史快照时，「公平轮换 / 避免近期邻座」维度将显示为不可用。可返回第 1 步补交。</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:10px 12px;border-top:1px solid var(--line);background:#f8fafc">
+            <button class="btn">← 上一步</button><span></span><button class="btn primary">下一步：生成方案 →</button>
+          </div>
+        </div>
+        <div class="note mt8">向导尾部常驻「上一步 / 下一步」，每步校验由 Rust 契约执行，不允许带错进入下一步。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>线性心智模型，新手零学习成本；与「导入→排座→导出」事务流程天然对齐；适合首次使用与演示场景。</div>
+        <div class="con"><span class="t-label">代价</span>老手频繁调参会感到繁琐（每步都要走）；跨领域对照（如边看结果边改规则）需要额外「分屏」支持。</div>
+      </div>
+    </div>
+
+    <!-- Variant C: sidebar workspace -->
+    <div class="variant" id="vC">
+      <div class="v-head">
+        <span class="v-badge">C</span>
+        <div><div class="v-title">侧栏工作区</div>
+        <div class="v-sub">左侧常驻树形侧栏（班级/名单/教室/规则/历史），主区展示当前上下文；适合长期管理多个班级。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/workspace</span></div>
+          <div class="body">
+            <div class="sidebar">
+              <div class="s-sec">我的班级</div>
+              <div class="s-item"><span>🏫</span>初二（1）班</div>
+              <div class="s-item active"><span>🏫</span>初二（3）班 <span class="count">20</span></div>
+              <div class="s-item"><span>🏫</span>高一（5）班</div>
+              <div class="s-sec">班级内容</div>
+              <div class="s-item"><span>👥</span>学生名单</div>
+              <div class="s-item"><span>🪑</span>教室布局</div>
+              <div class="s-item"><span>📐</span>规则与目标</div>
+              <div class="s-item"><span>📊</span>历史 / 轮换</div>
+              <div class="s-sec">近期操作</div>
+              <div class="s-item"><span>🕒</span>方案 2026-03-17</div>
+              <div class="s-item"><span>🕒</span>方案 2026-03-03</div>
+            </div>
+            <div class="panel grow" style="margin:12px">
+              <div class="panel-head">初二（3）班 · 学生名单 <span class="sub">20 人</span>
+                <span class="spacer" style="flex:1"></span><button class="btn" style="font-size:11.5px">导入名单</button>
+              </div>
+              <div class="panel-body">
+                <div class="row mb8"><span class="chip green">最近保存</span><span class="small muted">方案 2026-03-17 · seed 168996 · 全部硬规则满足</span></div>
+                <table class="mini">
+                  <tr><th>学号</th><th>姓名</th><th>当前座位</th><th>标签</th></tr>
+                  <tr><td class="num">STU001</td><td>学生丁001</td><td class="num">R1C1</td><td><span class="chip blue">leader</span> <span class="chip purple">固定</span></td></tr>
+                  <tr><td class="num">STU002</td><td>学生丂002</td><td class="num">R4C1</td><td>—</td></tr>
+                  <tr><td class="num">STU003</td><td>学生七003</td><td class="num">R4C2</td><td>—</td></tr>
+                  <tr><td class="num">STU004</td><td>学生丄004</td><td class="num">R5C1</td><td>—</td></tr>
+                  <tr><td class="num">STU005</td><td>学生丅005</td><td class="num">R1C2</td><td><span class="chip amber">视力 0.6</span></td></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">侧栏同时承载「班级切换」与「领域导航」两级；多班级教师无需回首页。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>多班级长期管理的最佳结构；上下文一目了然，任意领域深度可达；与「最近班级」「班级组」工作流（§7.4）天然兼容。</div>
+        <div class="con"><span class="t-label">代价</span>实现成本最高（两级导航状态机）；窄屏下侧栏挤压主区；单次性任务（如临时调座）显得偏重。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d1", ["单页工作台", "步骤向导", "侧栏工作区"]);
+</script>
+</body>
+</html>

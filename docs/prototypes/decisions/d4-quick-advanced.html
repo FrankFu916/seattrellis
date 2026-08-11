@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D4 · 快速 vs 高级模式 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .gen-card { background:#fff; border:1px solid var(--line-2); border-radius:8px; padding:12px; }
+  .param-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed var(--line); font-size:12.5px; }
+  .param-row:last-child { border-bottom:none; }
+  .param-row .p-label { width:150px; color:var(--ink-2); flex:none; }
+  .param-row .p-control { flex:1; }
+  .param-row .p-help { font-size:11px; color:var(--ink-3); }
+  .mode-toggle { display:inline-flex; border:1px solid var(--line-2); border-radius:999px; overflow:hidden; }
+  .mode-toggle span { font-size:12px; padding:4px 14px; cursor:pointer; }
+  .mode-toggle span.on { background:var(--brand); color:#fff; font-weight:700; }
+  .fast-prompt { background:var(--brand-soft); border-radius:8px; padding:10px 12px; font-size:13px; color:var(--brand-ink); }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D4 · 快速 vs 高级模式</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">4 / 8 · 决策 D4</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D4 · 计划 §7.1 项 4</span>
+    <h1>快速排座 vs 高级模式：默认隐藏哪些技术参数</h1>
+    <p class="task">真实任务：李老师只想「按班级现有规则再排一次，出 5 个方案挑一个」；同事王老师则想精确控制随机种子、候选数、每期轮换预算与各目标权重。两种方案展示<b>同一操作</b>的两种信息密度。</p>
+    <div class="constraints"><b>结果能力（§7.6 可复现性）</b>：无论哪种模式，用户都必须能看到并导出本次结果的 seed、solver/build、规则版本、history range、candidate id，并能复制复现信息；「生成新 seed」必须易得。默认隐藏 ≠ 不可见。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: minimal by default -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">默认精简（快速模式）</div>
+        <div class="v-sub">生成面板只暴露 3 个问题：用哪套规则？生成几个方案？本轮想优先什么？其余全部折叠。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/generate</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 生成方案</small></span><span class="spacer"></span>
+            <span class="mode-toggle"><span class="on">快速</span><span>高级</span></span></div>
+          <div class="body column" style="padding:14px;gap:10px">
+            <div class="fast-prompt">💡 按班级当前规则（1 条硬规则 + 1 个目标）直接生成即可——如需调整请先到「规则」页。</div>
+            <div class="gen-card">
+              <div class="row mb8"><span class="chip green">规则集：初二（3）班 当前规则</span><span class="spacer"></span><button class="btn" style="font-size:11.5px">去编辑</button></div>
+              <div class="row mb8"><span class="bold" style="font-size:13px">生成几个候选方案？</span><span class="spacer"></span>
+                <select class="input" style="width:120px"><option>1（只要一个）</option><option selected>5（推荐）</option><option>10</option></select></div>
+              <div class="row"><span class="bold" style="font-size:13px">本轮优先</span><span class="spacer"></span>
+                <select class="input" style="width:180px"><option>平衡（默认）</option><option>尽量少变动</option><option>公平轮换优先</option></select></div>
+              <div class="row mt8"><span class="muted small">「平衡」= 按规则权重均衡优化；其余选项调整内部权重组合。</span></div>
+            </div>
+            <div class="row">
+              <span class="small muted">高级选项：种子 / 求解预算 / 候选去重 / 历史范围 → </span>
+              <button class="btn" style="font-size:11.5px">展开高级设置 ▾</button>
+              <span class="spacer"></span>
+              <button class="btn primary" style="font-size:13px;padding:7px 18px">生成方案</button>
+            </div>
+            <div class="preview-line" id="reproA">结果页仍会显示并导出：seed、solver/build、规则版本、history range、candidate id（§7.6）</div>
+          </div>
+        </div>
+        <div class="note mt8">「快速」模式不隐藏任何<b>结果信息</b>，只隐藏<b>输入参数</b>；默认值来自 Rust 端能力目录（candidate 1–20、seed 自动）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>90% 教师 90% 场景只有 3 个问题；默认参数由产品团队在 M4 验证后冻结（seed 随机、candidates 5）；降低首次使用挫败感。</div>
+        <div class="con"><span class="t-label">代价</span>高级用户每次要展开；「本轮优先」的语义需产品定义清楚（内部映射到权重预设）；默认值选错时排查成本高。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: everything visible -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">默认展开（高级模式）</div>
+        <div class="v-sub">生成面板直接列出全部参数：规则集、候选数、种子、求解预算、去重、历史范围、各目标权重。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/generate</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 生成方案</small></span><span class="spacer"></span>
+            <span class="mode-toggle"><span>快速</span><span class="on">高级</span></span></div>
+          <div class="body column" style="padding:14px;gap:10px">
+            <div class="gen-card">
+              <div class="param-row"><span class="p-label">规则集</span>
+                <span class="p-control"><select class="input"><option>初二（3）班 当前规则</option><option>模板：默认排座</option><option>模板：期中调座</option></select></span></div>
+              <div class="param-row"><span class="p-label">候选方案数</span>
+                <span class="p-control"><input class="input" type="number" value="5" min="1" max="20" style="width:90px"></span>
+                <span class="p-help">1–20（§6.3 候选引擎）</span></div>
+              <div class="param-row"><span class="p-label">随机种子</span>
+                <span class="p-control row"><input class="input" type="number" value="168996" style="width:130px"><button class="btn" style="font-size:11px">🎲 换一个</button></span>
+                <span class="p-help">相同输入+种子 = 可复现</span></div>
+              <div class="param-row"><span class="p-label">求解预算</span>
+                <span class="p-control"><select class="input"><option>自动（默认）</option><option>0.5 秒</option><option>2 秒</option><option>10 秒</option></select></span>
+                <span class="p-help">超时但有合法解 = Solved</span></div>
+              <div class="param-row"><span class="p-label">候选去重</span>
+                <span class="p-control"><select class="input"><option>开启（默认）</option><option>关闭</option></select></span>
+                <span class="p-help">避免产出几乎相同的方案</span></div>
+              <div class="param-row"><span class="p-label">历史范围</span>
+                <span class="p-control"><select class="input"><option>最近 3 期</option><option>全部</option><option>不使用历史</option></select></span>
+                <span class="p-help">影响公平轮换/近期邻座</span></div>
+              <div class="param-row"><span class="p-label">目标权重</span>
+                <span class="p-control"><input class="input" type="text" value="vision_front:20 · fair_rotation:10 · …" style="width:200px"></span>
+                <span class="p-help">JSON 或表格式</span></div>
+            </div>
+            <div class="row">
+              <span class="small muted">想少点选项？→ </span><button class="btn" style="font-size:11.5px">切换快速模式</button>
+              <span class="spacer"></span>
+              <button class="btn primary" style="font-size:13px;padding:7px 18px">生成方案</button>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">参数名与 Rust 契约一一对应：seed / time-limit / candidates / exclude-… / history-range；UI 仅做输入级校验。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>可复现性零摩擦（§7.6）；高级用户无需「展开」；与 CLI 参数语义一一对应，测试与文档成本最低。</div>
+        <div class="con"><span class="t-label">代价</span>新手面对 7+ 参数不知所措；「权重 JSON」门槛高；误改参数后结果差异难以归因。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d4", ["默认精简", "默认展开"]);
+</script>
+</body>
+</html>
