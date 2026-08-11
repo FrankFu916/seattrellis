@@ -210,7 +210,7 @@ fn cancellation_is_prompt_and_a_fresh_solve_still_works() {
 
 #[test]
 #[ignore = "expensive: run in release mode via the CI long-run-gate step"]
-fn planted_corpus_solves_at_least_99_5_percent_with_no_false_infeasible() {
+fn planted_corpus_solves_100_percent_with_no_false_infeasible() {
     let mut total = 0usize;
     let mut solved = 0usize;
     let mut proven_infeasible = 0usize;
@@ -247,6 +247,14 @@ fn planted_corpus_solves_at_least_99_5_percent_with_no_false_infeasible() {
     assert_eq!(
         proven_infeasible, 0,
         "false ProvenInfeasible on planted-feasible instances (soundness bug)"
+    );
+    // The corpus is planted-feasible by construction (every constraint is
+    // derived from the planted assignment it satisfies), so the official
+    // known-feasible gate is a hard 100%. The 99.5% bound is kept as a
+    // backstop for future non-guaranteed instances added to the corpus.
+    assert_eq!(
+        solved, total,
+        "known-feasible corpus must solve 100% (solved {solved}/{total}, rate {rate:.4})"
     );
     assert!(rate >= 0.995, "solved rate {rate:.4} below the 99.5% gate");
     assert!(

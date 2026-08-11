@@ -111,15 +111,18 @@ M1 “实现路径存在”不等于自动 parity 或 Final Gate；验收以修�
 | §6.2 Soft optimization | `RUST_VERIFIED` | local search + 贪心停滞早退；fixed-assignment scoring 差分 34/34；cost-vs-fallback 基线 34/34 |
 | §6.3 Candidate engine | `RUST_VERIFIED` | 20/40/50/60/80 × 1/5/20 差分 15 combos 0 mismatch；推荐 = max plan_score total；stability 激活路径已接（`--latest-snapshot`） |
 | §6.4 Rule metadata/DSL | `RUST_PARTIAL` | Rust registry（goal_rules.rs/RuleSet）被 solve/candidates/score 消费；React 第二套规则真相为 M6 删除项，不扩展 |
-| §6.5 Audit/explanation | `RUST_PARTIAL` | hard status + soft breakdown + top_contributors；witness/本地化 key 未完整验收 |
-| §6.6 Quality gate | **部分通过** | 6 样本 regret PASS + 449 项差分 0 mismatch；**official known-feasible corpus（现为 planted）与性能回归门槛仍缺** |
+| §6.5 Audit/explanation | `RUST_VERIFIED` | hard status + soft breakdown + top_contributors + `hard_constraint_summary`/`missing_data`/`history`/`suggested_actions`（本地化 key + 可操作建议），单测覆盖 |
+| §6.6 Quality gate | **通过** | 6 样本 regret PASS + 464 项差分 0 mismatch + planted known-feasible corpus **100/100 solved、false-infeasible=0** + 性能回归门槛（基准×1.10 + 绝对上限，CI 常跑）+ 500 次 solve/edit RSS 稳定 |
 
-**M3 Exit Gate（修订版 §6.7）：部分通过。** 已闭合：七状态语义（41 fixtures）、
-差分全绿（449/0）、hard-search/soft 分离、OR-Tools 不再依赖。**仍阻断**：
-① official known-feasible corpus（现为 planted 构造）；② feasibility
-report 的 UI 消费（React DiagnosticsPanel 仍前端自算，属 M6 删除项）。
-按修订版，M3 Exit 完全通过前不得开始 M4 正式实现；M4 Decision Backlog
-建立与这两个证据项并行推进（见 ledger §19.14/§19.15）。
+**M3 Exit Gate（修订版 §6.7）：通过（2026-08-10 证据评估）。** 六项全部
+闭合：七状态语义（41 fixtures）、feasibility report 可被 UI 消费
+（audit 字段齐全，§19.16）、hard-search/soft 分离、official parity
+corpus 全绿（464/0）、rule registry 生效（Rust 侧消费）、OR-Tools 不再
+依赖。质量 gate：planted known-feasible corpus 100/100 solved +
+false-infeasible=0、随机可行 ≥99.5%、性能回归门槛与长跑内存均常跑。
+**剩余登记项（非 gate 阻断）**：React 第二套规则真相为 M6 删除项、
+official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修订版
+可进入 M4 Product Decision/UX（§7.1 Decision Backlog 需产品输入）。
 
 ### 2026-08-09 post-merge acceptance audit
 

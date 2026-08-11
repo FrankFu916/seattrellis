@@ -921,10 +921,22 @@ ledger §1.1 对应事务/写路径条目证据补齐（§17.2.4 关闭）。
    增加 RSS 采样（每 100 步 + 起始/峰值），断言增长 < 64 MiB。
 4. **盘点确认（§17.3 已覆盖项）**：exact differential（n≤8 暴力枚举 +
    false-ProvenInfeasible 断言）、planted known-feasible corpus
-   （20/40/50/60/80 × 20 = 100 实例，solved ≥99.5% + false-ProvenInfeasible
-   = 0）、取消延迟上限（<5s）、500 次 solve RSS 稳定——均在
-   `long_run_gate.rs`/`exact_differential.rs` 且 CI long-run-gates job
-   每周跑。
+   （20/40/50/60/80 × 20 = 100 实例）、取消延迟上限（<5s）、500 次
+   solve RSS 稳定——均在 `long_run_gate.rs`/`exact_differential.rs` 且
+   CI long-run-gates job 常跑。
+5. **known-feasible 100% 收紧（§6.6）**：planted corpus 构造保证可行
+   （每条约束都由 planted assignment 满足派生），实测 **100/100 solved
+   （rate 1.0000）、false-ProvenInfeasible=0**；断言从 ≥99.5% 收紧为
+   solved==total（99.5% 保留作未来非保证语料的兜底）。
+
+**M3 Exit Gate（修订版 §6.7）2026-08-10 证据评估：通过。** 六项全部闭合
+（§19.14–§19.16 证据链）：七状态语义、feasibility report UI 消费字段、
+hard-search/soft 分离、official parity corpus 全绿（464/0）、rule
+registry 生效、OR-Tools 不再依赖。质量 gate：regret PASS + cost-vs-
+fallback 34/34 + known-feasible 100% + 随机 ≥99.5% + 性能回归门槛 +
+长跑内存。剩余登记项（非阻断）：React 第二套规则真相（M6 删除）、
+official corpus 官方来源扩充、CLI stdout 字节级 golden、M4 Decision
+Backlog（需产品输入，修订版 §7.1）。
 
 ### 19.12 2026-08-10：CLI 项目生命周期补齐（§5.5/§5.7 item 3）
 
