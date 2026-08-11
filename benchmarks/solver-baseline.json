@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "tool": "scripts/bench_solver.py",
+  "note": "median wall-clock of the release CLI solve on planted-feasible instances",
+  "sizes_ms": {
+    "40": {
+      "median_ms": 100.1
+    },
+    "50": {
+      "median_ms": 224.86
+    },
+    "60": {
+      "median_ms": 465.91
+    },
+    "80": {
+      "median_ms": 1398.67
+    }
+  }
+}

@@ -1352,15 +1352,117 @@ pub fn audit_report_json(request_json: &str, assignment: &[[usize; 2]]) -> Resul
         })
         .collect();
 
+    // --- UI-consumable explanation fields (plan §6.5) -----------------------
+    // `hard_constraint_summary`: a single total view plus violation
+    // witnesses. A full valid assignment has no violations, so the witness
+    // list is empty by construction (the audit entry point rejects illegal
+    // assignments); the field exists so the UI can render violations the
+    // moment a partial/invalid plan is ever audited.
+    let checked_rule_count = request.fixed_seats.len()
+        + resolved.must_be_adjacent.len()
+        + resolved.cannot_be_adjacent.len()
+        + request.min_distance.len();
+    let violation_count = checked_rule_count - (fixed_ok + must_ok + cannot_ok + distance_ok);
+    let hard_constraint_summary = json!({
+        "all_satisfied": violation_count == 0,
+        "checked_rule_count": checked_rule_count,
+        "violation_count": violation_count,
+        "witnesses": [],
+    });
+
+    // `missing_data`: how many students lack each soft-input field, so the
+    // UI can explain why a dimension is degraded (plan §6.5 "缺失数据").
+    let mut missing_score = 0usize;
+    let mut missing_height = 0usize;
+    let mut missing_vision = 0usize;
+    let mut missing_needs = 0usize;
+    for student in &ctx.students {
+        if student.score.is_none() {
+            missing_score += 1;
+        }
+        if student.height_cm.is_none() {
+            missing_height += 1;
+        }
+        if student.vision.is_none() {
+            missing_vision += 1;
+        }
+        if student.needs.is_empty() {
+            missing_needs += 1;
+        }
+    }
+    let missing_data = json!({
+        "students_missing_score": missing_score,
+        "students_missing_height": missing_height,
+        "students_missing_vision": missing_vision,
+        "students_missing_needs": missing_needs,
+    });
+
+    // `history`: how much seat history the solve used (plan §6.5 "历史影响").
+    let snapshot_count = ctx
+        .history
+        .as_ref()
+        .map(|history| history.history_count.max(0) as usize)
+        .unwrap_or(0);
+    let history = json!({
+        "snapshot_count": snapshot_count,
+        "has_history": snapshot_count > 0,
+    });
+
+    // `suggested_actions`: localized message keys plus arguments the UI can
+    // render without re-deriving the rules (plan §6.5 "可操作建议").
+    let mut suggested_actions: Vec<Value> = Vec::new();
+    let fair_rotation = &ctx.rules.soft.fair_rotation;
+    if fair_rotation.enabled && fair_rotation.weight != 0 && snapshot_count == 0 {
+        suggested_actions.push(json!({
+            "message_key": "audit.history_recommended",
+            "suggested_action": "add_history",
+            "args": {},
+        }));
+    }
+    if missing_height > 0 && ctx.rules.soft.height_back.enabled {
+        suggested_actions.push(json!({
+            "message_key": "audit.missing_height",
+            "suggested_action": "add_student_field",
+            "args": { "field": "height_cm", "count": missing_height },
+        }));
+    }
+    if missing_vision > 0 && ctx.rules.soft.vision_front.enabled {
+        suggested_actions.push(json!({
+            "message_key": "audit.missing_vision",
+            "suggested_action": "add_student_field",
+            "args": { "field": "vision", "count": missing_vision },
+        }));
+    }
+    if missing_score > 0
+        && (ctx.rules.soft.score_balance.enabled || ctx.rules.soft.score_position.enabled)
+    {
+        suggested_actions.push(json!({
+            "message_key": "audit.missing_score",
+            "suggested_action": "add_student_field",
+            "args": { "field": "score", "count": missing_score },
+        }));
+    }
+    if suggested_actions.is_empty() {
+        suggested_actions.push(json!({
+            "message_key": "audit.ready",
+            "suggested_action": "none",
+            "args": {},
+        }));
+    }
+
     let report = json!({
         "api_version": NATIVE_API_VERSION,
         "hard_rules": hard_rules,
+        "hard_constraint_summary": hard_constraint_summary,
         "soft_objectives": {
             "losses": evaluation.losses,
             "weighted_costs": evaluation.weighted_costs,
             "warnings": evaluation.warnings,
             "top_contributors": top_contributors,
         },
+        "missing_data": missing_data,
+        "history": history,
+        "suggested_actions": suggested_actions,
         "total_cost": full_solution_total_cost(&assignment_vec, &adjacency, &ctx),
     });
     serde_json::to_string(&report)
@@ -5918,6 +6020,72 @@ mod tests {
             "weighted_costs: {weighted}"
         );
         assert!(report["total_cost"].is_number());
+    }
+
+    #[test]
+    fn audit_report_carries_ui_consumption_fields() {
+        // plan §6.5: a UI must be able to render the audit without
+        // re-deriving the rules — summary, witnesses, missing data, history
+        // impact and localized suggested actions.
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0]],
+            "edges": [[0,1],[1,2],[2,3]],
+            "fixed_seats": [[0, 0]],
+            "must_be_adjacent": [[0, 1]],
+            "students": [
+                {"key":"s0","score":100.0,"height_cm":150.0,"vision":"poor","needs":["vision_front"]},
+                {"key":"s1","score":10.0},
+                {"key":"s2","score":90.0}
+            ],
+            "rules": {"seed": 42, "soft": {
+                "score_balance": {"enabled": true, "weight": 5},
+                "vision_front": {"enabled": true, "weight": 20},
+                "height_back": {"enabled": true, "weight": 1}
+            }}
+        }"#;
+        let assignment: Vec<[usize; 2]> = vec![[0, 0], [1, 1], [2, 2]];
+        let report: serde_json::Value =
+            serde_json::from_str(&audit_report_json(request, &assignment).unwrap()).unwrap();
+
+        // hard_constraint_summary with a total view and empty witnesses.
+        assert_eq!(report["hard_constraint_summary"]["all_satisfied"], true);
+        assert_eq!(report["hard_constraint_summary"]["checked_rule_count"], 2);
+        assert_eq!(report["hard_constraint_summary"]["violation_count"], 0);
+        assert_eq!(
+            report["hard_constraint_summary"]["witnesses"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+
+        // missing_data: two students lack height/vision/needs.
+        assert_eq!(report["missing_data"]["students_missing_height"], 2);
+        assert_eq!(report["missing_data"]["students_missing_vision"], 2);
+        assert_eq!(report["missing_data"]["students_missing_needs"], 2);
+        assert_eq!(report["missing_data"]["students_missing_score"], 0);
+
+        // history impact: no history was supplied.
+        assert_eq!(report["history"]["has_history"], false);
+        assert_eq!(report["history"]["snapshot_count"], 0);
+
+        // suggested_actions: vision_front is enabled and vision data is
+        // missing, so the vision suggestion must be present.
+        let actions = report["suggested_actions"].as_array().unwrap();
+        assert!(
+            actions
+                .iter()
+                .any(|action| action["message_key"] == "audit.missing_vision"),
+            "actions: {actions:?}"
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|action| action["message_key"] == "audit.missing_height"),
+            "actions: {actions:?}"
+        );
     }
 
     #[test]

@@ -100,6 +100,10 @@ jobs:
         run: cargo test --release --locked -p seattrellis_core --test candidates_gate --test long_run_gate -- --ignored
       - name: Rotation gate
         run: cargo test --release --locked -p seattrellis-application --test rotation_gate -- --ignored
+      - name: Solver performance regression gate
+        run: |
+          cargo build --release --locked -p seattrellis_cli
+          python3 scripts/bench_solver.py --check
 
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}

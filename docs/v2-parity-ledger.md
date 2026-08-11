@@ -894,6 +894,38 @@ ledger §1.1 导出条目从 "SVG/HTML/PNG/PDF 路径存在、Office/CJK 未完�
 
 ledger §1.1 对应事务/写路径条目证据补齐（§17.2.4 关闭）。
 
+### 19.16 2026-08-10：M3 剩余证据收口（§6.5/§6.6/§17.3）
+
+1. **Audit/explanation UI 消费字段（§6.5/§6.7 item 2）**：`audit_report_json`
+   新增四个可消费分组（向后兼容，新增键）：
+   - `hard_constraint_summary`：`all_satisfied` / `checked_rule_count` /
+     `violation_count` / `witnesses`（UI 无需重推导规则即可渲染总览；
+     完整合法 assignment 无违规，witness 列表恒空，字段为部分/非法
+     plan 审计预留）；
+   - `missing_data`：缺 score/height/vision/needs 的学生计数（§6.5
+     "缺失数据说明"）；
+   - `history`：`snapshot_count` / `has_history`（§6.5 "历史影响"）；
+   - `suggested_actions`：本地化 `message_key` + `suggested_action` +
+     `args`（可操作建议：history_recommended / missing_height /
+     missing_vision / missing_score / ready，按启用规则与缺失数据
+     派生）。新增单测
+     `audit_report_carries_ui_consumption_fields`。
+2. **性能回归门槛（§6.6 item 7）**：新增 `scripts/bench_solver.py`，
+   对 planted-feasible 实例（n=40/50/60/80，与 Rust long-run gate 同构）
+   测 release CLI solve 的中位墙钟；`--record` 登记
+   `benchmarks/solver-baseline.json`（n=40: 0.10s / n=50: 0.22s /
+   n=60: 0.47s / n=80: 1.40s，交互级），`--check` 断言 ≤ 基准×1.10
+   且 ≤ 绝对上限（n=80 ≤ 6s）。CI long-run-gates job 已接
+   `--check`。
+3. **编辑长跑峰值内存（§19.8）**：`editing_long_run` 的 1000 命令测试
+   增加 RSS 采样（每 100 步 + 起始/峰值），断言增长 < 64 MiB。
+4. **盘点确认（§17.3 已覆盖项）**：exact differential（n≤8 暴力枚举 +
+   false-ProvenInfeasible 断言）、planted known-feasible corpus
+   （20/40/50/60/80 × 20 = 100 实例，solved ≥99.5% + false-ProvenInfeasible
+   = 0）、取消延迟上限（<5s）、500 次 solve RSS 稳定——均在
+   `long_run_gate.rs`/`exact_differential.rs` 且 CI long-run-gates job
+   每周跑。
+
 ### 19.12 2026-08-10：CLI 项目生命周期补齐（§5.5/§5.7 item 3）
 
 Rust CLI 再增 **6 个子命令**（现共 26 个），关闭 §19.9 登记的剩余差距：

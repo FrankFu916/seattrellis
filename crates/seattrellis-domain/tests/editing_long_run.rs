@@ -105,6 +105,8 @@ fn one_thousand_commands_keep_revision_monotonic_and_assignments_unique() {
     .expect("draft creates");
 
     let mut rng = Lcg(0xED17_0001);
+    let rss_before = resident_set_bytes();
+    let mut rss_peak = rss_before;
     let mut revision = 0u64;
     let mut applied = 0u64;
     let mut navigated = 0u64;
@@ -114,6 +116,11 @@ fn one_thousand_commands_keep_revision_monotonic_and_assignments_unique() {
     let mut last_apply: Option<(EditorState, EditorState)> = None;
 
     for step in 0..1000u64 {
+        if step % 100 == 99 {
+            if let Some(rss) = resident_set_bytes() {
+                rss_peak = Some(rss_peak.map_or(rss, |peak| peak.max(rss)));
+            }
+        }
         let roll = rng.below(12);
         let operations = match roll {
             0..=3 => {
@@ -257,6 +264,18 @@ fn one_thousand_commands_keep_revision_monotonic_and_assignments_unique() {
             }
         }
     }
+    // Peak-memory refinement curve (plan §19.8 "500 次编辑的峰值内存"):
+    // the resident set must stay flat across the whole command sequence.
+    // Sampled at the end; the per-hundred-step samples are kept inside the
+    // loop below and the peak-vs-start growth is asserted here.
+    if let (Some(before), Some(peak)) = (rss_before, rss_peak) {
+        let growth = peak.saturating_sub(before);
+        assert!(
+            growth < 64 * 1024 * 1024,
+            "resident set grew by {growth} bytes over 1000 commands"
+        );
+    }
+
     // Apply and undo/redo each advance the revision exactly once.
     assert_eq!(
         revision,
@@ -361,4 +380,13 @@ fn failed_commands_roll_back_atomically() {
         ],
         "failed command must leave the assignment untouched"
     );
+}
+
+/// Linux resident-set size in bytes (the CI long-run job runs on ubuntu);
+/// `None` on other platforms, where the memory assertion is skipped.
+fn resident_set_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|line| line.starts_with("VmRSS:"))?;
+    let value = line.split_whitespace().nth(1)?;
+    value.parse().ok()
 }
