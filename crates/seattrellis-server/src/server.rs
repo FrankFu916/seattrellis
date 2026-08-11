@@ -713,6 +713,21 @@ fn catalogs_response() -> Response {
                     "name": localized("打印版", "Print sheet"),
                     "description": localized("适合 A4 打印或存为 PDF。", "Designed for A4 printing or saving as PDF."),
                 },
+                {
+                    "id": "xlsx",
+                    "name": localized("Excel 表格", "Excel workbook"),
+                    "description": localized("含座位网格与名单两页，方便继续编辑。", "Seating grid plus an assignments sheet for further editing."),
+                },
+                {
+                    "id": "docx",
+                    "name": localized("Word 文档", "Word document"),
+                    "description": localized("带标题与座位表格的文档。", "A document with a title and a seat-grid table."),
+                },
+                {
+                    "id": "pptx",
+                    "name": localized("PPT 幻灯片", "PowerPoint slide"),
+                    "description": localized("单页 16:9 幻灯片，座位可单独编辑。", "One editable 16:9 slide with per-seat shapes."),
+                },
             ],
         }),
     )
@@ -2046,7 +2061,19 @@ mod tests {
             .iter()
             .map(|format| format["id"].as_str().unwrap())
             .collect();
-        assert_eq!(format_ids, vec!["svg", "html", "png", "pdf", "print-html"]);
+        assert_eq!(
+            format_ids,
+            vec![
+                "svg",
+                "html",
+                "png",
+                "pdf",
+                "print-html",
+                "xlsx",
+                "docx",
+                "pptx"
+            ]
+        );
     }
 
     #[test]

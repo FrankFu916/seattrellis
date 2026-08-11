@@ -13,9 +13,10 @@ use std::path::{Path, PathBuf};
 use serde_json::json;
 
 use seattrellis_core::{
-    audit_report_json, generate_candidates_json, history_report_json, pair_report_json,
-    precheck_report_json, repair_json, solve_problem_json, validate_solve_request_json,
-    validate_solve_response, CoreSolveRequest, CoreSolveResponse, SolveStatus,
+    audit_report_json, generate_candidates_json_with_latest_snapshot, history_report_json,
+    pair_report_json, precheck_report_json, repair_json, solve_problem_json,
+    validate_solve_request_json, validate_solve_response, CoreSolveRequest, CoreSolveResponse,
+    SolveStatus,
 };
 
 use crate::render::SeatingGrid;
@@ -71,7 +72,7 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
 }
 
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
-/// can map it onto the frozen CLI exit-code table (plan §四.1, M1-03).
+/// can map it onto the frozen CLI exit-code table (plan §4.1, M1-03).
 /// `project-solve`: compile the project workspace into a solve request and
 /// run the solver (plan §5.5 project lifecycle).
 pub fn run_project_solve(args: &ProjectArgs) -> Result<SolveStatus, String> {
@@ -382,7 +383,7 @@ pub fn run_project_edit(args: &ProjectEditArgs) -> Result<(), String> {
     }
 
     // Independent validation: every edited product must satisfy the plan's
-    // hard rules before it is written (修订版: 禁止硬编码 feasible=true).
+    // hard rules before it is written (revised plan: feasible=true is never hard-coded).
     let edited_response = editor_response(&request, &state)?;
     if args.strict {
         validate_solve_response(&request, &edited_response)
@@ -867,9 +868,16 @@ fn load_snapshot_documents(paths: &[PathBuf]) -> Result<String, String> {
 }
 
 /// Generate a diverse candidate set and print the JSON report (plan §6.3).
+/// An optional `--latest-snapshot` activates the per-candidate stability
+/// dimension (the Python CLI leaves it not_available; this is the same
+/// activation path the fixed-assignment scorer uses).
 pub fn run_candidates(args: &CandidatesArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
-    let report = generate_candidates_json(&problem_text, args.count)
+    let latest = match &args.latest_snapshot {
+        Some(path) => read_text(path)?,
+        None => String::new(),
+    };
+    let report = generate_candidates_json_with_latest_snapshot(&problem_text, args.count, &latest)
         .map_err(|error| format!("candidate generation failed: {error}"))?;
     println!("{report}");
     Ok(())

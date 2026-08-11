@@ -107,6 +107,8 @@ pub struct ScoreArgs {
 pub struct CandidatesArgs {
     pub problem: PathBuf,
     pub count: usize,
+    /// Optional latest snapshot for the per-candidate stability dimension.
+    pub latest_snapshot: Option<PathBuf>,
 }
 
 /// `doctor`: environment diagnostics (plan §5.5 CLI surface).
@@ -508,6 +510,10 @@ fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--latest-snapshot",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -524,9 +530,11 @@ fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
             .map_err(|error| format!("invalid --count '{raw}': {error}"))?,
         None => 5,
     };
+    let latest_snapshot = flag_value(&parsed, "--latest-snapshot")?.map(PathBuf::from);
     Ok(Command::Candidates(CandidatesArgs {
         problem: PathBuf::from(problem),
         count,
+        latest_snapshot,
     }))
 }
 
@@ -1262,7 +1270,7 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
     }
 }
 
-/// Frozen CLI v2 exit codes (plan §四.1 / M1-03):
+/// Frozen CLI v2 exit codes (plan §4.1 / M1-03):
 /// Solved 0, InvalidInput 2, ProvenInfeasible 3, Timeout 4, Unknown 5,
 /// InternalError 70, user cancel 130.
 fn exit_code_for(status: SolveStatus) -> u8 {
@@ -1764,7 +1772,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // M1-03: frozen CLI exit-code table (plan §四.1)
+    // M1-03: frozen CLI exit-code table (plan §4.1)
     // ------------------------------------------------------------------
 
     #[test]
@@ -2010,12 +2018,16 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("students.csv"), "id,name
+        std::fs::write(
+            dir.join("students.csv"),
+            "id,name
 1,A
 2,B
 3,C
 4,D
-").unwrap();
+",
+        )
+        .unwrap();
         std::fs::write(
             dir.join("layout.json"),
             r#"{"layout_id":"l","name":"Room","seats":[
@@ -2116,7 +2128,10 @@ mod tests {
         })
         .unwrap();
         let schema_text = std::fs::read_to_string(&schema_out).unwrap();
-        assert!(schema_text.contains("$defs"), "schema export looks like JSON Schema");
+        assert!(
+            schema_text.contains("$defs"),
+            "schema export looks like JSON Schema"
+        );
         let v1 = dir.join("v1-roster.json");
         std::fs::write(
             &v1,

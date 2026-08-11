@@ -967,6 +967,22 @@ presets ×3、候选集比较报告、plan-comparison-report、原生文件对�
 （§15 计数表已同步）。§15 汇总：PYTHON_ONLY 24→11、RUST_PARTIAL
 80→69、RUST_PARITY_PENDING 94→93、**RUST_VERIFIED 0→25**。
 
+### 19.15 2026-08-10：Capability 目录对账与候选 stability 激活（§4.3/§6.3）
+
+1. **capability 目录对账（§4.3）**：`GET /api/v1/catalogs` 逐项对照实际
+   能力——roomTemplates（standard-30/48/60）与 Python handlers 注册表
+   一致；teacherGoals（4 个）与 `goal_rules.rs::GOAL_IDS` 完全一致；
+   **发现并修复真实缺口**：exportFormats 缺 xlsx/docx/pptx（Office 导出
+   已实现但工作台无法选择），已补齐并更新契约测试（8 格式）。
+2. **候选 stability 维度（§6.3）**：确认 Python 候选 golden 中
+   `stability_score` 同样为 `not_available`（CLI 不传 latest snapshot），
+   差分两侧本就对齐；补齐激活路径——`generate_candidates_json_with_
+   latest_snapshot` + CLI `candidates --latest-snapshot <file>`，传入时
+   候选 plan_score 的 stability 维度激活（复用 fixed-assignment scorer
+   的同一实现）。新增单测
+   `candidates_stability_activates_with_latest_snapshot`（无快照
+   not_available / 有快照 available）。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
