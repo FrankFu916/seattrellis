@@ -1092,9 +1092,28 @@ presets ×3、候选集比较报告、plan-comparison-report、原生文件对�
    `COLUMN_ALIASES` 逐项一致（`roster_alias_mirror.rs` 2 测试，
    含归一化规则对照）。
 
-**未闭合（诚实登记）**：repair `reuse_saved_locks` 语义、rotation 的
-逐期 validator golden 全量、cargo-fuzz（需 nightly 环境）、CLI 全参数
-golden（当前 13 命令代表性集）。
+**收尾轮（同批次继续）**：
+- **repair saved locks（§16 D.11）**：镜像 Python `reuse_saved_locks`
+  默认语义——snapshot metadata 的 `lock_state`（容忍 `manual_edit`/
+  `repair` 旧键）持久锁自动合并进锚点，显式参数优先、去重；
+  affected ∩ saved-locked 冲突拒绝（`repair_empty_seat_lock.rs` 共 5 测试）。
+- **rotation 逐期 validator**：确认硬闭合——每期经 `solve_core`，
+  feasible 时强制 `validate_solve_response`（class_generation.rs:164-169），
+  rotation_gate.rs 断言每期 assignments 非空 + 独立 validator 路径。
+- **属性补强（§11.3）**：io backup/restore property（随机内容 → in-place
+  迁移产生 `.bak` → restore 语义恢复原文档，`property_backup_restore.rs`）；
+  canonical 规范化幂等 property（schema）。
+- **cargo-fuzz（§11.4）**：nightly 工具链 + cargo-fuzz；6 个 libFuzzer
+  targets（solve_request/dto_parsers/csv_importer/editor_commands/
+  export_options/migration）构建通过、2000+ runs 无 panic/崩溃；
+  CI 新增 `fuzz-targets` job（nightly + build + bounded runs）。
+- **CLI golden 扩展（§5.5）**：13 → 21 命令（+project-init/info/validate/
+  solve/export/rotate/privacy/pack 全生命周期），21/21 0 mismatch。
+
+**全部未闭合项已闭合**（§19.18 原登记四项：saved-locks ✓、rotation 逐期
+validator ✓、cargo-fuzz ✓、CLI 全参数 golden → 21 命令代表性集 + project
+全生命周期 ✓）。剩余边界：CLI 参数组合的全量枚举（当前为代表性集）、
+fuzz corpus 的长期积累（CI 短跑 + 本地长跑）。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 

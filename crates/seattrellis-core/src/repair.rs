@@ -149,6 +149,52 @@ pub fn repair_json(
         }
     }
 
+    // Saved locks (Python `reuse_saved_locks` semantics): the snapshot's
+    // persisted lock state (metadata.lock_state, with tolerant fallback to
+    // the older `manual_edit` / `repair` metadata keys) is merged into the
+    // explicit anchor sets, mirroring `repair.py::_saved_locks`.
+    let mut saved_locked_students: Vec<String> = Vec::new();
+    let mut saved_locked_seats: Vec<String> = Vec::new();
+    if let Some(metadata) = snapshot.get("metadata").and_then(Value::as_object) {
+        let mut lock_state: Option<&Value> = metadata.get("lock_state");
+        if lock_state.is_none() {
+            lock_state = metadata
+                .get("manual_edit")
+                .or_else(|| metadata.get("repair"));
+        }
+        if let Some(state) = lock_state.and_then(Value::as_object) {
+            for (out, key) in [
+                (&mut saved_locked_students, "locked_students"),
+                (&mut saved_locked_seats, "locked_seats"),
+            ] {
+                if let Some(values) = state.get(key).and_then(Value::as_array) {
+                    for value in values {
+                        if let Some(text) = value.as_str() {
+                            let trimmed = text.trim();
+                            if !trimmed.is_empty() && !out.contains(&trimmed.to_string()) {
+                                out.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Merge saved locks with the explicit anchors (explicit wins on overlap;
+    // duplicates are dropped).
+    let mut effective_locked_students = saved_locked_students.clone();
+    for student in locked_students {
+        if !effective_locked_students.contains(student) {
+            effective_locked_students.push(student.clone());
+        }
+    }
+    let mut effective_locked_seats = saved_locked_seats.clone();
+    for seat in locked_seats {
+        if !effective_locked_seats.contains(seat) {
+            effective_locked_seats.push(seat.clone());
+        }
+    }
+
     // Validate the anchor sets.
     let unknown_affected: Vec<&str> = affected_students
         .iter()
@@ -161,7 +207,7 @@ pub fn repair_json(
             unknown_affected.join(", ")
         ));
     }
-    for student in locked_students {
+    for student in &effective_locked_students {
         if !index_by_key.contains_key(student.as_str()) {
             return Err(format!("Locked student is unknown: {student}."));
         }
@@ -175,7 +221,7 @@ pub fn repair_json(
     // seats become reserved seats that stay empty (mirroring the Python
     // `reserved_empty_seats` repair semantics).
     let mut reserved_empty_seats: Vec<usize> = Vec::new();
-    for seat in locked_seats {
+    for seat in &effective_locked_seats {
         if !seat_index_by_id.contains_key(seat.as_str()) {
             return Err(format!("Locked seat is unknown: {seat}."));
         }
@@ -187,13 +233,13 @@ pub fn repair_json(
         }
     }
     for student in affected_students {
-        if locked_students.contains(student) {
+        if effective_locked_students.contains(&student.to_string()) {
             return Err(format!(
                 "Affected students cannot also be locked: {student}."
             ));
         }
         if let Some(seat) = seat_by_student.get(student) {
-            if locked_seats.contains(seat) {
+            if effective_locked_seats.contains(seat) {
                 return Err(format!("Affected students occupy locked seats: {student}."));
             }
         }
@@ -202,13 +248,13 @@ pub fn repair_json(
     // Fixed set: locked students + locked-seat occupants + (when a local
     // scope is requested) every student outside the affected closure.
     let mut fixed_students: Vec<usize> = Vec::new();
-    for student in locked_students {
+    for student in &effective_locked_students {
         let index = index_by_key[student.as_str()];
         if !fixed_students.contains(&index) {
             fixed_students.push(index);
         }
     }
-    for seat in locked_seats {
+    for seat in &effective_locked_seats {
         let Some(occupant) = student_by_seat.get(seat.as_str()) else {
             continue; // reserved empty seat, handled separately
         };

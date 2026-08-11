@@ -133,3 +133,66 @@ fn reserved_empty_seat_conflicting_with_fixed_rule_is_rejected() {
         "unexpected error: {error}"
     );
 }
+
+#[test]
+fn saved_locks_from_snapshot_metadata_are_reused() {
+    // Python `reuse_saved_locks` semantics: locks persisted in the snapshot
+    // metadata (lock_state) are merged into the repair anchors even when the
+    // explicit anchor lists are empty.
+    let request = request_with_spare_seats();
+    let mut snapshot = snapshot_doc();
+    snapshot["metadata"] = json!({
+        "lock_state": {
+            "locked_students": ["s0"],
+            "locked_seats": ["R3C2"]
+        }
+    });
+    let repair = repair_json(
+        &request.to_string(),
+        &snapshot.to_string(),
+        &["s1".to_string()],
+        &[],
+        &[],
+    )
+    .expect("repair succeeds with saved locks");
+    let repaired: Value = serde_json::from_str(&repair).expect("repair output is JSON");
+    let assignments = repaired["assignments"].as_array().unwrap();
+    // s0 (saved locked student) stays on R1C1.
+    let s0_seat = assignments
+        .iter()
+        .find(|row| row["student_key"] == "s0")
+        .and_then(|row| row["seat_id"].as_str())
+        .expect("s0 seated");
+    assert_eq!(s0_seat, "R1C1", "saved locked student must stay anchored");
+    // R3C2 (saved locked empty seat) stays empty.
+    let seats: Vec<String> = assignments
+        .iter()
+        .map(|row| row["seat_id"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert!(
+        !seats.contains(&"R3C2".to_string()),
+        "saved locked empty seat must stay empty, got {seats:?}"
+    );
+}
+
+#[test]
+fn saved_lock_conflicting_with_affected_student_is_rejected() {
+    let request = request_with_spare_seats();
+    let mut snapshot = snapshot_doc();
+    snapshot["metadata"] = json!({
+        "lock_state": {"locked_students": ["s0"], "locked_seats": []}
+    });
+    // Affecting the saved-locked student must fail (affected ∩ locked).
+    let error = repair_json(
+        &request.to_string(),
+        &snapshot.to_string(),
+        &["s0".to_string()],
+        &[],
+        &[],
+    )
+    .expect_err("affected student cannot be saved-locked");
+    assert!(
+        error.contains("cannot also be locked"),
+        "unexpected error: {error}"
+    );
+}

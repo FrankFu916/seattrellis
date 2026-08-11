@@ -131,3 +131,19 @@ proptest! {
         );
     }
 }
+
+proptest! {
+    #[test]
+    fn canonical_normalization_is_idempotent(
+        bytes in prop::collection::vec(any::<u8>(), 0..1024),
+    ) {
+        // plan §11.3 "current schema normalization 幂等":
+        // canonical(canonical(x)) == canonical(x).
+        let document = String::from_utf8_lossy(&bytes).into_owned();
+        let value: Value = serde_json::from_str(&document).unwrap_or(Value::Null);
+        let once = canonical_json(&value);
+        let twice_input: Value = serde_json::from_str(&once).expect("canonical output parses");
+        let twice = canonical_json(&twice_input);
+        prop_assert_eq!(once, twice, "canonical normalization must be idempotent");
+    }
+}

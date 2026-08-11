@@ -1,0 +1,5 @@
+{
+  "stdout": "feasible: true\nstatus: Solved\ntotal_cost: 0\nstudents seated: 20\nwrote result JSON to '<tmp>/proj/outputs/plan.json'\n",
+  "stderr": "",
+  "exit": 0
+}

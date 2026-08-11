@@ -143,10 +143,12 @@ official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修�
 - **技术线收尾（2026-08-10，ledger §19.18）已完成**：native→crates 目录
   收敛（§1.1）、lib.rs 单体拆分 9 模块（§1.2）、candidate-set /
   plan-comparison typed DTO + oracle golden 解析（§4.2）、property-based
-  10 门（§11.3）、fuzz-style 22 入口（§11.4）、CLI stdout golden 13 命令
-  （§5.5）、repair 空座锁、roster 别名镜像。剩余诚实登记：repair
-  saved-locks、rotation 逐期 validator golden、cargo-fuzz（需 nightly）、
-  CLI 全参数 golden。
+  12 门（§11.3 全清单：solver/editing/migration + backup-restore +
+  canonical 幂等）、fuzz-style 22 入口 + **cargo-fuzz 6 个 libFuzzer
+  targets（§11.4，CI nightly job）**、CLI stdout golden 21 命令含 project
+  全生命周期（§5.5）、repair 空座锁 + saved locks、roster 别名镜像。
+  §19.18 登记的四项未闭合项全部闭合。剩余边界：CLI 参数组合全量枚举、
+  fuzz corpus 长期积累。
 
 ### 2026-08-09 post-merge acceptance audit
 

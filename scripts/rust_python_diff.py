@@ -1466,7 +1466,33 @@ def _cli_case_commands(tmp: Path) -> list[dict]:
         capture_output=True, text=True, check=False,
     )
     hist = GOLDENS / "hist-short" / "snapshot.json"
+    # Project lifecycle: one workspace under tmp/, commands run in order so
+    # later steps consume earlier outputs (project-solve produces the plan
+    # that project-export renders).
+    project_dir = tmp / "proj"
+    project_dir.mkdir(exist_ok=True)
+    for src_name, dst_name in [
+        ("students.csv", "students.csv"),
+        ("classroom.json", "layout.json"),
+        ("rules.json", "rules.json"),
+    ]:
+        shutil.copy2(fixture / src_name, project_dir / dst_name)
+    project_file = project_dir / "seattrellis.project.json"
+    plan_file = project_dir / "outputs" / "plan.json"
+    project_dir.joinpath("outputs").mkdir(exist_ok=True)
     return [
+        {"name": "project-init", "rust": ["project-init", "--dir", str(project_dir)]},
+        {"name": "project-info", "rust": ["project-info", "--project", str(project_file)]},
+        {"name": "project-validate", "rust": ["project-validate", "--project", str(project_file)]},
+        {"name": "project-solve", "rust": ["project-solve", "--project", str(project_file),
+                                          "--output", str(plan_file)]},
+        {"name": "project-export", "rust": ["project-export", "--project", str(project_file),
+                                            "--format", "svg", "--output", str(project_dir / "out.svg")]},
+        {"name": "project-rotate", "rust": ["project-rotate", "--project", str(project_file),
+                                            "--periods", "2"]},
+        {"name": "project-privacy", "rust": ["project-privacy", "--project", str(project_file)]},
+        {"name": "project-pack", "rust": ["project-pack", "--project", str(project_file),
+                                          "--output", str(tmp / "bundle.zip")]},
         {"name": "help", "rust": ["--help"]},
         {"name": "version", "rust": ["--version"]},
         {"name": "solve", "rust": ["solve", "--problem", str(solve_problem)],
