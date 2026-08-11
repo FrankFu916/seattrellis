@@ -460,6 +460,7 @@ fn rotation_generate_response(
                     "warnings": outcome.warnings,
                     "rotation_plan": plan,
                     "editor": editor,
+                    "period_editors": outcome.period_editors.unwrap_or_default(),
                     "failed_period": null,
                 }),
             )

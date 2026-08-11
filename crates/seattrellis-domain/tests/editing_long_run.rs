@@ -100,6 +100,7 @@ fn one_thousand_commands_keep_revision_monotonic_and_assignments_unique() {
         &student_keys.iter().map(String::as_str).collect::<Vec<_>>(),
         test_seats(),
         &initial,
+        None,
     )
     .expect("draft creates");
 
@@ -321,6 +322,7 @@ fn failed_commands_roll_back_atomically() {
         &student_keys,
         seats,
         &[("s1", "A1"), ("s2", "A2"), ("s3", "B1")],
+        None,
     )
     .expect("draft creates");
 

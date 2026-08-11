@@ -22,6 +22,7 @@ Python 是 oracle（行为基准），Rust 是 v2 目标实现，React 仅是展
 | `clients/web/` | React 19 + Vite + vitest | 展示层 |
 | `schemas/` | v1 oracle schema + `xtask` 由 Rust DTO 生成的 `*.v2.schema.json` | 契约 |
 | `fixtures/parity/` | golden parity corpus（`MANIFEST.json` + `inputs/` + `goldens/`，由 `scripts/gen_parity_fixtures.py` 生成） | 验证 |
+| `e2e/` `e2e-rust/` | Streamlit 浏览器验收；NO_PYTHON_RUNTIME 工作台 E2E（`web-e2e-rust` CI job，Python 仅作 runner，不安装包） | 验证 |
 | `docs/` `scripts/` `tests/` | 文档、dev/benchmark/diff 脚本、Python pytest 套件 | 支撑 |
 
 ## 构建与测试

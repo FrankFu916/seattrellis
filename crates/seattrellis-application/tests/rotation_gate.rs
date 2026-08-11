@@ -74,6 +74,43 @@ fn assert_valid_plan(outcome: &GenerateRotationOutcome, periods: usize, seed: u6
 /// seattrellis_application --test rotation_gate -- --ignored` (rust.yml
 /// long-run-gates job).
 #[test]
+fn period_editors_carry_one_draft_per_period_with_roster_names() {
+    let editor_store = new_draft_store();
+    let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
+    let outcome = run(&workbench_request(4, 2, 42), &editor_store, &solve_requests);
+    assert!(outcome.feasible);
+
+    let period_editors = outcome
+        .period_editors
+        .as_ref()
+        .expect("feasible rotation carries per-period editors");
+    assert_eq!(period_editors.len(), 2, "one editor per period");
+    for (index, editor) in period_editors.iter().enumerate() {
+        assert_eq!(
+            editor["candidate_id"],
+            format!("period-{}", index + 1),
+            "workbench matches periods by candidate_id == period-N"
+        );
+        let names: Vec<&str> = editor["students"]
+            .as_array()
+            .expect("editor students")
+            .iter()
+            .map(|student| student["display_name"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            names,
+            vec!["Student 1", "Student 2", "Student 3", "Student 4"],
+            "editor drafts must mirror the roster display names"
+        );
+    }
+    // The first period's draft doubles as the response `editor`.
+    assert_eq!(
+        outcome.editor.as_ref().expect("editor").get("candidate_id"),
+        period_editors[0].get("candidate_id")
+    );
+}
+
+#[test]
 #[ignore = "expensive: run in release mode via the CI long-run-gates job"]
 fn rotation_period_counts_are_deterministic_and_validated() {
     let editor_store = new_draft_store();

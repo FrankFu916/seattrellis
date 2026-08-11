@@ -133,14 +133,17 @@ impl EditorDraft {
     /// duplicate, unknown, or disabled references are rejected with clear
     /// errors, mirroring the Python `EditingSession.__post_init__` checks.
     ///
-    /// `display_name` is initialised to the student key (the Rust draft does
-    /// not carry a richer roster). All students and seats start unlocked.
+    /// `display_name` is initialised to the student key unless `display_names`
+    /// supplies a roster name for that key (the solve request carries the
+    /// full roster; the draft mirrors it, matching the Python oracle).
+    /// All students and seats start unlocked.
     pub fn new(
         draft_id: impl Into<String>,
         candidate_id: Option<String>,
         student_keys: &[&str],
         seats: Vec<EditorSeatSpec>,
         assignment: &[(&str, &str)],
+        display_names: Option<&HashMap<String, String>>,
     ) -> Result<EditorDraft, String> {
         let mut students = Vec::with_capacity(student_keys.len());
         let mut seen_students: HashSet<String> = HashSet::new();
@@ -152,9 +155,13 @@ impl EditorDraft {
             if !seen_students.insert(trimmed.to_string()) {
                 return Err(format!("Student keys must be unique: {trimmed}."));
             }
+            let display_name = display_names
+                .and_then(|names| names.get(trimmed))
+                .cloned()
+                .unwrap_or_else(|| trimmed.to_string());
             students.push(EditorStudent {
                 student_key: trimmed.to_string(),
-                display_name: trimmed.to_string(),
+                display_name,
                 seat_id: None,
                 locked: false,
             });
@@ -856,8 +863,16 @@ pub fn create_draft(
     student_keys: &[&str],
     seats: Vec<EditorSeatSpec>,
     assignment: &[(&str, &str)],
+    display_names: Option<&HashMap<String, String>>,
 ) -> Result<EditorState, String> {
-    let draft = EditorDraft::new(draft_id, candidate_id, student_keys, seats, assignment)?;
+    let draft = EditorDraft::new(
+        draft_id,
+        candidate_id,
+        student_keys,
+        seats,
+        assignment,
+        display_names,
+    )?;
     let state = build_editor_state(&draft);
     store_draft(store, draft)?;
     Ok(state)
@@ -977,6 +992,7 @@ mod tests {
             &["s1", "s2", "s3"],
             test_seats(),
             &[("s1", "A1"), ("s2", "A2"), ("s3", "B1")],
+            None,
         )
         .expect("test draft builds")
     }
@@ -1742,6 +1758,7 @@ mod tests {
             &["s1", "s2", "s3"],
             test_seats(),
             &[("s1", "A1"), ("s2", "A2"), ("s3", "B1")],
+            None,
         )
         .expect("draft created");
         assert_eq!(state.revision, 0);
@@ -1760,6 +1777,7 @@ mod tests {
                     enabled: true,
                 }],
                 &[("s1", "A1")],
+                None,
             )
             .is_err(),
             "duplicate draft id rejected"
@@ -1802,6 +1820,34 @@ mod tests {
     }
 
     #[test]
+    fn create_draft_mirrors_roster_display_names() {
+        let store = new_draft_store();
+        let mut names = HashMap::new();
+        names.insert("s1".to_string(), "Alpha".to_string());
+        names.insert("s2".to_string(), "Beta".to_string());
+        let state = create_draft(
+            &store,
+            "draft-names",
+            Some("candidate-1".to_string()),
+            &["s1", "s2", "s3"],
+            test_seats(),
+            &[("s1", "A1"), ("s2", "A2"), ("s3", "B1")],
+            Some(&names),
+        )
+        .expect("draft created");
+        // Named students keep their roster names; unknown keys fall back to
+        // the key (mirroring the Python oracle's editor state).
+        let by_key: HashMap<_, _> = state
+            .students
+            .iter()
+            .map(|student| (student.student_key.as_str(), student.display_name.as_str()))
+            .collect();
+        assert_eq!(by_key.get("s1"), Some(&"Alpha"));
+        assert_eq!(by_key.get("s2"), Some(&"Beta"));
+        assert_eq!(by_key.get("s3"), Some(&"s3"));
+    }
+
+    #[test]
     fn draft_store_supports_concurrent_access() {
         let store = Arc::new(new_draft_store());
         let mut handles = Vec::new();
@@ -1821,6 +1867,7 @@ mod tests {
                         enabled: true,
                     }],
                     &[("s1", "A1")],
+                    None,
                 )
                 .expect("concurrent draft created");
                 assert_eq!(state.revision, 0);

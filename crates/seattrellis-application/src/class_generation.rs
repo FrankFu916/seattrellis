@@ -97,6 +97,22 @@ pub fn generate_class(
         .collect();
 
     let draft_id = new_draft_id();
+    // Mirror the roster names into the editable draft (the Python oracle's
+    // editor state carries `display_name`, and the workbench canvas renders
+    // it), falling back to the student key when a name is absent.
+    let display_names: HashMap<String, String> = request
+        .students
+        .iter()
+        .map(|student| {
+            (
+                student.key.clone(),
+                student
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| student.key.clone()),
+            )
+        })
+        .collect();
     let editor = match editing::create_draft(
         editor_store,
         draft_id.clone(),
@@ -104,6 +120,7 @@ pub fn generate_class(
         &key_refs,
         seats,
         &assignment,
+        Some(&display_names),
     ) {
         Ok(state) => state,
         Err(message) => return Err(AppError::internal(&message)),

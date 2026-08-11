@@ -786,6 +786,48 @@ ledger §1.1 相应条目从 `PYTHON_ONLY`/无对应提升为 `RUST_PARTIAL`
 React 绕 Python E2E（`NO_PYTHON_RUNTIME`）、全写路径 rollback 故障注入
 golden、导出格式独立验证（§17.2）。
 
+### 19.10 2026-08-10：NO_PYTHON_RUNTIME 浏览器 E2E（§5.7 item 2）
+
+新增 `e2e-rust/`：真实 Chromium 驱动编译后的 React 工作台，全部流量只
+经过 Rust `seattrellis_app` 后端；CI job `web-e2e-rust`（tests.yml）
+**不安装任何 Python 包**（Python 仅是 pytest/Playwright 运行器），
+fixture 额外断言服务进程是 ELF/Mach-O 的 `seattrellis_app` 二进制且
+非 python 解释器。3 个测试（本地与 CI 同参数实测全绿）：
+
+1. `test_workbench_bootstraps_against_rust_backend`：页面加载、连接指示
+   local、浏览器同源 bootstrap Bearer token、带 token 读 catalogs。
+2. `test_import_solve_edit_export_workflow`：roster 上传（Full replace）
+   → 生成座位表 → 锁定座位（aria-label 含 locked）→ 交换两生（editor
+   command round-trip）→ undo 复原 → SVG 导出下载（`seat-plan.svg`，
+   内容以 `<svg` 开头）。
+3. `test_rotation_save_reopen_workflow`：2 期轮换生成 → Rust CLI
+   `project-init` 建 workspace → 工作台扫描/打开项目 → 轮换保存到项目
+   outputs → 重新打开并载入轮换方案。
+
+**过程中发现并修复的 Rust 契约缺口（§5.4 编辑/§5.3 轮换）**：
+
+- **editor 学生 `display_name` 只回填 student key**：`EditorDraft::new`
+  把 `display_name` 初始化为 key（注释明言 "does not carry a richer
+  roster"），导致画布显示 STU001 而非 Student001，与 Python oracle 的
+  editor state 分歧。修复：`create_draft`/`EditorDraft::new` 增加可选
+  `display_names: Option<&HashMap<String,String>>`，`class_generation` 与
+  `rotation` 从 `CoreSolveRequest.students` 回填（缺失回退 key）。新增
+  domain 单测 `create_draft_mirrors_roster_display_names`。
+- **rotation 响应缺 `period_editors`**：workbench 靠
+  `rotationDraftIds.length == rotation_plan.periods.length` 启用轮换保存
+  （`candidate_id == "period-N"` 切换期数），Rust 只返回第一期 editor。
+  修复：`GenerateRotationOutcome` 增加 `period_editors`，每期一个已通过
+  独立 validator 的 draft（`candidate_id = period-N`），服务端响应带上
+  `period_editors`。新增 `rotation_gate` 测试
+  `period_editors_carry_one_draft_per_period_with_roster_names`。
+
+E2E 证据意义（§5.7 item 2）：import→solve→edit→export→rotation
+save→reopen 全程无 Python 运行时参与，且顺带暴露并修复了两个此前
+仅凭 contract/round-trip 测试无法发现的端到端契约缺口——这正是该
+Gate 要求的证据类型。ledger §1.1 对应编辑/轮换条目证据面扩大
+（仍 `RUST_PARTIAL`，rollback 故障注入 golden 与导出格式独立验证
+未完成，不升级）。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）

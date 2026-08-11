@@ -3,6 +3,8 @@
 //! mirroring Python's `compute_rotation_plan` (service.py:178). Business
 //! logic only — no HTTP types.
 
+use std::collections::HashMap;
+
 use serde_json::{json, Value};
 
 use seattrellis_domain::room_templates::grid_from_layout;
@@ -15,7 +17,7 @@ use crate::{AppError, SolveRequestStore};
 use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of a rotation-plan request: the plan document plus an editable
-/// draft for the first period (the transport formats the response).
+/// draft per period (the transport formats the response).
 pub struct GenerateRotationOutcome {
     pub feasible: bool,
     pub status: seattrellis_core::SolveStatus,
@@ -23,6 +25,7 @@ pub struct GenerateRotationOutcome {
     pub warnings: Vec<String>,
     pub plan: Option<Value>,
     pub editor: Option<Value>,
+    pub period_editors: Option<Vec<Value>>,
     pub failed_period: Option<usize>,
 }
 
@@ -113,7 +116,7 @@ pub fn generate_rotation_plan(
     let mut snapshots = base_snapshots.clone();
     let mut periods = Vec::with_capacity(period_count);
     let warnings: Vec<String> = Vec::new();
-    let mut first_assignment: Option<Vec<[usize; 2]>> = None;
+    let mut period_assignments: Vec<(usize, Vec<[usize; 2]>)> = Vec::with_capacity(period_count);
     let class_name = request
         .layout
         .as_ref()
@@ -151,17 +154,15 @@ pub fn generate_rotation_plan(
                 warnings,
                 plan: None,
                 editor: None,
+                period_editors: None,
                 failed_period: Some(period),
             });
-        }
-
-        if first_assignment.is_none() {
-            first_assignment = Some(response.assignment.clone());
         }
 
         let snapshot = build_period_snapshot(&typed_period_request, &response, period, &label);
         snapshots.push(snapshot.clone());
         periods.push(json!({ "period": period, "label": label, "snapshot": snapshot }));
+        period_assignments.push((period, response.assignment.clone()));
     }
 
     // Build the full-plan history (base + every generated period) once, so
@@ -191,12 +192,11 @@ pub fn generate_rotation_plan(
         },
     });
 
-    // Open an editable draft from the already validated first-period solver
-    // assignment. Do not reconstruct a synthetic `Solved` response from the
-    // presentation snapshot: that would discard validation evidence.
-    let first_assignment = first_assignment
-        .ok_or_else(|| AppError::internal("rotation plan has no validated periods"))?;
-
+    // Open an editable draft per period from the already validated solver
+    // assignments. Do not reconstruct a synthetic `Solved` response from the
+    // presentation snapshot: that would discard validation evidence. The
+    // first period's draft is also the response's `editor`; the workbench
+    // switches periods by matching `candidate_id == "period-N"`.
     let draft_id = new_draft_id();
     let keys: Vec<String> = student_keys(&request);
     let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
@@ -204,28 +204,50 @@ pub fn generate_rotation_plan(
         .map(|index| seat_id_for_index(&request, index))
         .collect();
     let seats = seat_specs(&request);
-    let assignment: Vec<(&str, &str)> = first_assignment
-        .iter()
-        .filter(|[student, seat]| *student < key_refs.len() && *seat < seat_ids.len())
-        .map(|[student, seat]| (key_refs[*student], seat_ids[*seat].as_str()))
-        .collect();
-    let editor = match editing::create_draft(
-        editor_store,
-        draft_id.clone(),
-        Some(draft_id.clone()),
-        &key_refs,
-        seats,
-        &assignment,
-    ) {
-        Ok(state) => state,
-        Err(message) => return Err(AppError::internal(&message)),
-    };
-    match solve_requests.lock() {
-        Ok(mut guard) => {
-            guard.insert(draft_id.clone(), core_request);
+    let display_names = rotation_display_names(&request);
+
+    let mut period_editors: Vec<Value> = Vec::with_capacity(period_count);
+    let mut first_editor: Option<Value> = None;
+    for (period, assignment) in &period_assignments {
+        let period_draft_id = if *period == 1 {
+            draft_id.clone()
+        } else {
+            new_draft_id()
+        };
+        let period_assignment: Vec<(&str, &str)> = assignment
+            .iter()
+            .filter(|[student, seat]| *student < key_refs.len() && *seat < seat_ids.len())
+            .map(|[student, seat]| (key_refs[*student], seat_ids[*seat].as_str()))
+            .collect();
+        let editor = match editing::create_draft(
+            editor_store,
+            period_draft_id.clone(),
+            Some(format!("period-{period}")),
+            &key_refs,
+            seats.clone(),
+            &period_assignment,
+            Some(&display_names),
+        ) {
+            Ok(state) => state,
+            Err(message) => return Err(AppError::internal(&message)),
+        };
+        // Remember the (core-shaped) request that produced this draft so
+        // export can rebuild the full plan after edits.
+        match solve_requests.lock() {
+            Ok(mut guard) => {
+                guard.insert(period_draft_id, core_request.clone());
+            }
+            Err(_) => return Err(AppError::internal("solve request store is poisoned")),
         }
-        Err(_) => return Err(AppError::internal("solve request store is poisoned")),
+        let editor_value =
+            serde_json::to_value(editor).map_err(|error| AppError::internal(error.to_string()))?;
+        if first_editor.is_none() {
+            first_editor = Some(editor_value.clone());
+        }
+        period_editors.push(editor_value);
     }
+    let editor =
+        first_editor.ok_or_else(|| AppError::internal("rotation plan has no validated periods"))?;
 
     Ok(GenerateRotationOutcome {
         feasible: true,
@@ -233,11 +255,28 @@ pub fn generate_rotation_plan(
         class_name,
         warnings,
         plan: Some(plan),
-        editor: Some(
-            serde_json::to_value(editor).map_err(|error| AppError::internal(error.to_string()))?,
-        ),
+        editor: Some(editor),
+        period_editors: Some(period_editors),
         failed_period: None,
     })
+}
+
+/// Roster display names (`key -> display_name`) from the solve request, so
+/// the editable draft for period 1 renders the roster names (Python parity).
+fn rotation_display_names(request: &seattrellis_core::CoreSolveRequest) -> HashMap<String, String> {
+    request
+        .students
+        .iter()
+        .map(|student| {
+            (
+                student.key.clone(),
+                student
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| student.key.clone()),
+            )
+        })
+        .collect()
 }
 
 /// Build one period snapshot in the frontend-consumable shape:

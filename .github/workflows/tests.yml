@@ -224,6 +224,66 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
 
+  web-e2e-rust:
+    # M2 §5.7 item 2: the NO_PYTHON_RUNTIME browser E2E. The whole
+    # import -> solve/candidates -> edit/repair -> save/rotation -> export ->
+    # reopen workflow runs against the compiled Rust server and the compiled
+    # React workbench in a real Chromium. This job deliberately installs NO
+    # Python package: Python is only the pytest/Playwright runner, and the
+    # fixture asserts the serving process is the native `seattrellis_app`
+    # binary (ELF/Mach-O), not a Python interpreter.
+    name: Web E2E (Rust backend) / Ubuntu / Chromium
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+      - name: Build the React workbench
+        run: |
+          npm ci
+          npm run build
+        working-directory: clients/web
+      - uses: dtolnay/rust-toolchain@1.88
+      - name: Build the Rust server and CLI (release)
+        run: cargo build --locked --release -p seattrellis_app -p seattrellis_cli
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: e2e/constraints.txt
+      - name: Install browser test runner only (no SeatTrellis package)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -c e2e/constraints.txt pytest-playwright playwright
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run NO_PYTHON_RUNTIME workbench E2E
+        env:
+          SEATTRELLIS_E2E_RESULTS: test-results-rust
+          SEATTRELLIS_E2E_RUST_SERVER: ${{ github.workspace }}/target/release/seattrellis_app
+          SEATTRELLIS_E2E_RUST_CLI: ${{ github.workspace }}/target/release/seattrellis_cli
+          SEATTRELLIS_WEB_STATIC: ${{ github.workspace }}/clients/web/dist
+        run: >-
+          python -m pytest e2e-rust
+          --browser=chromium
+          --tracing=retain-on-failure
+          --screenshot=only-on-failure
+          --output=test-results-rust/playwright
+          --basetemp=.e2e-rust-tmp
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-e2e-rust-failure
+          path: test-results-rust/
+          if-no-files-found: ignore
+
   parity-oracle:
     # M0-02/M0-03: the frozen Python oracle corpus must stay byte-stable.
     # Regenerates every fixtures/parity case into a temp dir and compares the
