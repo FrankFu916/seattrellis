@@ -713,7 +713,7 @@ fn core_student_value(student: &Value) -> Value {
 
 /// Student keys for an editor draft: the solve request's `students` `key`,
 /// falling back to `student-N` for placeholder/padded students.
-pub(crate) fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
+pub fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
     (0..request.student_count)
         .map(|index| {
             request
@@ -730,7 +730,7 @@ pub(crate) fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
 /// Seat specs for an editor draft: prefer the layout's authoritative
 /// row/col/enabled per seat; otherwise derive grid coordinates from the raw
 /// `seat_positions` (mirrors `render::seat_row_col`).
-pub(crate) fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
+pub fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
     request
         .seat_positions
         .iter()
@@ -755,7 +755,7 @@ pub(crate) fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
 
 /// The seat id the editor draft uses for a seat index: the layout's `seat_id`
 /// when present, else `seat-N`.
-pub(crate) fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
+pub fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
     request
         .layout
         .as_ref()

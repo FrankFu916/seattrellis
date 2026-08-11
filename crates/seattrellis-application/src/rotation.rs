@@ -39,9 +39,6 @@ pub fn generate_rotation_plan(
 ) -> Result<GenerateRotationOutcome, AppError> {
     // Expand the workbench request exactly like class generation.
     let core_request = frontend_class_request_to_core(raw_request)?;
-    let request: seattrellis_core::CoreSolveRequest = serde_json::from_value(core_request.clone())
-        .map_err(|_| AppError::bad_request("request body is not a valid solve problem"))?;
-
     let period_count = match raw_request.get("period_count") {
         None => 4,
         Some(value) => value
@@ -93,6 +90,62 @@ pub fn generate_rotation_plan(
         .pointer("/options/seed")
         .and_then(Value::as_u64)
         .unwrap_or(DEFAULT_SEED);
+    let name = raw_request
+        .pointer("/draft/name")
+        .and_then(Value::as_str)
+        .unwrap_or("SeatTrellis Rotation Plan")
+        .to_string();
+    let base_snapshots: Vec<Value> = raw_request
+        .pointer("/draft/history_snapshots")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    generate_rotation_plan_from_core(
+        &core_request,
+        RotationOptions {
+            period_count,
+            labels,
+            base_seed,
+            plan_name: name,
+            base_snapshots,
+        },
+        editor_store,
+        solve_requests,
+    )
+}
+
+/// Per-run rotation options shared by the frontend-shaped and core-shaped
+/// entry points.
+pub struct RotationOptions {
+    pub period_count: usize,
+    pub labels: Vec<String>,
+    pub base_seed: u64,
+    pub plan_name: String,
+    /// Base history snapshots fed into the first period (frontend drafts
+    /// only; the CLI's project-rotate passes none).
+    pub base_snapshots: Vec<Value>,
+}
+
+/// Rotation generation from an already-compiled `CoreSolveRequest` JSON
+/// document (the CLI's project-rotate entry point). The frontend-shaped
+/// request and the core-shaped request share this path, so every rotation
+/// product — wherever it is generated — goes through the same solver +
+/// independent-validation loop.
+pub fn generate_rotation_plan_from_core(
+    core_request: &Value,
+    options: RotationOptions,
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+) -> Result<GenerateRotationOutcome, AppError> {
+    let RotationOptions {
+        period_count,
+        labels,
+        base_seed,
+        plan_name,
+        base_snapshots,
+    } = options;
+    let request: seattrellis_core::CoreSolveRequest = serde_json::from_value(core_request.clone())
+        .map_err(|_| AppError::bad_request("request body is not a valid solve problem"))?;
 
     // Rebuild the grid and student records for history accumulation; the
     // base snapshots come from the draft exactly as class generation sees them.
@@ -104,11 +157,6 @@ pub fn generate_rotation_plan(
     .map_err(AppError::bad_request)?;
     let students: Vec<Value> = core_request
         .get("students")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let base_snapshots: Vec<Value> = raw_request
-        .pointer("/draft/history_snapshots")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
@@ -176,10 +224,7 @@ pub fn generate_rotation_plan(
     let plan = json!({
         "schema_version": "0.2.2",
         "kind": "rotation_plan",
-        "name": raw_request
-            .pointer("/draft/name")
-            .and_then(Value::as_str)
-            .unwrap_or("SeatTrellis Rotation Plan"),
+        "name": plan_name,
         "periods": periods,
         "base_history_count": base_snapshots.len(),
         "fairness_summary": fairness_summary,

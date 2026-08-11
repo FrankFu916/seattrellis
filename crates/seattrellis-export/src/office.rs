@@ -144,8 +144,8 @@ fn xlsx_seating_sheet(grid: &SeatingGrid) -> String {
         r#"<row r="1">{}</row>"#,
         inline_string_cell("A1", &grid.title)
     ));
-    let mut row_index = 3;
     for row in grid.min_row..=grid.max_row {
+        let row_index = row - grid.min_row + 3;
         let mut row_xml = format!(r#"<row r="{row_index}">"#);
         for col in grid.min_col..=grid.max_col {
             let reference = format!("{}{row_index}", excel_column((col - grid.min_col) as usize));
@@ -165,7 +165,6 @@ fn xlsx_seating_sheet(grid: &SeatingGrid) -> String {
         }
         row_xml.push_str("</row>");
         sheet.push_str(&row_xml);
-        row_index += 1;
     }
     sheet.push_str("</sheetData></worksheet>");
     sheet
@@ -180,11 +179,11 @@ fn xlsx_assignments_sheet(grid: &SeatingGrid) -> String {
     sheet.push_str(
         r#"<row r="1"><c r="A1" t="inlineStr"><is><t>student_key</t></is></c><c r="B1" t="inlineStr"><is><t>student_name</t></is></c><c r="C1" t="inlineStr"><is><t>seat_id</t></is></c></row>"#,
     );
-    let mut row_index = 2;
-    for cell in &grid.cells {
+    for (offset, cell) in grid.cells.iter().enumerate() {
         let (Some(key), Some(student)) = (&cell.student_key, &cell.student) else {
             continue;
         };
+        let row_index = 2 + offset;
         let seat_id = seat_id_for(grid, cell);
         sheet.push_str(&format!(
             r#"<row r="{row_index}">{}{}{}</row>"#,
@@ -192,7 +191,6 @@ fn xlsx_assignments_sheet(grid: &SeatingGrid) -> String {
             inline_string_cell(&format!("B{row_index}"), student),
             inline_string_cell(&format!("C{row_index}"), &seat_id),
         ));
-        row_index += 1;
     }
     sheet.push_str("</sheetData></worksheet>");
     sheet
@@ -405,17 +403,16 @@ pub fn render_pptx(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     let cell_h = height / rows;
 
     let mut shapes = String::new();
-    let mut id = 2_u32;
-    // Title shape at the top.
+    // Title shape at the top (shape id 2; seat shapes follow from 3).
     shapes.push_str(&pptx_shape(
-        id,
+        2,
         "Title",
         (margin, 0, width, 400_000),
         false,
         &[&grid.title],
     ));
-    id += 1;
-    for cell in &grid.cells {
+    for (offset, cell) in grid.cells.iter().enumerate() {
+        let shape_id = 3 + offset as u32;
         let x = margin + (cell.col as i64 - grid.min_col as i64) * cell_w;
         let y = margin / 2 + (cell.row as i64 - grid.min_row as i64) * cell_h;
         let mut lines = vec![seat_id_for(grid, cell)];
@@ -428,13 +425,12 @@ pub fn render_pptx(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
         }
         let refs = lines.iter().map(String::as_str).collect::<Vec<_>>();
         shapes.push_str(&pptx_shape(
-            id,
+            shape_id,
             &seat_id_for(grid, cell),
             (x, y, cell_w - 10_000, cell_h - 10_000),
             true,
             &refs,
         ));
-        id += 1;
     }
 
     let slide = format!(

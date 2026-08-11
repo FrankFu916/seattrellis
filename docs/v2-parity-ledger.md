@@ -868,6 +868,45 @@ ledger §1.1 导出条目从 "SVG/HTML/PNG/PDF 路径存在、Office/CJK 未完�
 证据齐备 → `RUST_PARITY_PENDING`（有实现与语义契约证据；字节级 golden
 与 CJK PDF 字体策略仍为 M4 决策项）。
 
+### 19.12 2026-08-10：CLI 项目生命周期补齐（§5.5/§5.7 item 3）
+
+Rust CLI 再增 **6 个子命令**（现共 26 个），关闭 §19.9 登记的剩余差距：
+
+- **`project-rotate`**：`--project --periods(1..=20) --seed --output`。经
+  应用层新增的 `generate_rotation_plan_from_core` 入口（与 server 的
+  frontend 路径共用同一个 solver + 独立 validator 循环，前端
+  `generate_rotation_plan` 重构为薄封装）；默认把 `rotation-plan.json`
+  持久化进项目 outputs（`io::rotation::rotation_save_json`，镜像 Python
+  默认），`--output` 可改写到任意路径。
+- **`project-edit`**：`--project [--snapshot] [--operation <json>...]
+  [--operations-file <json>] [--output] [--strict]`。接受两种已保存 plan
+  形状（`project-solve` 的 `CoreSolveResponse` 与 editor 风格
+  `assignments`），经 domain `create_draft` + `apply_command_in_store`
+  应用操作；**`--strict` 时编辑产物先过独立 validator，违规即拒绝写出**
+  （实测：违反固定座位规则的编辑被正确拒绝）。输出 editor 风格快照，
+  `project-export` 可直接渲染。
+- **`project-repair`**：`--project [--snapshot] --affected/--locked-*`，
+  复用 `repair_json`；默认输出 `repaired-<name>.snapshot.json` 到项目
+  outputs。锚点与固定座位冲突时给出明确错误（实测）。
+- **`schema-list`**：打印 v2 artifact registry（12 种 kind × 当前版本 ×
+  migratable 策略）。
+- **`schema-export`**：`--kind --output`，编译期嵌入 `schemas/*.v2.json`
+  （xtask 生成、CI drift-check 的同一批文件），release 二进制任意目录可用。
+- **`schema-migrate`**：`--input [--output | --in-place | --dry-run]`，
+  经 `seattrellis-schema::migrate_v1_to_v2`（StudentRoster/ClassroomLayout
+  有 v1→v2 类型化迁移；其余 kind 明确报错）。信封包装的 v1 文档自动
+  unwrap `data` 部分。
+
+集成测试 `project_rotate_edit_repair_and_schema_group` 端到端覆盖
+init → solve → rotate(2 期) → edit(swap + 文件操作 + strict) → repair →
+schema list/export/migrate；`project-solve` 等既有命令回归全绿。
+
+**§5.7 item 3 评估**：CLI 现可完成 init → info/validate → solve → edit →
+rotate → repair → export → privacy → pack/restore 的整条项目生命周期
+（26 子命令 + help/version）。`init-demo`/`workspace`/`desktop` 为 v1
+开发/桌面工具，v2 由 Tauri 壳替代，登记为 M4 决策项（候选
+INTENTIONALLY_REMOVED_V2）。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）

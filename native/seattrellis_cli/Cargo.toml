@@ -20,6 +20,9 @@ categories = ["command-line-utilities", "mathematics"]
 seattrellis_core = { path = "../seattrellis_core", version = "0.1" }
 seattrellis-io = { path = "../../crates/seattrellis-io" }
 seattrellis-export = { path = "../../crates/seattrellis-export" }
+seattrellis-application = { path = "../../crates/seattrellis-application" }
+seattrellis-domain = { path = "../../crates/seattrellis-domain" }
+seattrellis-schema = { path = "../../crates/seattrellis-schema" }
 serde_json = "1"
 png = "0.17"
 

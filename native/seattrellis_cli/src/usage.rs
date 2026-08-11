@@ -41,6 +41,18 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("   Solve a project workspace.\n    ");
     out.push_str(&styler.cyan("project-export"));
     out.push_str("  Export a project plan.\n    ");
+    out.push_str(&styler.cyan("project-rotate"));
+    out.push_str("  Generate future seating periods for a project.\n    ");
+    out.push_str(&styler.cyan("project-edit"));
+    out.push_str("    Apply manual edits to a project seating artifact.\n    ");
+    out.push_str(&styler.cyan("project-repair"));
+    out.push_str("  Re-solve a project artifact preserving anchors.\n    ");
+    out.push_str(&styler.cyan("schema-list"));
+    out.push_str("    List the v2 artifact registry.\n    ");
+    out.push_str(&styler.cyan("schema-export"));
+    out.push_str("   Write the JSON Schema for one artifact kind.\n    ");
+    out.push_str(&styler.cyan("schema-migrate"));
+    out.push_str("  Validate and rewrite a versioned JSON artifact.\n    ");
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));

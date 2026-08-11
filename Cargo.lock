@@ -2979,8 +2979,11 @@ name = "seattrellis_cli"
 version = "0.1.0"
 dependencies = [
  "png 0.17.16",
+ "seattrellis-application",
+ "seattrellis-domain",
  "seattrellis-export",
  "seattrellis-io",
+ "seattrellis-schema",
  "seattrellis_core",
  "serde_json",
 ]
