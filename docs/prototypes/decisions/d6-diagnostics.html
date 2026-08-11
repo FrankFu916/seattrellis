@@ -3,142 +3,86 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>D6 · 可行性诊断 — SeatTrellis v2 原型</title>
+<title>D6 · 可行性诊断（融合方案）— SeatTrellis v2 原型</title>
 <link rel="stylesheet" href="../assets/prototypes.css">
 <style>
   .diag-layout { display:grid; grid-template-columns: 340px 1fr; gap:12px; padding:12px; }
-  .diag-layout .issues-col { display:flex; flex-direction:column; gap:7px; max-height:420px; overflow:auto; }
+  .diag-layout .issues-col { display:flex; flex-direction:column; gap:7px; max-height:430px; overflow:auto; }
   .seat-tip { position:absolute; z-index:20; width:230px; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px 12px; font-size:12px; box-shadow:0 8px 24px rgba(2,6,23,.4); }
   .seat-tip .st-title { font-weight:700; color:#fff; margin-bottom:4px; }
   .seat-tip .st-body { color:#cbd5e1; }
   .seat-tip button { margin-top:8px; }
-  .fix-progress { display:flex; gap:6px; padding:10px 14px; border-bottom:1px solid var(--line); }
-  .fix-progress .fp { flex:1; height:6px; border-radius:999px; background:#e2e8f0; }
-  .fix-progress .fp.done { background:var(--ok); }
-  .fix-progress .fp.active { background:var(--brand); }
   .stage-wrap { position:relative; }
+  .issue-row.linked { border-color:var(--brand); background:var(--brand-soft); }
 </style>
 </head>
 <body>
 
 <header class="pt-topbar">
   <a href="../index.html">← 决策总览</a>
-  <span class="crumb">/ <b>D6 · 可行性诊断</b></span>
+  <span class="crumb">/ <b>D6 · 可行性诊断（融合方案）</b></span>
   <span class="spacer"></span>
-  <span class="progress-chip">6 / 8 · 决策 D6</span>
+  <span class="progress-chip">6 / 8 · D6 已决策 → 确认融合形态</span>
 </header>
 
 <main class="pt-main">
   <section class="dec-head">
-    <span class="kicker">Decision D6 · 计划 §7.1 项 6 / §7.3</span>
-    <h1>可行性诊断：问题列表 + 高亮 / 向导式修复 / 内联诊断</h1>
-    <p class="task">真实任务：系统给出候选方案 C（总分 81.5，<b>2 项硬规则违反</b>）。教师需要快速理解「哪里错、为什么错、怎么改」。三方案展示同一份诊断数据的三种串联方式。</p>
-    <div class="constraints"><b>数据契约（§6.5 已冻结）</b>：诊断来自 Rust audit 报告——hard_constraint_summary（all_satisfied / checked_rule_count / violation_count / witnesses）+ 七维软目标 breakdown + missing_data + suggested_actions（message_key + args 本地化）。<b>本决策只冻结呈现与操作串联。</b></div>
+    <span class="kicker">PD-D6-DIAGNOSTICS · 计划 §7.1 项 6 / §6.5</span>
+    <h1>可行性诊断 — 融合方案：内联徽章 + 问题列表双向联动 + 一键修复</h1>
+    <p class="task">真实任务不变：教师面对方案 C（2 项硬规则违反）：哪里错、为什么错、怎么改。<b>画布内联徽章（A 的空间定位 + C 的所见即所得）与侧边问题列表（严重级排序）并存，双向联动；「一键修复全部」与逐条修复入口并存。</b></p>
+    <div class="constraints"><b>不可违反约束</b>：诊断数据来自 Rust audit（hard_constraint_summary + 七维 breakdown + missing_data + suggested_actions，§6.5）；修复动作走 Rust editing 命令 + 独立 validator 复核；不得硬编码 feasible=true；与 D5 共用 audit 消费组件（同源）。</div>
   </section>
 
-  <section class="variants">
-
-    <!-- Variant A: issue list + highlight -->
-    <div class="variant" id="vA">
+  <section class="variants wide">
+    <div class="variant" id="vFinal">
       <div class="v-head">
-        <span class="v-badge">A</span>
-        <div><div class="v-title">问题列表 + 座位高亮</div>
-        <div class="v-sub">左侧问题清单（严重级排序），右侧座位图联动高亮；点问题 → 定位相关学生/座位。</div></div>
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态</div>
+        <div class="v-sub">左：问题列表（HARD/建议分级、逐条修复按钮）；右：画布内联徽章（红=硬规则违反 / 黄=建议）；点击任一侧定位另一侧；顶部「一键修复全部」。</div></div>
       </div>
       <div class="v-visual"><div class="inner">
         <div class="mock-app">
           <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/diagnose</span></div>
           <div class="cand-head">
             <span class="chip red">方案 C · 2 项硬规则违反</span>
-            <span class="spacer"></span><button class="btn primary" style="font-size:11.5px">一键修复全部</button>
+            <span class="small muted">+ 1 项建议 · 修复均经 Rust editing + validator 复核</span>
+            <span class="spacer"></span>
+            <button class="btn primary" style="font-size:11.5px" id="btnFixAll">一键修复全部</button>
           </div>
           <div class="diag-layout">
-            <div class="issues-col" id="issuesA"></div>
-            <div class="panel"><div class="panel-head">座位图 <span class="sub">红 = 硬规则违反 · 黄 = 建议</span></div>
-              <div class="panel-body stage-wrap" id="stageA"><div id="gridA"></div></div>
+            <div class="issues-col" id="issues"></div>
+            <div class="panel"><div class="panel-head">座位图 <span class="sub">红 = 硬规则违反 · 黄 = 建议 · 点击徽章定位左侧问题</span></div>
+              <div class="panel-body stage-wrap" id="stage"><div id="grid"></div></div>
             </div>
           </div>
-        </div>
-        <div class="note mt8"><b>试一下</b>：点击左侧任一问题，右侧对应座位高亮；「修复」按钮逐个执行（Rust editing 命令 + validator 复核）。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>问题全景 + 空间定位并行；严重级排序引导注意力；修复入口集中（一键/逐个）；实现简单可靠。</div>
-        <div class="con"><span class="t-label">代价</span>列表与画布需要「双向联动」状态管理；小屏下列表挤压画布；问题多时（10+）列表滚动负担。</div>
-      </div>
-    </div>
-
-    <!-- Variant B: guided repair wizard -->
-    <div class="variant" id="vB">
-      <div class="v-head">
-        <span class="v-badge">B</span>
-        <div><div class="v-title">向导式修复</div>
-        <div class="v-sub">一次只处理一个问题：读问题 → 看定位 → 点修复 → 验证通过 → 进入下一个；顶部显示修复进度。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <div class="mock-app">
-          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/repair</span></div>
-          <div class="fix-progress"><span class="fp active"></span><span class="fp"></span><span class="fp"></span><span class="fp"></span></div>
-          <div class="cand-head">
-            <span class="chip red">问题 1 / 3 · HARD</span>
-            <span class="small">固定座位规则被违反</span>
-            <span class="spacer"></span><span class="small muted">修好后自动进入下一项</span>
-          </div>
-          <div class="diag-layout">
-            <div>
-              <div class="issue-row" style="border-color:var(--bad);border-left:3px solid var(--bad)">
-                <div class="i-body">
-                  <div class="i-title">学生丁001（STU001）应固定于 R1C1，实际在 R1C2</div>
-                  <div class="i-desc mt8">此规则为 HARD：不修复则方案不可用。R1C1 当前为空座，可直接移回。</div>
-                  <div class="i-fix"><button class="btn primary" style="font-size:11.5px" id="fixStepB">⇄ 移回固定座位</button>
-                    <button class="btn" style="font-size:11.5px">跳过（下个问题）</button></div>
-                </div>
-              </div>
-              <div class="note mt8">修复动作 = Rust editing 命令（swap），执行后经独立 validator 复核才显示「通过」。</div>
-            </div>
-            <div class="panel"><div class="panel-head">定位 <span class="sub">R1C2（学生丁001）→ R1C1（空）</span></div>
-              <div class="panel-body stage-wrap" id="stageB"><div id="gridB"></div></div>
-            </div>
+          <div class="canvas-status" style="padding:7px 12px;background:#f8fafc;border-top:1px solid var(--line)">
+            <span id="status">就绪：点列表或徽章双向定位</span>
           </div>
         </div>
-        <div class="note mt8">向导强制线性推进，避免「修了一个、忘了下一个」；每步结束给出 validator 复核结果。</div>
+        <div class="note mt8"><b>试一下</b>：① 点击左侧问题 → 右侧对应座位高亮；② 点击座位上的「违反/建议」徽章 → 左侧问题项高亮并显示诊断卡；③ 点「一键修复全部」。</div>
       </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>认知负担最低——一次一个决定；修复进度可视化（顶部进度条）；最不易漏修；适合硬规则违规较多的场景。</div>
-        <div class="con"><span class="t-label">代价</span>问题多时步骤冗长；「跳过」语义需要明确（记入待办还是忽略）；无全局视图，教师难以评估总体状况。</div>
+
+      <div class="v-tradeoff" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="pro"><span class="t-label">来自 A</span>问题列表全景 + 严重级排序 + 一键修复全部</div>
+        <div class="pro"><span class="t-label">来自 C</span>画布内联徽章 + 点击诊断卡：所见即所得，与 D2 画布复用同一渲染组件</div>
+        <div class="pro"><span class="t-label">联动</span>双向定位：点列表高亮座位、点徽章定位列表项——两种心智模型并行不冲突</div>
+      </div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">双向联动</td><td>点列表 → 座位 selected 高亮；点徽章 → 列表项 linked 高亮 + 诊断卡；同一 audit 数据源（与 D5 共用）</td></tr>
+          <tr><td class="src">修复入口</td><td>「一键修复全部」+ 逐条「修复」按钮；全部走 Rust editing 命令 + 独立 validator 复核</td></tr>
+          <tr><td class="src">B 的处理</td><td>向导式修复不默认提供；违规较多时可保留轻量「修复向导」入口（可选，dogfood 决定）</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>无新 API；audit 消费组件与 D5 共用</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待验证（dogfood）：</p>
+        <ul class="pending-list">
+          <li>徽章密度在 60 人教室的可读性</li>
+          <li>「修复向导」入口是否保留</li>
+        </ul>
       </div>
     </div>
-
-    <!-- Variant C: inline diagnostics on canvas -->
-    <div class="variant" id="vC">
-      <div class="v-head">
-        <span class="v-badge">C</span>
-        <div><div class="v-title">内联诊断（画布直示）</div>
-        <div class="v-sub">违规/建议直接标在座位上（红/黄徽章），点击座位弹出诊断卡；名单侧同样内联标注。</div></div>
-      </div>
-      <div class="v-visual"><div class="inner">
-        <div class="mock-app">
-          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/canvas</span></div>
-          <div class="canvas-toolbar">
-            <span class="chip red">2 项硬规则违反</span><span class="chip amber">1 项建议</span>
-            <span class="spacer" style="flex:1"></span>
-            <button class="btn" style="font-size:11.5px">显示问题列表</button><button class="btn primary" style="font-size:11.5px">一键修复</button>
-          </div>
-          <div class="canvas-stage stage-wrap" style="background:#eef1f6;padding:16px;position:relative" id="stageC">
-            <div id="gridC"></div>
-          </div>
-          <div class="canvas-status">
-            <span>点击带徽章的座位查看诊断；画布上直接呈现违规 = 所见即所得</span>
-            <span style="flex:1"></span><span id="statusC">就绪</span>
-          </div>
-        </div>
-        <div class="note mt8"><b>试一下</b>：点击红色/黄色徽章座位，弹出诊断卡与修复按钮。</div>
-      </div></div>
-      <div class="v-tradeoff">
-        <div class="pro"><span class="t-label">优势</span>违规与空间位置零距离融合，教师直接看到「谁的座位有问题」；无需切换视图；与 D2 画布天然合一。</div>
-        <div class="con"><span class="t-label">代价</span>复杂问题（多学生关联、历史原因）在座位卡内放不下，仍需列表/详情；徽章多了视觉噪声；「问题全局排序」缺失。</div>
-      </div>
-    </div>
-
   </section>
 </main>
 
@@ -152,10 +96,11 @@
 
   // Violations vs plan C:
   //  - fixed_seats: STU001 sits at R1C2 (must be R1C1)
-  //  - min_distance: STU007 (R5C2) and STU008 (R5C3) are adjacent (< 2)
+  //  - min_distance: STU007 (R5C2) and STU008 (R5C3) adjacent (< 2)
   //  - vision_front warning: STU020 at R2C3, not in row 1
   var VIOL = ["R1C2", "R5C2", "R5C3"];
   var WARN = ["R2C3"];
+  var SEAT_TAG = { R1C2: "违反", R5C2: "违反", R5C3: "违反", R2C3: "建议" };
 
   var issues = [
     { sev: "error", seat: "R1C2", title: "固定座位规则被违反",
@@ -166,109 +111,75 @@
       desc: "学生一020（STU020）标记「需要前排」，当前在第 2 排。", fix: "移到第 1 排" }
   ];
 
-  var SEAT_TAG = { R1C2: "违反", R5C2: "违反", R5C3: "违反", R2C3: "建议" };
+  var holder = document.getElementById("issues");
+  var status = document.getElementById("status");
 
-  function renderGrid(id, plan, opts) {
-    PTUI.renderSeatGrid(document.getElementById(id), {
-      plan: { assignment: plan.assignment },
-      locks: ["R1C1"], violations: opts.violations, selected: opts.selected || [],
-      tags: opts.tags
-    });
-  }
-
-  /* ---------- Variant A: list + highlight ---------- */
-  (function () {
-    var holder = document.getElementById("issuesA");
+  function renderIssues() {
+    holder.innerHTML = "";
     issues.forEach(function (issue, i) {
       var row = document.createElement("div");
       row.className = "issue-row";
+      row.dataset.seat = issue.seat;
       row.innerHTML =
         '<span class="sev">' + (issue.sev === "error"
           ? '<span class="chip red">HARD</span>' : '<span class="chip amber">建议</span>') + "</span>" +
         '<div class="i-body"><div class="i-title">' + issue.title + "</div>" +
         '<div class="i-desc">' + issue.desc + "</div>" +
         '<div class="i-fix"><button class="btn primary" style="font-size:11px">' + issue.fix + "</button></div></div>";
-      holder.appendChild(row);
       row.addEventListener("click", function (e) {
         if (e.target.closest("button")) return;
-        holder.querySelectorAll(".issue-row").forEach(function (r) { r.style.borderColor = ""; r.style.background = ""; });
-        row.style.borderColor = "var(--brand)";
-        row.style.background = "var(--brand-soft)";
-        var seat = issue.seat;
-        var grid = document.getElementById("gridA");
-        grid.querySelectorAll(".seat").forEach(function (s) {
-          s.classList.remove("selected", "dim");
-          var sid = s.getAttribute("title").split(" ")[0];
-          if (sid === seat) s.classList.add("selected");
-        });
+        linkToSeat(issue.seat);
       });
+      holder.appendChild(row);
     });
-    renderGrid("gridA", PT.planC, { violations: VIOL, tags: SEAT_TAG });
-  })();
+  }
 
-  /* ---------- Variant B: guided repair ---------- */
-  (function () {
-    var grid = document.getElementById("gridB");
-    var stage = document.getElementById("stageB");
-    var state = JSON.parse(JSON.stringify(PT.planC.assignment));
-    var fixed = false;
+  function linkToSeat(seat) {
+    holder.querySelectorAll(".issue-row").forEach(function (r) {
+      r.classList.toggle("linked", r.dataset.seat === seat);
+    });
+    var grid = document.getElementById("grid");
+    grid.querySelectorAll(".seat").forEach(function (s) {
+      s.classList.remove("selected", "dim");
+      var sid = s.getAttribute("title").split(" ")[0];
+      if (sid === seat) s.classList.add("selected");
+    });
+    var issue = issues.filter(function (i) { return i.seat === seat; })[0];
+    status.textContent = seat + " · " + (issue ? issue.title : "");
+  }
 
-    function rerender() {
-      PTUI.renderSeatGrid(grid, { plan: { assignment: state }, locks: ["R1C1"], violations: fixed ? [] : VIOL, tags: fixed ? {} : SEAT_TAG });
+  // Render grid with inline badges; clicking a badge locates the list item.
+  PTUI.renderSeatGrid(document.getElementById("grid"), {
+    plan: { assignment: PT.planC.assignment }, locks: ["R1C1"], violations: VIOL, tags: SEAT_TAG
+  });
+  var gridEl = document.getElementById("grid");
+  var stage = document.getElementById("stage");
+  gridEl.addEventListener("click", function (e) {
+    var seat = e.target.closest(".seat");
+    if (!seat) return;
+    var sid = seat.getAttribute("title").split(" ")[0];
+    if (SEAT_TAG[sid]) {
+      linkToSeat(sid);
+    } else {
+      status.textContent = sid + " · 无诊断信息";
     }
-    rerender();
+  });
 
-    document.getElementById("fixStepB").addEventListener("click", function () {
-      // swap R1C2 (STU001) with R1C1 (empty in plan C? no - plan C has STU005 there)
-      // Real repair: move STU001 back to R1C1; put the displaced student into R1C2.
-      var displaced = state["R1C1"];
-      state["R1C1"] = "STU001";
-      state["R1C2"] = displaced;
-      fixed = true;
-      rerender();
-      PTUI.toast("修复已应用并通过独立 validator 复核（fixed_seats ✓）");
-      var btn = document.getElementById("fixStepB");
-      btn.textContent = "✓ 已修复（validator 复核通过）";
-      btn.disabled = true;
-      var dots = document.querySelectorAll("#vB .fp");
-      dots[0].classList.remove("active"); dots[0].classList.add("done");
-      dots[1].classList.add("active");
-    });
-  })();
+  renderIssues();
 
-  /* ---------- Variant C: inline tooltips ---------- */
-  (function () {
-    var stage = document.getElementById("stageC");
-    var status = document.getElementById("statusC");
-    renderGrid("gridC", PT.planC, { violations: VIOL, tags: SEAT_TAG });
-
-    var tip = null;
-    stage.addEventListener("click", function (e) {
-      var seat = e.target.closest(".seat");
-      if (!seat) return;
-      var sid = seat.getAttribute("title").split(" ")[0];
-      if (tip) { tip.remove(); tip = null; }
-      if (!SEAT_TAG[sid]) { status.textContent = sid + " · 无诊断信息"; return; }
-      var issue = issues.filter(function (i) { return i.seat === sid; })[0];
-      tip = document.createElement("div");
-      tip.className = "seat-tip";
-      var r = seat.getBoundingClientRect(), s = stage.getBoundingClientRect();
-      tip.style.left = Math.min(r.left - s.left + r.width + 8, stage.clientWidth - 240) + "px";
-      tip.style.top = Math.max(4, r.top - s.top - 8) + "px";
-      tip.innerHTML = '<div class="st-title">' + (issue.sev === "error" ? "⚠ " : "💡 ") + issue.title + "</div>" +
-        '<div class="st-body">' + issue.desc + "</div>" +
-        '<button class="btn primary" style="font-size:11px;background:#fff;color:var(--brand-ink)">' + issue.fix + "</button>";
-      stage.appendChild(tip);
-      status.textContent = sid + " · " + issue.title;
-    });
-    document.addEventListener("click", function (e) {
-      if (tip && !tip.contains(e.target) && !e.target.closest(".seat")) { tip.remove(); tip = null; }
-    });
-  })();
+  // Fix-all button (demo: fixes issue 1, then marks the row resolved).
+  document.getElementById("btnFixAll").addEventListener("click", function () {
+    var first = holder.querySelector(".issue-row");
+    if (!first) return;
+    first.classList.add("resolved");
+    first.querySelector(".i-title").textContent = "已修复：移回固定座位（validator 复核通过 ✓）";
+    status.textContent = "一键修复：问题 1 已应用并通过独立 validator 复核（演示）";
+    PTUI.toast("修复动作走 Rust editing 命令 + 独立 validator 复核");
+  });
 })();
 </script>
 <script>
-  PTUI.initDecision("d6", ["问题列表 + 高亮", "向导式修复", "内联诊断"]);
+  PTUI.initDecision("d6");
 </script>
 </body>
 </html>

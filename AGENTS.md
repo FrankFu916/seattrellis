@@ -124,6 +124,18 @@ false-infeasible=0、随机可行 ≥99.5%、性能回归门槛与长跑内存�
 official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修订版
 可进入 M4 Product Decision/UX（§7.1 Decision Backlog 需产品输入）。
 
+## M4 进度（2026-08-10）
+
+- 原型画廊 `docs/prototypes/`（纯静态 HTML，真实 parity corpus 数据）承载
+  §7.1 Decision Backlog 批 1（D1–D8 核心工作流）的变体对比与融合形态确认。
+- 批 1 决策已由产品负责人逐项选择/融合，**冻结记录见
+  `docs/product-decisions/2026-08-10-batch1-core-workflow.md`**（含 G-1 去术语化
+  文案资产、G-2 多视图共享编辑状态与 undo 栈、G-3 复现信息可查、G-4 默认值
+  证据要求、G-5 临时工作台语义；PD-D3-ADJ-1 规则 JSON 仅只读）。
+- 批 1 仍为"交互契约草案"：待目标形态页在真实浏览器确认与 dogfood 验证后
+  才算冻结（§7.9）。批 2（导出面板、新手引导、print-html、PDF CJK 字体、
+  PNG 文字、原生对话框、遗留命令去留）未开始。
+
 ### 2026-08-09 post-merge acceptance audit
 
 - `0057a7b` 合并了 repair/reports/project/rotation/privacy 等实现路径；`320b68f` 只更改 ledger 状态，未增加 golden 等价证据。
