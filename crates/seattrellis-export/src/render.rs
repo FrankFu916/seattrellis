@@ -30,6 +30,10 @@ pub struct GridCell {
     /// the name when the privacy options ask for it (C.8).
     pub detail: Option<String>,
     pub enabled: bool,
+    /// The seated student's key (identifier), when the request carries one.
+    /// Used by the Office (XLSX/DOCX/PPTX) writers to mirror the oracle's
+    /// "Assignments" sheet; the SVG/HTML/PNG/PDF renderers ignore it.
+    pub student_key: Option<String>,
 }
 
 /// The full classroom grid recovered from a problem + solved assignment.
@@ -57,12 +61,16 @@ impl SeatingGrid {
         // attach one student's height/vision to another student's name after
         // any non-identity solve or manual edit.
         let mut student_by_seat: HashMap<usize, String> = HashMap::new();
+        let mut key_by_seat: HashMap<usize, String> = HashMap::new();
         let mut detail_by_seat: HashMap<usize, String> = HashMap::new();
         for [student_index, seat_index] in &response.assignment {
             if *student_index >= request.student_count || *seat_index >= seat_count {
                 continue;
             }
             student_by_seat.insert(*seat_index, student_label(request, *student_index));
+            if let Some(key) = request.students.get(*student_index).map(|s| s.key.clone()) {
+                key_by_seat.insert(*seat_index, key);
+            }
             if let Some(detail) = request
                 .students
                 .get(*student_index)
@@ -88,6 +96,7 @@ impl SeatingGrid {
                 col,
                 seat_index,
                 student: student_by_seat.get(&seat_index).cloned(),
+                student_key: key_by_seat.get(&seat_index).cloned(),
                 detail: detail_by_seat.get(&seat_index).cloned(),
                 enabled,
             });

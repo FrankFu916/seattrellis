@@ -563,20 +563,29 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
     let problem_value: serde_json::Value = serde_json::from_str(&problem_text)
         .map_err(|error| format!("'{}' is not valid JSON: {error}", args.problem.display()))?;
-    let request: CoreSolveRequest = serde_json::from_value(problem_value).map_err(|error| {
-        format!(
-            "'{}' is not a valid solve problem (CoreSolveRequest): {error}",
-            args.problem.display()
-        )
-    })?;
+    let request: CoreSolveRequest =
+        serde_json::from_value(problem_value.clone()).map_err(|error| {
+            format!(
+                "'{}' is not a valid solve problem (CoreSolveRequest): {error}",
+                args.problem.display()
+            )
+        })?;
 
     let solution_text = read_text(&args.solution)?;
-    let response: CoreSolveResponse = serde_json::from_str(&solution_text).map_err(|error| {
-        format!(
-            "'{}' is not a valid solve result (CoreSolveResponse): {error}",
-            args.solution.display()
-        )
-    })?;
+    let solution_value: serde_json::Value =
+        serde_json::from_str(&solution_text).map_err(|error| {
+            format!(
+                "'{}' is not a valid solve result (CoreSolveResponse): {error}",
+                args.solution.display()
+            )
+        })?;
+    let response: CoreSolveResponse =
+        serde_json::from_value(solution_value.clone()).map_err(|error| {
+            format!(
+                "'{}' is not a valid solve result (CoreSolveResponse): {error}",
+                args.solution.display()
+            )
+        })?;
 
     validate_solve_response(&request, &response)
         .map_err(|message| format!("refusing to export an invalid solved plan: {message}"))?;
@@ -586,6 +595,35 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
         ExportFormat::Html => write_text(&args.output, &crate::render::render_html(&grid))?,
         ExportFormat::Png => write_bytes(&args.output, &crate::render::render_png(&grid)?)?,
         ExportFormat::Pdf => write_text(&args.output, &crate::render::render_pdf(&grid))?,
+        // Office formats use the shared export crate's minimal OOXML writers
+        // through the same privacy-filtered dispatch the server uses
+        // (independent-reader validated; see seattrellis-export::office).
+        ExportFormat::Xlsx | ExportFormat::Docx | ExportFormat::Pptx => {
+            let export_request = serde_json::json!({
+                "draft_id": "",
+                "format": match args.format {
+                    ExportFormat::Xlsx => "xlsx",
+                    ExportFormat::Docx => "docx",
+                    _ => "pptx",
+                },
+                "template": args.template,
+                "privacy": {
+                    "hide_scores": true,
+                    "hide_notes": true,
+                    "hide_special_needs": true,
+                    "anonymize": args.template == "public",
+                    "show_height": false,
+                    "show_vision": false,
+                },
+                "orientation": "landscape",
+                "page_scale": 1.0,
+                "locale": "zh",
+                "request": problem_value,
+                "response": solution_value,
+            });
+            let bytes = export_plan(&export_request.to_string())?;
+            write_bytes(&args.output, &bytes)?;
+        }
     }
 
     let format_name = match args.format {
@@ -593,6 +631,9 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
         ExportFormat::Html => styler.cyan("HTML"),
         ExportFormat::Png => styler.cyan("PNG"),
         ExportFormat::Pdf => styler.cyan("PDF"),
+        ExportFormat::Xlsx => styler.cyan("XLSX"),
+        ExportFormat::Docx => styler.cyan("DOCX"),
+        ExportFormat::Pptx => styler.cyan("PPTX"),
     };
     println!(
         "{} {format_name} seating plan ({}/{} seats) to '{}'",
@@ -608,7 +649,6 @@ fn read_text(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path)
         .map_err(|error| format!("cannot read '{}': {error}", path.display()))
 }
-
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
     write_output_atomically(path, text.as_bytes())
 }

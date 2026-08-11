@@ -35,6 +35,9 @@ pub enum ExportFormat {
     Html,
     Png,
     Pdf,
+    Xlsx,
+    Docx,
+    Pptx,
 }
 
 impl ExportFormat {
@@ -44,8 +47,11 @@ impl ExportFormat {
             "html" => Ok(ExportFormat::Html),
             "png" => Ok(ExportFormat::Png),
             "pdf" => Ok(ExportFormat::Pdf),
+            "xlsx" => Ok(ExportFormat::Xlsx),
+            "docx" => Ok(ExportFormat::Docx),
+            "pptx" => Ok(ExportFormat::Pptx),
             other => Err(format!(
-                "unknown format '{other}' (expected svg, html, png or pdf)"
+                "unknown format '{other}' (expected svg, html, png, pdf, xlsx, docx or pptx)"
             )),
         }
     }
@@ -70,6 +76,9 @@ pub struct ExportArgs {
     pub solution: PathBuf,
     pub format: ExportFormat,
     pub output: PathBuf,
+    /// `public` | `teacher` (default). Only the Office formats honour it in
+    /// the CLI: the renderers receive the privacy-filtered grid.
+    pub template: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -853,6 +862,10 @@ fn parse_export(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--template",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -864,14 +877,22 @@ fn parse_export(tokens: &[String]) -> Result<Command, String> {
     let problem = flag_value(&parsed, "--problem")?.ok_or("export requires --problem <file>")?;
     let solution = flag_value(&parsed, "--solution")?.ok_or("export requires --solution <file>")?;
     let format = ExportFormat::parse(
-        flag_value(&parsed, "--format")?.ok_or("export requires --format <svg|html|png|pdf>")?,
+        flag_value(&parsed, "--format")?
+            .ok_or("export requires --format <svg|html|png|pdf|xlsx|docx|pptx>")?,
     )?;
     let output = flag_value(&parsed, "--output")?.ok_or("export requires --output <file>")?;
+    let template = flag_value(&parsed, "--template")?.unwrap_or("teacher");
+    if template != "public" && template != "teacher" {
+        return Err(format!(
+            "unknown export template '{template}' (expected public or teacher)"
+        ));
+    }
     Ok(Command::Export(ExportArgs {
         problem: PathBuf::from(problem),
         solution: PathBuf::from(solution),
         format,
         output: PathBuf::from(output),
+        template: template.to_string(),
     }))
 }
 
@@ -1280,6 +1301,7 @@ mod tests {
         assert_eq!(args.solution, PathBuf::from("s.json"));
         assert_eq!(args.format, ExportFormat::Svg);
         assert_eq!(args.output, PathBuf::from("o.svg"));
+        assert_eq!(args.template, "teacher");
     }
 
     #[test]

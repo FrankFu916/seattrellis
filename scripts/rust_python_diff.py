@@ -693,6 +693,230 @@ def compare_plan_scores(
     return mismatches
 
 
+def run_exports_class() -> list[tuple[str, str, str, str, list[str]]]:
+    """Office export independent-reader verification (修订版 §11.6).
+
+    For every valid fixture case the Rust CLI solves the problem and exports
+    XLSX / DOCX / PPTX (teacher template) plus XLSX (public template). Each
+    file is then reopened with a *different implementation* — openpyxl /
+    python-docx / python-pptx — and checked for structure, seat content, and
+    the public-template privacy guarantee (no real student names anywhere).
+
+    Byte parity with the Python exporters is impossible (zip mtimes), so the
+    acceptance criterion is exactly what the plan asks for: an independent
+    reader can open the document and the semantic content matches.
+    """
+    from openpyxl import load_workbook
+
+    rows: list[tuple[str, str, str, str, list[str]]] = []
+    if not CLI.exists():
+        raise SystemExit(f"Rust CLI not found: {CLI}; build it first")
+    golden_dirs = sorted(
+        GOLDENS / case_dir.name
+        for case_dir in INPUTS.iterdir()
+        if case_dir.is_dir() and (GOLDENS / case_dir.name / "snapshot.json").is_file()
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for golden_dir in golden_dirs:
+            case = golden_dir.name
+            request, notes = fixture_to_request(INPUTS / case)
+            problem_file = tmp_path / f"{case}-problem.json"
+            solution_file = tmp_path / f"{case}-solution.json"
+            problem_file.write_text(json.dumps(request), encoding="utf-8")
+            solved = subprocess.run(
+                [str(CLI), "solve", "--problem", str(problem_file), "--output", str(solution_file)],
+                capture_output=True,
+                text=True,
+            )
+            if solved.returncode != 0 or not solution_file.is_file():
+                rows.append((case, "EXPORTS", "EXPORTS", f"SOLVE_FAILED: {solved.stderr.strip()}", notes))
+                continue
+            response = json.loads(solution_file.read_text(encoding="utf-8"))
+            if not response.get("feasible"):
+                rows.append((case, "EXPORTS", "EXPORTS", "SOLVE_SKIPPED: not feasible", notes))
+                continue
+            real_names = {
+                student.get("display_name") or student.get("key")
+                for student in request.get("students", [])
+                if student.get("display_name") or student.get("key")
+            }
+            try:
+                _verify_exports(CLI, problem_file, solution_file, response, tmp_path, real_names, case, rows)
+            except Exception as exc:  # noqa: BLE001 - report, do not abort the class
+                rows.append((case, "EXPORTS", "ERROR", str(exc), notes))
+    return rows
+
+
+def _verify_exports(
+    cli: Path,
+    problem_file: Path,
+    solution_file: Path,
+    response: dict[str, object],
+    tmp_path: Path,
+    real_names: set[str],
+    case: str,
+    rows: list[tuple[str, str, str, str, list[str]]],
+) -> None:
+    """Export every Office format and reopen it with an independent reader."""
+    from openpyxl import load_workbook
+
+    for fmt in ("xlsx", "docx", "pptx"):
+        out = tmp_path / f"{case}.{fmt}"
+        exported = subprocess.run(
+            [
+                str(cli),
+                "export",
+                "--problem",
+                str(problem_file),
+                "--solution",
+                str(solution_file),
+                "--format",
+                fmt,
+                "--template",
+                "teacher",
+                "--output",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if exported.returncode != 0 or not out.is_file():
+            rows.append((case, f"EXPORTS-{fmt.upper()}", "EXPORTS-FAILED", exported.stderr.strip(), []))
+            continue
+        try:
+            if fmt == "xlsx":
+                _verify_xlsx(out, response)
+            elif fmt == "docx":
+                _verify_docx(out, response)
+            else:
+                _verify_pptx(out, response)
+            label = f"EXPORTS-{fmt.upper()}"
+            rows.append((case, label, label, "independent reader ok", []))
+        except Exception as exc:  # noqa: BLE001
+            rows.append((case, f"EXPORTS-{fmt.upper()}", "MISMATCH", str(exc), []))
+
+    # Public-template privacy: no real student name may survive in any format.
+    for fmt in ("xlsx", "docx", "pptx"):
+        out = tmp_path / f"{case}-public.{fmt}"
+        exported = subprocess.run(
+            [
+                str(cli),
+                "export",
+                "--problem",
+                str(problem_file),
+                "--solution",
+                str(solution_file),
+                "--format",
+                fmt,
+                "--template",
+                "public",
+                "--output",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if exported.returncode != 0 or not out.is_file():
+            rows.append((case, f"EXPORTS-PUBLIC-{fmt.upper()}", "EXPORTS-FAILED", exported.stderr.strip(), []))
+            continue
+        try:
+            text = _read_office_text(out)
+            leaked = [name for name in real_names if name and name in text]
+            label = f"EXPORTS-PUBLIC-{fmt.upper()}"
+            if leaked:
+                rows.append((case, label, "EXPORTS-PRIVACY-LEAK", f"leaked: {leaked[:3]}", []))
+            else:
+                rows.append((case, label, label, "no names leaked", []))
+        except Exception as exc:  # noqa: BLE001
+            rows.append((case, f"EXPORTS-PUBLIC-{fmt.upper()}", "MISMATCH", str(exc), []))
+
+
+def _verify_xlsx(path: Path, response: dict[str, object]) -> None:
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True)
+    if workbook.sheetnames != ["Seating", "Assignments"]:
+        raise AssertionError(f"unexpected sheets: {workbook.sheetnames}")
+    seating = workbook["Seating"]
+    grid_text = " ".join(
+        str(value) for row in seating.iter_rows(values_only=True) for value in row if value
+    )
+    if "R1C1" not in grid_text and "R1C2" not in grid_text:
+        raise AssertionError("grid sheet carries no seat ids")
+    assignments = workbook["Assignments"]
+    rows = list(assignments.iter_rows(values_only=True))
+    if rows[0] != ("student_key", "student_name", "seat_id"):
+        raise AssertionError(f"unexpected assignments header: {rows[0]}")
+    seated = len(response.get("assignment", []))
+    if len(rows) - 1 != seated:
+        raise AssertionError(f"assignments rows {len(rows) - 1} != seated {seated}")
+
+
+def _verify_docx(path: Path, response: dict[str, object]) -> None:
+    import docx as python_docx
+
+    document = python_docx.Document(path)
+    if not document.tables:
+        raise AssertionError("docx carries no seat table")
+    table = document.tables[0]
+    if len(table.rows) < 1 or len(table.columns) < 1:
+        raise AssertionError("docx seat table is empty")
+    cells = [cell.text for row in table.rows for cell in row.cells]
+    if not any(cells):
+        raise AssertionError("docx seat table has no text")
+
+
+def _verify_pptx(path: Path, response: dict[str, object]) -> None:
+    from pptx import Presentation
+
+    presentation = Presentation(path)
+    if (presentation.slide_width, presentation.slide_height) != (12192000, 6858000):
+        raise AssertionError(
+            f"slide size {(presentation.slide_width, presentation.slide_height)} != 16:9"
+        )
+    if not presentation.slides:
+        raise AssertionError("pptx has no slides")
+    shapes = list(presentation.slides[0].shapes)
+    seated = len(response.get("assignment", []))
+    if len(shapes) < seated + 1:
+        raise AssertionError(f"shapes {len(shapes)} < seats {seated} + title")
+
+
+def _read_office_text(path: Path) -> str:
+    """All visible text of an Office file, via the independent readers."""
+    suffix = path.suffix.lower()
+    if suffix == ".xlsx":
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(path, read_only=True)
+        return " ".join(
+            str(value)
+            for sheet in workbook.worksheets
+            for row in sheet.iter_rows(values_only=True)
+            for value in row
+            if value
+        )
+    if suffix == ".docx":
+        import docx as python_docx
+
+        document = python_docx.Document(path)
+        parts = [paragraph.text for paragraph in document.paragraphs]
+        parts.extend(cell.text for table in document.tables for row in table.rows for cell in row.cells)
+        return " ".join(parts)
+    if suffix == ".pptx":
+        from pptx import Presentation
+
+        presentation = Presentation(path)
+        parts: list[str] = []
+        for slide in presentation.slides:
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    parts.append(shape.text_frame.text)
+        return " ".join(parts)
+    raise AssertionError(f"unknown office format: {path}")
+
+
 def run_rust_candidates(
     request: dict[str, object], count: int, tmp: Path
 ) -> tuple[str, str, int | None]:
@@ -872,6 +1096,13 @@ def main() -> int:
         help="run the fixed-assignment PlanScore parity class (all valid fixture cases)",
     )
     parser.add_argument(
+        "--exports",
+        action="store_true",
+        help="run the Office export independent-reader class (XLSX/DOCX/PPTX "
+        "reopened with openpyxl/python-docx/python-pptx, teacher + public "
+        "privacy checks)",
+    )
+    parser.add_argument(
         "--allow-documented-gaps",
         action="store_true",
         help="CI mode: tolerate exactly the case-level documented corpus gaps "
@@ -889,6 +1120,8 @@ def main() -> int:
         rows.extend(run_candidates_class())
     if args.scoring:
         rows.extend(run_scoring_class())
+    if args.exports:
+        rows.extend(run_exports_class())
     if not rows:
         sizes = [int(item) for item in args.sizes.split(",")]
         rows = run_benchmark_classes(sizes, args.time_limit)

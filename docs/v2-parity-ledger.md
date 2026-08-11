@@ -828,6 +828,46 @@ Gate 要求的证据类型。ledger §1.1 对应编辑/轮换条目证据面扩�
 （仍 `RUST_PARTIAL`，rollback 故障注入 golden 与导出格式独立验证
 未完成，不升级）。
 
+### 19.11 2026-08-10：Office 导出格式 + 独立 reader 验证（§5.6/§11.6）
+
+1. **最小 OOXML writers**（`crates/seattrellis-export/src/office.rs`）：
+   按修订版 §5.6 政策（"宁可实现受控的最小 OOXML writer"）手写三个
+   格式，无新增重依赖（复用 workspace 已有的 `zip`）：
+   - **XLSX**：`Seating` 网格 sheet（标题行 + 每座一格，disabled 标
+     `seat_id\n--`）+ `Assignments` sheet（student_key/student_name/
+     seat_id），镜像 Python `exporters/excel.py` 的语义；
+   - **DOCX**：居中标题 + 生成信息 + 边框座位表格（含 `w:tblGrid`，
+     python-docx 要求），镜像 `docx_export.py` 的语义；
+   - **PPTX**：单页 16:9（screen16x9 12192000×6858000）+ 标题 + 每座
+     一个 roundRect 可编辑形状（镜像 `pptx.py`）。
+2. **单代码路径隐私**：Office 渲染只接收已由 export domain 层
+   `anonymize_grid`/`filter_detail_grid` 过滤的 grid；CLI `export` 新增
+   `--template public|teacher`，Office 格式统一走
+   `seattrellis_export::export::export_plan`（与 server `/api/v1/exports`
+   完全同一条验证+隐私+渲染路径）。`ExportFormat` 增加 Xlsx/Docx/Pptx
+   （mime/extension/parse），CLI 版本也同步（`--format
+   <svg|html|png|pdf|xlsx|docx|pptx>`）。
+3. **独立结构验证（§11.6）**：Rust 侧单测用 quick-xml 重新解析每个
+   zip part（`[Content_Types].xml`、rels、sheet/document/slide XML），
+   校验 well-formed、sheet 名、表格、16:9、XML 转义（4 个新测试）；
+   Python 侧差分 harness 新增 `--exports` class：34 个合法 fixture 每
+   个 solve 后导出 xlsx/docx/pptx（teacher）+ 三格式 public，再用
+   **openpyxl / python-docx / python-pptx**（与 writer 完全独立的实现）
+   重新打开校验结构、内容与 public 隐私（真实学生名零泄漏）。
+   **实测 204/204 通过，0 mismatch**（含 CJK 名称 case
+   data-unicode：openpyxl 读出的中文名与 assignments 行数一致）。
+   CI 差分 job 已加入 `--exports`（venv 装 `.[all]` 自带三个 reader）。
+4. **已登记的有意分歧（非缺口）**：PDF 中文名 fallback 为座位号
+   （手写 PDF 不嵌 CJK 字体，`pdf_cjk_names_fall_back_to_ascii` 测试
+   固化；oracle 走 WeasyPrint+系统字体）；`print-html` 与 `html` 同源
+   （§19.2 已登记映射）。这两项列入 M4 Product Decision 候选（字体
+   嵌入策略 / print HTML 独立版式）。
+
+ledger §1.1 导出条目从 "SVG/HTML/PNG/PDF 路径存在、Office/CJK 未完成"
+提升为：SVG/HTML/PNG/PDF/XLSX/DOCX/PPTX 全格式 + 独立 reader 结构验证
+证据齐备 → `RUST_PARITY_PENDING`（有实现与语义契约证据；字节级 golden
+与 CJK PDF 字体策略仍为 M4 决策项）。
+
 ---
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）

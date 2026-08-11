@@ -332,11 +332,13 @@ jobs:
           .venv/bin/python -m pip install -e ".[all]"
       - name: Build the release CLI
         run: cargo build --release --locked -p seattrellis_cli
-      - name: Run the fixture + candidates + scoring differential
+      - name: Run the fixture + candidates + scoring + exports differential
         # Strict M0-03 mode: the corpus is fully green (41/41) since the
         # invalid-rule/bad-adjacency gaps closed (ledger §19.5); the
-        # candidate-set class (15 combos) and the fixed-assignment PlanScore
-        # class (all valid fixture cases) are part of the same run; any
-        # mismatch fails the job. The script must run from the venv that
-        # carries the installed oracle package.
-        run: .venv/bin/python scripts/rust_python_diff.py --fixtures --candidates --scoring
+        # candidate-set class (15 combos), the fixed-assignment PlanScore
+        # class (all valid fixture cases) and the Office export
+        # independent-reader class (34 cases × XLSX/DOCX/PPTX teacher +
+        # public privacy) are part of the same run; any mismatch fails the
+        # job. The script must run from the venv that carries the installed
+        # oracle package.
+        run: .venv/bin/python scripts/rust_python_diff.py --fixtures --candidates --scoring --exports
