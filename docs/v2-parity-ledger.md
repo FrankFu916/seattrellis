@@ -41,7 +41,7 @@
 
 Python 侧入口（`src/seattrellis/cli.py`，Typer）：24 个顶层命令 + `presets`（3）+ `schema`（3）子命令组，共 30 个可执行命令；另有独立 `seattrellis-desktop`（argparse）。console_scripts（`pyproject.toml:64-67`）：`seattrellis`、`seatplanner`（同一 `cli.main`）、`seattrellis-desktop`。
 
-Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）在 `0057a7b` 后有 13 个子命令：`validate/solve/export/precheck/audit/candidates/history-report/pair-report/repair/project-info/project-validate/project-solve/project-export`，另有 help/version。命令或路径存在不代表 Python 30 命令的参数、stdout/stderr、JSON 与 exit-code 契约已等价。
+Rust 侧：`crates/seattrellis-cli`（手写参数解析，无 clap）在 `0057a7b` 后有 13 个子命令：`validate/solve/export/precheck/audit/candidates/history-report/pair-report/repair/project-info/project-validate/project-solve/project-export`，另有 help/version。命令或路径存在不代表 Python 30 命令的参数、stdout/stderr、JSON 与 exit-code 契约已等价。
 
 ### 1.1 顶层命令（24）
 
@@ -107,7 +107,7 @@ Rust CLI 需在 v2 对照此契约（当前 `main.rs` 手写解析，退出码�
 
 ## 2. service / application 公开用例
 
-Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`）按领域分组。Rust 侧实现分布在 `crates/seattrellis-application`、`seattrellis-io`、`seattrellis-server`、`native/seattrellis_core` 与 `native/seattrellis_cli`。
+Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`）按领域分组。Rust 侧实现分布在 `crates/seattrellis-application`、`seattrellis-io`、`seattrellis-server`、`crates/seattrellis-core` 与 `crates/seattrellis-cli`。
 
 ### 2.1 solve（求解）
 
@@ -296,7 +296,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 ### 4.3 Rust 侧 schema 支持总体
 
 - `xtask contract schemas` 已能由 Rust DTO 生成 `schemas/*.v2.schema.json` 并做 drift/metaschema 校验；这不等于上表所有 v1 artifact 已有完整 typed DTO/migration golden，用户级 `schema list/export/migrate` CLI 也仍不完整。
-- `native/seattrellis_core` 的 serde 结构是**求解专用协议**（`CoreSolveRequest` lib.rs:397-433），不是 seat 数据 schema。
+- `crates/seattrellis-core` 的 serde 结构是**求解专用协议**（`CoreSolveRequest` lib.rs:397-433），不是 seat 数据 schema。
 
 ---
 
@@ -661,7 +661,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 候选引擎的证据缺口按两条路径补齐：
 
 1. **Rust 候选 Gate（release，CI ubuntu job）**：新增集成测试
-   `native/seattrellis_core/tests/candidates_gate.rs`，覆盖
+   `crates/seattrellis-core/tests/candidates_gate.rs`，覆盖
    **20/40/50/60/80 人 × 1/5/20 候选**（15 组合）：
    - 每组生成**恰好请求数**的互异可行方案（exact-assignment exclusion 下
      重复直接报错）；

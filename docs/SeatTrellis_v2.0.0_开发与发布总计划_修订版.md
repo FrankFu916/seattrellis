@@ -189,7 +189,7 @@ domain + rules + solver + io + export
 
 - `app/src/server.rs`；
 - Python 阶段的 `src/seattrellis/api/handlers.py` 只作为迁移参照，不继续扩张；
-- `native/seattrellis_core/src/lib.rs` 中 solver/evaluator/validation 混合逻辑。
+- `crates/seattrellis-core/src/lib.rs` 中 solver/evaluator/validation 混合逻辑。
 
 目标：
 

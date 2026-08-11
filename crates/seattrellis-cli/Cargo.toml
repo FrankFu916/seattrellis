@@ -17,7 +17,7 @@ categories = ["command-line-utilities", "mathematics"]
 # `png` (with its bundled flate2/miniz_oxide zlib) adds PNG export; PDF export
 # is hand-written straight into the binary (no extra crate) to stay small.
 [dependencies]
-seattrellis_core = { path = "../seattrellis_core", version = "0.1" }
+seattrellis_core = { path = "../../crates/seattrellis-core", version = "0.1" }
 seattrellis-io = { path = "../../crates/seattrellis-io" }
 seattrellis-export = { path = "../../crates/seattrellis-export" }
 seattrellis-application = { path = "../../crates/seattrellis-application" }

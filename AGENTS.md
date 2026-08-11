@@ -14,9 +14,9 @@ Python 是 oracle（行为基准），Rust 是 v2 目标实现，React 仅是展
 | 路径 | 内容 | 角色 |
 |---|---|---|
 | `Cargo.toml` / `Cargo.lock` | 单一 Rust workspace、单一 lockfile、MSRV 1.88；PyO3 crate 不在 `default-members` | v2 生产构建根 |
-| `crates/` | `schema/rules/domain/application/io/export/server` 分层 crate | v2 应用与传输主路径 |
+| `crates/` | `schema/rules/domain/application/io/export/server/core/cli` 分层 crate（core=solver/evaluator/validation/candidates/audit 宿主；cli=CLI adapter） | v2 应用与传输主路径 |
 | `src/seattrellis/` | Python v1.x | **oracle，只读参考**；不为其扩展 v2 功能 |
-| `native/` | `seattrellis_core`、`seattrellis_cli`、PyO3 临时兼容 crate `seattrellis_native` | v2 core/CLI 与迁移兼容 |
+| `native/` | 仅 PyO3 临时兼容 crate `seattrellis_native` | 迁移兼容（v2 final 前必须删除） |
 | `app/` | 薄 `seattrellis_app` facade，复用 `seattrellis-server` | v2 服务启动器 |
 | `app/src-tauri/` | 单一 workspace 成员中的 Tauri 2 薄壳，toolchain 锁定 1.88.0 | v2 桌面 |
 | `clients/web/` | React 19 + Vite + vitest | 展示层 |

@@ -1096,7 +1096,7 @@ Seatflow 的 Polar/Freeform 很漂亮，但 SeatTrellis 的核心用户是学校
 - `src/seattrellis/editing.py`
 - `src/seattrellis/editing_protocol.py`
 - `src/seattrellis/project_bundle.py`
-- `native/seattrellis_core/`
+- `crates/seattrellis-core/`
 - `clients/web/src/components/`
 - `app/src/server.rs`
 

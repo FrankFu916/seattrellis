@@ -380,7 +380,7 @@ def run_fixture_classes() -> list[tuple[str, str, str, str, list[str]]]:
     are the INVALID_INPUT class."""
     rows: list[tuple[str, str, str, str, list[str]]] = []
     if not CLI.exists():
-        raise SystemExit(f"Rust CLI not found: {CLI}; build it first (cargo build --release --manifest-path native/Cargo.toml)")
+        raise SystemExit(f"Rust CLI not found: {CLI}; build it first (cargo build --release -p seattrellis_cli)")
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         for case_dir in sorted(INPUTS.iterdir()):
