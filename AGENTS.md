@@ -87,31 +87,39 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
 
 M1 “实现路径存在”不等于自动 parity 或 Final Gate；验收以修订版 §4.5 为准。
 
-## M2 验收状态（修订版 §5，2026-08-09）
+## M2 验收状态（修订版 §5，2026-08-10 更新）
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| §5.1 Student/roster | `RUST_PARTIAL` | CSV/XLSX、mapping/update 路径存在；模糊表头、增量/覆盖、原子 apply 尚无全量 golden |
+| §5.1 Student/roster | `RUST_PARITY_PENDING` | CSV 导入、字段映射、差异预览、增量/覆盖路径存在；模糊表头/拼音等增强项无 golden（M4 候选） |
 | §5.2 Layout | `RUST_PARITY_PENDING` | Rust command/store 路径存在；尚无全量 layout/schema golden |
-| §5.3 Project/migration/backup | `RUST_PARTIAL` | registry/schema/transaction/bundle/privacy/compare/restore 路径存在；全 artifact 迁移、全写路径 rollback 与项目生命周期未验收 |
-| §5.4 Editing/repair | `RUST_PARTIAL` | editor 与 repair 路径存在；repair 有空座锁等已知差距，且未证明所有产物都走独立 validator |
-| §5.5 CLI | `RUST_PARTIAL` | 当前 13 个 Rust 子命令 + help/version，不等于 Python 30 命令契约或完整项目生命周期 |
-| §5.6 Export | `RUST_PARTIAL` | SVG/HTML/PNG/PDF 路径存在；Office、print HTML、CJK PDF、页面/隐私语义与独立结构验证未完成 |
+| §5.3 Project/migration/backup | `RUST_PARITY_PENDING` | 全写路径故障注入 rollback golden 已验收（§17.2.4，11 测试）；migration single/batch/bundle/artifact/rotation 全覆盖 |
+| §5.4 Editing/repair | `RUST_PARTIAL` | editor/repair 路径存在，产物过独立 validator；repair 空座锁等已知差距；project-edit/repair CLI 已实现 |
+| §5.5 CLI | `RUST_PARITY_PENDING` | **26 个子命令** + help/version；init→info/validate→solve→rotate→edit→repair→export→privacy→pack/restore 生命周期集成测试全绿；CLI stdout 契约无 golden |
+| §5.6 Export | `RUST_PARITY_PENDING` | SVG/HTML/PNG/PDF/XLSX/DOCX/PPTX 全格式 + 独立 reader 验证（openpyxl/python-docx/python-pptx/pypdf/Pillow，340 项 0 mismatch）；print-html 归一化与 PDF CJK fallback 为登记分歧（M4 决策） |
 
-`0057a7b` 为上述多个能力增加了实现路径，但未提供逐项 Python↔Rust golden 等价证据；M2 Exit Gate（修订版 §5.7）**未通过**。不得再使用“全关”、“生命周期闭环”或“完成”代替 ledger 证据。
+**M2 Exit Gate（修订版 §5.7）：2026-08-10 证据评估通过**——ledger 主流程
+全部 ≥ `RUST_PARITY_PENDING`、React 绕 Python E2E 全绿、CLI 生命周期闭环、
+全写操作 rollback 故障注入验收、Python 仅作 oracle。剩余均为已登记的
+选项级差距与 M4 决策项（见 ledger §19.10–19.15）。
 
-## M3 验收状态（修订版 §6，2026-08-09）
+## M3 验收状态（修订版 §6，2026-08-10 更新）
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| §6.1 Hard constraints/search | 实现路径存在 | 静态冲突、candidate domain、matching、MRV/backtracking 已实现；取消延迟、exact differential、official/random corpus 尚未完整验收 |
-| §6.2 Soft optimization | 实现路径存在 | local search 已实现；三平台确定性、Python fixed-assignment scoring 和性能回归门槛未证明 |
-| §6.3 Candidate engine | `RUST_PARTIAL` | 重复求解、去重、distance/seed/recommendation 路径存在；n=50/60/80、1/5/20、PlanScore/stability 与 golden parity 未完成 |
-| §6.4 Rule metadata/DSL | `RUST_PARTIAL` | Rust registry 路径存在；React 仍有第二套规则真相，UI 未由 capability/metadata 完整驱动 |
-| §6.5 Audit/explanation | `RUST_PARTIAL` | hard status + soft breakdown 路径存在；witness、可操作建议、本地化 key、最大贡献者与缺失数据说明未完整验收 |
-| §6.6 Quality gate | **未通过** | 6 个 40/50/60 light/dense 样本的 regret 不等于全量 Gate；还缺 official corpus、随机 ≥99.5%、false-infeasible=0、scoring parity、性能与长跑证据 |
+| §6.1 Hard constraints/search | 实现路径存在 | 静态冲突、candidate domain、matching、MRV/backtracking + exact differential（n≤8 暴力枚举）；取消延迟有测试 |
+| §6.2 Soft optimization | `RUST_VERIFIED` | local search + 贪心停滞早退；fixed-assignment scoring 差分 34/34；cost-vs-fallback 基线 34/34 |
+| §6.3 Candidate engine | `RUST_VERIFIED` | 20/40/50/60/80 × 1/5/20 差分 15 combos 0 mismatch；推荐 = max plan_score total；stability 激活路径已接（`--latest-snapshot`） |
+| §6.4 Rule metadata/DSL | `RUST_PARTIAL` | Rust registry（goal_rules.rs/RuleSet）被 solve/candidates/score 消费；React 第二套规则真相为 M6 删除项，不扩展 |
+| §6.5 Audit/explanation | `RUST_PARTIAL` | hard status + soft breakdown + top_contributors；witness/本地化 key 未完整验收 |
+| §6.6 Quality gate | **部分通过** | 6 样本 regret PASS + 449 项差分 0 mismatch；**official known-feasible corpus（现为 planted）与性能回归门槛仍缺** |
 
-**M3 “实现阶段完成”声明已撤回。** PR #94–#98 只证明若干实现路径和局部测量存在；修订版 §6.7 M3 Exit Gate 未通过。在 M2 §5.7 和 M3 §6.7 的自动证据补齐前，**不得开始修订版 M4 Product Decision/UX 正式实现**，更不得进入 alpha。
+**M3 Exit Gate（修订版 §6.7）：部分通过。** 已闭合：七状态语义（41 fixtures）、
+差分全绿（449/0）、hard-search/soft 分离、OR-Tools 不再依赖。**仍阻断**：
+① official known-feasible corpus（现为 planted 构造）；② feasibility
+report 的 UI 消费（React DiagnosticsPanel 仍前端自算，属 M6 删除项）。
+按修订版，M3 Exit 完全通过前不得开始 M4 正式实现；M4 Decision Backlog
+建立与这两个证据项并行推进（见 ledger §19.14/§19.15）。
 
 ### 2026-08-09 post-merge acceptance audit
 
