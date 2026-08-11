@@ -790,7 +790,24 @@ def run_rotation_class() -> list[tuple[str, str, str, str, list[str]]]:
             try:
                 py_plan = json.loads(py_out.read_text(encoding="utf-8"))
                 ru_plan = json.loads(ru_out.read_text(encoding="utf-8"))
-                mismatches = compare_rotation_plans(py_plan, ru_plan)
+                # relation_totals / category_totals are counts over occupied
+                # seat pairs: when every seat is filled the counts depend
+                # only on the layout (solution-independent, strictly
+                # comparable); layouts with empty seats make them
+                # solution-dependent, so those cases compare semantically.
+                student_count = sum(
+                    1 for _ in csv.reader(open(case_dir / "students.csv", encoding="utf-8"))
+                ) - 1
+                layout_doc = json.loads(
+                    (case_dir / "classroom.json").read_text(encoding="utf-8")
+                )
+                seat_count = sum(
+                    1
+                    for seat in layout_doc.get("seats", [])
+                    if seat.get("enabled", True)
+                )
+                full_occupancy = student_count == seat_count
+                mismatches = compare_rotation_plans(py_plan, ru_plan, full_occupancy)
                 label = "ROTATION"
                 rows.append(
                     (case, label, label, "" if not mismatches else f"{mismatches} mismatches", [])
@@ -800,9 +817,16 @@ def run_rotation_class() -> list[tuple[str, str, str, str, list[str]]]:
     return rows
 
 
-def compare_rotation_plans(python: dict[str, object], rust: dict[str, object]) -> int:
+def compare_rotation_plans(
+    python: dict[str, object], rust: dict[str, object], full_occupancy: bool = True
+) -> int:
     """Semantic comparison of two rotation plans; returns the mismatch count
-    and appends nothing (the caller logs the row)."""
+    and appends nothing (the caller logs the row).
+
+    `relation_totals` and `category_totals` count occupied seat pairs, so
+    they are solution-independent only when every seat is filled
+    (`full_occupancy`); layouts with empty seats are compared on the
+    semantic core (periods, completeness, status, structure) instead."""
     mismatches = 0
     py_periods = python.get("periods", [])
     ru_periods = rust.get("periods", [])
@@ -837,27 +861,28 @@ def compare_rotation_plans(python: dict[str, object], rust: dict[str, object]) -
     if normalized_status(python) != {"Solved"} or normalized_status(rust) != {"Solved"}:
         mismatches += 1
 
-    # relation_totals key-for-key.
-    py_relations = python.get("pair_repeat_summary", {}).get("relation_totals", {})
-    ru_relations = rust.get("pair_repeat_summary", {}).get("relation_totals", {})
-    if py_relations != ru_relations:
-        mismatches += 1
-
-    # max_occurrences.
-    if (
-        python.get("pair_repeat_summary", {}).get("max_occurrences")
-        != rust.get("pair_repeat_summary", {}).get("max_occurrences")
-    ):
-        mismatches += 1
-
-    # fairness category_totals on shared keys.
-    py_categories = python.get("fairness_summary", {}).get("category_totals", {})
-    ru_categories = rust.get("fairness_summary", {}).get("category_totals", {})
-    for category, value in ru_categories.items():
-        if category in py_categories and py_categories[category] != value:
+    if full_occupancy:
+        # relation_totals key-for-key (solution-independent when full).
+        py_relations = python.get("pair_repeat_summary", {}).get("relation_totals", {})
+        ru_relations = rust.get("pair_repeat_summary", {}).get("relation_totals", {})
+        if py_relations != ru_relations:
             mismatches += 1
 
-    # history_count.
+        # max_occurrences.
+        if (
+            python.get("pair_repeat_summary", {}).get("max_occurrences")
+            != rust.get("pair_repeat_summary", {}).get("max_occurrences")
+        ):
+            mismatches += 1
+
+        # fairness category_totals on shared keys.
+        py_categories = python.get("fairness_summary", {}).get("category_totals", {})
+        ru_categories = rust.get("fairness_summary", {}).get("category_totals", {})
+        for category, value in ru_categories.items():
+            if category in py_categories and py_categories[category] != value:
+                mismatches += 1
+
+    # history_count (solution-independent: snapshot count).
     if (
         python.get("fairness_summary", {}).get("history_count")
         != rust.get("fairness_summary", {}).get("history_count")

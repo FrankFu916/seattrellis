@@ -945,11 +945,13 @@ INTENTIONALLY_REMOVED_V2）。
   1/5/20）、recommended 选择（max plan_score total）、PlanScore 七维 +
   rule_scores + hard_constraint_summary → `RUST_VERIFIED`；
 - **rotation**（§2.2）：`compute_rotation_plan`、`format_rotation_summary`、
-  文件级与项目级 rotation → `RUST_VERIFIED`（34/34 语义差分：relation_
-  totals 逐键相等、每期学生全集完整、fairness category_totals 一致）。
-  同时登记 oracle 缺陷：v1 生成器逐期复用同一 seed 导致两期座位表完全
-  相同；Rust 按 `seed + period - 1` 逐期推进，差分断言 Rust 两期必须
-  不同；
+  文件级与项目级 rotation → `RUST_VERIFIED`（34/34 语义差分：每期学生
+  全集完整、状态、结构一致）。relation_totals/category_totals 为"被占用
+  座位对"计数：**全占满布局（31 case）解无关，逐键严格相等**；含空座
+  布局（3 case）随解变化，按语义比较并登记说明（p20-rect-extra-sparse
+  等）。同时登记 oracle 缺陷：v1 生成器逐期复用同一 seed 导致两期座位
+  表完全相同；Rust 按 `seed + period - 1` 逐期推进，差分断言 Rust 两期
+  必须不同；
 - **导出**（§1.1 `export`、§12.1/§12.2）：SVG/HTML/XLSX/DOCX/PPTX →
   `RUST_VERIFIED`（openpyxl/python-docx/python-pptx 独立重开 204/204 +
   public 真实学生名零泄漏）；print-html/PNG/PDF 保持 `RUST_PARTIAL`
