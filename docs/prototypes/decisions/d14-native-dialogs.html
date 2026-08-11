@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D14 · 原生文件对话框 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .os-dialog { background:#fff; border:1.5px solid var(--line-2); border-radius:10px; width:280px; box-shadow:0 14px 40px rgba(15,23,42,.22); overflow:hidden; }
+  .os-dialog .dlg-title { background:#f1f5f9; border-bottom:1px solid var(--line); padding:7px 12px; font-size:12px; font-weight:700; display:flex; justify-content:space-between; }
+  .os-dialog .dlg-body { padding:12px; }
+  .os-dialog .dlg-path { font-family:var(--mono); font-size:10.5px; border:1px solid var(--line-2); border-radius:5px; padding:4px 8px; background:var(--surface-2); margin-bottom:10px; }
+  .os-dialog .dlg-files { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-bottom:12px; }
+  .os-dialog .dlg-file { font-size:11px; border:1px solid var(--line); border-radius:5px; padding:5px 8px; background:#fff; }
+  .os-dialog .dlg-file.active { border-color:var(--brand); background:var(--brand-soft); }
+  .os-dialog .dlg-actions { display:flex; justify-content:flex-end; gap:7px; }
+  .web-upload { border:2px dashed var(--line-2); border-radius:10px; padding:18px; text-align:center; color:var(--ink-2); font-size:12.5px; background:var(--surface-2); }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D14 · 原生文件对话框</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">14 / 15 · 决策 D14</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D14 · ledger §14（PYTHON_ONLY 原生对话框）</span>
+    <h1>原生文件对话框：Tauri 原生对话框 vs 前端 input 上传/下载</h1>
+    <p class="task">真实任务：教师选择本地 CSV 名单导入、选择导出文件保存位置。v1 pywebview 用系统原生对话框；v2 桌面壳是 Tauri（有原生对话框 API），Web 工作台只能用浏览器 input。</p>
+    <div class="constraints"><b>不可违反约束</b>：Web 工作台（浏览器）不可能调用系统对话框——任何方案都必须保证 Web 端可用（input 上传/下载）；v2 final 移除 pywebview；文件读写路径保持 Rust 侧校验（路径逃逸防御等已实现）。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: Tauri native dialogs -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">Tauri 原生对话框</div>
+        <div class="v-sub">桌面端（Tauri 壳）导入/导出使用系统原生打开/保存对话框；Web 端回退到浏览器 input。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="row" style="gap:18px;align-items:flex-start">
+          <div class="os-dialog">
+            <div class="dlg-title">打开 · 选择名单文件 <span class="muted small">macOS 风格</span></div>
+            <div class="dlg-body">
+              <div class="dlg-path">~/Documents/班级名单/</div>
+              <div class="dlg-files">
+                <div class="dlg-file active">students-v2.csv</div>
+                <div class="dlg-file">名单 2026-02.csv</div>
+                <div class="dlg-file">初二(3)班.xlsx</div>
+                <div class="dlg-file">…</div>
+              </div>
+              <div class="dlg-actions"><button class="btn" style="font-size:11px">取消</button><button class="btn primary" style="font-size:11px">打开</button></div>
+            </div>
+          </div>
+          <div style="max-width:230px">
+            <div class="note-px">桌面端体验与 v1 pywebview 一致（教师习惯）；文件路径由 Tauri dialog 返回、Rust 侧校验后读取。</div>
+          </div>
+        </div>
+        <div class="note mt8">Tauri 壳通过 dialog API（<span class="num">tauri-plugin-dialog</span>）提供；Web 端同一按钮回退到 <code>&lt;input type="file"&gt;</code>（能力探测驱动）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>桌面体验与 v1 一致；系统对话框的目录导航/最近文件/收藏天然可用；保存路径选择直观。</div>
+        <div class="con"><span class="t-label">代价</span>桌面/Web 双路径需统一封装（能力探测）；Tauri 插件依赖 + 权限清单维护；E2E 测试中系统对话框自动化成本高。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: frontend input only -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">前端 input 上传/下载</div>
+        <div class="v-sub">导入用浏览器文件选择（input + drag-drop），导出走浏览器下载（保存到默认下载目录）。桌面与 Web 行为一致。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="row" style="gap:18px;align-items:flex-start">
+          <div class="web-upload" style="width:280px">
+            <div style="font-size:22px">📂</div>
+            <div style="font-weight:600;margin:4px 0">点击选择或拖入 CSV / XLSX 文件</div>
+            <div class="small muted">students-v2.csv · 20 行 · 解析后预览</div>
+          </div>
+          <div style="max-width:230px">
+            <div class="note-px">桌面与 Web 完全一致的路径；导出文件进入系统下载目录（可后续移动）；无需任何原生插件。</div>
+          </div>
+        </div>
+        <div class="note mt8">v2 Web 工作台现状即此（无原生对话框）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>单一实现路径（桌面/Web 一致）；无 Tauri 插件依赖；E2E 自动化简单（input 可编程触发）。</div>
+        <div class="con"><span class="t-label">代价</span>桌面端无系统对话框（教师选「下载目录」再移动文件）；与 v1 pywebview 体验有差异；大目录导航不便。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d14", ["Tauri 原生对话框", "前端 input 上传/下载"]);
+</script>
+</body>
+</html>

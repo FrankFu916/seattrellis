@@ -554,3 +554,6 @@ table.mini tr:last-child td { border-bottom: none; }
 .term-map { font-size: 11.5px; color: var(--ink-2); }
 .term-map code { font-family: var(--mono); font-size: 10.5px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .term-map b { color: var(--ink); }
+
+.idx-sep { grid-column: 1 / -1; margin: 8px 0 2px; }
+.idx-sep .chip { font-size: 12px; padding: 4px 12px; }

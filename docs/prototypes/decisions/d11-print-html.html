@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D11 · print-html 版式 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .doc-card { background:#fff; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .doc-card .doc-head { background:#f1f5f9; border-bottom:1px solid var(--line); padding:6px 10px; font-size:11px; color:var(--ink-2); font-family:var(--mono); display:flex; gap:6px; align-items:center; }
+  .doc-card .doc-body { padding:12px; }
+  .doc-card .doc-body pre { font-family:var(--mono); font-size:10.5px; background:#0f172a; color:#a5f3fc; border-radius:6px; padding:8px 10px; overflow:auto; margin:0 0 8px; }
+  .media-note { font-size:11.5px; color:var(--ink-3); border:1px dashed var(--line-2); border-radius:6px; padding:6px 9px; }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D11 · print-html 版式</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">11 / 15 · 决策 D11</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D11 · ledger §12 登记分歧</span>
+    <h1>print-html 版式：保留独立 print 版式 vs 归一化 html + 打印样式</h1>
+    <p class="task">真实任务：教师导出「打印 HTML」贴墙。当前 v1 有独立的 print-html 输出（专为打印设计），v2 导出已把 print-html 归一化为 html + 独立打印样式表——需要拍板两种形态的去留。</p>
+    <div class="constraints"><b>背景事实（ledger §19.14 登记）</b>：Rust export 已实现 print-html 归一化为 html（内容同一、样式区分）；这是 v1→v2 的已登记分歧，非实现缺口。选择「保留独立版式」需在 Rust 侧恢复独立渲染路径并补 golden；选择「归一化」则保持现状并更新导出契约文档。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: keep dedicated print layout -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">保留独立 print 版式</div>
+        <div class="v-sub">导出格式列表里「打印 HTML」与「网页 HTML」是两种输出：打印版为 A4 分页优化、无交互元素。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="doc-card">
+          <div class="doc-head">📄 导出格式 · 2 种 HTML</div>
+          <div class="doc-body">
+            <pre>&lt;html&gt; &lt;!-- print.html --&gt;
+  &lt;body class="print"&gt;
+    &lt;div class="page"&gt; &lt;!-- A4 分页 --&gt;
+      初二（3）班 座位表
+      …（无交互、无菜单，纯排版）
+&lt;/html&gt;</pre>
+            <pre>&lt;html&gt; &lt;!-- view.html --&gt;
+  &lt;body&gt;
+    &lt;nav&gt;…&lt;/nav&gt; &lt;!-- 网页交互 --&gt;
+    &lt;div class="seat-grid"&gt;…
+&lt;/html&gt;</pre>
+            <div class="media-note">导出面板显示两个独立格式：HTML（网页版）与 打印 HTML（A4 版式）。</div>
+          </div>
+        </div>
+        <div class="note mt8">与 v1 行为完全一致；需要 Rust 恢复 print 渲染路径 + 输出契约 golden。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>与 v1 行为一致（教师已习惯）；打印版不受网页样式演化影响，版式可长期稳定；语义清晰。</div>
+        <div class="con"><span class="t-label">代价</span>两套 HTML 渲染路径需分别维护与测试；格式列表多一项，新手困惑「两种 HTML 区别」；golden 契约面扩大。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: single html + print CSS -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">归一化 html + 打印样式</div>
+        <div class="v-sub">只有一种 HTML 输出；打印时通过 CSS <code>@media print</code> 呈现 A4 版式（现状）。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="doc-card">
+          <div class="doc-head">📄 导出格式 · 1 种 HTML</div>
+          <div class="doc-body">
+            <pre>&lt;html&gt; &lt;!-- seatmap.html --&gt;
+  &lt;style&gt;
+    @media print {
+      nav { display: none; }
+      .seat-grid { page-break-inside: avoid; }
+      @page { size: A4; margin: 12mm; }
+    }
+  &lt;/style&gt;
+  &lt;nav&gt;…&lt;/nav&gt;      &lt;!-- 屏幕：交互 --&gt;
+  &lt;div class="seat-grid"&gt;…&lt;/div&gt;
+&lt;/html&gt;</pre>
+            <div class="media-note">导出面板格式列表只有「HTML」；教师用浏览器打印对话框即可得到 A4 版式（v2 现状）。</div>
+          </div>
+        </div>
+        <div class="note mt8">保持 Rust 现有实现；只需在导出契约文档中明确「打印版式由 @media print 提供」。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>单渲染路径，维护/测试面最小；格式列表简洁；与 Web 工作台「浏览器打印」心智一致。</div>
+        <div class="con"><span class="t-label">代价</span>与 v1 行为有差异（教师若按老习惯找「打印 HTML」需要适应）；打印版式受网页样式改动影响；浏览器打印对话框差异（页眉/边距）不可控。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d11", ["保留独立 print 版式", "归一化 html + 打印样式"]);
+</script>
+</body>
+</html>

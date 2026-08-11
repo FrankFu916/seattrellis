@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D9 · 导出面板分层 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .export-menu { position:relative; }
+  .export-menu .pop { position:absolute; top:34px; right:0; width:240px; background:#fff; border:1px solid var(--line-2); border-radius:8px; box-shadow:0 10px 30px rgba(15,23,42,.18); padding:6px; z-index:10; }
+  .export-menu .pop .item { display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:6px; font-size:12.5px; cursor:pointer; }
+  .export-menu .pop .item:hover { background:var(--brand-soft); }
+  .export-menu .pop .item .fmt { font-family:var(--mono); font-size:10.5px; color:var(--ink-3); width:44px; }
+  .export-menu .pop .sep { height:1px; background:var(--line); margin:4px 6px; }
+  .sheet { background:#fff; border:1px solid var(--line); border-radius:4px; padding:10px; width:150px; font-size:11px; box-shadow:0 2px 8px rgba(15,23,42,.08); }
+  .sheet .s-title { font-weight:700; text-align:center; border-bottom:1px solid var(--line); padding-bottom:4px; margin-bottom:5px; }
+  .sheet .s-row { display:flex; justify-content:space-between; padding:2px 4px; border-bottom:1px dashed var(--line); }
+  .sheet .s-note { font-size:10px; color:var(--ink-3); text-align:center; padding-top:4px; }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D9 · 导出面板分层</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">9 / 15 · 决策 D9</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D9 · 计划 §7.1 项 9</span>
+    <h1>导出面板分层：快速导出菜单 vs 高级版式面板</h1>
+    <p class="task">真实任务：期中调座完成后，李老师要（1）把座位表导出 PDF 发家长群，（2）打印一份贴墙，（3）偶尔做带隐私设置的名单表。<b>快速导出 vs 高级版式如何分层。</b></p>
+    <div class="constraints"><b>已冻结的能力（§5.6/§12）</b>：8 种格式（svg/html/png/pdf/xlsx/docx/pptx + print-html）、teacher/public 模板、6 个隐私开关、页面方向/缩放/locale 参数全部已由 Rust export 实现并过独立 reader 验证；<b>本决策只决定 UI 呈现分层</b>。导出产物必须经独立 validator 复核。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: quick export menu -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">快速导出菜单</div>
+        <div class="v-sub">工具栏一个「导出 ▾」按钮：直接列出格式，点击即导出（使用上次设置）；版式设置入口藏在菜单底部。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/result</span></div>
+          <div class="appbar">
+            <span class="logo">席序<small>· 方案 A（推荐）</small></span>
+            <span class="spacer"></span>
+            <div class="export-menu">
+              <button class="btn-sm primary">导出 ▾</button>
+              <div class="pop">
+                <div class="item"><span class="fmt">PDF</span>发家长/打印（上次设置）</div>
+                <div class="item"><span class="fmt">HTML</span>网页版座位表</div>
+                <div class="item"><span class="fmt">PNG</span>图片（微信群）</div>
+                <div class="item"><span class="fmt">XLSX</span>名单表格（Excel）</div>
+                <div class="sep"></div>
+                <div class="item"><span class="fmt">…</span>版式与隐私设置</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:14px">
+            <div class="row">
+              <span class="chip green">方案 A · 总分 84.4</span>
+              <span class="muted small">座位表预览</span>
+              <span class="spacer"></span>
+            </div>
+            <div class="row mt8" style="gap:14px">
+              <div class="sheet">
+                <div class="s-title">第 1 排</div>
+                <div class="s-row"><span>学生丁001</span></div>
+                <div class="s-row"><span>学生丅005</span></div>
+                <div class="s-row"><span>学生上010</span></div>
+                <div class="s-row"><span>学生下011</span></div>
+              </div>
+              <div class="sheet">
+                <div class="s-title">第 2 排</div>
+                <div class="s-row"><span>学生丆006</span></div>
+                <div class="s-row"><span>学生丏015</span></div>
+                <div class="s-row"><span>学生一020</span></div>
+                <div class="s-row"><span>学生丌012</span></div>
+              </div>
+              <div class="muted small" style="max-width:180px">「上次设置」= 上次导出的模板/隐私/页面参数；未导出过则用默认（teacher 模板、隐藏成绩、A4 纵向）。</div>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">快速路径：一次点击完成；版式细节统一收在「版式与隐私设置」。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>日常导出零摩擦（一次点击）；与 D1 上下文操作条的「下一步：导出」衔接自然；格式多时菜单可分组。</div>
+        <div class="con"><span class="t-label">代价</span>首次使用或换场景时需先进设置；「上次设置」的记忆语义需定义（按班级还是全局）。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: advanced layout panel -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">高级版式面板</div>
+        <div class="v-sub">导出 = 打开完整版式面板：格式 / 模板 / 隐私开关 / 页面方向 / 缩放 / locale 全部可见，预览即时更新。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/export</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 导出</small></span><span class="spacer"></span><button class="btn-sm primary">导出</button></div>
+          <div class="body">
+            <div style="width:220px;border-right:1px solid var(--line);padding:12px;background:var(--surface-2)">
+              <div class="field"><label>格式</label><select class="input"><option>PDF</option><option>打印 HTML</option><option>PNG</option><option>XLSX</option><option>DOCX</option><option>PPTX</option><option>SVG</option></select></div>
+              <div class="field"><label>模板</label><select class="input"><option>teacher（教师版）</option><option>public（家长版）</option></select></div>
+              <div class="field"><label>页面</label><select class="input"><option>A4 纵向</option><option>A4 横向</option></select></div>
+              <div class="field"><label>缩放</label><input class="input" type="number" value="1.0" step="0.1"></div>
+              <div class="field"><label>语言</label><select class="input"><option>中文</option><option>English</option></select></div>
+              <div class="field"><label>隐私</label>
+                <label style="font-size:11.5px;display:flex;gap:5px"><input type="checkbox" checked> 隐藏成绩</label>
+                <label style="font-size:11.5px;display:flex;gap:5px"><input type="checkbox" checked> 隐藏备注</label>
+                <label style="font-size:11.5px;display:flex;gap:5px"><input type="checkbox" checked> 隐藏特殊需求</label>
+                <label style="font-size:11.5px;display:flex;gap:5px"><input type="checkbox"> 匿名化姓名</label>
+                <label style="font-size:11.5px;display:flex;gap:5px"><input type="checkbox"> 显示身高</label>
+                <label style="font-size:11.5px;display:flex;gap:5px"><input type="checkbox"> 显示视力</label>
+              </div>
+            </div>
+            <div class="panel grow" style="margin:12px">
+              <div class="panel-head">预览 <span class="sub">教师版 · A4 纵向 · 隐藏成绩</span></div>
+              <div class="panel-body">
+                <div class="sheet" style="width:220px;margin:0 auto">
+                  <div class="s-title">初二（3）班 座位表</div>
+                  <div class="s-row"><span>学生丁001</span><span class="num">R1C1</span></div>
+                  <div class="s-row"><span>学生丅005</span><span class="num">R1C2</span></div>
+                  <div class="s-row"><span>学生上010</span><span class="num">R1C3</span></div>
+                  <div class="s-row"><span>学生下011</span><span class="num">R1C4</span></div>
+                  <div class="s-note">2026-03-17 · seed 168996</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">所有参数与 Rust export 契约一一对应（format/template/privacy/orientation/page_scale/locale）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>全部参数可见可调、预览即时；隐私开关显式呈现（§12.2 隐私语义）；首次/复杂导出不会漏设置。</div>
+        <div class="con"><span class="t-label">代价</span>每次导出多两步（打开面板 → 确认）；日常快速导出反而繁琐；面板字段多时新手压力大。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d9", ["快速导出菜单", "高级版式面板"]);
+</script>
+</body>
+</html>

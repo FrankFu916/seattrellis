@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D12 · PDF CJK 字体 — SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .pdf-pg { background:#fff; border:1px solid var(--line-2); border-radius:4px; width:170px; box-shadow:0 3px 12px rgba(15,23,42,.14); overflow:hidden; }
+  .pdf-pg .pg-head { background:#e2e8f0; text-align:center; font-size:10px; font-weight:700; padding:4px 0; letter-spacing:.1em; }
+  .pdf-pg .pg-body { padding:8px; font-size:9.5px; }
+  .pdf-pg .pg-row { display:flex; justify-content:space-between; border-bottom:1px dashed var(--line); padding:2px 3px; }
+  .pdf-pg .pg-row .seat-no { color:var(--ink-3); font-family:var(--mono); }
+  .pdf-pg .pg-row .fallback { color:var(--bad); font-weight:700; }
+  .size-tag { font-size:10.5px; font-weight:700; border-radius:4px; padding:1px 6px; }
+  .size-big { background:var(--warn-soft); color:#92400e; }
+  .size-mid { background:var(--ok-soft); color:#166534; }
+  .size-zero { background:#f1f5f9; color:var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D12 · PDF CJK 字体</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">12 / 15 · 决策 D12</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">Decision D12 · ledger §12 登记分歧 / 计划 §5.6</span>
+    <h1>PDF CJK 字体策略：嵌入全字体 / 子集嵌入 / 系统字体 fallback</h1>
+    <p class="task">真实任务：导出 PDF 座位表必须正确显示中文姓名。当前 v1 fallback 到座位号（学生名丢失）。三种字体策略决定 PDF 质量与安装包体积。</p>
+    <div class="constraints"><b>不可违反约束</b>：v2 final 安装包 5–20MB 是 release gate（不得靠砍功能达标）；CJK 姓名在 PDF 中必须可读（教师核对名单用）；Rust 侧 PDF 渲染路径保持轻依赖（最小 OOXML/PDF writer 政策，§5.6）。</div>
+  </section>
+
+  <section class="variants">
+
+    <!-- Variant A: embed full font -->
+    <div class="variant" id="vA">
+      <div class="v-head">
+        <span class="v-badge">A</span>
+        <div><div class="v-title">嵌入全字体</div>
+        <div class="v-sub">把完整 CJK 字体（如思源黑体/Noto Sans CJK 全字符集）打进 PDF/安装包。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="row" style="gap:16px;align-items:flex-start">
+          <div class="pdf-pg">
+            <div class="pg-head">第 1 排</div>
+            <div class="pg-body">
+              <div class="pg-row"><span>学生丁001</span></div>
+              <div class="pg-row"><span>学生丅005</span></div>
+              <div class="pg-row"><span>学生上010</span></div>
+              <div class="pg-row"><span>学生下011</span></div>
+            </div>
+          </div>
+          <div style="max-width:220px">
+            <div class="row mb8"><span class="size-tag size-big">安装包 +10–15 MB</span></div>
+            <div class="media-note">Noto Sans CJK 全字符集约 10–20MB；PDF 中每个文档都携带完整字体子集外的全部字形。</div>
+          </div>
+        </div>
+        <div class="note mt8">字形 100% 正确，任意字符可显示；但安装包体积压力大（10–15MB 字体 + 其余组件可能触碰 20MB 上限）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>实现最简单（直接嵌入）；任意生僻字/姓名可显示；PDF 在任何设备一致渲染。</div>
+        <div class="con"><span class="t-label">代价</span>安装包体积逼近 release gate 上限（5–20MB）；PDF 文件本身变大；字体许可与分发需核查（OFL 允许，但要归档）。</div>
+      </div>
+    </div>
+
+    <!-- Variant B: subset embedding -->
+    <div class="variant" id="vB">
+      <div class="v-head">
+        <span class="v-badge">B</span>
+        <div><div class="v-title">子集嵌入</div>
+        <div class="v-sub">只把本次文档用到的字形（姓名/标题/常用字）嵌入 PDF；安装包只带精简子集字体或运行时裁剪。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="row" style="gap:16px;align-items:flex-start">
+          <div class="pdf-pg">
+            <div class="pg-head">第 1 排</div>
+            <div class="pg-body">
+              <div class="pg-row"><span>学生丁001</span></div>
+              <div class="pg-row"><span>学生丅005</span></div>
+              <div class="pg-row"><span>学生上010</span></div>
+              <div class="pg-row"><span>学生下011</span></div>
+            </div>
+          </div>
+          <div style="max-width:220px">
+            <div class="row mb8"><span class="size-tag size-mid">安装包 +0.5–2 MB</span></div>
+            <div class="media-note">PDF 内嵌子集 ≈ 文档实际用字（通常 100–300 字形）；安装包可带精简版字体或运行时从系统字体裁剪。</div>
+          </div>
+        </div>
+        <div class="note mt8">体积最优且字形正确；实现复杂度最高（字体解析 + 字形子集化 + cmap 重建，Rust 侧需 font 库）。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>安装包与 PDF 体积都可控（release gate 无压力）；字形正确；后续新增生僻字也能覆盖（子集按需）。</div>
+        <div class="con"><span class="t-label">代价</span>实现最复杂（font parsing/subsetting，约 2–4 周量级 + 契约测试）；需要选定并审计一个 Rust 字体库（依赖面扩大）。</div>
+      </div>
+    </div>
+
+    <!-- Variant C: system font fallback -->
+    <div class="variant" id="vC">
+      <div class="v-head">
+        <span class="v-badge">C</span>
+        <div><div class="v-title">系统字体 fallback</div>
+        <div class="v-sub">PDF 引用系统 CJK 字体（不嵌入）；查看设备缺字体时 fallback 到座位号（v1 现状）。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="row" style="gap:16px;align-items:flex-start">
+          <div class="pdf-pg">
+            <div class="pg-head">第 1 排</div>
+            <div class="pg-body">
+              <div class="pg-row"><span>学生丁001</span></div>
+              <div class="pg-row"><span>学生丅005</span></div>
+              <div class="pg-row"><span>学生上010</span></div>
+              <div class="pg-row"><span class="fallback">R1C3（缺字体）</span></div>
+            </div>
+          </div>
+          <div style="max-width:220px">
+            <div class="row mb8"><span class="size-tag size-zero">体积 +0</span></div>
+            <div class="media-note">本机（教师电脑）显示正常；发给家长/换设备后若缺 CJK 字体则退化为座位号——v1 现状即此。</div>
+          </div>
+        </div>
+        <div class="note mt8">零实现成本；但「PDF 发给家长看不了名字」正是 v1 已知缺陷（ledger 登记），与 v2 质量目标冲突。</div>
+      </div></div>
+      <div class="v-tradeoff">
+        <div class="pro"><span class="t-label">优势</span>零体积、零依赖；本机打印场景可用。</div>
+        <div class="con"><span class="t-label">代价</span>跨设备（家长/打印店）姓名不可见——v1 已知缺陷延续；与「CJK PDF 姓名必须可读」约束冲突，不推荐。</div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d12", ["嵌入全字体", "子集嵌入", "系统字体 fallback"]);
+</script>
+</body>
+</html>
