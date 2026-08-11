@@ -140,6 +140,13 @@ official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修�
 - 批 1 仍为"交互契约草案"：待目标形态页在真实浏览器确认与 dogfood 验证后
   才算冻结（§7.9）。批 2 方向已冻结，版式/UI 细节待研究；全部 15 项决策
   完成后进入 M5 实现（决策项逐一过 Rust contract + React E2E）。
+- **技术线收尾（2026-08-10，ledger §19.18）已完成**：native→crates 目录
+  收敛（§1.1）、lib.rs 单体拆分 9 模块（§1.2）、candidate-set /
+  plan-comparison typed DTO + oracle golden 解析（§4.2）、property-based
+  10 门（§11.3）、fuzz-style 22 入口（§11.4）、CLI stdout golden 13 命令
+  （§5.5）、repair 空座锁、roster 别名镜像。剩余诚实登记：repair
+  saved-locks、rotation 逐期 validator golden、cargo-fuzz（需 nightly）、
+  CLI 全参数 golden。
 
 ### 2026-08-09 post-merge acceptance audit
 

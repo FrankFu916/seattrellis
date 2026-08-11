@@ -3,7 +3,9 @@
 //! panic (the parser is strict and returns errors for malformed input).
 
 use proptest::prelude::*;
-use seattrellis_domain::editing::{apply_command, EditorCommandEnvelope, EditorDraft, EditorSeatSpec};
+use seattrellis_domain::editing::{
+    apply_command, EditorCommandEnvelope, EditorDraft, EditorSeatSpec,
+};
 
 fn draft() -> EditorDraft {
     let keys = ["s0", "s1", "s2"];

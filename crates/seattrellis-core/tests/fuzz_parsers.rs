@@ -11,8 +11,8 @@
 use proptest::prelude::*;
 
 use seattrellis_core::{
-    audit_report_json, generate_candidates_json, precheck_report_json,
-    solve_problem_json, validate_solve_request_json,
+    audit_report_json, generate_candidates_json, precheck_report_json, solve_problem_json,
+    validate_solve_request_json,
 };
 
 fn random_document(bytes: Vec<u8>) -> String {

@@ -171,14 +171,19 @@ pub fn repair_json(
             ));
         }
     }
+    // Locked seats: occupied seats become fixed anchors; *empty* locked
+    // seats become reserved seats that stay empty (mirroring the Python
+    // `reserved_empty_seats` repair semantics).
+    let mut reserved_empty_seats: Vec<usize> = Vec::new();
     for seat in locked_seats {
         if !seat_index_by_id.contains_key(seat.as_str()) {
             return Err(format!("Locked seat is unknown: {seat}."));
         }
         if !student_by_seat.contains_key(seat) {
-            return Err(format!(
-                "Locked seat must be occupied before re-solving: {seat}."
-            ));
+            let seat_index = seat_index_by_id[seat.as_str()];
+            if !reserved_empty_seats.contains(&seat_index) {
+                reserved_empty_seats.push(seat_index);
+            }
         }
     }
     for student in affected_students {
@@ -204,7 +209,9 @@ pub fn repair_json(
         }
     }
     for seat in locked_seats {
-        let occupant = student_by_seat[seat.as_str()].clone();
+        let Some(occupant) = student_by_seat.get(seat.as_str()) else {
+            continue; // reserved empty seat, handled separately
+        };
         let index = index_by_key[occupant.as_str()];
         if !fixed_students.contains(&index) {
             fixed_students.push(index);
@@ -286,6 +293,66 @@ pub fn repair_json(
         }
         repair_anchors.push([index, *seat_index]);
     }
+    // Reserved empty seats must not be required by the original fixed-seat
+    // rules (mirroring the Python `reserved_fixed_conflicts` rejection).
+    for reserved in &reserved_empty_seats {
+        if let Some(student) = original_fixed_by_seat.get(reserved) {
+            let student_key = &students[*student].key;
+            let seat_id = &seat_ids[*reserved];
+            return Err(format!(
+                "Cannot reserve an empty locked seat required by existing hard rules: \
+                 {student_key}->{seat_id}."
+            ));
+        }
+    }
+
+    // Disable reserved empty seats in the solver layout so they stay empty.
+    if !reserved_empty_seats.is_empty() {
+        if let Some(layout) = request.layout.as_mut() {
+            for reserved in &reserved_empty_seats {
+                if let Some(seat) = layout.seats.get_mut(*reserved) {
+                    seat.enabled = false;
+                }
+            }
+        } else {
+            // No typed layout in the request: synthesize one from the
+            // seat positions so disabled seats are representable.
+            let positions = request.seat_positions.clone();
+            let seats: Vec<Value> = positions
+                .iter()
+                .enumerate()
+                .map(|(index, [x, y])| {
+                    json!({
+                        "seat_id": seat_ids[index],
+                        "row": 1 + index as u32,
+                        "col": 1,
+                        "x": x,
+                        "y": y,
+                        "enabled": !reserved_empty_seats.contains(&index),
+                        "zone": "middle",
+                        "near_platform": false,
+                        "near_window": false,
+                        "near_door": false,
+                        "near_ac": false,
+                        "tags": [],
+                        "attributes": {}
+                    })
+                })
+                .collect();
+            request.layout = Some(
+                serde_json::from_value(json!({
+                    "layout_id": "repair-reserved",
+                    "name": "repair reserved layout",
+                    "seats": seats,
+                    "adjacency": {"include_horizontal": true, "include_vertical": true}
+                }))
+                .map_err(|error: serde_json::Error| {
+                    format!("could not build reserved layout: {error}")
+                })?,
+            );
+        }
+    }
+
     request.fixed_seats = original_fixed_seats;
     request.fixed_seats.extend(repair_anchors);
     // Re-run static conflict detection now that repair anchors have been

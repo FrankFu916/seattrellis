@@ -1,0 +1,135 @@
+//! Repair empty-seat lock gate (ledger §16 D.11 closure): locking an *empty*
+//! seat must reserve it (stay empty after re-solve), mirroring the Python
+//! `reserved_empty_seats` semantics, while occupied locked seats stay fixed.
+
+use seattrellis_core::repair_json;
+use serde_json::{json, Value};
+
+fn request_with_spare_seats() -> Value {
+    // 4 students, 6 seats (3x2 grid); seats R3C1/R3C2 are spare.
+    json!({
+        "api_version": 2,
+        "student_count": 4,
+        "seat_positions": [[1.0,1.0],[2.0,1.0],[1.0,2.0],[2.0,2.0],[1.0,3.0],[2.0,3.0]],
+        "edges": [[0,1],[0,2],[1,3],[2,3],[2,4],[3,5],[4,5]],
+        "fixed_seats": [],
+        "must_be_adjacent": [],
+        "cannot_be_adjacent": [],
+        "min_distance": [],
+        "seed": 7,
+        "students": [
+            {"key": "s0", "display_name": "学生0", "height_cm": 150.0, "score": 70.0, "vision": null, "tags": [], "needs": []},
+            {"key": "s1", "display_name": "学生1", "height_cm": 160.0, "score": 75.0, "vision": null, "tags": [], "needs": []},
+            {"key": "s2", "display_name": "学生2", "height_cm": 140.0, "score": 65.0, "vision": null, "tags": [], "needs": []},
+            {"key": "s3", "display_name": "学生3", "height_cm": 170.0, "score": 80.0, "vision": null, "tags": [], "needs": []}
+        ],
+        "student_scores": [70.0, 75.0, 65.0, 80.0],
+        "rules": {"schema_version": 0, "seed": 7, "hard": {}, "soft": {}, "groups": []},
+        "layout": {
+            "layout_id": "spare-layout",
+            "name": "spare",
+            "seats": [
+                {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "enabled": true, "zone": "front", "near_platform": true, "near_window": true, "near_door": false, "near_ac": false, "tags": [], "attributes": {}},
+                {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "enabled": true, "zone": "front", "near_platform": true, "near_window": false, "near_door": false, "near_ac": false, "tags": [], "attributes": {}},
+                {"seat_id": "R2C1", "row": 2, "col": 1, "x": 1.0, "y": 2.0, "enabled": true, "zone": "middle", "near_platform": false, "near_window": true, "near_door": false, "near_ac": false, "tags": [], "attributes": {}},
+                {"seat_id": "R2C2", "row": 2, "col": 2, "x": 2.0, "y": 2.0, "enabled": true, "zone": "middle", "near_platform": false, "near_window": false, "near_door": false, "near_ac": false, "tags": [], "attributes": {}},
+                {"seat_id": "R3C1", "row": 3, "col": 1, "x": 1.0, "y": 3.0, "enabled": true, "zone": "back", "near_platform": false, "near_window": true, "near_door": false, "near_ac": false, "tags": [], "attributes": {}},
+                {"seat_id": "R3C2", "row": 3, "col": 2, "x": 2.0, "y": 3.0, "enabled": true, "zone": "back", "near_platform": false, "near_window": false, "near_door": false, "near_ac": false, "tags": [], "attributes": {}}
+            ],
+            "adjacency": {"include_horizontal": true, "include_vertical": true}
+        },
+        "history": null,
+        "pair_history": null,
+        "time_limit_seconds": null
+    })
+}
+
+fn snapshot_doc() -> Value {
+    json!({
+        "schema_version": "0.2.2",
+        "created_at": "2026-03-17T10:00:00Z",
+        "seed": 7,
+        "metadata": {},
+        "students": [],
+        "layout": {},
+        "rules": {},
+        "assignments": [
+            {"student_key": "s0", "seat_id": "R1C1"},
+            {"student_key": "s1", "seat_id": "R1C2"},
+            {"student_key": "s2", "seat_id": "R2C1"},
+            {"student_key": "s3", "seat_id": "R2C2"}
+        ],
+        "solver_status": "Solved"
+    })
+}
+
+fn seats_after(repair: &Value) -> Vec<String> {
+    repair["assignments"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .map(|row| row["seat_id"].as_str().unwrap_or("").to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn locked_empty_seat_stays_empty_after_repair() {
+    let request = request_with_spare_seats();
+    let repair = repair_json(
+        &request.to_string(),
+        &snapshot_doc().to_string(),
+        &["s1".to_string()],   // affected student moves
+        &[],                   // no locked students
+        &["R3C1".to_string()], // locked *empty* seat must stay empty
+    )
+    .expect("repair succeeds with an empty-seat lock");
+    let repaired: Value = serde_json::from_str(&repair).expect("repair output is JSON");
+    let seats = seats_after(&repaired);
+    assert!(
+        !seats.contains(&"R3C1".to_string()),
+        "reserved empty seat R3C1 must stay empty, got {seats:?}"
+    );
+    assert_eq!(seats.len(), 4, "all four students must be seated");
+}
+
+#[test]
+fn occupied_locked_seat_stays_anchored() {
+    let request = request_with_spare_seats();
+    let repair = repair_json(
+        &request.to_string(),
+        &snapshot_doc().to_string(),
+        &["s1".to_string()],
+        &["s0".to_string()],
+        &[],
+    )
+    .expect("repair succeeds");
+    let repaired: Value = serde_json::from_str(&repair).expect("repair output is JSON");
+    let assignments = repaired["assignments"].as_array().unwrap();
+    let s0_seat = assignments
+        .iter()
+        .find(|row| row["student_key"] == "s0")
+        .and_then(|row| row["seat_id"].as_str())
+        .expect("s0 stays seated");
+    assert_eq!(s0_seat, "R1C1", "locked student must stay on R1C1");
+}
+
+#[test]
+fn reserved_empty_seat_conflicting_with_fixed_rule_is_rejected() {
+    let mut request = request_with_spare_seats();
+    // Hard-fix s0 to the seat we want to reserve empty.
+    request["fixed_seats"] = json!([[0, 4]]); // s0 -> R3C1
+    let error = repair_json(
+        &request.to_string(),
+        &snapshot_doc().to_string(),
+        &[],
+        &[],
+        &["R3C1".to_string()],
+    )
+    .expect_err("reserving a seat required by a hard rule must fail");
+    assert!(
+        error.contains("Cannot reserve") && error.contains("R3C1"),
+        "unexpected error: {error}"
+    );
+}
