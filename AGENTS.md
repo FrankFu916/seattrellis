@@ -145,6 +145,12 @@ official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修�
   深度）× 跨平台中性实现 + G-6 强化；语义色系统、系统字体栈、动效仅做
   状态反馈（≤200ms + 尊重减少动效）、平台自适应策略、无障碍/键盘要求、
   反模式红线（无 AI 味）。M5 组件实现必须逐条对照（§8 约束条款）。
+- **M4 Gate 收口（2026-08-12）**：`docs/product-decisions/
+  2026-08-10-m4-gate-closure.md`——§7.9 六项退出条件逐项对照达成；
+  批 1 融合形态页浏览器确认；打印版式规范按实际需求修订（一页纸/大字
+  姓名/字号按最长姓名自适应/讲台过道窗门标注）；导出默认值矩阵与示例
+  名单出草案（dogfood 后冻结 G-4）。可进入 M5 规划（alpha.1 前提见
+  收口文档 §4）。
 - **技术线收尾（2026-08-10，ledger §19.18）已完成**：native→crates 目录
   收敛（§1.1）、lib.rs 单体拆分 9 模块（§1.2）、candidate-set /
   plan-comparison typed DTO + oracle golden 解析（§4.2）、property-based
