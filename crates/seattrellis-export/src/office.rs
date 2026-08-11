@@ -1,9 +1,9 @@
 //! Minimal, controlled OOXML writers for the Office export formats
-//! (修订版 §5.6 / §11.6): XLSX, DOCX and PPTX.
+//! (revised plan §5.6 / §11.6): XLSX, DOCX and PPTX.
 //!
 //! These are deliberately small hand-rolled writers instead of third-party
-//! crates: the plan's §5.6 policy is "若第三方 crate 成熟度不足，宁可实现
-//! 受控的最小 OOXML writer，也不要为方便引入不稳定或体积巨大的依赖".
+//! crates: the plan's §5.6 policy prefers a controlled minimal OOXML
+//! writer over pulling in a large or unstable third-party dependency.
 //! Each writer emits a zip container with the standard package parts
 //! (`[Content_Types].xml`, `_rels/.rels`, and the format's document parts)
 //! so independent readers (openpyxl / python-docx / python-pptx) can reopen
@@ -179,11 +179,19 @@ fn xlsx_assignments_sheet(grid: &SeatingGrid) -> String {
     sheet.push_str(
         r#"<row r="1"><c r="A1" t="inlineStr"><is><t>student_key</t></is></c><c r="B1" t="inlineStr"><is><t>student_name</t></is></c><c r="C1" t="inlineStr"><is><t>seat_id</t></is></c></row>"#,
     );
-    for (offset, cell) in grid.cells.iter().enumerate() {
-        let (Some(key), Some(student)) = (&cell.student_key, &cell.student) else {
-            continue;
-        };
-        let row_index = 2 + offset;
+    // Only seated cells become rows; the row numbers stay contiguous so
+    // independent readers (openpyxl) see exactly one row per assignment.
+    let seated: Vec<&crate::render::GridCell> = grid
+        .cells
+        .iter()
+        .filter(|cell| cell.student_key.is_some() && cell.student.is_some())
+        .collect();
+    for (row_index, cell) in seated.iter().enumerate() {
+        let (key, student) = (
+            cell.student_key.as_ref().expect("filtered"),
+            cell.student.as_ref().expect("filtered"),
+        );
+        let row_index = 2 + row_index;
         let seat_id = seat_id_for(grid, cell);
         sheet.push_str(&format!(
             r#"<row r="{row_index}">{}{}{}</row>"#,
@@ -477,7 +485,7 @@ fn seat_id_for(grid: &SeatingGrid, cell: &crate::render::GridCell) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Tests: independent structural validation (修订版 §11.6)
+// Tests: independent structural validation (revised plan §11.6)
 //
 // The acceptance criterion for Office formats is that an *independent*
 // reader can reopen the bytes. Here the zip container is unpacked and the
@@ -663,7 +671,7 @@ mod tests {
             slide.contains(r#"prstGeom prst="roundRect""#),
             "rounded seat shape"
         );
-        // 16:9 slide size (修订版 §5.6 单页 16:9).
+        // 16:9 slide size (revised plan §5.6 single-page 16:9).
         assert!(
             entries["ppt/presentation.xml"]
                 .contains(r#"<p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>"#),

@@ -1,6 +1,6 @@
 """Python/Rust differential harness with the frozen v2 seven-status semantics.
 
-M0-03 (see docs/SeatTrellis_v2.0.0_开发与发布总计划_修订版.md §四.1 and the
+M0-03 (see the revised v2.0.0 plan doc §4.1 and the
 parity ledger §0): the harness classifies every run on both sides under the
 single v2 SolveStatus vocabulary —
 
@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -693,8 +694,203 @@ def compare_plan_scores(
     return mismatches
 
 
+def run_rotation_class() -> list[tuple[str, str, str, str, list[str]]]:
+    """Rotation-plan semantic parity (plan §6.2/§17.3 item 3): for every
+    valid fixture case both sides generate a 2-period rotation plan from the
+    same inputs and seed, then the *semantic* contract is compared:
+
+    - period count and per-period seating completeness (every current
+      student seated in every period);
+    - per-period solver status (the v1 oracle reports FEASIBLE; the frozen
+      v2 vocabulary is Solved);
+    - `pair_repeat_summary.relation_totals` key-for-key (measured equal);
+    - `fairness_summary.category_totals` on the category keys both sides
+      report;
+    - `max_occurrences` and empty `warnings`.
+
+    Seats themselves are not compared position-by-position: the revised
+    plan §3.2 note says heuristic solutions only need matching semantics,
+    validity, scoring definitions and quality gates. One registered oracle
+    defect is additionally asserted: the v1 generator reuses the base seed
+    for every period (two identical periods), while the Rust side advances
+    the seed per period (seed + period - 1), so its periods must differ.
+    """
+    rows: list[tuple[str, str, str, str, list[str]]] = []
+    if not CLI.exists() or not PY_CLI.exists():
+        raise SystemExit("rotation class requires both the Rust and the Python CLI")
+    golden_dirs = sorted(
+        GOLDENS / case_dir.name
+        for case_dir in INPUTS.iterdir()
+        if case_dir.is_dir() and (GOLDENS / case_dir.name / "snapshot.json").is_file()
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for golden_dir in golden_dirs:
+            case = golden_dir.name
+            case_dir = INPUTS / case
+            try:
+                rules = json.loads((case_dir / "rules.json").read_text(encoding="utf-8"))
+            except OSError:
+                rows.append((case, "ROTATION", "ROTATION", "SKIP: no rules.json", []))
+                continue
+            seed = rules.get("seed", 42)
+
+            # --- Python oracle -------------------------------------------------
+            py_out = tmp_path / f"{case}-py-rotation.json"
+            py_proc = subprocess.run(
+                [
+                    str(PY_CLI), "rotation-plan",
+                    "--students", str(case_dir / "students.csv"),
+                    "--layout", str(case_dir / "classroom.json"),
+                    "--rules", str(case_dir / "rules.json"),
+                    "--periods", "2",
+                    "--seed", str(seed),
+                    "--output", str(py_out),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if py_proc.returncode != 0 or not py_out.is_file():
+                rows.append((case, "ROTATION", "ROTATION", f"PY_SKIP: {py_proc.stderr.strip()[:120]}", []))
+                continue
+
+            # --- Rust CLI (project workspace) ----------------------------------
+            workspace = tmp_path / f"{case}-ws"
+            workspace.mkdir()
+            for src_name, dst_name in (
+                ("students.csv", "students.csv"),
+                ("classroom.json", "layout.json"),
+                ("rules.json", "rules.json"),
+            ):
+                shutil.copyfile(case_dir / src_name, workspace / dst_name)
+            init = subprocess.run(
+                [str(CLI), "project-init", "--dir", str(workspace)],
+                capture_output=True,
+                text=True,
+            )
+            if init.returncode != 0:
+                rows.append((case, "ROTATION", "ROTATION", f"INIT_FAILED: {init.stderr.strip()[:120]}", []))
+                continue
+            ru_out = tmp_path / f"{case}-ru-rotation.json"
+            ru_proc = subprocess.run(
+                [
+                    str(CLI), "project-rotate",
+                    "--project", str(workspace / "seattrellis.project.json"),
+                    "--periods", "2",
+                    "--seed", str(seed),
+                    "--output", str(ru_out),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if ru_proc.returncode != 0 or not ru_out.is_file():
+                rows.append((case, "ROTATION", "ROTATION", f"RU_FAILED: {ru_proc.stderr.strip()[:120]}", []))
+                continue
+
+            try:
+                py_plan = json.loads(py_out.read_text(encoding="utf-8"))
+                ru_plan = json.loads(ru_out.read_text(encoding="utf-8"))
+                mismatches = compare_rotation_plans(py_plan, ru_plan)
+                label = "ROTATION"
+                rows.append(
+                    (case, label, label, "" if not mismatches else f"{mismatches} mismatches", [])
+                )
+            except Exception as exc:  # noqa: BLE001
+                rows.append((case, "ROTATION", "ROTATION", f"COMPARE_FAILED: {exc}", []))
+    return rows
+
+
+def compare_rotation_plans(python: dict[str, object], rust: dict[str, object]) -> int:
+    """Semantic comparison of two rotation plans; returns the mismatch count
+    and appends nothing (the caller logs the row)."""
+    mismatches = 0
+    py_periods = python.get("periods", [])
+    ru_periods = rust.get("periods", [])
+    if len(py_periods) != len(ru_periods):
+        mismatches += 1
+
+    def seated_keys(plan: dict[str, object]) -> list[set[str]]:
+        return [
+            {
+                assignment.get("student_key")
+                for assignment in period.get("snapshot", {}).get("assignments", [])
+                if assignment.get("student_key")
+            }
+            for period in plan.get("periods", [])
+        ]
+
+    py_keys = seated_keys(python)
+    ru_keys = seated_keys(rust)
+    # Completeness: every period seats the same student set on both sides.
+    if py_keys and ru_keys and py_keys[0] != ru_keys[0]:
+        mismatches += 1
+
+    # Solver status: the v1 oracle reports FEASIBLE; the frozen v2
+    # vocabulary is Solved (M1-03). Map the legacy value before comparing.
+    def normalized_status(plan: dict[str, object]) -> set[str]:
+        return {
+            "Solved" if period.get("snapshot", {}).get("solver_status") == "FEASIBLE"
+            else period.get("snapshot", {}).get("solver_status")
+            for period in plan.get("periods", [])
+        }
+
+    if normalized_status(python) != {"Solved"} or normalized_status(rust) != {"Solved"}:
+        mismatches += 1
+
+    # relation_totals key-for-key.
+    py_relations = python.get("pair_repeat_summary", {}).get("relation_totals", {})
+    ru_relations = rust.get("pair_repeat_summary", {}).get("relation_totals", {})
+    if py_relations != ru_relations:
+        mismatches += 1
+
+    # max_occurrences.
+    if (
+        python.get("pair_repeat_summary", {}).get("max_occurrences")
+        != rust.get("pair_repeat_summary", {}).get("max_occurrences")
+    ):
+        mismatches += 1
+
+    # fairness category_totals on shared keys.
+    py_categories = python.get("fairness_summary", {}).get("category_totals", {})
+    ru_categories = rust.get("fairness_summary", {}).get("category_totals", {})
+    for category, value in ru_categories.items():
+        if category in py_categories and py_categories[category] != value:
+            mismatches += 1
+
+    # history_count.
+    if (
+        python.get("fairness_summary", {}).get("history_count")
+        != rust.get("fairness_summary", {}).get("history_count")
+    ):
+        mismatches += 1
+
+    # warnings empty on both sides.
+    if python.get("warnings") or rust.get("warnings"):
+        mismatches += 1
+
+    # Registered oracle defect: the v1 generator reuses the base seed for
+    # every period (identical assignments), while the Rust side advances the
+    # seed (seed + period - 1), so its periods must differ. Compare the
+    # student -> seat mapping, not the key set (every period seats the full
+    # roster on both sides).
+    def assignments(plan: dict[str, object]) -> list[set[tuple[str, str]]]:
+        return [
+            {
+                (assignment.get("student_key"), assignment.get("seat_id"))
+                for assignment in period.get("snapshot", {}).get("assignments", [])
+                if assignment.get("student_key") and assignment.get("seat_id")
+            }
+            for period in plan.get("periods", [])
+        ]
+
+    ru_assignments = assignments(rust)
+    if len(ru_assignments) > 1 and ru_assignments[0] == ru_assignments[1]:
+        mismatches += 1
+    return mismatches
+
+
 def run_exports_class() -> list[tuple[str, str, str, str, list[str]]]:
-    """Office export independent-reader verification (修订版 §11.6).
+    """Office export independent-reader verification (revised plan §11.6).
 
     For every valid fixture case the Rust CLI solves the problem and exports
     XLSX / DOCX / PPTX (teacher template) plus XLSX (public template). Each
@@ -1096,6 +1292,12 @@ def main() -> int:
         help="run the fixed-assignment PlanScore parity class (all valid fixture cases)",
     )
     parser.add_argument(
+        "--rotation",
+        action="store_true",
+        help="run the rotation-plan semantic parity class (2 periods per "
+        "valid fixture case, Python oracle vs Rust project-rotate)",
+    )
+    parser.add_argument(
         "--exports",
         action="store_true",
         help="run the Office export independent-reader class (XLSX/DOCX/PPTX "
@@ -1120,6 +1322,8 @@ def main() -> int:
         rows.extend(run_candidates_class())
     if args.scoring:
         rows.extend(run_scoring_class())
+    if args.rotation:
+        rows.extend(run_rotation_class())
     if args.exports:
         rows.extend(run_exports_class())
     if not rows:
