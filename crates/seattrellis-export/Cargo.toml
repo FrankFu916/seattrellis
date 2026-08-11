@@ -7,11 +7,12 @@ license.workspace = true
 description = "Export/render primitives: solved plan to SVG / HTML / PNG / PDF / XLSX / DOCX / PPTX bytes (M1-02 crate split)."
 
 [dependencies]
-seattrellis_core = { path = "../../native/seattrellis_core" }
+seattrellis_core = { path = "../../crates/seattrellis-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
+proptest = "1"
 quick-xml = "0.41"

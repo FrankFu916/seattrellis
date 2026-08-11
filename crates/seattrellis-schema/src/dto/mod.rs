@@ -5,7 +5,9 @@
 //! DTOs parse strictly: unknown fields are rejected, never ignored.
 
 pub mod bundle_manifest;
+pub mod candidate_set;
 pub mod classroom_layout;
+pub mod plan_comparison;
 pub mod project;
 pub mod rule_set;
 pub mod snapshot;

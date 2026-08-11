@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeatTrellis v2 M4 · 产品决策原型画廊</title>
+<link rel="stylesheet" href="assets/prototypes.css">
+</head>
+<body>
+
+<header class="pt-topbar">
+  <span class="brand">SeatTrellis 席序<small>v2 M4 · Product Decision Prototypes</small></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">计划 §7.1 Decision Backlog · 批 1 核心工作流</span>
+</header>
+
+<main class="pt-main">
+  <section class="idx-hero">
+    <h1>产品决策原型画廊</h1>
+    <p>这是 M4 阶段为《v2.0.0 开发与发布总计划》§7.1 Decision Backlog 制作的原型工具：每个决策项提供
+       <b>2–4 个可对照的界面变体</b>（全部使用 parity corpus 的真实学生名单/教室/规则渲染），
+       你可以逐项选择偏好的方案（A/B/C/D），或选择<b>「都不满意，重新设计」</b>要求迭代新变体。
+       选择保存在本浏览器（localStorage），最终在底部生成决策摘要，作为
+       <code>docs/product-decisions/</code> 决策记录初稿。</p>
+    <p class="small muted">依据：计划 §0.5（Decision Gate 流程）与 §7.1（Product Decision Backlog）。本页为纯静态 HTML，不依赖后端与构建链。</p>
+  </section>
+
+  <section class="idx-progress">
+    <div class="bar"><div class="fill" id="idxFill" style="width:0%"></div></div>
+    <span class="pct" id="idxPct">0%</span>
+    <span class="bold" id="idxDone">0 / 8 项已决策</span>
+    <span class="hint" id="idxHint"></span>
+  </section>
+
+  <section class="idx-grid" id="idxGrid"></section>
+
+  <section class="idx-summary">
+    <h2>决策摘要（复制为 M4 决策记录初稿）</h2>
+    <textarea id="idxSummaryText" spellcheck="false" readonly></textarea>
+    <div class="actions">
+      <button class="btn" id="btnCopy">复制摘要</button>
+      <button class="btn" id="btnReset">清除全部选择</button>
+      <span class="note grow" id="resetNote"></span>
+    </div>
+  </section>
+</main>
+
+<script src="assets/data.js"></script>
+<script src="assets/prototypes.js"></script>
+<script>
+  PTUI.renderIndex();
+  document.getElementById("btnCopy").addEventListener("click", function () {
+    var ta = document.getElementById("idxSummaryText");
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
+    PTUI.toast("摘要已复制到剪贴板");
+  });
+  document.getElementById("btnReset").addEventListener("click", function () {
+    if (!confirm("清除全部 8 项决策选择？此操作不可撤销。")) return;
+    localStorage.removeItem("seattrellis-prototypes:v1");
+    PTUI.renderIndex();
+    PTUI.toast("已清除全部选择");
+  });
+</script>
+</body>
+</html>

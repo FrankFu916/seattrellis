@@ -14,9 +14,9 @@ Python 是 oracle（行为基准），Rust 是 v2 目标实现，React 仅是展
 | 路径 | 内容 | 角色 |
 |---|---|---|
 | `Cargo.toml` / `Cargo.lock` | 单一 Rust workspace、单一 lockfile、MSRV 1.88；PyO3 crate 不在 `default-members` | v2 生产构建根 |
-| `crates/` | `schema/rules/domain/application/io/export/server` 分层 crate | v2 应用与传输主路径 |
+| `crates/` | `schema/rules/domain/application/io/export/server/core/cli` 分层 crate（core=solver/evaluator/validation/candidates/audit 宿主；cli=CLI adapter） | v2 应用与传输主路径 |
 | `src/seattrellis/` | Python v1.x | **oracle，只读参考**；不为其扩展 v2 功能 |
-| `native/` | `seattrellis_core`、`seattrellis_cli`、PyO3 临时兼容 crate `seattrellis_native` | v2 core/CLI 与迁移兼容 |
+| `native/` | 仅 PyO3 临时兼容 crate `seattrellis_native` | 迁移兼容（v2 final 前必须删除） |
 | `app/` | 薄 `seattrellis_app` facade，复用 `seattrellis-server` | v2 服务启动器 |
 | `app/src-tauri/` | 单一 workspace 成员中的 Tauri 2 薄壳，toolchain 锁定 1.88.0 | v2 桌面 |
 | `clients/web/` | React 19 + Vite + vitest | 展示层 |
@@ -123,6 +123,32 @@ false-infeasible=0、随机可行 ≥99.5%、性能回归门槛与长跑内存�
 **剩余登记项（非 gate 阻断）**：React 第二套规则真相为 M6 删除项、
 official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修订版
 可进入 M4 Product Decision/UX（§7.1 Decision Backlog 需产品输入）。
+
+## M4 进度（2026-08-10）
+
+- 原型画廊 `docs/prototypes/`（纯静态 HTML，真实 parity corpus 数据）承载
+  §7.1 Decision Backlog 批 1（D1–D8 核心工作流）的变体对比与融合形态确认。
+- 批 1 决策已由产品负责人逐项选择/融合，**冻结记录见
+  `docs/product-decisions/2026-08-10-batch1-core-workflow.md`**（含 G-1 去术语化
+  文案资产、G-2 多视图共享编辑状态与 undo 栈、G-3 复现信息可查、G-4 默认值
+  证据要求、G-5 临时工作台语义；PD-D3-ADJ-1 规则 JSON 仅只读）。
+- 批 2 决策已由产品负责人逐项选择/融合（**方向冻结**，含 G-6 UI 设计准则：
+  专业简洁易用、无 AI 味、克制动效、颜色语义化；PD-D12 PDF 系统字体智能引用
+  （无嵌入无 fallback）；PD-D14 文件选择三入口融合，手动路径仅限可信根内——
+  安全红线），记录见 `docs/product-decisions/2026-08-10-batch2-export-wrapup.md`。
+  **版式格式细节与 UI 交互/视觉细节明确为"待进一步研究讨论"，不冻结**。
+- 批 1 仍为"交互契约草案"：待目标形态页在真实浏览器确认与 dogfood 验证后
+  才算冻结（§7.9）。批 2 方向已冻结，版式/UI 细节待研究；全部 15 项决策
+  完成后进入 M5 实现（决策项逐一过 Rust contract + React E2E）。
+- **技术线收尾（2026-08-10，ledger §19.18）已完成**：native→crates 目录
+  收敛（§1.1）、lib.rs 单体拆分 9 模块（§1.2）、candidate-set /
+  plan-comparison typed DTO + oracle golden 解析（§4.2）、property-based
+  12 门（§11.3 全清单：solver/editing/migration + backup-restore +
+  canonical 幂等）、fuzz-style 22 入口 + **cargo-fuzz 6 个 libFuzzer
+  targets（§11.4，CI nightly job）**、CLI stdout golden 21 命令含 project
+  全生命周期（§5.5）、repair 空座锁 + saved locks、roster 别名镜像。
+  §19.18 登记的四项未闭合项全部闭合。剩余边界：CLI 参数组合全量枚举、
+  fuzz corpus 长期积累。
 
 ### 2026-08-09 post-merge acceptance audit
 

@@ -105,6 +105,25 @@ jobs:
           cargo build --release --locked -p seattrellis_cli
           python3 scripts/bench_solver.py --check
 
+  fuzz-targets:
+    # plan §11.4: libFuzzer targets must build and survive bounded runs on
+    # every PR. cargo-fuzz needs the nightly toolchain.
+    name: Fuzz targets (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Build fuzz targets
+        run: cargo +nightly fuzz build
+      - name: Bounded fuzz runs
+        run: |
+          for target in solve_request dto_parsers csv_importer editor_commands export_options migration; do
+            cargo +nightly fuzz run "$target" -- -runs=3000 -max_total_time=120
+          done
+
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}
     if: github.event_name == 'release'

@@ -1,0 +1,19 @@
+[package]
+name = "seattrellis_core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Cost-ranked classroom seating solver core for SeatTrellis."
+repository = "https://github.com/FrankFu916/seattrellis"
+homepage = "https://github.com/FrankFu916/seattrellis"
+readme = "README.md"
+keywords = ["seating", "classroom", "solver", "optimization", "education"]
+categories = ["algorithms", "mathematics"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"

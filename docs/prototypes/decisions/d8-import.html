@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D8 · 导入确认流程（融合方案）— SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .map-legend { font-size:11.5px; color:var(--ink-3); margin-bottom:8px; }
+  .conflict-badge { font-size:10.5px; font-weight:700; border-radius:4px; padding:1px 6px; }
+  .cb-dup { background:var(--bad-soft); color:#991b1b; }
+  .cb-new { background:var(--ok-soft); color:#166534; }
+  .cb-missing { background:var(--warn-soft); color:#92400e; }
+  .apply-bar { display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--surface-2); border-top:1px solid var(--line); }
+  .map-row { display:grid; grid-template-columns: 130px 34px 1fr 24px; align-items:center; gap:8px; padding:4px 0; font-size:12.5px; }
+  .map-row .arrow { text-align:center; color:var(--ink-3); }
+  .map-row .src { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); }
+  .map-row select.input { padding:3px 6px; }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D8 · 导入确认流程（融合方案）</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">8 / 8 · D8 已决策 → 确认融合形态</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">PD-D8-IMPORT · 计划 §7.1 项 8 / §7.5</span>
+    <h1>导入确认 — 融合方案：步骤条骨架 + 映射/预览同屏（班级上下文内面板）</h1>
+    <p class="task">真实任务不变：教师导入更新后的名单 CSV（20 行、2 行学号重复、1 列表头改名）：看清变化、处理冲突、原子生效、可回滚。<b>步骤条保留事务心智模型（上传 → 映射预览 → 确认），映射编辑与冲突处理同屏即时更新（单页信息密度）；不采用行级内联（C）——新增学生场景低频，内联弱化导入概念。</b></p>
+    <div class="constraints"><b>不可违反约束（§7.5，与 UX 无关、已冻结）</b>：parse 与 apply 分离；映射/迁移/验证在 apply 前可预览；apply 原子化；任一步失败不得留下半应用状态；可安全回滚到导入前状态；导入产生的 schema/data 变换可审计。呈现形态与 D1 一致——班级上下文内的引导面板，非独立全屏向导。</div>
+  </section>
+
+  <section class="variants wide">
+    <div class="variant" id="vFinal">
+      <div class="v-head">
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态</div>
+        <div class="v-sub">步骤条（上传 ✓ → 映射预览 → 确认）+ 映射与冲突同屏可改 + 预览即时更新 + 原子确认栏（含回滚说明）。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/students/import</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 初二（3）班 · 导入名单</small></span>
+            <span class="spacer"></span><span class="chip blue">班级上下文内面板（与 D1 导航一致）</span></div>
+          <div class="wizard-steps">
+            <span class="step done"><span class="n">✓</span>上传文件</span>
+            <span class="step active"><span class="n">2</span>映射与预览</span>
+            <span class="step"><span class="n">3</span>确认应用</span>
+          </div>
+          <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+            <div class="row">
+              <span class="chip green">students-v2.csv</span>
+              <span class="small muted">20 行 · 18 新增 · 2 冲突 · 已应用映射 6 列</span>
+              <span class="spacer"></span><button class="btn" style="font-size:11.5px">重新上传</button>
+            </div>
+            <div class="row">
+              <span class="bold" style="font-size:12.5px">字段映射</span>
+              <span class="map-legend">CSV 表头 → 学生字段（点击下拉修改，预览即时更新）</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px">
+              <div class="map-row"><span class="src">student_id</span><span class="arrow">→</span><select class="input"><option>学号 (student_id)</option></select><span class="chip green">✓</span></div>
+              <div class="map-row"><span class="src">name</span><span class="arrow">→</span><select class="input"><option>姓名 (name)</option></select><span class="chip green">✓</span></div>
+              <div class="map-row"><span class="src">gender</span><span class="arrow">→</span><select class="input"><option>性别 (gender)</option></select><span class="chip green">✓</span></div>
+              <div class="map-row"><span class="src">height_cm</span><span class="arrow">→</span><select class="input"><option>身高 (height_cm)</option></select><span class="chip green">✓</span></div>
+              <div class="map-row"><span class="src">score</span><span class="arrow">→</span><select class="input"><option>成绩 (score)</option></select><span class="chip green">✓</span></div>
+              <div class="map-row"><span class="src">score</span><span class="arrow">→</span><select class="input" style="border-color:var(--warn)"><option>⚠ 未映射</option><option>成绩 (score)</option></select><span class="chip amber">?</span></div>
+            </div>
+            <div class="import-preview">
+              <div class="ip-head">预览 <span class="sub">20 行 · 红色 = 冲突 · 修改映射后即时更新</span></div>
+              <div class="ip-body">
+                <table class="mini">
+                  <tr><th>学号</th><th>姓名</th><th>性别</th><th>身高</th><th>成绩</th><th>状态</th></tr>
+                  <tr><td class="num">STU011</td><td>学生下011</td><td>女</td><td class="num">146</td><td class="num">61.3</td><td><span class="conflict-badge cb-dup">学号重复</span></td></tr>
+                  <tr><td class="num">STU012</td><td>学生丌012</td><td>男</td><td class="num">167</td><td class="num">77.7</td><td><span class="conflict-badge cb-new">新增</span></td></tr>
+                  <tr><td class="num">STU013</td><td>学生不013</td><td>女</td><td class="num">147</td><td class="num">75.4</td><td><span class="conflict-badge cb-new">新增</span></td></tr>
+                  <tr><td class="num">STU014</td><td>学生与014</td><td>男</td><td class="num">173</td><td class="num">96.2</td><td><span class="conflict-badge cb-new">新增</span></td></tr>
+                  <tr><td class="num">STU015</td><td>学生丏015</td><td>女</td><td class="num">164</td><td class="num">72.0</td><td><span class="conflict-badge cb-new">新增</span></td></tr>
+                  <tr><td class="num">STU016</td><td>学生丐016</td><td>男</td><td class="num">138</td><td class="num">79.6</td><td><span class="conflict-badge cb-missing">缺身高</span></td></tr>
+                </table>
+              </div>
+            </div>
+            <div class="apply-bar">
+              <span class="chip amber">2 项冲突需处理</span>
+              <span class="small muted">确认后原子应用 · 任一步失败自动回滚到导入前状态 · 操作可审计（§7.5）</span>
+              <span class="spacer"></span>
+              <button class="btn">← 上一步</button>
+              <button class="btn primary">确认导入（20 行）</button>
+            </div>
+          </div>
+        </div>
+        <div class="note mt8">步骤条 = 事务心智模型（A）；同屏映射 + 冲突 + 预览 = 信息密度（B）；呈现为班级上下文内面板 = 与 D1 导航一致。不采用 C（行级内联弱化导入，且新增学生场景低频）。</div>
+      </div></div>
+
+      <div class="v-tradeoff" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="pro"><span class="t-label">来自 A</span>步骤条保留 parse/apply 分离的事务心智模型，一次只聚焦一类问题</div>
+        <div class="pro"><span class="t-label">来自 B</span>映射编辑与冲突处理同屏、预览即时更新——减少往返</div>
+        <div class="pro"><span class="t-label">与 D1 一致</span>班级上下文内引导面板，非独立全屏向导；C（行级内联）明确不采用</div>
+      </div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">事务语义</td><td>parse/apply 分离、apply 前预览、原子化、失败无半应用、可回滚、可审计——全部由 Rust application 层保证（§7.5），UI 只决定呈现与操作顺序</td></tr>
+          <tr><td class="src">映射同屏</td><td>CSV 表头 → 学生字段下拉；修改后预览即时更新；未映射列黄色警示</td></tr>
+          <tr><td class="src">冲突处理</td><td>预览内红色标记（学号重复/缺字段）；冲突处理在确认前完成，确认 = 一次原子事务</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>无新 API；事务语义维持 Rust application 层现状</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待验证（dogfood）：</p>
+        <ul class="pending-list">
+          <li>大文件（200 行）在单页预览的滚动体验</li>
+          <li>冲突处理的具体交互（覆盖/跳过/合并的选择呈现）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d8");
+</script>
+</body>
+</html>

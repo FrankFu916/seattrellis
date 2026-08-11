@@ -302,9 +302,9 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
 为达到“解压后 5–20MB 的小体积桌面工具”，项目决定把 Rust 作为桌面主运行时，
 React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交付与边界如下：
 
-- **`native/seattrellis_core`**：版本化 JSON 契约、图距离、硬约束验证、成本评分和
+- **`crates/seattrellis-core`**：版本化 JSON 契约、图距离、硬约束验证、成本评分和
   成本排序启发式求解。它覆盖当前已迁移的规则，但不是 Python OR-Tools CP-SAT 的精确替代；
-- **CLI 版**（`native/seattrellis_cli`）：单文件约 **1.6 MiB**，提供 `validate`、`solve` 和
+- **CLI 版**（`crates/seattrellis-cli`）：单文件约 **1.6 MiB**，提供 `validate`、`solve` 和
   SVG/HTML/PNG/PDF 导出；历史/项目/schema/multi-candidate 等命令仍在迁移；
 - **App 版**（`app/`）：loopback 纯 Rust 服务，提供名单、生成、调整、导出、布局、项目、
   迁移、轮换和分组接口；React 生产资源已嵌入，当前约 **2.7 MiB**；Tauri 2 壳约 **9 MiB**；

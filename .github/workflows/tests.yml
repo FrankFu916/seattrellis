@@ -341,4 +341,4 @@ jobs:
         # public privacy) are part of the same run; any mismatch fails the
         # job. The script must run from the venv that carries the installed
         # oracle package.
-        run: .venv/bin/python scripts/rust_python_diff.py --fixtures --candidates --scoring --exports --rotation
+        run: .venv/bin/python scripts/rust_python_diff.py --fixtures --candidates --scoring --exports --rotation --cli-golden

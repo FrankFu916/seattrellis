@@ -1,6 +1,6 @@
 //! Rendering of a solved seating plan to SVG, HTML, PNG, or PDF.
 //!
-//! This module is a copy of `native/seattrellis_cli/src/render.rs` (kept
+//! This module is a copy of `historical crates/seattrellis-cli/src/render.rs` (kept
 //! byte-consistent with the CLI's `render_svg`/`render_html`/`render_png`/
 //! `render_pdf` so both entry points produce identical output and a future
 //! extraction into a shared crate is a mechanical move). See the CLI source for

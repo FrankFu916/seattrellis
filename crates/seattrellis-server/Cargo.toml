@@ -7,7 +7,7 @@ license.workspace = true
 description = "Loopback HTTP transport: routes, axum adapter and embedded workbench assets (M1-02 crate split)."
 
 [dependencies]
-seattrellis_core = { path = "../../native/seattrellis_core" }
+seattrellis_core = { path = "../../crates/seattrellis-core" }
 seattrellis-domain = { path = "../seattrellis-domain" }
 seattrellis-export = { path = "../seattrellis-export" }
 seattrellis-application = { path = "../seattrellis-application" }

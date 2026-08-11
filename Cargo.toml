@@ -8,8 +8,8 @@
 
 [workspace]
 members = [
-    "native/seattrellis_core",
-    "native/seattrellis_cli",
+    "crates/seattrellis-core",
+    "crates/seattrellis-cli",
     "native/seattrellis_native",
     "app",
     "app/src-tauri",
@@ -23,8 +23,8 @@ members = [
     "crates/seattrellis-server",
 ]
 default-members = [
-    "native/seattrellis_core",
-    "native/seattrellis_cli",
+    "crates/seattrellis-core",
+    "crates/seattrellis-cli",
     "app",
 ]
 resolver = "2"

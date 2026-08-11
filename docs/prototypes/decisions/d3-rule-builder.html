@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D3 · Rule builder（融合方案）— SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .rb-layout { display:grid; grid-template-columns: 1fr 1fr; gap:12px; padding:12px; }
+  .rb-layout .left { border-right: 1px dashed var(--line); padding-right: 12px; }
+  .rule-sentence { display:flex; align-items:center; gap:6px; flex-wrap:wrap; background:#fff; border:1px solid var(--line-2); border-radius:8px; padding:9px 12px; font-size:13px; }
+  .rule-sentence .seg { color: var(--ink); }
+  .rule-sentence .slot { border:1.5px dashed var(--brand); color:var(--brand-ink); background:var(--brand-soft); border-radius:6px; padding:2px 9px; font-weight:600; cursor:pointer; font-size:12.5px; }
+  .rule-sentence .slot.amber { border-color:var(--warn); color:#92400e; background:var(--warn-soft); }
+  .rule-sentence .add-slot { border:1.5px dashed var(--line-2); color:var(--ink-3); background:#fff; border-radius:6px; padding:2px 9px; font-weight:600; cursor:pointer; }
+  .preview-line { font-family:var(--mono); font-size:11px; color:var(--ink-3); background:var(--surface-2); border:1px dashed var(--line-2); border-radius:6px; padding:5px 9px; }
+  .tpl-row { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; }
+  .tpl-row .tpl { font-size:11.5px; border:1px solid var(--line-2); border-radius:999px; padding:3px 10px; cursor:pointer; background:#fff; color:var(--ink-2); }
+  .tpl-row .tpl.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+  .json-view { font-family:var(--mono); font-size:11px; background:#0f172a; color:#a5f3fc; border-radius:8px; padding:10px 12px; overflow:auto; white-space:pre; }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D3 · Rule builder（融合方案）</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">3 / 8 · D3 已决策 → 确认融合形态</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">PD-D3-RULEBUILDER + PD-D3-ADJ-1 · 计划 §7.3</span>
+    <h1>Rule builder — 融合方案：句式构建器（创建）+ 规则卡片（管理）+ 高级表单兜底</h1>
+    <p class="task">真实任务不变：教师新增「学生丄004 与学生丌012 不要坐在一起（距离 ≥ 2）」，并管理现有规则。<b>创建与管理正交分层：句式负责"新建"，卡片负责"管理"，高级表单兜底复杂组合；规则 JSON 仅只读查看（PD-D3-ADJ-1）。</b></p>
+    <div class="constraints"><b>不可违反约束</b>：规则参数 schema 唯一来源为 Rust RuleSpec/metadata（§7.3）；UI 不得自编译规则（M6 删除项）；未知学生/座位、字段缺失、明显冲突须即时发现；生成前可查看 feasibility summary；JSON 禁止编辑（仅只读，PD-D3-ADJ-1）。</div>
+  </section>
+
+  <section class="variants wide">
+    <div class="variant" id="vFinal">
+      <div class="v-head">
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态</div>
+        <div class="v-sub">左：规则卡片列表（管理：启用/停用、权重、排序、编辑、删除）；右：句式构建器（新建入口，预置句式模板）；「高级」按钮展开分层表单；「查看规则代码」为只读 JSON。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/rules</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 规则与目标</small></span>
+            <span class="spacer"></span><button class="btn-sm">查看规则代码（只读）</button><button class="btn-sm primary">保存规则</button></div>
+          <div class="rb-layout">
+            <div class="left">
+              <div class="row mb8"><span class="chip red">HARD</span><span class="muted small">违反 = 方案不可用</span><span class="spacer"></span><span class="chip green">1 条启用</span></div>
+              <div class="rule-card hard">
+                <div class="rc-head">
+                  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" checked> <span class="rc-title">固定座位</span></label>
+                  <span class="spacer"></span><button class="btn" style="font-size:11px">✎ 编辑</button><button class="btn danger" style="font-size:11px">删除</button>
+                </div>
+                <div class="rc-desc">学生丁001（STU001）→ 座位 R1C1 · Rust 编译校验通过</div>
+              </div>
+              <div class="row mt8 mb8"><span class="chip amber">SOFT 目标</span><span class="muted small">权重驱动优化方向</span><span class="spacer"></span><span class="chip green">1 条启用</span></div>
+              <div class="rule-card soft">
+                <div class="rc-head">
+                  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" checked> <span class="rc-title">前排优先（视力）</span></label>
+                  <span class="chip gray">权重 <b>20</b></span><span class="spacer"></span>
+                  <button class="btn" style="font-size:11px">✎ 编辑</button><button class="btn danger" style="font-size:11px">删除</button>
+                </div>
+                <div class="rc-desc">「需要前排」的学生安排在教室前排 · 4 名学生命中</div>
+              </div>
+              <div class="rule-card soft" style="opacity:.65;border-style:dashed">
+                <div class="rc-head">
+                  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox"> <span class="rc-title">公平轮换（跨期）</span></label>
+                  <span class="chip gray">权重 10</span><span class="spacer"></span><button class="btn" style="font-size:11px">✎ 编辑</button>
+                </div>
+                <div class="rc-desc">停用中 · 需历史快照才能评估（当前班级无历史）</div>
+              </div>
+            </div>
+            <div class="right">
+              <div class="row mb8"><span class="bold" style="font-size:13px">新建规则</span><span class="chip blue">句式模板</span><span class="spacer"></span><button class="btn" style="font-size:11px" id="btnAdvanced">高级…</button></div>
+              <div class="tpl-row" id="tplRow">
+                <span class="tpl on">学生距离</span><span class="tpl">固定座位</span><span class="tpl">标签分组</span><span class="tpl">区域</span><span class="tpl">成绩平衡</span><span class="tpl">历史目标</span>
+              </div>
+              <div class="rule-sentence" id="sentence">
+                <span class="chip red">HARD</span>
+                <span class="seg">让</span><span class="slot" data-slot="student">选择学生…</span>
+                <span class="seg">与</span><span class="slot" data-slot="student">选择学生…</span>
+                <span class="seg">的距离</span><span class="slot amber" data-slot="dist">≥</span><span class="seg">（座）</span>
+                <span class="add-slot">+ 条件</span>
+              </div>
+              <div id="advPanel" style="display:none" class="mt8">
+                <div class="rule-form">
+                  <div class="rf-row">
+                    <div class="field"><label>规则类型</label><select class="input"><option>学生间距（距离约束）</option><option>组合条件（AND/OR）</option><option>自定义字段</option></select></div>
+                    <div class="field"><label>性质</label><select class="input"><option>HARD（必须满足）</option><option>SOFT（尽量满足）</option></select></div>
+                  </div>
+                  <div class="note">高级表单字段全部来自 Rust rule registry——句式表达不了的组合条件在此兜底（§7.3）。</div>
+                </div>
+              </div>
+              <div class="row mt8"><span class="chip green" id="validBadge">等待编译</span><span class="spacer"></span><button class="btn primary" style="font-size:12px">添加到规则列表</button></div>
+              <div class="preview-line mt8" id="preview">— 未填写完整，尚不能编译 —</div>
+            </div>
+          </div>
+          <div id="jsonView" style="display:none;padding:12px">
+            <div class="json-view" id="jsonText"></div>
+            <div class="note mt8">规则表示始终是 Rust RuleSpec 的产物（PD-D3-ADJ-1）：只读查看，禁止直接编辑，防止绕过校验。</div>
+          </div>
+        </div>
+        <div class="note mt8"><b>试一下</b>：点击句中的「选择学生…」槽位填充规则；点「高级…」展开分层表单；点「查看规则代码（只读）」看 JSON。</div>
+      </div></div>
+
+      <div class="v-tradeoff" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="pro"><span class="t-label">来自 A</span>句式构建器作为创建入口：自然语言表达，槽位值来自 Rust 注册表</div>
+        <div class="pro"><span class="t-label">来自 B（合并）</span>规则卡片作为管理视图：启用/停用、权重、排序、编辑、删除——与句式互补而非重复</div>
+        <div class="pro"><span class="t-label">来自 C</span>高级表单兜底复杂组合；JSON 只读查看（PD-D3-ADJ-1）守住校验边界</div>
+      </div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">创建/管理分层</td><td>句式 = 新建入口（预置模板：学生距离/固定座位/标签分组/区域/成绩平衡/历史目标）；卡片 = 管理视图。原变体 B 的混淆已消除（设计缺陷记录在案）</td></tr>
+          <tr><td class="src">高级兜底</td><td>句式表达不了的组合条件 → 「高级…」分层表单（字段由 Rust registry 驱动，非自由 JSON）</td></tr>
+          <tr><td class="src">JSON 策略</td><td>只读查看（PD-D3-ADJ-1）；若未来开放编辑需重新过 Decision Gate</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>无新 API；需要 Rust metadata 暴露"句式模板 → RuleSpec 参数槽"映射；i18n 文案资产</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待验证（dogfood）：</p>
+        <ul class="pending-list">
+          <li>预置句式模板清单与 Rust registry 对账</li>
+          <li>高级表单字段组织（组合条件 AND/OR 的呈现）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Sentence builder micro-interaction.
+  var sentence = document.getElementById("sentence");
+  var preview = document.getElementById("preview");
+  var badge = document.getElementById("validBadge");
+  var filled = { student: 0, dist: false };
+
+  sentence.addEventListener("click", function (e) {
+    var slot = e.target.closest(".slot");
+    if (!slot) return;
+    var kind = slot.getAttribute("data-slot");
+    if (kind === "student") {
+      var pool = ["学生丄004", "学生丌012", "学生丆006", "学生万007", "学生丈008"];
+      slot.textContent = pool[filled.student % pool.length];
+      filled.student++;
+    } else if (kind === "dist") {
+      slot.textContent = "≥ 2";
+      filled.dist = true;
+    }
+    if (filled.student >= 2 && filled.dist) {
+      badge.textContent = "可编译 ✓（Rust 校验通过）";
+      badge.style.background = "var(--ok-soft)"; badge.style.color = "#166534";
+      preview.textContent = 'RuleSpec：{"rule":"min_distance","student_a":"STU004","student_b":"STU012","min":2,"hard":true}';
+    } else {
+      preview.textContent = "— 未填写完整，尚不能编译 —";
+    }
+  });
+
+  // Template chips.
+  document.getElementById("tplRow").addEventListener("click", function (e) {
+    var tpl = e.target.closest(".tpl");
+    if (!tpl) return;
+    document.querySelectorAll("#tplRow .tpl").forEach(function (t) { t.classList.remove("on"); });
+    tpl.classList.add("on");
+    PTUI.toast("句式模板切换：" + tpl.textContent + "（槽位结构来自 Rust metadata）");
+  });
+
+  // Advanced form toggle.
+  document.getElementById("btnAdvanced").addEventListener("click", function () {
+    var p = document.getElementById("advPanel");
+    p.style.display = p.style.display === "none" ? "" : "none";
+    PTUI.toast(p.style.display === "none" ? "已收起高级表单" : "高级表单：组合条件兜底（字段来自 Rust registry）");
+  });
+
+  // Read-only JSON view.
+  var jsonVisible = false;
+  document.querySelector(".appbar .btn-sm").addEventListener("click", function () {
+    jsonVisible = !jsonVisible;
+    document.getElementById("jsonView").style.display = jsonVisible ? "" : "none";
+    if (jsonVisible) {
+      document.getElementById("jsonText").textContent = JSON.stringify({
+        schema_version: "0.2.2",
+        seed: 168996,
+        hard: { fixed_seats: [{ seat_id: "R1C1", student: "STU001" }] },
+        soft: { vision_front: { enabled: true, weight: 20 } }
+      }, null, 2);
+    }
+  });
+})();
+</script>
+<script>
+  PTUI.initDecision("d3");
+</script>
+</body>
+</html>

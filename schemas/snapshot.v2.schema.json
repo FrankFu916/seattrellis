@@ -744,7 +744,8 @@
           "type": "array"
         },
         "created_at": {
-          "description": "RFC 3339 UTC timestamp.",
+          "default": "",
+          "description": "RFC 3339 UTC timestamp (absent in normalized oracle goldens).",
           "type": "string"
         },
         "layout": {
@@ -789,7 +790,6 @@
       },
       "required": [
         "schema_version",
-        "created_at",
         "students",
         "layout",
         "rules",

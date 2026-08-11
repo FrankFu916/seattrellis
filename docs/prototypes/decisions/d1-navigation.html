@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D1 · 班级主导航（融合方案）— SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .workbench { display: flex; min-height: 430px; }
+  .workbench .sidebar { width: 190px; }
+  .workbench .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ctx-bar { margin: 10px 12px 0; }
+  .first-run { margin: 10px 12px 0; border: 1px dashed var(--line-2); border-radius: 8px; background: var(--surface-2); padding: 8px 12px; font-size: 12px; color: var(--ink-2); }
+  .first-run .tick { color: var(--ok); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D1 · 班级主导航（融合方案）</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">1 / 8 · D1 已决策 → 确认融合形态</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">PD-D1-NAVIGATION · 计划 §7.1 项 1</span>
+    <h1>班级主导航 — 融合方案：侧栏骨架 + 上下文操作条 + 临时工作台</h1>
+    <p class="task">真实任务不变：教师打开「初二（3）班」完成期中调座；多班级教师日常切换；偶尔一次性排座。<b>C 方案（侧栏）为骨架，吸收 A 的单页直达与 B 的引导性，覆盖新手/老手、单/多班级、一次性排座全部场景。</b></p>
+    <div class="constraints"><b>不可违反约束</b>：React 主流程完全绕过 Python（M2 §5.7）；导入/保存/迁移/编辑事务语义冻结于 Rust（§7.5）；v1.9.x 主流程不回退（§4.5）；临时排座与长期管理不得形成两个产品概念（§7.4，G-5）。</div>
+  </section>
+
+  <section class="variants wide">
+    <div class="variant" id="vFinal">
+      <div class="v-head">
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态</div>
+        <div class="v-sub">侧栏 = 我的班级 + 班级内容 + 临时工作台；主区 = 当前领域视图；顶部上下文操作条承载引导（B 的优点）；首次使用显示任务清单，用过即收。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/rules</span></div>
+          <div class="workbench">
+            <div class="sidebar">
+              <div class="s-sec">我的班级</div>
+              <div class="s-item"><span>🏫</span>初二（1）班</div>
+              <div class="s-item active"><span>🏫</span>初二（3）班 <span class="count">20</span></div>
+              <div class="s-item"><span>🏫</span>高一（5）班</div>
+              <div class="s-sec">班级内容</div>
+              <div class="s-item"><span>👥</span>学生名单</div>
+              <div class="s-item"><span>🪑</span>教室布局</div>
+              <div class="s-item active"><span>📐</span>规则与目标</div>
+              <div class="s-item"><span>📊</span>历史 / 轮换</div>
+              <div class="s-sec">任务</div>
+              <div class="s-item"><span>🧰</span>临时工作台 <span class="count" style="background:var(--warn-soft);color:#92400e">新</span></div>
+            </div>
+            <div class="main-col">
+              <div class="ctx-bar">
+                <span>📍 初二（3）班 · 规则与目标</span>
+                <span class="chip green">1 条硬规则 + 1 个目标</span>
+                <span class="ctx-next"><b>下一步：</b><button class="btn primary" style="font-size:11.5px">生成方案 →</button></span>
+              </div>
+              <div class="first-run">
+                <span class="tick">✓</span> 第一次使用引导（仅无历史时出现）：① 导入名单 → ② 选教室 → ③ 设规则 → ④ 生成方案 → ⑤ 导出。完成一次后自动收起。
+              </div>
+              <div class="panel" style="margin:10px 12px 12px;flex:1">
+                <div class="panel-head">规则与目标 <span class="sub">由 Rust 规则引擎校验 · 会话 2026-08-10</span>
+                  <span class="spacer" style="flex:1"></span><button class="btn" style="font-size:11px">新建规则</button>
+                </div>
+                <div class="panel-body">
+                  <div class="rule-card hard" style="margin-bottom:8px">
+                    <div class="rc-head"><span class="chip red">HARD</span><span class="rc-title">固定座位</span>
+                      <span class="rc-actions"><button class="btn" style="font-size:11px">编辑</button><button class="btn" style="font-size:11px">停用</button></span></div>
+                    <div class="rc-desc">学生丁001（STU001）→ 座位 R1C1</div>
+                  </div>
+                  <div class="rule-card soft">
+                    <div class="rc-head"><span class="chip amber">SOFT</span><span class="rc-title">前排优先（视力）</span><span class="chip gray">权重 20</span>
+                      <span class="rc-actions"><button class="btn" style="font-size:11px">编辑</button><button class="btn" style="font-size:11px">停用</button></span></div>
+                    <div class="rc-desc">标记「需要前排」的学生安排在教室前排</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);background:#f8fafc;font-size:11.5px;color:var(--ink-3)">
+            <span>🖱 试试：「临时工作台」进入无项目上下文的一次性排座（保存后升级为正式班级）；侧栏切换班级上下文。</span>
+          </div>
+        </div>
+        <div class="note mt8">老手路径：任意视图直接操作（A 的优点）；新手路径：上下文操作条 + 首次任务清单（B 的优点）；多班级/一次性排座：侧栏（C 的优点）。不做显式"新手/老手"开关。</div>
+      </div></div>
+
+      <div class="v-tradeoff" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="pro"><span class="t-label">来自 A</span>单页工作台的领域视图直达：名单/教室/规则/历史在主区直接切换</div>
+        <div class="pro"><span class="t-label">来自 B</span>上下文操作条给出"下一步"；首次任务清单提供线性引导，用过即收</div>
+        <div class="pro"><span class="t-label">来自 C</span>侧栏承载多班级管理 + 临时工作台（一次性排座，保存后升级为正式班级）</div>
+      </div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">临时工作台</td><td>无项目上下文：上传名单 → 教室 → 规则 → 排座 → 导出或「另存为班级」。对应 v1 <code>workspace</code> 语义（§7.4 / G-5）</td></tr>
+          <tr><td class="src">简单/复杂轮换</td><td>按期数渐进披露：1 期 = 单次排座；多期 = 轮换计划。不另开产品形态</td></tr>
+          <tr><td class="src">模式策略</td><td>不做显式新手/老手开关；可选「密度设置」（紧凑/标准）待原型验证</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>无新 API；路由需支持"班级上下文 + 临时工作台上下文"；临时工作台复用现有 import/solve/export 端点</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待验证（dogfood）：</p>
+        <ul class="pending-list">
+          <li>密度设置（紧凑/标准）是否保留</li>
+          <li>临时工作台 → 正式班级的保存转换流程</li>
+          <li>首次任务清单的触发条件（无历史数据）与收起时机</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  PTUI.initDecision("d1");
+</script>
+</body>
+</html>

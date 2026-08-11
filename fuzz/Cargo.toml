@@ -1,0 +1,70 @@
+# SeatTrellis v2 fuzz targets (plan §11.4).
+#
+# Standalone workspace so cargo-fuzz can drive libFuzzer; the workspace
+# crates are path dependencies. Run locally:
+#
+#   cargo +nightly fuzz run solve_request -- -runs=5000
+#
+# CI runs `cargo +nightly fuzz build` plus short runs (see rust.yml).
+
+[workspace]
+
+[package]
+name = "seattrellis-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+seattrellis_core = { path = "../crates/seattrellis-core" }
+seattrellis-schema = { path = "../crates/seattrellis-schema" }
+seattrellis-io = { path = "../crates/seattrellis-io" }
+seattrellis-domain = { path = "../crates/seattrellis-domain" }
+seattrellis-export = { path = "../crates/seattrellis-export" }
+
+[[bin]]
+name = "solve_request"
+path = "fuzz_targets/solve_request.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dto_parsers"
+path = "fuzz_targets/dto_parsers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "csv_importer"
+path = "fuzz_targets/csv_importer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "editor_commands"
+path = "fuzz_targets/editor_commands.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "export_options"
+path = "fuzz_targets/export_options.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "migration"
+path = "fuzz_targets/migration.rs"
+test = false
+doc = false
+bench = false

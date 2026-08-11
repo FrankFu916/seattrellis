@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D4 · 快速 vs 高级模式（融合方案）— SeatTrellis v2 原型</title>
+<link rel="stylesheet" href="../assets/prototypes.css">
+<style>
+  .gen-card { background:#fff; border:1px solid var(--line-2); border-radius:8px; padding:12px; }
+  .param-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed var(--line); font-size:12.5px; }
+  .param-row:last-child { border-bottom:none; }
+  .param-row .p-label { width:150px; color:var(--ink-2); flex:none; }
+  .param-row .p-control { flex:1; }
+  .param-row .p-help { font-size:11px; color:var(--ink-3); }
+  .fast-prompt { background:var(--brand-soft); border-radius:8px; padding:10px 12px; font-size:13px; color:var(--brand-ink); }
+  .history-line { display:flex; align-items:center; gap:8px; font-size:12.5px; padding:7px 12px; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; }
+</style>
+</head>
+<body>
+
+<header class="pt-topbar">
+  <a href="../index.html">← 决策总览</a>
+  <span class="crumb">/ <b>D4 · 快速 vs 高级模式（融合方案）</b></span>
+  <span class="spacer"></span>
+  <span class="progress-chip">4 / 8 · D4 已决策 → 确认融合形态</span>
+</header>
+
+<main class="pt-main">
+  <section class="dec-head">
+    <span class="kicker">PD-D4-QUICKADVANCED · 计划 §7.1 项 4 / §7.6</span>
+    <h1>快速 vs 高级模式 — 融合方案：默认精简 + 历史范围可见 + 高级折叠区</h1>
+    <p class="task">真实任务不变：李老师「按班级现有规则再排一次，出 5 个方案挑一个」；王老师要精确控制种子/预算/权重。<b>默认面板只问 3 件事，但"历史范围"默认可见（不折叠）——它影响结果语义，属教师应见信息（采纳评审保留意见）。</b></p>
+    <div class="constraints"><b>不可违反约束（G-3）</b>：seed / solver / build / 规则版本 / history range / candidate id 必须可查可导出（§7.6）；默认隐藏 ≠ 不可见；参数名与 Rust 契约一一对应。</div>
+  </section>
+
+  <section class="variants wide">
+    <div class="variant" id="vFinal">
+      <div class="v-head">
+        <span class="v-badge" style="background:var(--ok)">✓</span>
+        <div><div class="v-title">融合目标形态</div>
+        <div class="v-sub">默认面板：规则集 / 候选数 / 本轮优先（3 问）+ 历史范围一行（默认可见）；种子/预算/去重/权重明细收进「高级设置」折叠区。</div></div>
+      </div>
+      <div class="v-visual"><div class="inner">
+        <div class="mock-app">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765/class-302/generate</span></div>
+          <div class="appbar"><span class="logo">席序<small>· 生成方案</small></span><span class="spacer"></span>
+            <span class="chip green" id="modeChip">快速模式（默认）</span></div>
+          <div class="body column" style="padding:14px;gap:10px">
+            <div class="fast-prompt">💡 按班级当前规则（1 条硬规则 + 1 个目标）直接生成即可——如需调整请先到「规则」页。</div>
+            <div class="gen-card">
+              <div class="row mb8"><span class="chip green">规则集：初二（3）班 当前规则</span><span class="spacer"></span><button class="btn" style="font-size:11.5px">去编辑</button></div>
+              <div class="row mb8"><span class="bold" style="font-size:13px">生成几个候选方案？</span><span class="spacer"></span>
+                <select class="input" style="width:120px"><option>1（只要一个）</option><option selected>5（推荐）</option><option>10</option></select></div>
+              <div class="row"><span class="bold" style="font-size:13px">本轮优先</span><span class="spacer"></span>
+                <select class="input" style="width:180px"><option>平衡（默认）</option><option>尽量少变动</option><option>公平轮换优先</option></select></div>
+            </div>
+            <div class="history-line">
+              <span class="bold">历史</span>
+              <span>最近 <b>3</b> 期</span>
+              <select class="input" style="width:130px"><option>最近 3 期</option><option>全部历史</option><option>不使用历史</option></select>
+              <span class="muted small">影响「公平轮换 / 避免近期邻座」——默认可见，不折叠</span>
+              <span class="spacer"></span><span class="chip amber">2 期可参考</span>
+            </div>
+            <div class="row">
+              <span class="small muted">种子 / 求解预算 / 候选去重 / 目标权重 → </span>
+              <button class="btn" style="font-size:11.5px" id="btnAdv">展开高级设置 ▾</button>
+              <span class="spacer"></span>
+              <button class="btn primary" style="font-size:13px;padding:7px 18px">生成方案</button>
+            </div>
+            <div id="advPanel" style="display:none">
+              <div class="gen-card">
+                <div class="param-row"><span class="p-label">随机种子</span>
+                  <span class="p-control row"><input class="input" type="number" value="168996" style="width:130px"><button class="btn" style="font-size:11px">🎲 换一个</button></span>
+                  <span class="p-help">相同输入+种子 = 可复现</span></div>
+                <div class="param-row"><span class="p-label">求解预算</span>
+                  <span class="p-control"><select class="input"><option>自动（默认）</option><option>0.5 秒</option><option>2 秒</option><option>10 秒</option></select></span>
+                  <span class="p-help">超时但有合法解 = Solved</span></div>
+                <div class="param-row"><span class="p-label">候选去重</span>
+                  <span class="p-control"><select class="input"><option>开启（默认）</option><option>关闭</option></select></span>
+                  <span class="p-help">避免产出几乎相同的方案</span></div>
+                <div class="param-row"><span class="p-label">目标权重</span>
+                  <span class="p-control"><input class="input" type="text" value="vision_front:20 · fair_rotation:10" style="width:200px"></span>
+                  <span class="p-help">JSON 或表格式</span></div>
+              </div>
+            </div>
+            <div class="preview-line" id="repro">复现信息（§7.6）：seed、solver/build、规则版本、history range、candidate id 在结果页「详情」可查，并随导出元数据携带。</div>
+          </div>
+        </div>
+        <div class="note mt8"><b>试一下</b>：点「展开高级设置」查看种子/预算/去重/权重明细。</div>
+      </div></div>
+
+      <div class="v-tradeoff" style="grid-template-columns:1fr 1fr">
+        <div class="pro"><span class="t-label">来自 A（默认精简）</span>默认 3 问降低首次使用门槛；「本轮优先」预设由产品冻结</div>
+        <div class="pro"><span class="t-label">来自 B（高级不隐藏）</span>历史范围默认可见（采纳评审保留意见）；种子/预算/去重/权重在折叠区可及，复现零摩擦</div>
+      </div>
+
+      <div style="padding:0 16px 16px">
+        <table class="merge-table">
+          <tr><th>设计要点</th><th>说明</th></tr>
+          <tr><td class="src">历史范围可见</td><td>默认显示一行「历史：最近 3 期」——影响公平轮换/近期邻座结果语义，不属实现细节（评审保留意见已采纳）</td></tr>
+          <tr><td class="src">折叠区</td><td>种子 / 预算 / 去重 / 权重明细；展开后与 Rust 契约参数一一对应（seed/time-limit/candidates/history-range）</td></tr>
+          <tr><td class="src">复现性</td><td>G-3：结果页「详情」可查 seed/solver/build/规则版本/candidate id，随导出元数据携带</td></tr>
+          <tr><td class="src">schema/API 影响</td><td>无；默认值（candidates=5、历史 3 期）待 dogfood 冻结（G-4）</td></tr>
+        </table>
+        <p class="small bold mt8" style="margin-bottom:4px">待验证（dogfood）：</p>
+        <ul class="pending-list">
+          <li>candidates=5 与历史 3 期默认值的真实任务验证</li>
+          <li>「本轮优先」预设（平衡/少变动/公平优先）的语义与内部权重映射</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="decision-bar" id="decisionBar"></footer>
+
+<script src="../assets/data.js"></script>
+<script src="../assets/prototypes.js"></script>
+<script>
+  document.getElementById("btnAdv").addEventListener("click", function () {
+    var p = document.getElementById("advPanel");
+    var hidden = p.style.display === "none" || !p.style.display;
+    p.style.display = hidden ? "" : "none";
+    this.textContent = hidden ? "收起高级设置 ▴" : "展开高级设置 ▾";
+  });
+</script>
+<script>
+  PTUI.initDecision("d4");
+</script>
+</body>
+</html>

@@ -46,10 +46,10 @@ desktop previews use the Tauri workflow below.
 
 ## Delivered so far
 
-- `native/seattrellis_core`: versioned JSON problem/response contracts,
+- `crates/seattrellis-core`: versioned JSON problem/response contracts,
   hard-rule validation, graph distances, cost scoring, and a deterministic
   cost-ranked heuristic solver;
-- `native/seattrellis_cli`: dependency-light single-file `solve` and `export`
+- `crates/seattrellis-cli`: dependency-light single-file `solve` and `export`
   commands for SVG, HTML, PNG, and PDF;
 - `app/`: loopback Rust server for roster import, generation, editing,
   export, layouts, projects, migration, rotation, and group registers;

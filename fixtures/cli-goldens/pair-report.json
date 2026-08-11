@@ -1,0 +1,5 @@
+{
+  "stdout": "",
+  "stderr": "error: cannot read '/Users/rachelzhou/Documents/SeatPlanner/fixtures/parity/goldens/hist-short': Is a directory (os error 21)\n",
+  "exit": 2
+}

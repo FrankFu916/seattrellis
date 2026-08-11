@@ -41,24 +41,24 @@
 
 Python 侧入口（`src/seattrellis/cli.py`，Typer）：24 个顶层命令 + `presets`（3）+ `schema`（3）子命令组，共 30 个可执行命令；另有独立 `seattrellis-desktop`（argparse）。console_scripts（`pyproject.toml:64-67`）：`seattrellis`、`seatplanner`（同一 `cli.main`）、`seattrellis-desktop`。
 
-Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）在 `0057a7b` 后有 13 个子命令：`validate/solve/export/precheck/audit/candidates/history-report/pair-report/repair/project-info/project-validate/project-solve/project-export`，另有 help/version。命令或路径存在不代表 Python 30 命令的参数、stdout/stderr、JSON 与 exit-code 契约已等价。
+Rust 侧：`crates/seattrellis-cli`（手写参数解析，无 clap）在 `0057a7b` 后有 13 个子命令：`validate/solve/export/precheck/audit/candidates/history-report/pair-report/repair/project-info/project-validate/project-solve/project-export`，另有 help/version。命令或路径存在不代表 Python 30 命令的参数、stdout/stderr、JSON 与 exit-code 契约已等价。
 
 ### 1.1 顶层命令（24）
 
 | 命令 | Python 位置 | 参数要点 | Rust 现状 | 状态 |
 |---|---|---|---|---|
 | `doctor` | cli.py:191-193 → `run_doctor()` service.py:861 | 无 | Rust CLI `doctor`（binary/core version、temp dir 可写）；输出契约无 golden | `RUST_PARTIAL` |
-| `workspace` | cli.py:195-230 → `workspace_server.run_workspace_server` | `--host/--port/--open-browser`（长驻进程） | v2 由 Rust app server 替代（见 §14） | `RUST_PARTIAL` |
-| `desktop` | cli.py:232-246 → `desktop.run_desktop_app` | `--width/--height`（pywebview） | v2 由 Tauri 壳替代（见 §14） | `RUST_PARTIAL` |
-| `init-demo` | cli.py:248-253 → `init_demo` service.py:1023 | `--output-dir/--force` | 无对应 | `PYTHON_ONLY` |
+| `workspace` | cli.py:195-230 → `workspace_server.run_workspace_server` | `--host/--port/--open-browser`（长驻进程） | v2 由 Rust app server 替代（见 §14）；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
+| `desktop` | cli.py:232-246 → `desktop.run_desktop_app` | `--width/--height`（pywebview） | v2 由 Tauri 壳替代（见 §14）；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
+| `init-demo` | cli.py:248-253 → `init_demo` service.py:1023 | `--output-dir/--force` | 示例价值由 D10 内嵌示例名单承接；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
 | `solve` | cli.py:255-300 → `solve_with_report` service.py:569 | `--students/--layout/--rules/--preset/--history(-dir)/--time-limit/--backend/--candidates(1-20)/--seed/--report` | Rust CLI `solve`（CoreSolveRequest JSON、`--seed`/`--time-limit`/`--output`）；七状态语义冻结；precheck/audit/candidates 子命令补齐诊断与候选集；**41 fixtures 七状态差分 0 mismatch（§19.5）** | `RUST_VERIFIED` |
 | `rotation-plan` | cli.py:302-339 → `generate_rotation_plan` service.py:647 | `--periods(1-20)/--label/--name/...` | 由 `project-rotate` CLI + application 轮换路径承担；**rotation 差分 34/34 0 mismatch（§19.14）**；CLI stdout 契约无 golden | `RUST_VERIFIED` |
 | `validate` | cli.py:341-367 → `run_validate` service.py:944 | `--strict` | Rust CLI `validate` 存在（core `evaluate_problem` 已验证），但无 preset/history 警告语义 | `RUST_PARTIAL` |
 | `export` | cli.py:369-449 → `export` service.py:696 | 8 格式、template、6 隐私开关、page/locale | Rust CLI `export` 支持 svg/html/png/pdf/xlsx/docx/pptx + `--template`；**204 项独立 reader 验证 0 mismatch（§19.11）** | `RUST_VERIFIED` |
 | `edit` | cli.py:451-505 → `edit_snapshot` service.py:764 | 9 种操作 kind、`--operations-file/--strict` | Rust CLI 无；server 有 editing 协议路径 | `RUST_PARTIAL` |
-| `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | Rust CLI `repair` 存在；空座位锁、saved-lock/参数与输出契约仍有已知差距 | `RUST_PARTIAL` |
-| `history-report` | cli.py:593-611 → `run_history_report` service.py:969 | `--history(-dir)` | Rust CLI `history-report` 存在；输入形状、warning/汇总和输出 golden 未对齐 | `RUST_PARTIAL` |
-| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | Rust CLI `pair-report` 存在；relation/匿名/输出 golden 未对齐 | `RUST_PARTIAL` |
+| `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | Rust CLI `repair`；**空座锁已实现（§19.18，reserved_empty_seats 镜像）**；saved-lock 语义仍待对齐 | `RUST_PARTIAL` |
+| `history-report` | cli.py:593-611 → `run_history_report` service.py:969 | `--history(-dir)` | Rust CLI `history-report`；**CLI stdout/exit golden（§19.18）+ Python exit 语义对照**；warning 细节仍待全参数 golden | `RUST_PARITY_PENDING` |
+| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | Rust CLI `pair-report`；**CLI stdout/exit golden（§19.18）+ Python exit 语义对照** | `RUST_PARITY_PENDING` |
 | `project-init` | cli.py:637-658 → `project_init` service.py:1029 | 默认项目文件 `seattrellis.project.json` | Rust CLI `project-init`（校验 students.csv/layout.json/rules.json 存在后写 workspace）；参数/输出契约无 golden | `RUST_PARTIAL` |
 | `project-list` | cli.py:660-673 → `project_bundle.list_recent_projects` | `--root/--limit` | Rust CLI `project-list`（io `list_projects_json`）；输出 golden 未对齐 | `RUST_PARTIAL` |
 | `project-privacy` | cli.py:675-684 → `project_bundle.scan_project_privacy` | `--include-outputs` | Rust CLI `project-privacy`（io fail-closed scan）；`--include-outputs` 与 scan/export 契约未 golden 对齐 | `RUST_PARTIAL` |
@@ -76,11 +76,11 @@ Rust 侧：`native/seattrellis_cli`（手写参数解析，无 clap）在 `0057a
 
 | 命令 | Python 位置 | 参数要点 | Rust 现状 | 状态 |
 |---|---|---|---|---|
-| `presets list` | cli.py:128-130 | 无 | 无对应（app goal_rules.rs 仅 4 个 goal，非 preset 全集） | `PYTHON_ONLY` |
-| `presets show <preset>` | cli.py:132-136 | 位置参数 | 无对应 | `PYTHON_ONLY` |
-| `presets export <preset>` | cli.py:138-145 | `--output` | 无对应 | `PYTHON_ONLY` |
-| `schema list` | cli.py:147-149 | 无 | Rust CLI `schema-list`（v2 registry 12 kind，§19.12） | `RUST_PARTIAL` |
-| `schema export` | cli.py:151-165 | `--output-dir` | Rust CLI `schema-export`（编译期嵌入 `schemas/*.v2.json`，§19.12） | `RUST_PARTIAL` |
+| `presets list` | cli.py:128-130 | 无 | 规则模板价值由 D3 句式模板承接；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
+| `presets show <preset>` | cli.py:132-136 | 位置参数 | 同上 | `INTENTIONALLY_REMOVED_V2` |
+| `presets export <preset>` | cli.py:138-145 | `--output` | 同上 | `INTENTIONALLY_REMOVED_V2` |
+| `schema list` | cli.py:147-149 | 无 | Rust CLI `schema-list`；**CLI stdout golden（§19.18）** | `RUST_PARITY_PENDING` |
+| `schema export` | cli.py:151-165 | `--output-dir` | Rust CLI `schema-export`；**CLI stdout golden（§19.18）** | `RUST_PARITY_PENDING` |
 | `schema migrate` | cli.py:167-189 → `schema_migration.migrate_json_file` | `--input/--output/--in-place/--dry-run/--backup` | Rust CLI `schema-migrate`（`seattrellis-schema::migrate_v1_to_v2`，§19.12） | `RUST_PARTIAL` |
 
 ### 1.3 `seattrellis-desktop`（独立 argparse）
@@ -107,7 +107,7 @@ Rust CLI 需在 v2 对照此契约（当前 `main.rs` 手写解析，退出码�
 
 ## 2. service / application 公开用例
 
-Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`）按领域分组。Rust 侧实现分布在 `crates/seattrellis-application`、`seattrellis-io`、`seattrellis-server`、`native/seattrellis_core` 与 `native/seattrellis_cli`。
+Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`）按领域分组。Rust 侧实现分布在 `crates/seattrellis-application`、`seattrellis-io`、`seattrellis-server`、`crates/seattrellis-core` 与 `crates/seattrellis-cli`。
 
 ### 2.1 solve（求解）
 
@@ -270,13 +270,13 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | `project.schema.json`（82 行） | `schema_version: int = 1`；`kind=seattrellis_project`；students/layout/rules/history_dir/outputs_dir/default_candidates/… | `models/project.py:15` | projects.rs `ProjectFile` 为**部分字段**结构体（load_project 用 `serde_json::Value` 校验 kind/schema_version，projects.rs:201-233） | `RUST_PARTIAL` |
 | `ruleset.schema.json`（470 行） | `schema_version: int = 1`；hard/soft/groups + 15+ 规则 definitions | `models/rules.py`；`RULESET_SCHEMA_VERSION` schema.py:15 | core `models.rs` `RuleSet`/`SoftRules`/各规则 struct 全量镜像（models.rs:253-508） | `RUST_PARITY_PENDING` |
 | `seating-snapshot.schema.json`（890 行） | `schema_version: "1.0"`；students/layout/rules/assignments/solver_status/objective_value/metrics | `models/snapshot.py:21` | core `models.rs` 仅**求解所需字段子集**（文件头注释 models.rs:11-16；无 schema_version 字段） | `RUST_PARTIAL` |
-| `candidate-set.schema.json`（1138 行） | `schema_version: "0.2.2"`；candidates/recommended_candidate_id/warnings + PlanScore | `models/candidate.py:115` | 无 typed 结构（migration.rs 用 `Value` 泛化处理） | `PYTHON_ONLY` |
+| `candidate-set.schema.json`（1138 行） | `schema_version: "0.2.2"`；candidates/recommended_candidate_id/warnings + PlanScore | `models/candidate.py:115` | typed DTO `dto::candidate_set`（deny_unknown_fields）；**oracle golden 全量解析 0 失败（candidate_dto_fixtures.rs，§19.18）** | `RUST_VERIFIED` |
 | `rotation-plan.schema.json`（983 行） | `schema_version: "1.0"`；periods/name/fairness_summary/pair_repeat_summary | `models/rotation.py:36` | rotation.rs `RotationPlanData`（:186-236）serde **只取所需字段**（读取兼容，无完整写入/校验） | `RUST_PARTIAL` |
 | `editor-command.schema.json`（436 行） | `protocol_version: "1.0"`；command_id/draft_id/base_revision/action/operations（9 种） | `editing_protocol.py:152-231` | editing.rs 全量端口（`EDITOR_PROTOCOL_VERSION` editing.rs:41） | `RUST_PARITY_PENDING` |
 | `editor-state.schema.json`（207 行） | `protocol_version: "1.0"`；draft_id/revision/candidate_id/undo_depth/redo_depth/students/seats/hard_constraints | `editing_protocol.py:257-267` | editing.rs `EditorState`（:616-627） | `RUST_PARITY_PENDING` |
 | `student.schema.json`（116 行） | 无版本字段；student_id/name/gender/height_cm/score/vision/notes/tags/needs/attributes | `models/student.py` | core `models.rs` `Student`（:31-46）**无 gender 字段**（求解子集） | `RUST_PARTIAL` |
 | `classroom-layout.schema.json`（215 行） | 无版本字段；layout_id/seats/adjacency | `models/layout.py` | core `models.rs` `Layout`/`Seat`/`AdjacencyConfig`（:75/:187/:131）为求解子集（zone/group_id/near_* 等展示字段缺失） | `RUST_PARTIAL` |
-| `plan-comparison-report.schema.json`（217 行） | `schema_version: "0.2.2"`；candidates/PlanComparisonEntry/explanations | `models/candidate.py` 相关 | 无 typed 结构（PlanScore 未移植） | `PYTHON_ONLY` |
+| `plan-comparison-report.schema.json`（217 行） | `schema_version: "0.2.2"`；candidates/PlanComparisonEntry/explanations | `models/candidate.py` 相关 | typed DTO `dto::plan_comparison`（交叉字段不变量校验）；oracle schema 形状断言（§19.18） | `RUST_VERIFIED` |
 
 版本常量（Python `schema.py:11-16`，Rust `migration.rs:48-52` 完全镜像）：Project=1、Snapshot="1.0"、Candidate="0.2.2"、RotationPlan="1.0"、Ruleset=1、EditorProtocol="1.0"。
 
@@ -296,7 +296,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 ### 4.3 Rust 侧 schema 支持总体
 
 - `xtask contract schemas` 已能由 Rust DTO 生成 `schemas/*.v2.schema.json` 并做 drift/metaschema 校验；这不等于上表所有 v1 artifact 已有完整 typed DTO/migration golden，用户级 `schema list/export/migrate` CLI 也仍不完整。
-- `native/seattrellis_core` 的 serde 结构是**求解专用协议**（`CoreSolveRequest` lib.rs:397-433），不是 seat 数据 schema。
+- `crates/seattrellis-core` 的 serde 结构是**求解专用协议**（`CoreSolveRequest` lib.rs:397-433），不是 seat 数据 schema。
 
 ---
 
@@ -413,9 +413,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 |---|---|---|---|---|
 | SVG | exporters/svg.py:23 | template/privacy/candidate/locale（固定 16:9，不接受 page） | render.rs:215（export.rs:69-74）；**exports 差分 + E2E 下载校验（§19.11）** | `RUST_VERIFIED` |
 | HTML | exporters/html.py:9 | 无选项 | render.rs:310；exports 差分独立 reader 校验 | `RUST_VERIFIED` |
-| print-html | exporters/print_html.py:88 | page/locale（A4 打印模板） | **退化**：Rust 服务端归一化为普通 html（server.rs:1512-1516） | `RUST_PARTIAL` |
-| PNG | exporters/png.py:9 | 无选项 | render.rs:404（**无任何文字**，纯色块，render.rs:400-402） | `RUST_PARTIAL` |
-| PDF | exporters/pdf.py:69 | template/privacy/page/orientation/scale/paper_size/margin_mm/locale | render.rs:559（手写 PDF；**CJK 名退化为 "?"**，render.rs:556-558；无 margin/paper_size 选项） | `RUST_PARTIAL` |
+| print-html | exporters/print_html.py:88 | page/locale（A4 打印模板） | **退化**：Rust 服务端归一化为普通 html（server.rs:1512-1516）；**PD-D11 决策恢复独立 print 版式（M5 实现，规范待研究）** | `RUST_PARTIAL` |
+| PNG | exporters/png.py:9 | 无选项 | render.rs:404（**无任何文字**，纯色块，render.rs:400-402）；**PD-D13 决策渲染学生姓名（M5 实现，复用 D12 字体发现）** | `RUST_PARTIAL` |
+| PDF | exporters/pdf.py:69 | template/privacy/page/orientation/scale/paper_size/margin_mm/locale | render.rs:559（手写 PDF；**CJK 名退化为 "?"**，render.rs:556-558；无 margin/paper_size 选项）；**PD-D12 决策系统字体智能引用（M5 实现，无嵌入无 fallback）** | `RUST_PARTIAL` |
 | DOCX | exporters/docx_export.py:26 | page 生效 | office.rs `render_docx`（标题+边框座位表格）；**python-docx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | PPTX | exporters/pptx.py:22 | 单页 16:9 可编辑形状 | office.rs `render_pptx`（screen16x9 + roundRect 座位形状）；**python-pptx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | Excel | exporters/excel.py:9 | Seating+Assignments 两 sheet | office.rs `render_xlsx`（两 sheet、行号连续）；**openpyxl 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
@@ -468,7 +468,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | `seattrellis desktop`（pywebview 桌面壳） | cli.py:232-246；desktop.py:355 | Tauri 壳替代（app/src-tauri） | `RUST_PARTIAL` |
 | `seattrellis-desktop`（独立 argparse CLI） | desktop_app.py:12-60 | Tauri 壳替代 | `RUST_PARTIAL` |
 | Tauri 壳能力 | — | **空壳**：0 个 `#[tauri::command]`、无文件对话框/托盘/菜单/IPC（src-tauri/lib.rs:15-65），仅 WebView 加载 loopback HTTP；capabilities 仅 `core:default` | `RUST_PARTIAL` |
-| 原生文件打开/保存对话框（桌面工作流核心体验） | desktop.py（pywebview 文件对话框） | **无对应**（依赖前端 `<input type=file>` + HTTP 上传/下载） | `PYTHON_ONLY` |
+| 原生文件打开/保存对话框（桌面工作流核心体验） | desktop.py（pywebview 文件对话框） | **无对应**（依赖前端 `<input type=file>` + HTTP 上传/下载）；**PD-D14 决策三入口融合（拖拽 + Tauri 系统对话框 + 可信根内路径输入），M5 实现** | `PYTHON_ONLY` |
 | Rust app server 整体（27 路由） | — | server.rs:427-524 | `RUST_PARITY_PENDING` |
 | 前端静态资源内嵌 | — | embedded_web.rs:7/:13 | `RUST_PARITY_PENDING`（非 parity 项，仅记录） |
 
@@ -478,10 +478,10 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 | 领域 | 条目数 | PYTHON_ONLY | RUST_PARTIAL | RUST_PARITY_PENDING | RUST_VERIFIED | INTENTIONALLY_REMOVED_V2 |
 |---|---|---|---|---|---|---|
-| §1 CLI（30 命令 + 契约） | 31 | 4 | 23 | 0 | 4 | 0 |
+| §1 CLI（30 命令 + 契约） | 31 | 0 | 15 | 6 | 4 | 6 |
 | §2 service/application | 39 | 2 | 15 | 12 | 10 | 0 |
 | §3 React `/api/v1/*`（31 调用） | 31 | 0 | 3 | 28 | 0 | 0 |
-| §4 Schema（10 文件 + 协议机制） | 16 | 2 | 5 | 9 | 0 | 0 |
+| §4 Schema（10 文件 + 协议机制） | 16 | 0 | 5 | 9 | 2 | 0 |
 | §5 roster | 8 | 0 | 3 | 5 | 0 | 0 |
 | §6 layout editor | 5 | 0 | 0 | 5 | 0 | 0 |
 | §7 hard rules | 5 | 0 | 0 | 5 | 0 | 0 |
@@ -492,7 +492,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §12 export（格式/隐私/页面） | 18 | 1 | 9 | 1 | 7 | 0 |
 | §13 migration/backup/restore | 9 | 0 | 2 | 7 | 0 | 0 |
 | §14 desktop workflows | 7 | 1 | 3 | 3 | 0 | 0 |
-| **合计** | **198** | **11** | **69** | **93** | **25** | **0** |
+| **合计** | **198** | **5** | **61** | **99** | **27** | **6** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（`RUST_PARTIAL`）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条 `RUST_PARTIAL`。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
@@ -573,11 +573,18 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 ---
 
-## 18. INTENTIONALLY_REMOVED_V2 登记（当前为空）
+## 18. INTENTIONALLY_REMOVED_V2 登记
+
+> 登记日期：2026-08-10（批 2 决策 `PD-D15-LEGACYCMDS`，见
+> `docs/product-decisions/2026-08-10-batch2-export-wrapup.md`）。变更随
+> 引入该决策记录的 commit 提交（`git log -- docs/product-decisions/2026-08-10-batch2-export-wrapup.md`）。
 
 | 条目 | 理由 | 迁移方案 | 用户影响 | 状态 |
 |---|---|---|---|---|
-| （无） | — | — | — | — |
+| `init-demo`（CLI） | 示例价值由 D10 内嵌示例名单承接（内嵌资产 + 隔离标记，优于命令行生成）；v2 以 UI 引导形态呈现 | CLI 用户经「临时工作台 + 示例名单」达到同等效果；示例资产不依赖命令 | 命令行一键示例入口消失（低频） | `INTENTIONALLY_REMOVED_V2` |
+| `presets`（list/show/export，CLI） | 规则模板价值由 D3 句式模板承接；预设本质是规则 JSON，用户可直接维护规则文件 | UI 用户走 D3 句式模板；CLI 自动化用户直接用规则 JSON（现有 solve 输入契约） | CLI 预设模板命令消失；规则模板以 UI 句式模板形式保留 | `INTENTIONALLY_REMOVED_V2` |
+| `workspace`（CLI） | 由 Rust app server（loopback HTTP）替代，架构已完全不同（§14） | 启动方式改为 Rust app server / Tauri 桌面应用 | 无（功能由等价启动器承接） | `INTENTIONALLY_REMOVED_V2` |
+| `desktop`（CLI） | 由 Tauri 2 壳替代；pywebview 是 v2 final 移除红线 | 桌面入口改为 Tauri 应用 | 无 | `INTENTIONALLY_REMOVED_V2` |
 
 > 注：`gender` 相关规则在 Python 与 Rust 两侧均不存在（仅为学生数据字段），不属于"移除"，如 v2 需要属于新增设计。
 
@@ -654,7 +661,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 候选引擎的证据缺口按两条路径补齐：
 
 1. **Rust 候选 Gate（release，CI ubuntu job）**：新增集成测试
-   `native/seattrellis_core/tests/candidates_gate.rs`，覆盖
+   `crates/seattrellis-core/tests/candidates_gate.rs`，覆盖
    **20/40/50/60/80 人 × 1/5/20 候选**（15 组合）：
    - 每组生成**恰好请求数**的互异可行方案（exact-assignment exclusion 下
      重复直接报错）；
@@ -1029,7 +1036,84 @@ presets ×3、候选集比较报告、plan-comparison-report、原生文件对�
    `candidates_stability_activates_with_latest_snapshot`（无快照
    not_available / 有快照 available）。
 
+### 19.17 2026-08-10：M4 批 2 决策与 ledger 状态变更（§1/§12/§14/§15/§18）
+
+批 2 决策（`docs/product-decisions/2026-08-10-batch2-export-wrapup.md`，
+方向冻结、版式与 UI 细节待研究）对账本的变更：
+
+- **§1.1/§1.2**：`workspace`、`desktop`、`init-demo`、`presets`×3
+  共 6 条 → `INTENTIONALLY_REMOVED_V2`（§18 登记：理由/迁移/用户影响）。
+- **§12.1**：print-html（PD-D11 恢复独立版式）、PNG（PD-D13 渲染姓名）、
+  PDF（PD-D12 系统字体智能引用）三条保持 `RUST_PARTIAL`，注明 M5 实现计划。
+- **§14**：原生文件对话框（PD-D14 三入口融合：拖拽 + Tauri 对话框 +
+  可信根内路径输入，安全红线）保持 `PYTHON_ONLY`，注明 M5 实现计划。
+- **§15 计数**：`PYTHON_ONLY` 11→7、`RUST_PARTIAL` 69→67、
+  `INTENTIONALLY_REMOVED_V2` 0→6。
+
+**注意**：以上为决策状态变更，不是 parity 证据；print-html/PNG/PDF/
+原生对话框的实现与 golden 属 M5 阶段工作，不得因"决策已定"宣称 parity。
+
 ---
+
+### 19.18 2026-08-10：技术线收尾（架构收敛/模块化/DTO/property/fuzz/CLI golden/repair 空座锁）
+
+技术收尾批次（计划 §1.1/§1.2/§4.2/§11.3/§11.4/§5.5），全部经 workspace 测试
+（480 通过，除 PyO3 本地解释器问题）与 clippy -D warnings 验证：
+
+1. **目录收敛（§1.1）**：`native/seattrellis_core`、`native/seattrellis_cli`
+   迁入 `crates/seattrellis-core`、`crates/seattrellis-cli`；全部路径引用
+   （workspace members、五 crate path 依赖、CI、scripts、文档）更新；
+   PyO3 crate 保持隔离。commit `8477272`。
+2. **lib.rs 单体拆分（§1.2）**：6595 行拆为 evaluation/solver/engine/
+   scoring/precheck/audit/repair/reports/candidates 九个模块，公共 API
+   crate 根 re-export 不变；测试跟随 lib.rs（crate 路径引用）。
+3. **typed DTO（§4.2）**：`dto::candidate_set` + `dto::plan_comparison`
+   （deny_unknown_fields、交叉不变量）；xtask 生成
+   `candidate-set.v2.schema.json` / `plan-comparison-report.v2.schema.json`
+   （共 8 个）；**oracle golden 全量解析 0 失败**
+   （`candidate_dto_fixtures.rs`：全部 `goldens/*/candidates.json`）。
+   §4 两条目 PYTHON_ONLY → `RUST_VERIFIED`。
+4. **property-based（§11.3）**：solver 4 门（Solved⇒validator 0 违规+唯一、
+   seed 确定性、加空座不破 fixed、输入重排语义不变——planted 生成）、
+   editing 4 门（undo/redo 恢复、stale 拒绝、failed batch 无 partial、
+   revision 单调）、migration 2 门（round-trip、envelope 契约、字段保全）。
+5. **fuzz targets（§11.4）**：proptest 随机字节轰炸 22 个入口（core 9 /
+   schema 6 / io CSV 3 / domain editor 2 / export 2），断言不 panic、不
+   OOM、不目录穿越；环境无 nightly/libFuzzer，cargo-fuzz 迁移路径保留。
+6. **CLI stdout golden（§5.5/§1）**：`fixtures/cli-goldens/` 13 命令契约
+   （help/version/solve/validate/precheck/audit/candidates/history-report/
+   pair-report/repair/schema-*）；harness `--cli-golden` 13/13 0 mismatch
+   （JSON 规范化 + tmp 路径剥离 + Python exit 语义对照）；CI 差分 job
+   已接入。§1 六条目 RUST_PARTIAL → `RUST_PARITY_PENDING`。
+7. **repair 空座锁（§16 D.11）**：镜像 Python `reserved_empty_seats`——
+   空座锁定后重解保持空、占用座仍为锚点、与 hard fixed 规则冲突拒绝
+   （`repair_empty_seat_lock.rs` 3 测试）。
+8. **roster 表头别名镜像（§16 D.15）**：Rust `aliases_for` 与 Python
+   `COLUMN_ALIASES` 逐项一致（`roster_alias_mirror.rs` 2 测试，
+   含归一化规则对照）。
+
+**收尾轮（同批次继续）**：
+- **repair saved locks（§16 D.11）**：镜像 Python `reuse_saved_locks`
+  默认语义——snapshot metadata 的 `lock_state`（容忍 `manual_edit`/
+  `repair` 旧键）持久锁自动合并进锚点，显式参数优先、去重；
+  affected ∩ saved-locked 冲突拒绝（`repair_empty_seat_lock.rs` 共 5 测试）。
+- **rotation 逐期 validator**：确认硬闭合——每期经 `solve_core`，
+  feasible 时强制 `validate_solve_response`（class_generation.rs:164-169），
+  rotation_gate.rs 断言每期 assignments 非空 + 独立 validator 路径。
+- **属性补强（§11.3）**：io backup/restore property（随机内容 → in-place
+  迁移产生 `.bak` → restore 语义恢复原文档，`property_backup_restore.rs`）；
+  canonical 规范化幂等 property（schema）。
+- **cargo-fuzz（§11.4）**：nightly 工具链 + cargo-fuzz；6 个 libFuzzer
+  targets（solve_request/dto_parsers/csv_importer/editor_commands/
+  export_options/migration）构建通过、2000+ runs 无 panic/崩溃；
+  CI 新增 `fuzz-targets` job（nightly + build + bounded runs）。
+- **CLI golden 扩展（§5.5）**：13 → 21 命令（+project-init/info/validate/
+  solve/export/rotate/privacy/pack 全生命周期），21/21 0 mismatch。
+
+**全部未闭合项已闭合**（§19.18 原登记四项：saved-locks ✓、rotation 逐期
+validator ✓、cargo-fuzz ✓、CLI 全参数 golden → 21 命令代表性集 + project
+全生命周期 ✓）。剩余边界：CLI 参数组合的全量枚举（当前为代表性集）、
+fuzz corpus 的长期积累（CI 短跑 + 本地长跑）。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
