@@ -154,10 +154,19 @@ mod tests {
         let parsed: CandidateSetArtifact = serde_json::from_str(document).unwrap();
         let reencoded = serde_json::to_string(&parsed).unwrap();
         let reparsed: CandidateSetArtifact = serde_json::from_str(&reencoded).unwrap();
-        assert_eq!(parsed.recommended_candidate_id, reparsed.recommended_candidate_id);
+        assert_eq!(
+            parsed.recommended_candidate_id,
+            reparsed.recommended_candidate_id
+        );
         assert_eq!(parsed.candidates.len(), 1);
         assert_eq!(parsed.candidates[0].score.total, 84.4);
-        assert!(parsed.candidates[0].score.breakdown.hard_constraint_summary.satisfied);
+        assert!(
+            parsed.candidates[0]
+                .score
+                .breakdown
+                .hard_constraint_summary
+                .satisfied
+        );
         assert_eq!(parsed.candidates[0].snapshot.solver_status, "Solved");
     }
 

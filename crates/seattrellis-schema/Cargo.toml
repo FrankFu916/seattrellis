@@ -13,4 +13,5 @@ schemars = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 
 [dev-dependencies]
+proptest = "1"
 jsonschema = "0.30"

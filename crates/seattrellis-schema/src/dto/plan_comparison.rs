@@ -145,8 +145,7 @@ mod tests {
 
     #[test]
     fn plan_comparison_round_trip_preserves_all_fields() {
-        let parsed: PlanComparisonReportArtifact =
-            serde_json::from_str(sample_document()).unwrap();
+        let parsed: PlanComparisonReportArtifact = serde_json::from_str(sample_document()).unwrap();
         assert!(parsed.validate_references().is_ok());
         let reencoded = serde_json::to_string(&parsed).unwrap();
         let reparsed: PlanComparisonReportArtifact = serde_json::from_str(&reencoded).unwrap();

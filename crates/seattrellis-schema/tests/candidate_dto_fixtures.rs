@@ -11,8 +11,7 @@ use seattrellis_schema::dto::candidate_set::CandidateSetArtifact;
 use seattrellis_schema::dto::plan_comparison::PlanComparisonReportArtifact;
 
 fn goldens_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/parity/goldens")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/parity/goldens")
 }
 
 fn candidate_golden_files() -> Vec<PathBuf> {
@@ -33,7 +32,10 @@ fn candidate_golden_files() -> Vec<PathBuf> {
 #[test]
 fn every_oracle_candidate_golden_parses_into_typed_dto() {
     let files = candidate_golden_files();
-    assert!(!files.is_empty(), "no golden candidates.json found under fixtures/parity/goldens");
+    assert!(
+        !files.is_empty(),
+        "no golden candidates.json found under fixtures/parity/goldens"
+    );
     for path in &files {
         let document = fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
@@ -41,9 +43,23 @@ fn every_oracle_candidate_golden_parses_into_typed_dto() {
             .unwrap_or_else(|e| panic!("DTO parse failed for {}: {e}", path.display()));
 
         // Envelope contract.
-        assert_eq!(parsed.kind, "candidate_set", "{}: kind mismatch", path.display());
-        assert_eq!(parsed.schema_version, "0.2.2", "{}: schema_version mismatch", path.display());
-        assert!(!parsed.candidates.is_empty(), "{}: no candidates", path.display());
+        assert_eq!(
+            parsed.kind,
+            "candidate_set",
+            "{}: kind mismatch",
+            path.display()
+        );
+        assert_eq!(
+            parsed.schema_version,
+            "0.2.2",
+            "{}: schema_version mismatch",
+            path.display()
+        );
+        assert!(
+            !parsed.candidates.is_empty(),
+            "{}: no candidates",
+            path.display()
+        );
 
         // Recommended id must reference a candidate.
         let ids: Vec<&str> = parsed
@@ -103,7 +119,8 @@ fn plan_comparison_oracle_schema_shape_is_supported() {
     // candidate_report exporter is a batch-2 decision item), so the typed
     // contract is validated against the oracle JSON Schema definition
     // instead: the schema must exist and describe kind + candidates.
-    let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas/plan-comparison-report.schema.json");
+    let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../schemas/plan-comparison-report.schema.json");
     let document = fs::read_to_string(&schema_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", schema_path.display()));
     let schema: serde_json::Value = serde_json::from_str(&document).unwrap();
