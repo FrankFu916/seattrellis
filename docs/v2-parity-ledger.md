@@ -868,6 +868,32 @@ ledger §1.1 导出条目从 "SVG/HTML/PNG/PDF 路径存在、Office/CJK 未完�
 证据齐备 → `RUST_PARITY_PENDING`（有实现与语义契约证据；字节级 golden
 与 CJK PDF 字体策略仍为 M4 决策项）。
 
+### 19.13 2026-08-10：全写路径 rollback 故障注入 golden（§17.2.4）
+
+新增 `crates/seattrellis-io/src/rollback_faults.rs`（11 个测试）：
+事务层增加 **test-only 故障注入开关**（`#[cfg(test)]` thread_local，
+并行测试完全隔离，release 二进制不含），在每个写路径的"staging 完成、
+发布前"确定性注入失败，随后验证 §17.2.4 的三条不变量：
+
+1. **源文件 hash 不变**：原子写单文件/多文件批、migration single/batch、
+   bundle restore（覆盖已存在目标）、artifact restore、rotation save、
+   group register save 全部在注入失败后逐字节还原；
+2. **journal/recovery 可重启**：故障后同一 journal 目录的下一次写入
+   成功并清理残留（`recovery_restarts_after_faulted_commit`）；
+3. **备份可重开**：回滚后保留的备份为事务唯一命名、可读且内容为原值
+   （无共享 `.bak` 被二次提交覆盖的问题）。
+
+覆盖路径：`atomic_write_file(s)`（事务）、`rotation_save_json`、
+`group_register_save_json`、`migration_apply_json`（single）、
+`migration_batch_apply_json`（batch，多项目原子回滚）、
+`restore_project_bundle`、`restore_artifact_json`、create-new 模式。
+注入点：事务 commit（backup 后 publish 前）+ 三个单文件 temp+rename
+写路径（rotation/migration）与 artifact restore 的写前。实测
+**101/101 io 测试全绿**（含新增 11 个），clippy `-D warnings` 干净
+（1.88 与 1.97 双版本）。
+
+ledger §1.1 对应事务/写路径条目证据补齐（§17.2.4 关闭）。
+
 ### 19.12 2026-08-10：CLI 项目生命周期补齐（§5.5/§5.7 item 3）
 
 Rust CLI 再增 **6 个子命令**（现共 26 个），关闭 §19.9 登记的剩余差距：

@@ -653,6 +653,16 @@ fn write_temp_then_rename(
             ))
         })?;
     }
+    // Test-only fault injection (revised plan §17.2.4): same switch as the
+    // journaled transaction so migration single/batch writes prove their
+    // rollback too.
+    #[cfg(test)]
+    if crate::transaction::inject_commit_failure() {
+        let _ = std::fs::remove_file(temp);
+        return Err(TempWriteError::Other(
+            "injected rename failure after staging (SEATTRELLIS fault-injection test)".to_string(),
+        ));
+    }
     fs::rename(temp, output).map_err(|error| {
         TempWriteError::Other(format!(
             "Could not atomically write migrated JSON file {}: {error}",
