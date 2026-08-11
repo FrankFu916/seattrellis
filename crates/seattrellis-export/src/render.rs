@@ -1171,7 +1171,7 @@ mod tests {
     fn pdf_cjk_names_fall_back_to_ascii() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
         let pdf = render_pdf(&grid);
-        // 张伟 is non-ASCII so it must not appear raw in the literal string.
+        // The non-ASCII name must not appear raw in the literal string.
         assert!(!pdf.contains("张伟"));
         // The cell still renders its seat number instead.
         assert!(pdf.contains("(4)"));

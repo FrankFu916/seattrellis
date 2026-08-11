@@ -6,7 +6,7 @@ that runs these tests installs no Python package and starts no Python
 process; the `rust_server` fixture additionally asserts the serving binary is
 a native executable (ELF/Mach-O), not a Python interpreter.
 
-Coverage map (修订版 §5.7 item 2):
+Coverage map (revised plan §5.7 item 2):
   import   -> roster upload + field mapping + confirm
   solve    -> generate seating plan (hard constraints + solver)
   edit     -> lock seat, swap two seats, undo
