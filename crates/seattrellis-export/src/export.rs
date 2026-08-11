@@ -73,6 +73,9 @@ pub enum ExportFormat {
     Html,
     Png,
     Pdf,
+    Xlsx,
+    Docx,
+    Pptx,
 }
 
 impl ExportFormat {
@@ -83,8 +86,11 @@ impl ExportFormat {
             "html" | "htm" => Ok(ExportFormat::Html),
             "png" => Ok(ExportFormat::Png),
             "pdf" => Ok(ExportFormat::Pdf),
+            "xlsx" | "excel" => Ok(ExportFormat::Xlsx),
+            "docx" => Ok(ExportFormat::Docx),
+            "pptx" => Ok(ExportFormat::Pptx),
             other => Err(format!(
-                "unknown export format '{other}' (expected svg, html, png or pdf)"
+                "unknown export format '{other}' (expected svg, html, png, pdf, xlsx, docx or pptx)"
             )),
         }
     }
@@ -96,6 +102,15 @@ impl ExportFormat {
             ExportFormat::Html => "text/html; charset=utf-8",
             ExportFormat::Png => "image/png",
             ExportFormat::Pdf => "application/pdf",
+            ExportFormat::Xlsx => {
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            }
+            ExportFormat::Docx => {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+            ExportFormat::Pptx => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
         }
     }
 
@@ -106,6 +121,9 @@ impl ExportFormat {
             ExportFormat::Html => "html",
             ExportFormat::Png => "png",
             ExportFormat::Pdf => "pdf",
+            ExportFormat::Xlsx => "xlsx",
+            ExportFormat::Docx => "docx",
+            ExportFormat::Pptx => "pptx",
         }
     }
 }
@@ -284,6 +302,9 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
             };
             Ok(render_pdf_with(&grid, layout.with_scale(page_scale)).into_bytes())
         }
+        ExportFormat::Xlsx => crate::office::render_xlsx(&grid),
+        ExportFormat::Docx => crate::office::render_docx(&grid),
+        ExportFormat::Pptx => crate::office::render_pptx(&grid),
     }
 }
 
@@ -344,6 +365,7 @@ fn filter_detail_grid(grid: &SeatingGrid, show_height: bool, show_vision: bool) 
             col: cell.col,
             seat_index: cell.seat_index,
             student: cell.student.clone(),
+            student_key: cell.student_key.clone(),
             detail,
             enabled: cell.enabled,
         });
@@ -375,6 +397,7 @@ fn anonymize_grid(grid: &SeatingGrid, locale: &str) -> SeatingGrid {
                 seat_index: cell.seat_index,
                 student: cell.student.as_ref().map(|_| placeholder.to_string()),
                 // Anonymized exports never carry detail lines either.
+                student_key: cell.student_key.clone(),
                 detail: None,
                 enabled: cell.enabled,
             })

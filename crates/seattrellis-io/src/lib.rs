@@ -9,3 +9,6 @@ pub mod projects;
 pub mod roster;
 pub mod rotation;
 pub mod transaction;
+
+#[cfg(test)]
+mod rollback_faults;

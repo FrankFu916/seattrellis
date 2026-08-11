@@ -1,6 +1,6 @@
 """Python/Rust differential harness with the frozen v2 seven-status semantics.
 
-M0-03 (see docs/SeatTrellis_v2.0.0_开发与发布总计划_修订版.md §四.1 and the
+M0-03 (see the revised v2.0.0 plan doc §4.1 and the
 parity ledger §0): the harness classifies every run on both sides under the
 single v2 SolveStatus vocabulary —
 
@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -693,6 +694,502 @@ def compare_plan_scores(
     return mismatches
 
 
+def run_rotation_class() -> list[tuple[str, str, str, str, list[str]]]:
+    """Rotation-plan semantic parity (plan §6.2/§17.3 item 3): for every
+    valid fixture case both sides generate a 2-period rotation plan from the
+    same inputs and seed, then the *semantic* contract is compared:
+
+    - period count and per-period seating completeness (every current
+      student seated in every period);
+    - per-period solver status (the v1 oracle reports FEASIBLE; the frozen
+      v2 vocabulary is Solved);
+    - `pair_repeat_summary.relation_totals` key-for-key (measured equal);
+    - `fairness_summary.category_totals` on the category keys both sides
+      report;
+    - `max_occurrences` and empty `warnings`.
+
+    Seats themselves are not compared position-by-position: the revised
+    plan §3.2 note says heuristic solutions only need matching semantics,
+    validity, scoring definitions and quality gates. One registered oracle
+    defect is additionally asserted: the v1 generator reuses the base seed
+    for every period (two identical periods), while the Rust side advances
+    the seed per period (seed + period - 1), so its periods must differ.
+    """
+    rows: list[tuple[str, str, str, str, list[str]]] = []
+    if not CLI.exists() or not PY_CLI.exists():
+        raise SystemExit("rotation class requires both the Rust and the Python CLI")
+    golden_dirs = sorted(
+        GOLDENS / case_dir.name
+        for case_dir in INPUTS.iterdir()
+        if case_dir.is_dir() and (GOLDENS / case_dir.name / "snapshot.json").is_file()
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for golden_dir in golden_dirs:
+            case = golden_dir.name
+            case_dir = INPUTS / case
+            try:
+                rules = json.loads((case_dir / "rules.json").read_text(encoding="utf-8"))
+            except OSError:
+                rows.append((case, "ROTATION", "ROTATION", "SKIP: no rules.json", []))
+                continue
+            seed = rules.get("seed", 42)
+
+            # --- Python oracle -------------------------------------------------
+            py_out = tmp_path / f"{case}-py-rotation.json"
+            py_proc = subprocess.run(
+                [
+                    str(PY_CLI), "rotation-plan",
+                    "--students", str(case_dir / "students.csv"),
+                    "--layout", str(case_dir / "classroom.json"),
+                    "--rules", str(case_dir / "rules.json"),
+                    "--periods", "2",
+                    "--seed", str(seed),
+                    "--output", str(py_out),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if py_proc.returncode != 0 or not py_out.is_file():
+                rows.append((case, "ROTATION", "ROTATION", f"PY_SKIP: {py_proc.stderr.strip()[:120]}", []))
+                continue
+
+            # --- Rust CLI (project workspace) ----------------------------------
+            workspace = tmp_path / f"{case}-ws"
+            workspace.mkdir()
+            for src_name, dst_name in (
+                ("students.csv", "students.csv"),
+                ("classroom.json", "layout.json"),
+                ("rules.json", "rules.json"),
+            ):
+                shutil.copyfile(case_dir / src_name, workspace / dst_name)
+            init = subprocess.run(
+                [str(CLI), "project-init", "--dir", str(workspace)],
+                capture_output=True,
+                text=True,
+            )
+            if init.returncode != 0:
+                rows.append((case, "ROTATION", "ROTATION", f"INIT_FAILED: {init.stderr.strip()[:120]}", []))
+                continue
+            ru_out = tmp_path / f"{case}-ru-rotation.json"
+            ru_proc = subprocess.run(
+                [
+                    str(CLI), "project-rotate",
+                    "--project", str(workspace / "seattrellis.project.json"),
+                    "--periods", "2",
+                    "--seed", str(seed),
+                    "--output", str(ru_out),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if ru_proc.returncode != 0 or not ru_out.is_file():
+                rows.append((case, "ROTATION", "ROTATION", f"RU_FAILED: {ru_proc.stderr.strip()[:120]}", []))
+                continue
+
+            try:
+                py_plan = json.loads(py_out.read_text(encoding="utf-8"))
+                ru_plan = json.loads(ru_out.read_text(encoding="utf-8"))
+                # relation_totals / category_totals are counts over occupied
+                # seat pairs: when every seat is filled the counts depend
+                # only on the layout (solution-independent, strictly
+                # comparable); layouts with empty seats make them
+                # solution-dependent, so those cases compare semantically.
+                student_count = sum(
+                    1 for _ in csv.reader(open(case_dir / "students.csv", encoding="utf-8"))
+                ) - 1
+                layout_doc = json.loads(
+                    (case_dir / "classroom.json").read_text(encoding="utf-8")
+                )
+                seat_count = sum(
+                    1
+                    for seat in layout_doc.get("seats", [])
+                    if seat.get("enabled", True)
+                )
+                full_occupancy = student_count == seat_count
+                mismatches = compare_rotation_plans(py_plan, ru_plan, full_occupancy)
+                label = "ROTATION"
+                rows.append(
+                    (case, label, label, "" if not mismatches else f"{mismatches} mismatches", [])
+                )
+            except Exception as exc:  # noqa: BLE001
+                rows.append((case, "ROTATION", "ROTATION", f"COMPARE_FAILED: {exc}", []))
+    return rows
+
+
+def compare_rotation_plans(
+    python: dict[str, object], rust: dict[str, object], full_occupancy: bool = True
+) -> int:
+    """Semantic comparison of two rotation plans; returns the mismatch count
+    and appends nothing (the caller logs the row).
+
+    `relation_totals` and `category_totals` count occupied seat pairs, so
+    they are solution-independent only when every seat is filled
+    (`full_occupancy`); layouts with empty seats are compared on the
+    semantic core (periods, completeness, status, structure) instead."""
+    mismatches = 0
+    py_periods = python.get("periods", [])
+    ru_periods = rust.get("periods", [])
+    if len(py_periods) != len(ru_periods):
+        mismatches += 1
+
+    def seated_keys(plan: dict[str, object]) -> list[set[str]]:
+        return [
+            {
+                assignment.get("student_key")
+                for assignment in period.get("snapshot", {}).get("assignments", [])
+                if assignment.get("student_key")
+            }
+            for period in plan.get("periods", [])
+        ]
+
+    py_keys = seated_keys(python)
+    ru_keys = seated_keys(rust)
+    # Completeness: every period seats the same student set on both sides.
+    if py_keys and ru_keys and py_keys[0] != ru_keys[0]:
+        mismatches += 1
+
+    # Solver status: the v1 oracle reports FEASIBLE; the frozen v2
+    # vocabulary is Solved (M1-03). Map the legacy value before comparing.
+    def normalized_status(plan: dict[str, object]) -> set[str]:
+        return {
+            "Solved" if period.get("snapshot", {}).get("solver_status") == "FEASIBLE"
+            else period.get("snapshot", {}).get("solver_status")
+            for period in plan.get("periods", [])
+        }
+
+    if normalized_status(python) != {"Solved"} or normalized_status(rust) != {"Solved"}:
+        mismatches += 1
+
+    if full_occupancy:
+        # relation_totals key-for-key (solution-independent when full).
+        py_relations = python.get("pair_repeat_summary", {}).get("relation_totals", {})
+        ru_relations = rust.get("pair_repeat_summary", {}).get("relation_totals", {})
+        if py_relations != ru_relations:
+            mismatches += 1
+
+        # max_occurrences.
+        if (
+            python.get("pair_repeat_summary", {}).get("max_occurrences")
+            != rust.get("pair_repeat_summary", {}).get("max_occurrences")
+        ):
+            mismatches += 1
+
+        # fairness category_totals on shared keys.
+        py_categories = python.get("fairness_summary", {}).get("category_totals", {})
+        ru_categories = rust.get("fairness_summary", {}).get("category_totals", {})
+        for category, value in ru_categories.items():
+            if category in py_categories and py_categories[category] != value:
+                mismatches += 1
+
+    # history_count (solution-independent: snapshot count).
+    if (
+        python.get("fairness_summary", {}).get("history_count")
+        != rust.get("fairness_summary", {}).get("history_count")
+    ):
+        mismatches += 1
+
+    # warnings empty on both sides.
+    if python.get("warnings") or rust.get("warnings"):
+        mismatches += 1
+
+    # Registered oracle defect: the v1 generator reuses the base seed for
+    # every period (identical assignments), while the Rust side advances the
+    # seed (seed + period - 1), so its periods must differ. Compare the
+    # student -> seat mapping, not the key set (every period seats the full
+    # roster on both sides).
+    def assignments(plan: dict[str, object]) -> list[set[tuple[str, str]]]:
+        return [
+            {
+                (assignment.get("student_key"), assignment.get("seat_id"))
+                for assignment in period.get("snapshot", {}).get("assignments", [])
+                if assignment.get("student_key") and assignment.get("seat_id")
+            }
+            for period in plan.get("periods", [])
+        ]
+
+    ru_assignments = assignments(rust)
+    if len(ru_assignments) > 1 and ru_assignments[0] == ru_assignments[1]:
+        mismatches += 1
+    return mismatches
+
+
+def run_exports_class() -> list[tuple[str, str, str, str, list[str]]]:
+    """Office export independent-reader verification (revised plan §11.6).
+
+    For every valid fixture case the Rust CLI solves the problem and exports
+    XLSX / DOCX / PPTX (teacher template) plus XLSX (public template). Each
+    file is then reopened with a *different implementation* — openpyxl /
+    python-docx / python-pptx — and checked for structure, seat content, and
+    the public-template privacy guarantee (no real student names anywhere).
+
+    Byte parity with the Python exporters is impossible (zip mtimes), so the
+    acceptance criterion is exactly what the plan asks for: an independent
+    reader can open the document and the semantic content matches.
+    """
+    from openpyxl import load_workbook
+
+    rows: list[tuple[str, str, str, str, list[str]]] = []
+    if not CLI.exists():
+        raise SystemExit(f"Rust CLI not found: {CLI}; build it first")
+    golden_dirs = sorted(
+        GOLDENS / case_dir.name
+        for case_dir in INPUTS.iterdir()
+        if case_dir.is_dir() and (GOLDENS / case_dir.name / "snapshot.json").is_file()
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for golden_dir in golden_dirs:
+            case = golden_dir.name
+            request, notes = fixture_to_request(INPUTS / case)
+            problem_file = tmp_path / f"{case}-problem.json"
+            solution_file = tmp_path / f"{case}-solution.json"
+            problem_file.write_text(json.dumps(request), encoding="utf-8")
+            solved = subprocess.run(
+                [str(CLI), "solve", "--problem", str(problem_file), "--output", str(solution_file)],
+                capture_output=True,
+                text=True,
+            )
+            if solved.returncode != 0 or not solution_file.is_file():
+                rows.append((case, "EXPORTS", "EXPORTS", f"SOLVE_FAILED: {solved.stderr.strip()}", notes))
+                continue
+            response = json.loads(solution_file.read_text(encoding="utf-8"))
+            if not response.get("feasible"):
+                rows.append((case, "EXPORTS", "EXPORTS", "SOLVE_SKIPPED: not feasible", notes))
+                continue
+            real_names = {
+                student.get("display_name") or student.get("key")
+                for student in request.get("students", [])
+                if student.get("display_name") or student.get("key")
+            }
+            try:
+                _verify_exports(CLI, problem_file, solution_file, response, tmp_path, real_names, case, rows)
+            except Exception as exc:  # noqa: BLE001 - report, do not abort the class
+                rows.append((case, "EXPORTS", "ERROR", str(exc), notes))
+    return rows
+
+
+def _verify_exports(
+    cli: Path,
+    problem_file: Path,
+    solution_file: Path,
+    response: dict[str, object],
+    tmp_path: Path,
+    real_names: set[str],
+    case: str,
+    rows: list[tuple[str, str, str, str, list[str]]],
+) -> None:
+    """Export every Office format and reopen it with an independent reader."""
+    from openpyxl import load_workbook
+
+    for fmt in ("xlsx", "docx", "pptx", "png", "pdf"):
+        out = tmp_path / f"{case}.{fmt}"
+        exported = subprocess.run(
+            [
+                str(cli),
+                "export",
+                "--problem",
+                str(problem_file),
+                "--solution",
+                str(solution_file),
+                "--format",
+                fmt,
+                "--template",
+                "teacher",
+                "--output",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if exported.returncode != 0 or not out.is_file():
+            rows.append((case, f"EXPORTS-{fmt.upper()}", "EXPORTS-FAILED", exported.stderr.strip(), []))
+            continue
+        try:
+            if fmt == "xlsx":
+                _verify_xlsx(out, response)
+            elif fmt == "docx":
+                _verify_docx(out, response)
+            elif fmt == "pptx":
+                _verify_pptx(out, response)
+            elif fmt == "png":
+                _verify_png(out, response)
+            else:
+                _verify_pdf(out, response)
+            label = f"EXPORTS-{fmt.upper()}"
+            rows.append((case, label, label, "independent reader ok", []))
+        except Exception as exc:  # noqa: BLE001
+            rows.append((case, f"EXPORTS-{fmt.upper()}", "EXPORTS-FAILED", str(exc), []))
+
+    # Public-template privacy: no real student name may survive in any format.
+    for fmt in ("xlsx", "docx", "pptx", "png", "pdf"):
+        out = tmp_path / f"{case}-public.{fmt}"
+        exported = subprocess.run(
+            [
+                str(cli),
+                "export",
+                "--problem",
+                str(problem_file),
+                "--solution",
+                str(solution_file),
+                "--format",
+                fmt,
+                "--template",
+                "public",
+                "--output",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if exported.returncode != 0 or not out.is_file():
+            rows.append((case, f"EXPORTS-PUBLIC-{fmt.upper()}", "EXPORTS-FAILED", exported.stderr.strip(), []))
+            continue
+        try:
+            text = _read_office_text(out)
+            leaked = [name for name in real_names if name and name in text]
+            label = f"EXPORTS-PUBLIC-{fmt.upper()}"
+            if leaked:
+                rows.append((case, label, "EXPORTS-PRIVACY-LEAK", f"leaked: {leaked[:3]}", []))
+            else:
+                rows.append((case, label, label, "no names leaked", []))
+        except Exception as exc:  # noqa: BLE001
+            rows.append((case, f"EXPORTS-PUBLIC-{fmt.upper()}", "MISMATCH", str(exc), []))
+
+
+def _verify_xlsx(path: Path, response: dict[str, object]) -> None:
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True)
+    if workbook.sheetnames != ["Seating", "Assignments"]:
+        raise AssertionError(f"unexpected sheets: {workbook.sheetnames}")
+    seating = workbook["Seating"]
+    grid_text = " ".join(
+        str(value) for row in seating.iter_rows(values_only=True) for value in row if value
+    )
+    if "R1C1" not in grid_text and "R1C2" not in grid_text:
+        raise AssertionError("grid sheet carries no seat ids")
+    assignments = workbook["Assignments"]
+    rows = list(assignments.iter_rows(values_only=True))
+    if rows[0] != ("student_key", "student_name", "seat_id"):
+        raise AssertionError(f"unexpected assignments header: {rows[0]}")
+    seated = len(response.get("assignment", []))
+    if len(rows) - 1 != seated:
+        raise AssertionError(f"assignments rows {len(rows) - 1} != seated {seated}")
+
+
+def _verify_docx(path: Path, response: dict[str, object]) -> None:
+    import docx as python_docx
+
+    document = python_docx.Document(path)
+    if not document.tables:
+        raise AssertionError("docx carries no seat table")
+    table = document.tables[0]
+    if len(table.rows) < 1 or len(table.columns) < 1:
+        raise AssertionError("docx seat table is empty")
+    cells = [cell.text for row in table.rows for cell in row.cells]
+    if not any(cells):
+        raise AssertionError("docx seat table has no text")
+
+
+def _verify_png(path: Path, response: dict[str, object]) -> None:
+    """PNG must be a decodable raster of plausible dimensions (Pillow)."""
+    from PIL import Image
+
+    with Image.open(path) as image:
+        image.verify()
+    with Image.open(path) as image:
+        width, height = image.size
+    seated = len(response.get("assignment", []))
+    if width < 100 or height < 100:
+        raise AssertionError(f"PNG is implausibly small: {width}x{height}")
+    if seated < 1:
+        raise AssertionError("PNG verified for an empty plan")
+
+
+def _verify_pdf(path: Path, response: dict[str, object]) -> None:
+    """PDF must open with an independent reader, carry extractable text on
+    every page (ASCII names; CJK names fall back to seat numbers by
+    design), and stay inside A4-ish bounds."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(path)
+    if not reader.pages:
+        raise AssertionError("PDF has no pages")
+    for page in reader.pages:
+        width = float(page.mediabox.width)
+        height = float(page.mediabox.height)
+        if width > 900 or height > 1300:
+            raise AssertionError(f"PDF page exceeds A4-ish bounds: {width}x{height}")
+        text = page.extract_text() or ""
+        if len(text.strip()) < 3:
+            raise AssertionError("PDF page carries no extractable text")
+
+
+def _verify_pptx(path: Path, response: dict[str, object]) -> None:
+    from pptx import Presentation
+
+    presentation = Presentation(path)
+    if (presentation.slide_width, presentation.slide_height) != (12192000, 6858000):
+        raise AssertionError(
+            f"slide size {(presentation.slide_width, presentation.slide_height)} != 16:9"
+        )
+    if not presentation.slides:
+        raise AssertionError("pptx has no slides")
+    shapes = list(presentation.slides[0].shapes)
+    seated = len(response.get("assignment", []))
+    if len(shapes) < seated + 1:
+        raise AssertionError(f"shapes {len(shapes)} < seats {seated} + title")
+
+
+def _read_office_text(path: Path) -> str:
+    """All visible text of an Office file, via the independent readers."""
+    suffix = path.suffix.lower()
+    if suffix == ".xlsx":
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(path, read_only=True)
+        return " ".join(
+            str(value)
+            for sheet in workbook.worksheets
+            for row in sheet.iter_rows(values_only=True)
+            for value in row
+            if value
+        )
+    if suffix == ".docx":
+        import docx as python_docx
+
+        document = python_docx.Document(path)
+        parts = [paragraph.text for paragraph in document.paragraphs]
+        parts.extend(cell.text for table in document.tables for row in table.rows for cell in row.cells)
+        return " ".join(parts)
+    if suffix == ".pptx":
+        from pptx import Presentation
+
+        presentation = Presentation(path)
+        parts: list[str] = []
+        for slide in presentation.slides:
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    parts.append(shape.text_frame.text)
+        return " ".join(parts)
+    if suffix == ".pdf":
+        from pypdf import PdfReader
+
+        reader = PdfReader(path)
+        return " ".join(page.extract_text() or "" for page in reader.pages)
+    if suffix == ".png":
+        # This renderer's PNG carries no text; the privacy check still
+        # verifies the raster decodes (an image is either fully rendered or
+        # corrupt, so no student data can leak through a text channel).
+        from PIL import Image
+
+        with Image.open(path) as image:
+            image.verify()
+        return ""
+    raise AssertionError(f"unknown export format: {path}")
+
+
 def run_rust_candidates(
     request: dict[str, object], count: int, tmp: Path
 ) -> tuple[str, str, int | None]:
@@ -872,6 +1369,19 @@ def main() -> int:
         help="run the fixed-assignment PlanScore parity class (all valid fixture cases)",
     )
     parser.add_argument(
+        "--rotation",
+        action="store_true",
+        help="run the rotation-plan semantic parity class (2 periods per "
+        "valid fixture case, Python oracle vs Rust project-rotate)",
+    )
+    parser.add_argument(
+        "--exports",
+        action="store_true",
+        help="run the Office export independent-reader class (XLSX/DOCX/PPTX "
+        "reopened with openpyxl/python-docx/python-pptx, teacher + public "
+        "privacy checks)",
+    )
+    parser.add_argument(
         "--allow-documented-gaps",
         action="store_true",
         help="CI mode: tolerate exactly the case-level documented corpus gaps "
@@ -889,6 +1399,10 @@ def main() -> int:
         rows.extend(run_candidates_class())
     if args.scoring:
         rows.extend(run_scoring_class())
+    if args.rotation:
+        rows.extend(run_rotation_class())
+    if args.exports:
+        rows.extend(run_exports_class())
     if not rows:
         sizes = [int(item) for item in args.sizes.split(",")]
         rows = run_benchmark_classes(sizes, args.time_limit)

@@ -6,7 +6,6 @@
 
 mod commands;
 mod project;
-mod render;
 mod style;
 mod usage;
 
@@ -35,6 +34,9 @@ pub enum ExportFormat {
     Html,
     Png,
     Pdf,
+    Xlsx,
+    Docx,
+    Pptx,
 }
 
 impl ExportFormat {
@@ -44,8 +46,11 @@ impl ExportFormat {
             "html" => Ok(ExportFormat::Html),
             "png" => Ok(ExportFormat::Png),
             "pdf" => Ok(ExportFormat::Pdf),
+            "xlsx" => Ok(ExportFormat::Xlsx),
+            "docx" => Ok(ExportFormat::Docx),
+            "pptx" => Ok(ExportFormat::Pptx),
             other => Err(format!(
-                "unknown format '{other}' (expected svg, html, png or pdf)"
+                "unknown format '{other}' (expected svg, html, png, pdf, xlsx, docx or pptx)"
             )),
         }
     }
@@ -70,6 +75,9 @@ pub struct ExportArgs {
     pub solution: PathBuf,
     pub format: ExportFormat,
     pub output: PathBuf,
+    /// `public` | `teacher` (default). Only the Office formats honour it in
+    /// the CLI: the renderers receive the privacy-filtered grid.
+    pub template: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -98,6 +106,8 @@ pub struct ScoreArgs {
 pub struct CandidatesArgs {
     pub problem: PathBuf,
     pub count: usize,
+    /// Optional latest snapshot for the per-candidate stability dimension.
+    pub latest_snapshot: Option<PathBuf>,
 }
 
 /// `doctor`: environment diagnostics (plan §5.5 CLI surface).
@@ -154,6 +164,51 @@ pub struct ProjectArgs {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct ProjectRotateArgs {
+    pub project: PathBuf,
+    pub periods: usize,
+    pub seed: Option<u64>,
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProjectEditArgs {
+    pub project: PathBuf,
+    pub snapshot: Option<PathBuf>,
+    /// `--operation <json>` values, applied in order after any
+    /// `--operations-file` entries.
+    pub operations: Vec<String>,
+    pub operations_file: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+    /// Fail instead of writing when the edited plan violates hard rules.
+    pub strict: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProjectRepairArgs {
+    pub project: PathBuf,
+    pub snapshot: Option<PathBuf>,
+    pub affected: Vec<String>,
+    pub locked_students: Vec<String>,
+    pub locked_seats: Vec<String>,
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SchemaExportArgs {
+    pub kind: String,
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SchemaMigrateArgs {
+    pub input: PathBuf,
+    pub output: Option<PathBuf>,
+    pub in_place: bool,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct RepairArgs {
     pub problem: PathBuf,
     pub snapshot: PathBuf,
@@ -193,6 +248,12 @@ enum Command {
     ProjectValidate(ProjectArgs),
     ProjectSolve(ProjectArgs),
     ProjectExport(ProjectArgs),
+    ProjectRotate(ProjectRotateArgs),
+    ProjectEdit(ProjectEditArgs),
+    ProjectRepair(ProjectRepairArgs),
+    SchemaList,
+    SchemaExport(SchemaExportArgs),
+    SchemaMigrate(SchemaMigrateArgs),
     Solve(SolveArgs),
     Export(ExportArgs),
 }
@@ -448,6 +509,10 @@ fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--latest-snapshot",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -464,9 +529,11 @@ fn parse_candidates(tokens: &[String]) -> Result<Command, String> {
             .map_err(|error| format!("invalid --count '{raw}': {error}"))?,
         None => 5,
     };
+    let latest_snapshot = flag_value(&parsed, "--latest-snapshot")?.map(PathBuf::from);
     Ok(Command::Candidates(CandidatesArgs {
         problem: PathBuf::from(problem),
         count,
+        latest_snapshot,
     }))
 }
 
@@ -621,6 +688,275 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
         "project-export" => Command::ProjectExport(args),
         _ => return Err(format!("unknown project command {command}")),
     })
+}
+
+fn parse_project_rotate(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--project",
+            takes_value: true,
+        },
+        Flag {
+            name: "--periods",
+            takes_value: true,
+        },
+        Flag {
+            name: "--seed",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let project =
+        flag_value(&parsed, "--project")?.ok_or("project-rotate requires --project <file>")?;
+    let periods = match flag_value(&parsed, "--periods")? {
+        None => 4,
+        Some(raw) => raw.parse::<usize>().map_err(|error| {
+            format!("invalid --periods value '{raw}': {error} (expected 1..=20)")
+        })?,
+    };
+    if periods == 0 || periods > 20 {
+        return Err(format!("--periods must be between 1 and 20, got {periods}"));
+    }
+    let seed = match flag_value(&parsed, "--seed")? {
+        Some(raw) => Some(
+            raw.parse::<u64>()
+                .map_err(|error| format!("invalid seed '{raw}': {error}"))?,
+        ),
+        None => None,
+    };
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    Ok(Command::ProjectRotate(ProjectRotateArgs {
+        project: PathBuf::from(project),
+        periods,
+        seed,
+        output,
+    }))
+}
+
+fn parse_project_edit(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--project",
+            takes_value: true,
+        },
+        Flag {
+            name: "--snapshot",
+            takes_value: true,
+        },
+        Flag {
+            name: "--operation",
+            takes_value: true,
+        },
+        Flag {
+            name: "--operations-file",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--strict",
+            takes_value: false,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let project =
+        flag_value(&parsed, "--project")?.ok_or("project-edit requires --project <file>")?;
+    let operations = parsed
+        .iter()
+        .filter(|(name, _)| name == "--operation")
+        .filter_map(|(_, value)| value.clone())
+        .collect();
+    let operations_file = flag_value(&parsed, "--operations-file")?.map(PathBuf::from);
+    let snapshot = flag_value(&parsed, "--snapshot")?.map(PathBuf::from);
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    let strict = parsed.iter().any(|(name, _)| name == "--strict");
+    Ok(Command::ProjectEdit(ProjectEditArgs {
+        project: PathBuf::from(project),
+        snapshot,
+        operations,
+        operations_file,
+        output,
+        strict,
+    }))
+}
+
+fn parse_project_repair(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--project",
+            takes_value: true,
+        },
+        Flag {
+            name: "--snapshot",
+            takes_value: true,
+        },
+        Flag {
+            name: "--affected",
+            takes_value: true,
+        },
+        Flag {
+            name: "--locked-students",
+            takes_value: true,
+        },
+        Flag {
+            name: "--locked-seats",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let project =
+        flag_value(&parsed, "--project")?.ok_or("project-repair requires --project <file>")?;
+    let affected = flag_value(&parsed, "--affected")?
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let locked_students = flag_value(&parsed, "--locked-students")?
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let locked_seats = flag_value(&parsed, "--locked-seats")?
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let snapshot = flag_value(&parsed, "--snapshot")?.map(PathBuf::from);
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    Ok(Command::ProjectRepair(ProjectRepairArgs {
+        project: PathBuf::from(project),
+        snapshot,
+        affected,
+        locked_students,
+        locked_seats,
+        output,
+    }))
+}
+
+fn parse_schema_list(tokens: &[String]) -> Result<Command, String> {
+    if tokens.iter().any(|token| token == "--help") {
+        return Ok(Command::Help);
+    }
+    if !tokens.is_empty() {
+        return Err(format!("schema-list takes no arguments: {tokens:?}"));
+    }
+    Ok(Command::SchemaList)
+}
+
+fn parse_schema_export(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--kind",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let kind = flag_value(&parsed, "--kind")?
+        .ok_or("schema-export requires --kind <student_roster|classroom_layout|ruleset|seating_snapshot|project|project_bundle_manifest|candidate_set|rotation_plan>")?;
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    Ok(Command::SchemaExport(SchemaExportArgs {
+        kind: kind.to_string(),
+        output,
+    }))
+}
+
+fn parse_schema_migrate(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--input",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--in-place",
+            takes_value: false,
+        },
+        Flag {
+            name: "--dry-run",
+            takes_value: false,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let input = flag_value(&parsed, "--input")?.ok_or("schema-migrate requires --input <file>")?;
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    let in_place = parsed.iter().any(|(name, _)| name == "--in-place");
+    let dry_run = parsed.iter().any(|(name, _)| name == "--dry-run");
+    if in_place && dry_run {
+        return Err("schema-migrate: --in-place and --dry-run are mutually exclusive".to_string());
+    }
+    Ok(Command::SchemaMigrate(SchemaMigrateArgs {
+        input: PathBuf::from(input),
+        output,
+        in_place,
+        dry_run,
+    }))
 }
 
 fn parse_doctor(tokens: &[String]) -> Result<Command, String> {
@@ -853,6 +1189,10 @@ fn parse_export(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--template",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -864,14 +1204,22 @@ fn parse_export(tokens: &[String]) -> Result<Command, String> {
     let problem = flag_value(&parsed, "--problem")?.ok_or("export requires --problem <file>")?;
     let solution = flag_value(&parsed, "--solution")?.ok_or("export requires --solution <file>")?;
     let format = ExportFormat::parse(
-        flag_value(&parsed, "--format")?.ok_or("export requires --format <svg|html|png|pdf>")?,
+        flag_value(&parsed, "--format")?
+            .ok_or("export requires --format <svg|html|png|pdf|xlsx|docx|pptx>")?,
     )?;
     let output = flag_value(&parsed, "--output")?.ok_or("export requires --output <file>")?;
+    let template = flag_value(&parsed, "--template")?.unwrap_or("teacher");
+    if template != "public" && template != "teacher" {
+        return Err(format!(
+            "unknown export template '{template}' (expected public or teacher)"
+        ));
+    }
     Ok(Command::Export(ExportArgs {
         problem: PathBuf::from(problem),
         solution: PathBuf::from(solution),
         format,
         output: PathBuf::from(output),
+        template: template.to_string(),
     }))
 }
 
@@ -909,13 +1257,19 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "project-validate" => parse_project_command("project-validate", &text[1..]),
         "project-solve" => parse_project_command("project-solve", &text[1..]),
         "project-export" => parse_project_command("project-export", &text[1..]),
+        "project-rotate" => parse_project_rotate(&text[1..]),
+        "project-edit" => parse_project_edit(&text[1..]),
+        "project-repair" => parse_project_repair(&text[1..]),
+        "schema-list" => parse_schema_list(&text[1..]),
+        "schema-export" => parse_schema_export(&text[1..]),
+        "schema-migrate" => parse_schema_migrate(&text[1..]),
         "solve" => parse_solve(&text[1..]),
         "export" => parse_export(&text[1..]),
         other => Err(format!("unknown command '{other}'")),
     }
 }
 
-/// Frozen CLI v2 exit codes (plan §四.1 / M1-03):
+/// Frozen CLI v2 exit codes (plan §4.1 / M1-03):
 /// Solved 0, InvalidInput 2, ProvenInfeasible 3, Timeout 4, Unknown 5,
 /// InternalError 70, user cancel 130.
 fn exit_code_for(status: SolveStatus) -> u8 {
@@ -1104,6 +1458,54 @@ fn run_command(command: Command) -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Command::ProjectRotate(args) => match commands::run_project_rotate(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectEdit(args) => match commands::run_project_edit(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::ProjectRepair(args) => match commands::run_project_repair(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::SchemaList => match commands::run_schema_list() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::SchemaExport(args) => match commands::run_schema_export(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::SchemaMigrate(args) => match commands::run_schema_migrate(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
         Command::Solve(args) => match commands::run_solve(&args) {
             Ok(status) => ExitCode::from(exit_code_for(status)),
             Err(message) => {
@@ -1280,6 +1682,7 @@ mod tests {
         assert_eq!(args.solution, PathBuf::from("s.json"));
         assert_eq!(args.format, ExportFormat::Svg);
         assert_eq!(args.output, PathBuf::from("o.svg"));
+        assert_eq!(args.template, "teacher");
     }
 
     #[test]
@@ -1368,7 +1771,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // M1-03: frozen CLI exit-code table (plan §四.1)
+    // M1-03: frozen CLI exit-code table (plan §4.1)
     // ------------------------------------------------------------------
 
     #[test]
@@ -1599,5 +2002,156 @@ mod tests {
         assert!(crate::project::project_validate(&restored_project).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&restored_root);
+    }
+
+    #[test]
+    fn project_rotate_edit_repair_and_schema_group() {
+        // §5.5/§5.7 item 3: the remaining project lifecycle commands plus the
+        // schema group, end to end on a real workspace.
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-lifecycle3-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("students.csv"),
+            "id,name
+1,A
+2,B
+3,C
+4,D
+",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("layout.json"),
+            r#"{"layout_id":"l","name":"Room","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true},
+                {"seat_id":"R2C1","row":2,"col":1,"x":0.0,"y":1.0,"enabled":true},
+                {"seat_id":"R2C2","row":2,"col":2,"x":1.0,"y":1.0,"enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R2C1","R2C2"],["R1C1","R2C1"],["R1C2","R2C2"]]}}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("rules.json"), r#"{"seed":7,"soft":{}}"#).unwrap();
+        commands::run_project_init(&ProjectInitArgs { dir: dir.clone() }).unwrap();
+        let project = dir.join("seattrellis.project.json");
+        let snapshot = dir.join("outputs").join("plan.snapshot.json");
+
+        // project-solve -> saved snapshot (CoreSolveResponse shape).
+        commands::run_project_solve(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: None,
+            output: Some(snapshot.clone()),
+            snapshot: None,
+        })
+        .unwrap();
+        assert!(snapshot.is_file());
+
+        // project-rotate: 2 periods, persisted into the project outputs.
+        commands::run_project_rotate(&ProjectRotateArgs {
+            project: project.clone(),
+            periods: 2,
+            seed: None,
+            output: None,
+        })
+        .unwrap();
+        let rotation = dir.join("outputs").join("rotation-plan.json");
+        assert!(rotation.is_file());
+        let plan: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&rotation).unwrap()).unwrap();
+        assert_eq!(plan["kind"], "rotation_plan");
+        assert_eq!(plan["periods"].as_array().unwrap().len(), 2);
+
+        // project-edit: swap two students, then a lock via operations file.
+        let edited = dir.join("outputs").join("edited.snapshot.json");
+        commands::run_project_edit(&ProjectEditArgs {
+            project: project.clone(),
+            snapshot: Some(snapshot.clone()),
+            operations: vec![
+                r#"{"kind":"swap_students","payload":{"first_student":"1","second_student":"2"}}"#
+                    .to_string(),
+            ],
+            operations_file: None,
+            output: Some(edited.clone()),
+            strict: false,
+        })
+        .unwrap();
+        let edited_doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&edited).unwrap()).unwrap();
+        let assignments = edited_doc["assignments"].as_array().unwrap();
+        assert_eq!(assignments.len(), 4);
+
+        // Strict mode must refuse an edit that violates hard rules: moving
+        // student 1 to a seat that breaks the fixed-seat rule... there is no
+        // hard rule here, so a strict swap stays valid.
+        let ops_file = dir.join("ops.json");
+        std::fs::write(
+            &ops_file,
+            r#"{"operations":[{"kind":"lock_student","payload":{"student_key":"1"}}]}"#,
+        )
+        .unwrap();
+        commands::run_project_edit(&ProjectEditArgs {
+            project: project.clone(),
+            snapshot: Some(snapshot.clone()),
+            operations: vec![],
+            operations_file: Some(ops_file),
+            output: Some(dir.join("outputs").join("locked.snapshot.json")),
+            strict: true,
+        })
+        .unwrap();
+
+        // project-repair: re-solve the edited snapshot with a lock.
+        commands::run_project_repair(&ProjectRepairArgs {
+            project: project.clone(),
+            snapshot: Some(edited.clone()),
+            affected: vec![],
+            locked_students: vec!["1".to_string()],
+            locked_seats: vec![],
+            output: Some(dir.join("outputs").join("repaired.snapshot.json")),
+        })
+        .unwrap();
+        assert!(dir.join("outputs").join("repaired.snapshot.json").is_file());
+
+        // schema group: list, export, migrate.
+        commands::run_schema_list().unwrap();
+        let schema_out = dir.join("roster.schema.json");
+        commands::run_schema_export(&SchemaExportArgs {
+            kind: "roster".to_string(),
+            output: Some(schema_out.clone()),
+        })
+        .unwrap();
+        let schema_text = std::fs::read_to_string(&schema_out).unwrap();
+        assert!(
+            schema_text.contains("$defs"),
+            "schema export looks like JSON Schema"
+        );
+        let v1 = dir.join("v1-roster.json");
+        std::fs::write(
+            &v1,
+            r#"{"kind":"student_roster","schema_version":1,"data":{"students":[
+                {"student_id":"1","name":"A","gender":"F","height_cm":165,"score":88,
+                 "vision":"0.8","tags":[],"needs":[]}]}}"#,
+        )
+        .unwrap();
+        let v2_out = dir.join("v2-roster.json");
+        commands::run_schema_migrate(&SchemaMigrateArgs {
+            input: v1,
+            output: Some(v2_out.clone()),
+            in_place: false,
+            dry_run: false,
+        })
+        .unwrap();
+        let migrated: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&v2_out).unwrap()).unwrap();
+        assert_eq!(migrated["kind"], "student_roster");
+        assert_eq!(migrated["schema_version"], 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

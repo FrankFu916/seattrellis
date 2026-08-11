@@ -97,6 +97,22 @@ pub fn generate_class(
         .collect();
 
     let draft_id = new_draft_id();
+    // Mirror the roster names into the editable draft (the Python oracle's
+    // editor state carries `display_name`, and the workbench canvas renders
+    // it), falling back to the student key when a name is absent.
+    let display_names: HashMap<String, String> = request
+        .students
+        .iter()
+        .map(|student| {
+            (
+                student.key.clone(),
+                student
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| student.key.clone()),
+            )
+        })
+        .collect();
     let editor = match editing::create_draft(
         editor_store,
         draft_id.clone(),
@@ -104,6 +120,7 @@ pub fn generate_class(
         &key_refs,
         seats,
         &assignment,
+        Some(&display_names),
     ) {
         Ok(state) => state,
         Err(message) => return Err(AppError::internal(&message)),
@@ -696,7 +713,7 @@ fn core_student_value(student: &Value) -> Value {
 
 /// Student keys for an editor draft: the solve request's `students` `key`,
 /// falling back to `student-N` for placeholder/padded students.
-pub(crate) fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
+pub fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
     (0..request.student_count)
         .map(|index| {
             request
@@ -713,7 +730,7 @@ pub(crate) fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
 /// Seat specs for an editor draft: prefer the layout's authoritative
 /// row/col/enabled per seat; otherwise derive grid coordinates from the raw
 /// `seat_positions` (mirrors `render::seat_row_col`).
-pub(crate) fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
+pub fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
     request
         .seat_positions
         .iter()
@@ -738,7 +755,7 @@ pub(crate) fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
 
 /// The seat id the editor draft uses for a seat index: the layout's `seat_id`
 /// when present, else `seat-N`.
-pub(crate) fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
+pub fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
     request
         .layout
         .as_ref()

@@ -38,6 +38,28 @@ pub(crate) const JOURNAL_DIR_NAME: &str = ".seattrellis-transactions";
 
 static TRANSACTION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+// Test-only fault-injection switch (revised plan §17.2.4): when set on the
+// *current thread*, the next transaction commit fails after the full batch
+// is backed up and the journal revision is durable, before any publish.
+// A `thread_local` keeps parallel test threads fully isolated — only the
+// thread that armed the switch sees injected failures. `#[cfg(test)]`
+// keeps it out of release binaries.
+#[cfg(test)]
+std::thread_local! {
+    static INJECT_COMMIT_FAILURE: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn inject_commit_failure() -> bool {
+    INJECT_COMMIT_FAILURE.with(|cell| cell.get())
+}
+
+#[cfg(test)]
+pub(crate) fn set_inject_commit_failure(value: bool) {
+    INJECT_COMMIT_FAILURE.with(|cell| cell.set(value));
+}
+
 /// Whether a staged write may replace an existing target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -432,6 +454,20 @@ impl FileTransaction {
             self.write_journal_revision()?;
         }
 
+        // Test-only fault injection (revised plan §17.2.4): fail after the whole
+        // batch is backed up and the journal revision is durable, but before
+        // any staged entry is published. Every public write path that uses
+        // the transaction then exercises its rollback path with a fully
+        // staged journal — the fault-injection goldens verify that the
+        // original targets are untouched and recovery can restart.
+        #[cfg(test)]
+        if inject_commit_failure() {
+            return Err(
+                "injected commit failure after staging (SEATTRELLIS fault-injection test)"
+                    .to_string(),
+            );
+        }
+
         for index in 0..self.steps.len() {
             self.steps[index].state = StepState::Publishing;
             self.write_journal_revision()?;
@@ -439,7 +475,6 @@ impl FileTransaction {
             self.steps[index].state = StepState::Published;
             self.write_journal_revision()?;
         }
-
         for index in 0..self.steps.len() {
             ensure_fingerprint(&self.steps[index], &self.steps[index].target)?;
             validate(&self.steps[index].target)?;

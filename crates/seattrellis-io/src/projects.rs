@@ -1887,6 +1887,15 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
             .join(format!("restored-{clean_stem}-{index}.snapshot.json"));
         index += 1;
     }
+    // Test-only fault injection (revised plan §17.2.4): artifact restore writes a
+    // fresh create-new file; an injected failure must leave the outputs dir
+    // without a partial artifact.
+    #[cfg(test)]
+    if crate::transaction::inject_commit_failure() {
+        return Err(
+            "injected artifact restore failure (SEATTRELLIS fault-injection test)".to_string(),
+        );
+    }
     fs::write(
         &target,
         serde_json::to_vec(&document)

@@ -46,6 +46,16 @@ pub fn project_info(project_path: &Path) -> Result<String, String> {
 
 /// `project-validate`: validate the project document, its referenced files,
 /// and the compiled solve request.
+/// The project's display name (for plan/artifact naming).
+pub fn project_name(project_path: &Path) -> Result<String, String> {
+    let (project, _) = seattrellis_io::projects::load_project_document(project_path)?;
+    Ok(project
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("SeatTrellis")
+        .to_string())
+}
+
 pub fn project_validate(project_path: &Path) -> Result<String, String> {
     let request = build_request(project_path)?;
     let request_json = serde_json::to_string(&request)

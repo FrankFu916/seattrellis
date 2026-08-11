@@ -3,6 +3,7 @@
 *.egg-info/
 .pytest_cache/
 .e2e-tmp/
+.e2e-rust-tmp/
 .mypy_cache/
 .ruff_cache/
 .venv/
@@ -12,6 +13,7 @@ site/
 build/
 target/
 test-results/
+test-results-rust/
 outputs/
 exports/
 snapshots/

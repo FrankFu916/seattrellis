@@ -2857,6 +2857,20 @@ pub fn generate_candidates_json(
     request_json: &str,
     candidate_count: usize,
 ) -> Result<String, String> {
+    generate_candidates_json_with_latest_snapshot(request_json, candidate_count, "")
+}
+
+/// Like [`generate_candidates_json`], but also accepts a `latest_snapshot`
+/// document so the per-candidate PlanScore activates the `stability_score`
+/// dimension (the fixed-assignment scoring path covers the parity evidence;
+/// this wires the same code into candidate generation). An empty string
+/// keeps `stability_score` `not_available`, matching the Python CLI which
+/// does not pass a latest snapshot either.
+pub fn generate_candidates_json_with_latest_snapshot(
+    request_json: &str,
+    candidate_count: usize,
+    latest_snapshot_json: &str,
+) -> Result<String, String> {
     if !(1..=20).contains(&candidate_count) {
         return Err(format!(
             "invalid candidate_count {candidate_count}: expected a value between 1 and 20"
@@ -2930,9 +2944,10 @@ pub fn generate_candidates_json(
 
     // PlanScore per candidate (plan §6.2/§6.6): mirror Python's
     // `apply_diversity_scores` + `score_snapshot`. Diversity is the mean
-    // assignment distance to every other candidate; stability stays
-    // not_available here (the core history model keeps categories, not raw
-    // seat ids — the fixed-assignment scoring path covers stability parity).
+    // assignment distance to every other candidate; stability activates
+    // only when a latest snapshot is supplied (the Python CLI also leaves
+    // it not_available, and the fixed-assignment scoring path carries the
+    // parity evidence).
     let request_json = request_json.to_string();
     let mut diversities = Vec::with_capacity(candidates.len());
     for candidate in &candidates {
@@ -2953,7 +2968,7 @@ pub fn generate_candidates_json(
         let score = score_assignment_json(
             &request_json,
             &candidate.assignment_pairs,
-            "",
+            latest_snapshot_json,
             Some(diversities[index]),
         )
         .map_err(|error| format!("candidate {index} could not be scored: {error}"))?;
@@ -6362,5 +6377,51 @@ mod tests {
         // A locked seat must be known.
         let err = repair_json(request, snapshot, &[], &[], &["R1C9".to_string()]).unwrap_err();
         assert!(err.contains("unknown"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod latest_snapshot_tests {
+    use super::*;
+
+    /// The per-candidate stability dimension activates when a latest
+    /// snapshot is supplied and stays `not_available` without one.
+    #[test]
+    fn candidates_stability_activates_with_latest_snapshot() {
+        let request = json!({
+            "api_version": 2,
+            "student_count": 3,
+            "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
+            "edges": [[0, 1], [1, 2]],
+            "seed": 7,
+            "students": [
+                {"key": "A", "display_name": "Alpha"},
+                {"key": "B", "display_name": "Beta"},
+                {"key": "C", "display_name": "Gamma"}
+            ]
+        })
+        .to_string();
+        let latest = json!({
+            "kind": "snapshot",
+            "assignments": [
+                {"student_key": "A", "seat_id": "R1C1"},
+                {"student_key": "B", "seat_id": "R1C2"},
+                {"student_key": "C", "seat_id": "R1C3"}
+            ]
+        })
+        .to_string();
+
+        let without = generate_candidates_json(&request, 2).expect("candidates generate");
+        let without_value: Value = serde_json::from_str(&without).unwrap();
+        let stability_without =
+            &without_value["candidates"][0]["plan_score"]["breakdown"]["stability_score"]["status"];
+        assert_eq!(stability_without, "not_available");
+
+        let with = generate_candidates_json_with_latest_snapshot(&request, 2, &latest)
+            .expect("candidates generate with latest snapshot");
+        let with_value: Value = serde_json::from_str(&with).unwrap();
+        let stability_with =
+            &with_value["candidates"][0]["plan_score"]["breakdown"]["stability_score"]["status"];
+        assert_eq!(stability_with, "available", "stability must activate");
     }
 }
