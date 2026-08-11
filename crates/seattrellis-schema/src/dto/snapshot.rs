@@ -17,7 +17,8 @@ use super::student_roster::RosterStudent;
 #[serde(deny_unknown_fields)]
 pub struct SeatingSnapshotArtifact {
     pub schema_version: String,
-    /// RFC 3339 UTC timestamp.
+    /// RFC 3339 UTC timestamp (absent in normalized oracle goldens).
+    #[serde(default)]
     pub created_at: String,
     #[serde(default = "default_seed")]
     pub seed: u64,

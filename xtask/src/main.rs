@@ -22,7 +22,9 @@ mod spec;
 
 use schemars::JsonSchema;
 use seattrellis_schema::dto::bundle_manifest::ProjectBundleManifest;
+use seattrellis_schema::dto::candidate_set::CandidateSetArtifact;
 use seattrellis_schema::dto::classroom_layout::ClassroomLayout;
+use seattrellis_schema::dto::plan_comparison::PlanComparisonReportArtifact;
 use seattrellis_schema::dto::project::SeatTrellisProjectArtifact;
 use seattrellis_schema::dto::rule_set::RuleSetArtifact;
 use seattrellis_schema::dto::snapshot::SeatingSnapshotArtifact;
@@ -46,6 +48,8 @@ const SCHEMA_ARTIFACTS: &[(&str, ArtifactKind)] = &[
         "project-bundle-manifest",
         ArtifactKind::ProjectBundleManifest,
     ),
+    ("candidate-set", ArtifactKind::CandidateSet),
+    ("plan-comparison-report", ArtifactKind::PlanComparison),
 ];
 
 fn repo_root() -> PathBuf {
@@ -101,6 +105,10 @@ fn schema_artifacts() -> Vec<(String, String)> {
                 ArtifactKind::Project => schema_for_envelope::<SeatTrellisProjectArtifact>(kind),
                 ArtifactKind::ProjectBundleManifest => {
                     schema_for_envelope::<ProjectBundleManifest>(kind)
+                }
+                ArtifactKind::CandidateSet => schema_for_envelope::<CandidateSetArtifact>(kind),
+                ArtifactKind::PlanComparison => {
+                    schema_for_envelope::<PlanComparisonReportArtifact>(kind)
                 }
                 _ => unreachable!("schema artifacts are listed explicitly"),
             };

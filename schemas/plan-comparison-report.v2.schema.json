@@ -1,0 +1,214 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "PlanComparisonEntry": {
+      "additionalProperties": false,
+      "description": "`PlanComparisonEntry` from candidate.py.",
+      "properties": {
+        "advantages": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "costs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dimension_scores": {
+          "additionalProperties": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "default": {},
+          "type": "object"
+        },
+        "explanations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanComparisonExplanation"
+          },
+          "type": "array"
+        },
+        "hard_constraint_checked_count": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hard_constraint_violation_count": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hard_constraints_satisfied": {
+          "type": "boolean"
+        },
+        "history_comparison": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "score_delta_from_recommended": {
+          "default": null,
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "total_score": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "total_score",
+        "hard_constraints_satisfied"
+      ],
+      "type": "object"
+    },
+    "PlanComparisonExplanation": {
+      "additionalProperties": false,
+      "description": "`PlanComparisonExplanation` from candidate.py.",
+      "properties": {
+        "dimension": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "rating": {
+          "type": "string"
+        },
+        "score": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "dimension",
+        "score",
+        "rating"
+      ],
+      "type": "object"
+    },
+    "PlanComparisonReportArtifact": {
+      "additionalProperties": false,
+      "description": "`PlanComparisonReport` from candidate.py (schema_version 0.2.2, kind\n`plan_comparison_report`).",
+      "properties": {
+        "candidate_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/PlanComparisonEntry"
+          },
+          "type": "array"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "default": null
+        },
+        "recommended_candidate_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "created_at",
+        "candidate_count",
+        "recommended_candidate_id",
+        "candidates"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/PlanComparisonReportArtifact",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: PlanComparison",
+  "type": "object"
+}
