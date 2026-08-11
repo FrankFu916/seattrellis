@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
   "tool": "scripts/bench_solver.py",
-  "note": "median wall-clock of the release CLI solve on planted-feasible instances",
+  "note": "median wall-clock of the release CLI solve on planted-feasible instances; baselines recorded on GitHub ubuntu-latest runners (2026-08-10) so the regression gate compares like hardware. Local Apple-Silicon runs are faster and stay inside the bound.",
   "sizes_ms": {
     "40": {
-      "median_ms": 100.1
+      "median_ms": 143.8
     },
     "50": {
-      "median_ms": 224.86
+      "median_ms": 296.5
     },
     "60": {
-      "median_ms": 465.91
+      "median_ms": 656.0
     },
     "80": {
-      "median_ms": 1398.67
+      "median_ms": 2032.2
     }
   }
 }
