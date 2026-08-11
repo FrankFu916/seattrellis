@@ -167,9 +167,9 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 
 | 用例 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
-| `init_demo` / `project_init` | service.py:1023/:1029 | 无对应 | `PYTHON_ONLY` |
+| `init_demo` / `project_init` | service.py:1023/:1029 | `project-init` 已实现（§19.9）；`init-demo` 无对应（M4 决策项） | `RUST_PARTIAL` |
 | `project_info` / `project_validate` | service.py:1053/:1062 | Rust CLI 路径存在，仅覆盖子集，无全量契约 golden | `RUST_PARTIAL` |
-| `run_doctor`（环境诊断） | service.py:861 | 无对应 | `PYTHON_ONLY` |
+| `run_doctor`（环境诊断） | service.py:861 | Rust CLI `doctor`（§19.9） | `RUST_PARTIAL` |
 | project 历史/产物浏览 | handlers.py:228/:259 | app projects.rs:332/:481 + server.rs:470-475 | `RUST_PARITY_PENDING` |
 | 产物对比（artifacts/compare） | handlers.py:298 | Rust server/io 路径存在；仅部分 artifact/diff 字段，无 golden 等价证据 | `RUST_PARTIAL` |
 | 产物恢复（artifacts/restore） | handlers.py:380 | Rust server/io 路径存在；rotation 拒绝、输出新 snapshot，未对齐 Python restore/revision 全契约 | `RUST_PARTIAL` |

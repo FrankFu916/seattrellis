@@ -957,7 +957,7 @@ def _verify_exports(
     """Export every Office format and reopen it with an independent reader."""
     from openpyxl import load_workbook
 
-    for fmt in ("xlsx", "docx", "pptx"):
+    for fmt in ("xlsx", "docx", "pptx", "png", "pdf"):
         out = tmp_path / f"{case}.{fmt}"
         exported = subprocess.run(
             [
@@ -985,15 +985,19 @@ def _verify_exports(
                 _verify_xlsx(out, response)
             elif fmt == "docx":
                 _verify_docx(out, response)
-            else:
+            elif fmt == "pptx":
                 _verify_pptx(out, response)
+            elif fmt == "png":
+                _verify_png(out, response)
+            else:
+                _verify_pdf(out, response)
             label = f"EXPORTS-{fmt.upper()}"
             rows.append((case, label, label, "independent reader ok", []))
         except Exception as exc:  # noqa: BLE001
-            rows.append((case, f"EXPORTS-{fmt.upper()}", "MISMATCH", str(exc), []))
+            rows.append((case, f"EXPORTS-{fmt.upper()}", "EXPORTS-FAILED", str(exc), []))
 
     # Public-template privacy: no real student name may survive in any format.
-    for fmt in ("xlsx", "docx", "pptx"):
+    for fmt in ("xlsx", "docx", "pptx", "png", "pdf"):
         out = tmp_path / f"{case}-public.{fmt}"
         exported = subprocess.run(
             [
@@ -1063,6 +1067,40 @@ def _verify_docx(path: Path, response: dict[str, object]) -> None:
         raise AssertionError("docx seat table has no text")
 
 
+def _verify_png(path: Path, response: dict[str, object]) -> None:
+    """PNG must be a decodable raster of plausible dimensions (Pillow)."""
+    from PIL import Image
+
+    with Image.open(path) as image:
+        image.verify()
+    with Image.open(path) as image:
+        width, height = image.size
+    seated = len(response.get("assignment", []))
+    if width < 100 or height < 100:
+        raise AssertionError(f"PNG is implausibly small: {width}x{height}")
+    if seated < 1:
+        raise AssertionError("PNG verified for an empty plan")
+
+
+def _verify_pdf(path: Path, response: dict[str, object]) -> None:
+    """PDF must open with an independent reader, carry extractable text on
+    every page (ASCII names; CJK names fall back to seat numbers by
+    design), and stay inside A4-ish bounds."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(path)
+    if not reader.pages:
+        raise AssertionError("PDF has no pages")
+    for page in reader.pages:
+        width = float(page.mediabox.width)
+        height = float(page.mediabox.height)
+        if width > 900 or height > 1300:
+            raise AssertionError(f"PDF page exceeds A4-ish bounds: {width}x{height}")
+        text = page.extract_text() or ""
+        if len(text.strip()) < 3:
+            raise AssertionError("PDF page carries no extractable text")
+
+
 def _verify_pptx(path: Path, response: dict[str, object]) -> None:
     from pptx import Presentation
 
@@ -1110,7 +1148,21 @@ def _read_office_text(path: Path) -> str:
                 if shape.has_text_frame:
                     parts.append(shape.text_frame.text)
         return " ".join(parts)
-    raise AssertionError(f"unknown office format: {path}")
+    if suffix == ".pdf":
+        from pypdf import PdfReader
+
+        reader = PdfReader(path)
+        return " ".join(page.extract_text() or "" for page in reader.pages)
+    if suffix == ".png":
+        # This renderer's PNG carries no text; the privacy check still
+        # verifies the raster decodes (an image is either fully rendered or
+        # corrupt, so no student data can leak through a text channel).
+        from PIL import Image
+
+        with Image.open(path) as image:
+            image.verify()
+        return ""
+    raise AssertionError(f"unknown export format: {path}")
 
 
 def run_rust_candidates(

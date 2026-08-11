@@ -19,7 +19,6 @@ use seattrellis_core::{
     SolveStatus,
 };
 
-use crate::render::SeatingGrid;
 use crate::style::Styler;
 use crate::ValidateArgs;
 use crate::{
@@ -1160,42 +1159,38 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
 
     validate_solve_response(&request, &response)
         .map_err(|message| format!("refusing to export an invalid solved plan: {message}"))?;
-    let grid = SeatingGrid::build(&request, &response)?;
-    match args.format {
-        ExportFormat::Svg => write_text(&args.output, &crate::render::render_svg(&grid))?,
-        ExportFormat::Html => write_text(&args.output, &crate::render::render_html(&grid))?,
-        ExportFormat::Png => write_bytes(&args.output, &crate::render::render_png(&grid)?)?,
-        ExportFormat::Pdf => write_text(&args.output, &crate::render::render_pdf(&grid))?,
-        // Office formats use the shared export crate's minimal OOXML writers
-        // through the same privacy-filtered dispatch the server uses
-        // (independent-reader validated; see seattrellis-export::office).
-        ExportFormat::Xlsx | ExportFormat::Docx | ExportFormat::Pptx => {
-            let export_request = serde_json::json!({
-                "draft_id": "",
-                "format": match args.format {
-                    ExportFormat::Xlsx => "xlsx",
-                    ExportFormat::Docx => "docx",
-                    _ => "pptx",
-                },
-                "template": args.template,
-                "privacy": {
-                    "hide_scores": true,
-                    "hide_notes": true,
-                    "hide_special_needs": true,
-                    "anonymize": args.template == "public",
-                    "show_height": false,
-                    "show_vision": false,
-                },
-                "orientation": "landscape",
-                "page_scale": 1.0,
-                "locale": "zh",
-                "request": problem_value,
-                "response": solution_value,
-            });
-            let bytes = export_plan(&export_request.to_string())?;
-            write_bytes(&args.output, &bytes)?;
-        }
-    }
+    // Every format goes through the shared export crate dispatch: the same
+    // privacy filtering (template / anonymize), independent validation and
+    // renderers the server uses. The CLI's own render module remains for
+    // the audit/report paths; export must never bypass the privacy layer.
+    let export_request = serde_json::json!({
+        "draft_id": "",
+        "format": match args.format {
+            ExportFormat::Svg => "svg",
+            ExportFormat::Html => "html",
+            ExportFormat::Png => "png",
+            ExportFormat::Pdf => "pdf",
+            ExportFormat::Xlsx => "xlsx",
+            ExportFormat::Docx => "docx",
+            ExportFormat::Pptx => "pptx",
+        },
+        "template": args.template,
+        "privacy": {
+            "hide_scores": true,
+            "hide_notes": true,
+            "hide_special_needs": true,
+            "anonymize": args.template == "public",
+            "show_height": false,
+            "show_vision": false,
+        },
+        "orientation": "landscape",
+        "page_scale": 1.0,
+        "locale": "zh",
+        "request": problem_value,
+        "response": solution_value,
+    });
+    let bytes = export_plan(&export_request.to_string())?;
+    write_bytes(&args.output, &bytes)?;
 
     let format_name = match args.format {
         ExportFormat::Svg => styler.cyan("SVG"),

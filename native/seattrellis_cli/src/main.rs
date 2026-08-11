@@ -6,7 +6,6 @@
 
 mod commands;
 mod project;
-mod render;
 mod style;
 mod usage;
 
