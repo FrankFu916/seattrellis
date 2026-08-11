@@ -147,6 +147,7 @@
           "type": "array"
         },
         "created_at": {
+          "default": "",
           "type": "string"
         },
         "kind": {
@@ -172,7 +173,6 @@
       "required": [
         "schema_version",
         "kind",
-        "created_at",
         "candidate_count",
         "recommended_candidate_id",
         "candidates"
