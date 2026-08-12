@@ -19,7 +19,6 @@ import type {
 import type { WorkflowStep } from "../domain/workflow";
 import type { Locale, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
-import { DetailedRulesPanel } from "./DetailedRulesPanel";
 import { HistoryFilesCard } from "./HistoryFilesCard";
 import { RotationPlanSummary } from "./RotationPlanSummary";
 import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
@@ -99,6 +98,8 @@ type WorkflowPanelProps = {
   onUndo: () => void;
   onToggleLock: () => void;
   onPreview: () => void;
+  /** Jump to the rules view (D4 quick panel "edit rules" entry). */
+  onOpenRules?: () => void;
 };
 
 function optionName(
@@ -194,13 +195,10 @@ export function WorkflowPanel({
   onUndo,
   onToggleLock,
   onPreview,
+  onOpenRules,
 }: WorkflowPanelProps) {
   const [rulesFileError, setRulesFileError] = useState<string | null>(null);
   const [layoutFileError, setLayoutFileError] = useState<string | null>(null);
-  const selectedRoom =
-    rooms.find((room) => room.id === selectedRoomId) ?? rooms[0];
-  const selectedGoal =
-    goals.find((goal) => goal.id === selectedGoalId) ?? goals[0];
 
   async function importJsonFile(
     file: File,
@@ -473,66 +471,98 @@ export function WorkflowPanel({
 
 
         {step === "generate" ? (
-          <div className="generate-summary">
-            <h2>{t("generate.summary")}</h2>
-            <dl>
-              <div>
-                <dt>{t("generate.roster")}</dt>
-                <dd>{t("app.students", { count: studentCount })}</dd>
-              </div>
-              <div>
-                <dt>{t("generate.room")}</dt>
-                <dd>
-                  {roomSettings.enabled
-                    ? t("generate.customLayout")
-                    : selectedRoom
-                    ? optionName(selectedRoom, locale)
-                    : t("room.current")}
-                </dd>
-              </div>
-              <div>
-                <dt>{t("generate.goal")}</dt>
-                <dd>
-                  {advancedSettings.customRulesJson.trim()
-                    ? t("generate.customRules")
-                    : selectedGoal
-                    ? optionName(selectedGoal, locale)
-                    : t("goal.current")}
-                </dd>
-              </div>
-            </dl>
-            <p className="reassurance-note">
-              <span aria-hidden="true">✓</span>
-              {t("generate.note")}
-            </p>
+          <div className="quick-panel">
             {!rosterValid ? (
               <p className="inline-error" role="alert">
                 {t("generate.rosterInvalid")}
               </p>
             ) : null}
+
+            <section className="quick-questions" aria-label={t("generate.quickTitle")}>
+              <div className="quick-row">
+                <span className="quick-label">{t("generate.quickRules")}</span>
+                <span className="chip chip-blue">
+                  {t("generate.quickRulesValue", {
+                    hard: constraints.length + groups.length,
+                    soft: preferences.length,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={onOpenRules}
+                >
+                  {t("generate.quickRulesEdit")}
+                </button>
+              </div>
+              <div className="quick-row">
+                <span className="quick-label">{t("generate.quickCandidates")}</span>
+                <select
+                  aria-label={t("generate.quickCandidates")}
+                  value={advancedSettings.candidateCount}
+                  onChange={(event) =>
+                    onAdvancedSettingsChange({
+                      candidateCount: Math.min(
+                        20,
+                        Math.max(1, Number(event.target.value) || 5),
+                      ),
+                    })
+                  }
+                >
+                  <option value="1">{t("generate.candidatesOne")}</option>
+                  <option value="5">{t("generate.candidatesFive")}</option>
+                  <option value="10">{t("generate.candidatesTen")}</option>
+                </select>
+              </div>
+              <div className="quick-row">
+                <span className="quick-label">{t("generate.quickPriority")}</span>
+                <select
+                  aria-label={t("generate.quickPriority")}
+                  value={selectedGoalId}
+                  onChange={(event) => onGoalChange(event.target.value)}
+                >
+                  {goals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {optionName(goal, locale)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
+
+            <div className="history-line">
+              <span className="chip chip-blue">
+                {historySnapshotCount > 0
+                  ? t("generate.historyLine", { count: historySnapshotCount })
+                  : t("generate.historyEmptyLine")}
+              </span>
+              <div className="history-line-control">
+                <HistoryFilesCard
+                  fileNames={historyFileNames}
+                  snapshotCount={historySnapshotCount}
+                  error={historyError}
+                  t={t}
+                  onChange={onHistoryFilesChange}
+                  onClear={onHistoryClear}
+                />
+              </div>
+              <small className="history-line-hint">
+                {t("generate.historyLineHint")}
+              </small>
+            </div>
+
+            {error ? (
+              <p className="inline-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+
             <details className="advanced-settings">
               <summary>{t("generate.advanced")}</summary>
               <p className="advanced-settings-hint">
                 {t("generate.advancedHint")}
               </p>
               <div className="advanced-fields">
-                <label className="advanced-field">
-                  <span>{t("generate.candidateCount")}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={advancedSettings.candidateCount}
-                    onChange={(event) =>
-                      onAdvancedSettingsChange({
-                        candidateCount: Math.min(
-                          20,
-                          Math.max(1, Number(event.target.value) || 1),
-                        ),
-                      })
-                    }
-                  />
-                </label>
                 <label className="advanced-field">
                   <span>{t("generate.timeLimit")}</span>
                   <input
@@ -585,6 +615,9 @@ export function WorkflowPanel({
                     }
                   />
                 </label>
+                <div className="advanced-field advanced-field-wide dedup-line">
+                  <span>{t("generate.dedupHint")}</span>
+                </div>
                 <div className="advanced-field advanced-field-wide">
                   <span id="custom-rules-label">{t("generate.customRules")}</span>
                   <textarea
@@ -646,82 +679,75 @@ export function WorkflowPanel({
                     }
                   />
                 </div>
-                <fieldset className="advanced-field advanced-field-wide history-input-card">
-                  <HistoryFilesCard
-                    fileNames={historyFileNames}
-                    snapshotCount={historySnapshotCount}
-                    error={historyError}
-                    t={t}
-                    onChange={onHistoryFilesChange}
-                    onClear={onHistoryClear}
-                  />
-                </fieldset>
+                <div className="advanced-field advanced-field-wide">
+                  <span>{t("generate.weightHint")}</span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={onOpenRules}
+                  >
+                    {t("generate.quickRulesEdit")}
+                  </button>
+                </div>
+                <details className="rotation-settings" open={rotationSettings.enabled}>
+                  <summary>{t("rotation.title")}</summary>
+                  <p className="advanced-settings-hint">{t("rotation.hint")}</p>
+                  <label className="rotation-toggle">
+                    <input
+                      data-testid="rotation-toggle"
+                      type="checkbox"
+                      checked={rotationSettings.enabled}
+                      onChange={(event) =>
+                        onRotationSettingsChange({ enabled: event.target.checked })
+                      }
+                    />
+                    <span>{t("rotation.enabled")}</span>
+                  </label>
+                  {rotationSettings.enabled ? (
+                    <div className="rotation-fields">
+                      <label className="advanced-field">
+                        <span>{t("rotation.periodCount")}</span>
+                        <input
+                          data-testid="rotation-period-count"
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={rotationSettings.periodCount}
+                          onChange={(event) =>
+                            onRotationSettingsChange({
+                              periodCount: Math.min(
+                                20,
+                                Math.max(1, Number(event.target.value) || 1),
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="advanced-field advanced-field-wide">
+                        <span>{t("rotation.periodLabels")}</span>
+                        <input
+                          data-testid="rotation-period-labels"
+                          type="text"
+                          value={rotationSettings.periodLabels}
+                          placeholder={t("rotation.periodLabelsPlaceholder")}
+                          onChange={(event) =>
+                            onRotationSettingsChange({
+                              periodLabels: event.target.value,
+                            })
+                          }
+                        />
+                        <small>{t("rotation.periodLabelsHint")}</small>
+                      </label>
+                    </div>
+                  ) : null}
+                </details>
               </div>
             </details>
-            <DetailedRulesPanel
-              settings={detailedRules}
-              t={t}
-              onChange={onDetailedRulesChange}
-            />
-            <details className="rotation-settings" open={rotationSettings.enabled}>
-              <summary>{t("rotation.title")}</summary>
-              <p className="advanced-settings-hint">{t("rotation.hint")}</p>
-              <label className="rotation-toggle">
-                <input
-                  data-testid="rotation-toggle"
-                  type="checkbox"
-                  checked={rotationSettings.enabled}
-                  onChange={(event) =>
-                    onRotationSettingsChange({ enabled: event.target.checked })
-                  }
-                />
-                <span>{t("rotation.enabled")}</span>
-              </label>
-              {rotationSettings.enabled ? (
-                <div className="rotation-fields">
-                  <label className="advanced-field">
-                    <span>{t("rotation.periodCount")}</span>
-                    <input
-                      data-testid="rotation-period-count"
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={rotationSettings.periodCount}
-                      onChange={(event) =>
-                        onRotationSettingsChange({
-                          periodCount: Math.min(
-                            20,
-                            Math.max(1, Number(event.target.value) || 1),
-                          ),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="advanced-field advanced-field-wide">
-                    <span>{t("rotation.periodLabels")}</span>
-                    <input
-                      data-testid="rotation-period-labels"
-                      type="text"
-                      value={rotationSettings.periodLabels}
-                      placeholder={t("rotation.periodLabelsPlaceholder")}
-                      onChange={(event) =>
-                        onRotationSettingsChange({
-                          periodLabels: event.target.value,
-                        })
-                      }
-                    />
-                    <small>{t("rotation.periodLabelsHint")}</small>
-                  </label>
-                </div>
-              ) : null}
-            </details>
-            {error ? (
-              <p className="inline-error" role="alert">
-                {error}
-              </p>
-            ) : null}
+
+            <p className="repro-note">{t("generate.reproHint")}</p>
           </div>
         ) : null}
+
 
         {step === "adjust" ? (
           <div className="adjust-tools">

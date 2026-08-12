@@ -99,7 +99,9 @@ const LOCALE_STORAGE_KEY = "seattrellis-locale";
 const FIRST_RUN_KEY = "seattrellis-first-run:v1";
 
 const DEFAULT_ADVANCED_SETTINGS: AdvancedSolveSettings = {
-  candidateCount: 1,
+  // D4: the quick panel asks for the candidate count; 5 is the frozen
+  // default pending G-4 dogfood evidence.
+  candidateCount: 5,
   seed: "",
   timeLimitSeconds: 10,
   backend: "auto",
@@ -1375,6 +1377,7 @@ export function App() {
                 onUndo={handleUndo}
                 onToggleLock={handleToggleLock}
                 onPreview={() => setPreviewOpen(true)}
+                onOpenRules={() => switchView("rules")}
               />
             )}
 
