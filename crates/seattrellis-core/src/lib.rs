@@ -1372,13 +1372,16 @@ mod tests {
     #[test]
     fn time_limit_with_incumbent_still_reports_solved() {
         // A trivial problem solved by greedy attempt 0 within the budget:
-        // the incumbent wins even though the budget is tiny.
+        // the incumbent wins even though the budget is tiny. The budget
+        // stays small (not the old 1ms - scheduler latency on loaded CI
+        // runners could exhaust it before the first greedy attempt, making
+        // the test flaky) while still exercising the budget check.
         let request = r#"{
             "api_version": 2,
             "student_count": 3,
             "seat_positions": [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]],
             "edges": [[0, 1], [1, 2]],
-            "time_limit_seconds": 0.001
+            "time_limit_seconds": 0.05
         }"#;
         let response_json = solve_problem_json(request).expect("request should validate");
         let response: CoreSolveResponse =
