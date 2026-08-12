@@ -11,7 +11,6 @@ import {
   generateRotationPlan,
   listRecentProjects,
   loadBootstrap,
-  saveDesktopExport,
 } from "./api/client";
 import {
   createSeatAssignments,
@@ -54,6 +53,7 @@ import { SaveAsClassDialog } from "./components/SaveAsClassDialog";
 import { CandidatesPanel, type CandidateMeta, type ReproInfo } from "./components/CandidatesPanel";
 import { SeatingCanvasEditor } from "./components/SeatingCanvasEditor";
 import { Sidebar } from "./components/Sidebar";
+import { saveBlobWithDialog } from "./domain/desktop";
 import {
   rosterIsValid,
   StudentRosterEditor,
@@ -1197,7 +1197,7 @@ export function App() {
         page_scale: pageScale,
         locale: locale === "zh-CN" ? "zh" : "en",
       });
-      const desktopSave = await saveDesktopExport(filename, blob);
+      const desktopSave = await saveBlobWithDialog(filename, blob);
       if (desktopSave === "cancelled") {
         return;
       }

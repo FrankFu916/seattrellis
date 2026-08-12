@@ -74,6 +74,10 @@ pub struct ServerConfig {
     pub port: u16,
     /// Directory containing `index.html` plus static assets.
     pub web_root: PathBuf,
+    /// Root that typed (manually entered) paths resolve against. Requests
+    /// may never read outside this directory (PD-D14: manual paths are
+    /// trusted-root-relative only; absolute paths are rejected).
+    pub trusted_root: PathBuf,
 }
 
 impl ServerConfig {
@@ -82,7 +86,16 @@ impl ServerConfig {
             host: IpAddr::from([127, 0, 0, 1]),
             port,
             web_root,
+            trusted_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
+    }
+
+    /// Override the trusted root for typed file reads (defaults to the
+    /// process working directory). The Tauri shell pins this to its own
+    /// data directory; tests pin a temp directory.
+    pub fn with_trusted_root(mut self, root: PathBuf) -> Self {
+        self.trusted_root = root;
+        self
     }
 }
 
@@ -94,6 +107,9 @@ pub struct Server {
     web_root: Arc<PathBuf>,
     editor_store: Arc<EditorDraftStore>,
     solve_requests: Arc<SolveRequestStore>,
+    /// Root that typed file-read paths resolve against (PD-D14 red line:
+    /// manual paths never leave this directory).
+    trusted_root: Arc<PathBuf>,
     /// Set by the shell (Tauri exit) to stop the accept loop gracefully.
     shutdown: Arc<AtomicBool>,
     /// 256-bit random session token (M1-05). Required as `Bearer` on every
@@ -113,6 +129,7 @@ impl Server {
             web_root: Arc::new(config.web_root.clone()),
             editor_store: Arc::new(editing::new_draft_store()),
             solve_requests: Arc::new(Mutex::new(HashMap::new())),
+            trusted_root: Arc::new(config.trusted_root.clone()),
             shutdown: Arc::new(AtomicBool::new(false)),
             session_token: generate_session_token(),
         })
@@ -159,6 +176,7 @@ impl Server {
             web_root: Arc::clone(&self.web_root),
             editor_store: Arc::clone(&self.editor_store),
             solve_requests: Arc::clone(&self.solve_requests),
+            trusted_root: Arc::clone(&self.trusted_root),
             shutdown: Arc::clone(&self.shutdown),
             session_token: Arc::new(self.session_token.clone()),
             bound_host: self.local_addr.ip().to_string(),
@@ -507,6 +525,7 @@ pub(crate) fn route(
     web_root: &Path,
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
+    trusted_root: &Path,
 ) -> Response {
     // Split the query string off for routing: the raw path decides the route,
     // and the query is handed to handlers that read it (e.g. `projects/recent`).
@@ -522,6 +541,10 @@ pub(crate) fn route(
         ("GET", ["api", "v1", "rules", "templates"]) => rules_templates_response(),
         ("POST", ["api", "v1", "rules", "compile"]) => rules_compile_response(&request.body),
         ("POST", ["api", "v2", "solve"]) => solve_v2_response(&request.body),
+        ("POST", ["api", "v1", "files", "read"]) => {
+            file_read_response(&request.body, trusted_root)
+        }
+        ("GET", ["api", "v1", "files", "root"]) => file_root_response(trusted_root),
         ("POST", ["api", "v1", "classes", "generate"]) | ("POST", ["api", "v1", "solve"]) => {
             generate_response(&request.body, editor_store, solve_requests)
         }
@@ -847,6 +870,117 @@ fn roster_upload_response(body: &[u8], content_type: Option<&str>) -> Response {
         Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
         Err(message) => json_error(422, &message),
     }
+}
+
+/// Upper bound for a file read through the trusted-root endpoint. Roster
+/// files are small; the cap bounds memory on the loopback server.
+const MAX_TRUSTED_READ_BYTES: usize = 8 * 1024 * 1024;
+
+/// `POST /api/v1/files/read`: read a file the user pointed at, backing the
+/// manual-path entry of the D14 file picker (browser and desktop alike).
+///
+/// Security (PD-D14 red line, io-layer defense reused): the path must be a
+/// **relative** path inside the trusted root. Absolute paths, `..`
+/// traversal, NUL bytes and backslash separators are rejected outright; the
+/// canonical target must stay under the canonical root (defense in depth
+/// against symlink escape, same pattern as `safe_join`). The M1-05
+/// middleware (Bearer token, loopback Host/Origin) applies like every
+/// `/api/*` route.
+fn file_read_response(body: &[u8], trusted_root: &Path) -> Response {
+    if body.is_empty() {
+        return json_error(400, "empty request body");
+    }
+    let raw: Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return json_error(400, "request body is not valid JSON"),
+    };
+    let Some(rel_path) = raw.get("path").and_then(Value::as_str) else {
+        return json_error(400, "read requires a path");
+    };
+    let Some(joined) = trusted_relative_path(rel_path) else {
+        return json_error(400, "path must be a relative path inside the trusted root");
+    };
+    let candidate = trusted_root.join(joined);
+    let root_canonical = match trusted_root.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return json_error(500, "trusted root is not readable"),
+    };
+    let candidate_canonical = match candidate.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return json_error(404, "file was not found"),
+    };
+    if !candidate_canonical.starts_with(&root_canonical) {
+        return json_error(403, "path escapes the trusted root");
+    }
+    let metadata = match fs::metadata(&candidate_canonical) {
+        Ok(meta) => meta,
+        Err(_) => return json_error(404, "file was not found"),
+    };
+    if !metadata.is_file() {
+        return json_error(400, "path is not a file");
+    }
+    if metadata.len() > MAX_TRUSTED_READ_BYTES as u64 {
+        return json_error(413, "file is too large");
+    }
+    let bytes = match fs::read(&candidate_canonical) {
+        Ok(bytes) => bytes,
+        Err(_) => return json_error(404, "file was not found"),
+    };
+    let name = candidate_canonical
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file")
+        .to_string();
+    use base64::Engine as _;
+    let content_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Response::json(
+        200,
+        json!({
+            "name": name,
+            "size": bytes.len(),
+            "content_base64": content_base64,
+        }),
+    )
+}
+
+/// `GET /api/v1/files/root`: expose the trusted root so the D14 path-input
+/// entry can tell the teacher what relative paths resolve against.
+fn file_root_response(trusted_root: &Path) -> Response {
+    let canonical = match trusted_root.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return json_error(500, "trusted root is not readable"),
+    };
+    Response::json(200, json!({ "root": canonical.to_string_lossy() }))
+}
+
+/// Validate a manually typed path for the trusted-root reader.
+///
+/// Rules (PD-D14): non-empty; no NUL bytes; no backslash separators; must
+/// be relative (no leading `/`, no `C:` drive prefix); `.`/`..` segments
+/// are rejected outright. Returns the normalized `/`-joined relative path.
+fn trusted_relative_path(raw: &str) -> Option<String> {
+    if raw.is_empty() || raw.contains('\0') || raw.contains('\\') {
+        return None;
+    }
+    if raw.starts_with('/') {
+        return None;
+    }
+    let bytes = raw.as_bytes();
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return None;
+    }
+    let mut segments = Vec::new();
+    for segment in raw.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => return None,
+            segment => segments.push(segment),
+        }
+    }
+    if segments.is_empty() {
+        return None;
+    }
+    Some(segments.join("/"))
 }
 
 fn roster_get_response(draft_id: &str) -> Response {
@@ -2007,6 +2141,7 @@ fn content_type_for(path: &Path) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine as _;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static TEST_DIR_SEQ: AtomicU32 = AtomicU32::new(0);
@@ -2029,9 +2164,15 @@ mod tests {
     /// drafts live in a process-global store (see `roster.rs`), so those tests
     /// use the returned draft ids directly.
     fn route_one(request: &Request, root: &Path) -> Response {
+        route_one_with_root(request, root, root)
+    }
+
+    /// Like [`route_one`] but with a caller-controlled trusted root, for the
+    /// PD-D14 typed-file-read tests (web root and trusted root differ).
+    fn route_one_with_root(request: &Request, root: &Path, trusted_root: &Path) -> Response {
         let editor_store = editing::new_draft_store();
         let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
-        route(request, root, &editor_store, &solve_requests)
+        route(request, root, &editor_store, &solve_requests, trusted_root)
     }
 
     /// Route with a caller-owned editor + solve-request store, so tests can
@@ -2042,7 +2183,7 @@ mod tests {
         editor_store: &EditorDraftStore,
         solve_requests: &SolveRequestStore,
     ) -> Response {
-        route(request, root, editor_store, solve_requests)
+        route(request, root, editor_store, solve_requests, root)
     }
 
     fn request(method: &str, path: &str, body: &[u8]) -> Request {
@@ -3527,6 +3668,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+            &root,
         );
         assert_eq!(upload.status, 200);
         let roster = body_json(&upload);
@@ -3550,6 +3692,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(
             preview.status,
@@ -3583,6 +3726,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(
             gen.status,
@@ -3602,6 +3746,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(fetch.status, 200);
         let before = body_json(&fetch);
@@ -3643,6 +3788,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(
             swapped.status,
@@ -3689,6 +3835,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(
             export.status,
@@ -3714,6 +3861,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(del.status, 204);
         let del_again = route(
@@ -3725,6 +3873,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(del_again.status, 404);
     }
@@ -3749,6 +3898,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(gen.status, 200);
         let draft_id = body_json(&gen)["editor"]["draft_id"]
@@ -3775,6 +3925,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(
             export.status,
@@ -3818,6 +3969,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(export.status, 404);
     }
@@ -3843,6 +3995,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(generated.status, 200);
         let draft_id = body_json(&generated)["editor"]["draft_id"]
@@ -3873,6 +4026,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(edited.status, 200);
 
@@ -3895,6 +4049,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(export.status, 422);
         assert_eq!(body_json(&export)["error"], "invalid_export_assignment");
@@ -3925,6 +4080,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(response.status, 404);
 
@@ -3944,6 +4100,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(gen.status, 200);
         let draft_id = body_json(&gen)["editor"]["draft_id"]
@@ -3969,6 +4126,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(ok.status, 200);
         assert_eq!(body_json(&ok)["revision"], 1);
@@ -3992,6 +4150,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(stale.status, 409);
         assert!(body_json(&stale)["error"]
@@ -4009,6 +4168,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
+                &root,
         );
         assert_eq!(bad.status, 400);
     }
@@ -5234,5 +5394,183 @@ mod tests {
             &root,
         );
         assert_eq!(invalid_groups.status, 422);
+    }
+
+    // -------------------------------------------------------------------
+    // PD-D14 trusted-root file read (`POST /api/v1/files/read`)
+    // -------------------------------------------------------------------
+
+    /// A temp trusted root containing a small roster-like file.
+    fn test_trusted_root() -> (PathBuf, PathBuf) {
+        let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis_trusted_{}_{}",
+            std::process::id(),
+            seq
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("rosters")).unwrap();
+        let roster = dir.join("rosters/class-8-3.csv");
+        fs::write(&roster, "student_id,name\nS01,Lin\n").unwrap();
+        (dir, roster)
+    }
+
+    #[test]
+    fn trusted_path_validation_rejects_absolute_traversal_and_drive_prefixes() {
+        assert_eq!(trusted_relative_path("rosters/a.csv"), Some("rosters/a.csv".into()));
+        assert_eq!(trusted_relative_path("a.csv"), Some("a.csv".into()));
+        // Absolute forms.
+        assert_eq!(trusted_relative_path("/etc/passwd"), None);
+        assert_eq!(trusted_relative_path("C:/windows/system32"), None);
+        assert_eq!(trusted_relative_path("C:foo"), None);
+        // Traversal.
+        assert_eq!(trusted_relative_path("../secrets.csv"), None);
+        assert_eq!(trusted_relative_path("rosters/../../secrets.csv"), None);
+        assert_eq!(trusted_relative_path("rosters/.."), None);
+        // Backslash separators / NUL / empty / dot-only.
+        assert_eq!(trusted_relative_path("rosters\\a.csv"), None);
+        assert_eq!(trusted_relative_path("a\0b.csv"), None);
+        assert_eq!(trusted_relative_path(""), None);
+        assert_eq!(trusted_relative_path("."), None);
+        // Harmless dots collapse.
+        assert_eq!(trusted_relative_path("rosters/./a.csv"), Some("rosters/a.csv".into()));
+    }
+
+    #[test]
+    fn file_read_returns_utf8_roster_within_trusted_root() {
+        let (trusted, roster_path) = test_trusted_root();
+        let root = test_web_root();
+        let body = serde_json::to_vec(&json!({ "path": "rosters/class-8-3.csv" })).unwrap();
+        let response = route_one_with_root(
+            &request("POST", "/api/v1/files/read", &body),
+            &root,
+            &trusted,
+        );
+        assert_eq!(response.status, 200);
+        let value: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(value["name"], "class-8-3.csv");
+        assert_eq!(value["size"], fs::metadata(&roster_path).unwrap().len());
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(value["content_base64"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(String::from_utf8(decoded).unwrap(), "student_id,name\nS01,Lin\n");
+    }
+
+    #[test]
+    fn file_read_rejects_absolute_traversal_and_escapes() {
+        let (trusted, _) = test_trusted_root();
+        let root = test_web_root();
+        for bad in [
+            "/etc/hosts",
+            "C:/windows/win.ini",
+            "../outside.csv",
+            "rosters/../../outside.csv",
+            "a\\b.csv",
+        ] {
+            let body = serde_json::to_vec(&json!({ "path": bad })).unwrap();
+            let response = route_one_with_root(
+                &request("POST", "/api/v1/files/read", &body),
+                &root,
+                &trusted,
+            );
+            assert_eq!(response.status, 400, "path {bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn file_read_rejects_missing_files_and_directories() {
+        let (trusted, _) = test_trusted_root();
+        let root = test_web_root();
+        let missing = route_one_with_root(
+            &request(
+                "POST",
+                "/api/v1/files/read",
+                &serde_json::to_vec(&json!({ "path": "rosters/nope.csv" })).unwrap(),
+            ),
+            &root,
+            &trusted,
+        );
+        assert_eq!(missing.status, 404);
+        // A directory is not a file.
+        let dir = route_one_with_root(
+            &request(
+                "POST",
+                "/api/v1/files/read",
+                &serde_json::to_vec(&json!({ "path": "rosters" })).unwrap(),
+            ),
+            &root,
+            &trusted,
+        );
+        assert_eq!(dir.status, 400);
+        // Malformed bodies.
+        let empty = route_one_with_root(&request("POST", "/api/v1/files/read", b""), &root, &trusted);
+        assert_eq!(empty.status, 400);
+        let no_path = route_one_with_root(
+            &request(
+                "POST",
+                "/api/v1/files/read",
+                &serde_json::to_vec(&json!({ "other": 1 })).unwrap(),
+            ),
+            &root,
+            &trusted,
+        );
+        assert_eq!(no_path.status, 400);
+        let bad_json = route_one_with_root(
+            &request("POST", "/api/v1/files/read", b"not json"),
+            &root,
+            &trusted,
+        );
+        assert_eq!(bad_json.status, 400);
+    }
+
+    #[test]
+    fn file_root_reports_the_canonical_trusted_root() {
+        let (trusted, _) = test_trusted_root();
+        let root = test_web_root();
+        let response = route_one_with_root(&request("GET", "/api/v1/files/root", b""), &root, &trusted);
+        assert_eq!(response.status, 200);
+        let value: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            value["root"].as_str().unwrap(),
+            trusted.canonicalize().unwrap().to_string_lossy().as_ref()
+        );
+    }
+
+    #[test]
+    fn file_read_rejects_oversize_files() {
+        let (trusted, _) = test_trusted_root();
+        let root = test_web_root();
+        let big = trusted.join("big.bin");
+        fs::write(&big, vec![0u8; MAX_TRUSTED_READ_BYTES + 1]).unwrap();
+        let body = serde_json::to_vec(&json!({ "path": "big.bin" })).unwrap();
+        let response = route_one_with_root(
+            &request("POST", "/api/v1/files/read", &body),
+            &root,
+            &trusted,
+        );
+        assert_eq!(response.status, 413);
+    }
+
+    #[test]
+    fn file_read_rejects_paths_outside_trusted_root_even_when_relative() {
+        // A symlink inside the root pointing outside must not be readable:
+        // the canonical containment check is the last line of defense.
+        let (trusted, _) = test_trusted_root();
+        let root = test_web_root();
+        let outside = root.join("outside-target.txt");
+        fs::write(&outside, "secret").unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, trusted.join("link.txt")).unwrap();
+            let body = serde_json::to_vec(&json!({ "path": "link.txt" })).unwrap();
+            let response = route_one_with_root(
+                &request("POST", "/api/v1/files/read", &body),
+                &root,
+                &trusted,
+            );
+            // Symlink to a file outside the root -> 403 (or 404 on platforms
+            // where the target is unresolvable); never 200.
+            assert_ne!(response.status, 200);
+        }
     }
 }

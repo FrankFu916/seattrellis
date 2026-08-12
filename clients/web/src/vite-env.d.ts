@@ -22,6 +22,8 @@ declare global {
     pywebview?: {
       api?: DesktopBridgeApi;
     };
+    /** Injected by the Tauri shell (D14 capability detection). */
+    __TAURI_INTERNALS__?: unknown;
   }
 }
 

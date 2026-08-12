@@ -491,6 +491,39 @@ export async function uploadRosterDraft(
   );
 }
 
+/**
+ * The canonical trusted root for typed paths (PD-D14). Manual path input is
+ * relative to this directory; the backend refuses anything outside it.
+ */
+export async function fetchTrustedRoot(): Promise<string> {
+  const data = await fetchJson<{ root: string }>("/files/root");
+  return data.root;
+}
+
+/**
+ * Read a file through the backend's trusted-root endpoint (PD-D14 entry ③).
+ * The path must be relative; absolute paths and traversal are rejected both
+ * client-side and by the server. Returns the bytes as a `File` so the rest
+ * of the import flow stays on the multipart upload contract.
+ */
+export async function readTrustedFile(relPath: string): Promise<File> {
+  const data = await fetchJson<{
+    name: string;
+    size: number;
+    content_base64: string;
+  }>("/files/read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: relPath }),
+  });
+  const binary = atob(data.content_base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], data.name);
+}
+
 export function hasDesktopBridge(): boolean {
   return typeof window !== "undefined" && Boolean(window.pywebview?.api);
 }

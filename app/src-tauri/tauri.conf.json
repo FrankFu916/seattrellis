@@ -5,7 +5,7 @@
   "identifier": "com.seattrellis.desktop",
   "build": {
     "beforeDevCommand": "",
-    "devUrl": "http://127.0.0.1:8765",
+    "devUrl": "http://127.0.0.1:5173",
     "beforeBuildCommand": "",
     "frontendDist": "../../src/seattrellis/web_static"
   },

@@ -44,6 +44,8 @@ pub struct AppState {
     pub web_root: Arc<PathBuf>,
     pub editor_store: Arc<EditorDraftStore>,
     pub solve_requests: Arc<SolveRequestStore>,
+    /// Root that typed file-read paths resolve against (PD-D14 red line).
+    pub trusted_root: Arc<PathBuf>,
     /// Set by the shell (Tauri) to stop the accept loop gracefully.
     pub shutdown: Arc<AtomicBool>,
     /// 256-bit session token; every `/api/*` request (except the bootstrap
@@ -130,6 +132,7 @@ async fn adapt(
         &state.web_root,
         &state.editor_store,
         &state.solve_requests,
+        &state.trusted_root,
     );
     into_axum(response)
 }
@@ -287,6 +290,7 @@ mod tests {
             web_root: Arc::new(PathBuf::from("/nonexistent")),
             editor_store: Arc::new(seattrellis_domain::editing::new_draft_store()),
             solve_requests: Arc::new(Mutex::new(HashMap::new())),
+            trusted_root: Arc::new(PathBuf::from("/nonexistent")),
             shutdown: Arc::new(AtomicBool::new(false)),
             session_token: Arc::new("0123456789abcdef0123456789abcdef".to_string()),
             bound_host: "127.0.0.1".to_string(),

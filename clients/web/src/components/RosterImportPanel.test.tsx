@@ -1,28 +1,43 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  hasDesktopBridge,
-  openDesktopRosterFile,
+  fetchTrustedRoot,
   previewRosterUpdate,
+  readTrustedFile,
   uploadRosterDraft,
 } from "../api/client";
+import {
+  isTauriDesktop,
+  isTrustedRelativePath,
+  pickFileWithDialog,
+} from "../domain/desktop";
 import { createTranslator } from "../i18n/messages";
 import { RosterImportPanel } from "./RosterImportPanel";
 
 vi.mock("../api/client", () => ({
-  hasDesktopBridge: vi.fn(() => false),
-  openDesktopRosterFile: vi.fn(),
+  fetchTrustedRoot: vi.fn(),
   previewRosterUpdate: vi.fn(),
+  readTrustedFile: vi.fn(),
   uploadRosterDraft: vi.fn(),
   RosterApiError: class RosterApiError extends Error {},
+}));
+
+vi.mock("../domain/desktop", () => ({
+  isTauriDesktop: vi.fn(() => false),
+  isTrustedRelativePath: vi.fn(),
+  pickFileWithDialog: vi.fn(),
 }));
 
 describe("RosterImportPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(hasDesktopBridge).mockReturnValue(false);
+    vi.mocked(isTauriDesktop).mockReturnValue(false);
+    vi.mocked(isTrustedRelativePath).mockImplementation(
+      (raw) => raw !== "" && !raw.startsWith("/") && !raw.includes(".."),
+    );
+    vi.mocked(fetchTrustedRoot).mockResolvedValue("/Users/teacher/SeatTrellis");
     vi.mocked(uploadRosterDraft).mockResolvedValue({
       draft_id: "roster-1",
       source_format: "csv",
@@ -95,14 +110,14 @@ describe("RosterImportPanel", () => {
     });
   });
 
-  it("uses the native file picker when the desktop bridge is ready", async () => {
+  it("uses the Tauri native dialog when the desktop bridge is available (PD-D14 entry ①)", async () => {
     const user = userEvent.setup();
-    vi.mocked(hasDesktopBridge).mockReturnValue(true);
-    vi.mocked(openDesktopRosterFile).mockResolvedValue({
-      name: "students.csv",
-      content_base64: btoa("student_id,name\nS01,Alice\n"),
-      content_type: "text/csv",
-    });
+    vi.mocked(isTauriDesktop).mockReturnValue(true);
+    vi.mocked(pickFileWithDialog).mockResolvedValue(
+      new File(["student_id,name\nS01,Alice\n"], "students.csv", {
+        type: "text/csv",
+      }),
+    );
     const { container } = render(
       <RosterImportPanel
         locale="zh-CN"
@@ -116,11 +131,84 @@ describe("RosterImportPanel", () => {
     await user.click(screen.getByRole("button", { name: "打开本机文件" }));
 
     await waitFor(() => {
+      expect(pickFileWithDialog).toHaveBeenCalledWith(
+        ["csv", "xlsx", "xls"],
+        "表格文件",
+      );
       expect(uploadRosterDraft).toHaveBeenCalledWith(expect.any(File));
     });
     const uploaded = vi.mocked(uploadRosterDraft).mock.calls[0]?.[0];
     expect(uploaded?.name).toBe("students.csv");
     expect(container.querySelector(".roster-mapping-section")).toBeInTheDocument();
+  });
+
+  it("reads a typed trusted-root path and uploads the result (PD-D14 entry ③)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(readTrustedFile).mockResolvedValue(
+      new File(["student_id,name\nS01,Alice\n"], "class-8-3.csv", {
+        type: "text/csv",
+      }),
+    );
+    const { container } = render(
+      <RosterImportPanel
+        locale="zh-CN"
+        t={createTranslator("zh-CN")}
+        currentStudents={[]}
+        currentRevision={0}
+        onImportConfirmed={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("或输入相对路径"), "rosters/class-8-3.csv");
+    await user.click(screen.getByRole("button", { name: "读取" }));
+
+    await waitFor(() => {
+      expect(readTrustedFile).toHaveBeenCalledWith("rosters/class-8-3.csv");
+      expect(uploadRosterDraft).toHaveBeenCalledWith(expect.any(File));
+    });
+    expect(container.querySelector(".roster-mapping-section")).toBeInTheDocument();
+  });
+
+  it("rejects a typed path that escapes the trusted root before reading", async () => {
+    const user = userEvent.setup();
+    render(
+      <RosterImportPanel
+        locale="zh-CN"
+        t={createTranslator("zh-CN")}
+        currentStudents={[]}
+        currentRevision={0}
+        onImportConfirmed={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("或输入相对路径"), "../outside.csv");
+    await user.click(screen.getByRole("button", { name: "读取" }));
+
+    expect(readTrustedFile).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("相对路径");
+  });
+
+  it("accepts a dropped file (PD-D14 entry ②)", async () => {
+    const file = new File(["student_id,name\nS01,Alice\n"], "dropped.csv", {
+      type: "text/csv",
+    });
+    const { container } = render(
+      <RosterImportPanel
+        locale="zh-CN"
+        t={createTranslator("zh-CN")}
+        currentStudents={[]}
+        currentRevision={0}
+        onImportConfirmed={vi.fn()}
+      />,
+    );
+
+    fireEvent.drop(container.querySelector(".file-picker") as HTMLElement, {
+      dataTransfer: { files: [file] },
+    });
+
+    await waitFor(() => {
+      expect(uploadRosterDraft).toHaveBeenCalledWith(file);
+    });
   });
 
   it("keeps the mapping form open when preview fails", async () => {

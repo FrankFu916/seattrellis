@@ -218,7 +218,7 @@ fn compute_layout(
         if aisle_cols.contains(&col) {
             columns_css.push_str(&format!("{}mm", cell_w * 0.5));
         } else {
-            columns_css.push_str(&format!("{}mm", cell_w));
+            columns_css.push_str(&format!("{cell_w}mm"));
         }
         first = false;
     }
