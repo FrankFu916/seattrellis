@@ -588,15 +588,11 @@ impl Canvas<'_> {
 // ---------------------------------------------------------------------------
 
 /// A4 portrait page size in points (PDF coordinates grow up and to the right).
-const PAGE_W: f64 = 595.0;
-const PAGE_H: f64 = 842.0;
-
 /// Default printable margin in points (12mm ≈ 34pt), matching the print
 /// layout spec (margins 12/14mm).
 fn default_margin_pt() -> f64 {
     (12.0_f64 * 72.0 / 25.4).round()
 }
-const PDF_MARGIN: f64 = 36.0;
 /// Vertical space reserved for the title, subtitle, and front-of-room label.
 const PDF_HEADER_SPACE: f64 = 100.0;
 
