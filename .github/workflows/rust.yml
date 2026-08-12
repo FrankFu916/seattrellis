@@ -133,6 +133,32 @@ jobs:
             cargo +nightly fuzz run "$target" -- -runs=3000 -max_total_time=120
           done
 
+  no-python-runtime:
+    # M6 §9.1 red line: the v2 artifacts must not probe or load a Python
+    # runtime. The release CLI and App server are scanned for libpython /
+    # PyO3 / v1-stack symbols, and the production tree for Python build
+    # dependencies. The oracle tree (src/seattrellis) and the PyO3 shim
+    # are scanned indirectly: the binary scan fails if the shim were ever
+    # linked in.
+    name: No Python runtime in v2 artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the React workbench (server embeds clients/web/dist)
+        run: |
+          npm ci
+          npm run build
+        working-directory: clients/web
+      - name: Build the CLI and App server
+        run: |
+          cargo build --release --locked -p seattrellis_cli
+          cargo build --release --locked -p seattrellis_app
+      - name: Scan the production tree and the release binaries
+        run: |
+          python3 scripts/check_no_python_runtime.py --tree
+          python3 scripts/check_no_python_runtime.py --binary target/release/seattrellis_cli target/release/seattrellis_app
+
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}
     if: github.event_name == 'release'

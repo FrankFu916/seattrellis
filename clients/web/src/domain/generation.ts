@@ -398,7 +398,6 @@ export function buildGenerateClassRequest({
       candidate_count: settings.candidateCount,
       seed,
       time_limit_seconds: settings.timeLimitSeconds,
-      backend: settings.backend,
     },
   };
 }

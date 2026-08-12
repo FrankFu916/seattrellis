@@ -24,7 +24,6 @@ const defaults: AdvancedSolveSettings = {
   candidateCount: 1,
   seed: "",
   timeLimitSeconds: 10,
-  backend: "auto",
   customRulesJson: "",
 };
 
@@ -108,7 +107,6 @@ describe("buildGenerateClassRequest", () => {
       options: {
         candidate_count: 1,
         time_limit_seconds: 10,
-        backend: "auto",
       },
     });
     expect(request.draft.room).not.toHaveProperty("layout");
@@ -126,7 +124,6 @@ describe("buildGenerateClassRequest", () => {
         candidateCount: 5,
         seed: "42",
         timeLimitSeconds: 30,
-        backend: "ortools",
         customRulesJson: '{"vision_front":{"enabled":true}}',
       },
       roomSettings: {
@@ -166,7 +163,6 @@ describe("buildGenerateClassRequest", () => {
       candidate_count: 5,
       seed: 42,
       time_limit_seconds: 30,
-      backend: "ortools",
     });
   });
 

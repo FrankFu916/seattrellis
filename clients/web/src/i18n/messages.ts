@@ -476,11 +476,6 @@ const zh = {
   "generate.advancedHint":
     "日常使用不需要修改这些选项。这里适合设置求解器、随机种子或完整 rules JSON。",
   "generate.timeLimit": "时间限制（秒）",
-  "generate.backend": "求解后端",
-  "generate.backendAuto": "自动选择",
-  "generate.backendFallback": "内置 fallback",
-  "generate.backendOrtools": "OR-Tools",
-  "generate.backendNative": "Rust native（实验）",
   "generate.seed": "随机种子（可选）",
   "generate.seedPlaceholder": "留空使用默认种子",
   "generate.customRules": "自定义 rules JSON",
@@ -1297,11 +1292,6 @@ const en: Record<MessageKey, string> = {
   "generate.advancedHint":
     "Most teachers can leave these settings alone. Use this section for solver details, a seed, or a complete rules JSON object.",
   "generate.timeLimit": "Time limit (seconds)",
-  "generate.backend": "Solver backend",
-  "generate.backendAuto": "Automatic",
-  "generate.backendFallback": "Built-in fallback",
-  "generate.backendOrtools": "OR-Tools",
-  "generate.backendNative": "Rust native (experimental)",
   "generate.seed": "Random seed (optional)",
   "generate.seedPlaceholder": "Leave blank for the default seed",
   "generate.customRules": "Custom rules JSON",

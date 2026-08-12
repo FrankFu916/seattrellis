@@ -577,29 +577,7 @@ export function WorkflowPanel({
                     }
                   />
                 </label>
-                <label className="advanced-field">
-                  <span>{t("generate.backend")}</span>
-                  <select
-                    value={advancedSettings.backend}
-                    onChange={(event) =>
-                      onAdvancedSettingsChange({
-                        backend: event.target.value as AdvancedSolveSettings["backend"],
-                      })
-                    }
-                  >
-                    <option value="auto">{t("generate.backendAuto")}</option>
-                    <option value="fallback">
-                      {t("generate.backendFallback")}
-                    </option>
-                    <option value="ortools">
-                      {t("generate.backendOrtools")}
-                    </option>
-                    <option value="native">
-                      {t("generate.backendNative")}
-                    </option>
-                  </select>
-                </label>
-                <label className="advanced-field">
+                                <label className="advanced-field">
                   <span>{t("generate.seed")}</span>
                   <input
                     type="number"

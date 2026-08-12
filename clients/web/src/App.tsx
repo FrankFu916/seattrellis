@@ -107,7 +107,6 @@ const DEFAULT_ADVANCED_SETTINGS: AdvancedSolveSettings = {
   candidateCount: 5,
   seed: "",
   timeLimitSeconds: 10,
-  backend: "auto",
   customRulesJson: "",
 };
 
@@ -1571,7 +1570,7 @@ export function App() {
                 candidates={candidateMetas}
                 repro={{
                   seed: advancedSettings.seed.trim(),
-                  solver: advancedSettings.backend,
+                  solver: "native",
                   timeLimitSeconds: advancedSettings.timeLimitSeconds,
                   historyCount: historySnapshots.length,
                 }}

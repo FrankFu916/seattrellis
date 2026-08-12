@@ -212,14 +212,11 @@ export type GenerateClassRequest = {
     candidate_count?: number;
     seed?: number;
     time_limit_seconds?: number;
-    backend?: string;
   };
 };
 
 /** A validated-enough JSON snapshot kept in memory until the next solve. */
 export type HistorySnapshotPayload = Record<string, unknown>;
-
-export type SolverBackend = "auto" | "fallback" | "ortools" | "native";
 
 export type HardRulesPayload = {
   fixed_seats?: Array<{ student: string; seat_id: string }>;
@@ -455,7 +452,6 @@ export type AdvancedSolveSettings = {
   candidateCount: number;
   seed: string;
   timeLimitSeconds: number;
-  backend: SolverBackend;
   customRulesJson: string;
 };
 
