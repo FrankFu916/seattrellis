@@ -413,9 +413,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 |---|---|---|---|---|
 | SVG | exporters/svg.py:23 | template/privacy/candidate/locale（固定 16:9，不接受 page） | render.rs:215（export.rs:69-74）；**exports 差分 + E2E 下载校验（§19.11）** | `RUST_VERIFIED` |
 | HTML | exporters/html.py:9 | 无选项 | render.rs:310；exports 差分独立 reader 校验 | `RUST_VERIFIED` |
-| print-html | exporters/print_html.py:88 | page/locale（A4 打印模板） | **退化**：Rust 服务端归一化为普通 html（server.rs:1512-1516）；**PD-D11 决策恢复独立 print 版式（M5 实现，规范待研究）** | `RUST_PARTIAL` |
-| PNG | exporters/png.py:9 | 无选项 | render.rs:404（**无任何文字**，纯色块，render.rs:400-402）；**PD-D13 决策渲染学生姓名（M5 实现，复用 D12 字体发现）** | `RUST_PARTIAL` |
-| PDF | exporters/pdf.py:69 | template/privacy/page/orientation/scale/paper_size/margin_mm/locale | render.rs:559（手写 PDF；**CJK 名退化为 "?"**，render.rs:556-558；无 margin/paper_size 选项）；**PD-D12 决策系统字体智能引用（M5 实现，无嵌入无 fallback）** | `RUST_PARTIAL` |
+| print-html | exporters/print_html.py:88 | page/locale（A4 打印模板） | **独立版式已实现（§19.19）**：横版默认、一页最大化、字号按最长姓名、结构标注、可配置项；5 结构测试 | `RUST_PARITY_PENDING` |
+| PNG | exporters/png.py:9 | 无选项 | **姓名渲染已实现（§19.19）**：fontdue 光栅化、字号自适应、无字体优雅降级；像素级测试 | `RUST_PARITY_PENDING` |
+| PDF | exporters/pdf.py:69 | template/privacy/page/orientation/scale/paper_size/margin_mm/locale | **系统字体智能引用已实现（§19.19）**：Type0/UniGB 引用、UTF-16BE 编码、质量警告；paper_size/margin_mm 支持 | `RUST_PARITY_PENDING` |
 | DOCX | exporters/docx_export.py:26 | page 生效 | office.rs `render_docx`（标题+边框座位表格）；**python-docx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | PPTX | exporters/pptx.py:22 | 单页 16:9 可编辑形状 | office.rs `render_pptx`（screen16x9 + roundRect 座位形状）；**python-pptx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | Excel | exporters/excel.py:9 | Seating+Assignments 两 sheet | office.rs `render_xlsx`（两 sheet、行号连续）；**openpyxl 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
@@ -437,9 +437,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 | 条目 | Python | Rust | 状态 |
 |---|---|---|---|
-| orientation（portrait/landscape） | PDF/DOCX/print-html | 仅 PDF 生效（export.rs:264-269） | `RUST_PARTIAL` |
-| page_scale | 同上 | 仅 PDF（clamp 0.5–2.0，render.rs:545-548） | `RUST_PARTIAL` |
-| margin_mm / paper_size | PDF/DOCX/print-html | 无对应 | `RUST_PARTIAL` |
+| orientation（portrait/landscape） | PDF/DOCX/print-html | PDF/DOCX/print-html 全部生效（§19.19）；print-html 默认横版 | `RUST_PARITY_PENDING` |
+| page_scale | 同上 | PDF + print-html（clamp 0.5–2.0） | `RUST_PARITY_PENDING` |
+| margin_mm / paper_size | PDF/DOCX/print-html | PDF + print-html（a4/a3/letter；margin clamp 5–25mm） | `RUST_PARITY_PENDING` |
 | locale（zh/en） | 全部 | 仅影响匿名占位符（export.rs:302-305） | `RUST_PARTIAL` |
 
 ---
@@ -489,10 +489,10 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §9 history/pair history | 7 | 0 | 3 | 4 | 0 | 0 |
 | §10 candidates | 7 | 1 | 0 | 2 | 4 | 0 |
 | §11 repair/editing | 5 | 0 | 2 | 3 | 0 | 0 |
-| §12 export（格式/隐私/页面） | 18 | 1 | 9 | 1 | 7 | 0 |
+| §12 export（格式/隐私/页面） | 18 | 1 | 2 | 8 | 7 | 0 |
 | §13 migration/backup/restore | 9 | 0 | 2 | 7 | 0 | 0 |
 | §14 desktop workflows | 7 | 1 | 3 | 3 | 0 | 0 |
-| **合计** | **198** | **3** | **61** | **99** | **29** | **6** |
+| **合计** | **198** | **3** | **54** | **106** | **29** | **6** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（`RUST_PARTIAL`）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条 `RUST_PARTIAL`。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
@@ -1114,6 +1114,45 @@ presets ×3、候选集比较报告、plan-comparison-report、原生文件对�
 validator ✓、cargo-fuzz ✓、CLI 全参数 golden → 21 命令代表性集 + project
 全生命周期 ✓）。剩余边界：CLI 参数组合的全量枚举（当前为代表性集）、
 fuzz corpus 的长期积累（CI 短跑 + 本地长跑）。
+
+### 19.19 2026-08-12：M5 阶段 A 实现（导出/打印/字体/PNG/默认值/示例/registry）
+
+M5 阶段 A（计划 §8.1 前置的 Rust 能力补齐）第一批，全部独立于 Python
+导出实现（Python 导出作废，不作参照——产品负责人 2026-08-12 确认）：
+
+1. **A1 导出选项统一化（§12.3）**：`paper_size`（a4/a3/letter）与
+   `margin_mm`（clamp 5–25）新增到 ExportRequest 并作用于 PDF；
+   DOCX 支持 orientation（pgSz 交换）；print-html 支持全页面选项。
+   6 个选项 gate（含拒绝规则）。
+2. **A2 print-html 独立版式（D11）**：恢复独立格式（归一化移除）；
+   按打印版式规范（2026-08-12 修订：横版默认、一页最大化、字号按最长
+   姓名统一、只放姓名、讲台/过道/窗/门文字标注、页脚溯源 seed）。
+   5 个版式 gate + server 集成测试。
+3. **A3 PDF 系统字体引用（D12）**：`fonts.rs` 字体发现（PingFang →
+   Noto CJK → YaHei → SimSun 优先级链）；PDF Type0/UniGB-UCS2-H 引用、
+   UTF-16BE hex 文本编码、CJK 姓名/标题渲染、质量警告（Fallback 字体
+   页内提示）。测试字体环境自适应。
+4. **A4 PNG 姓名渲染（D13）**：fontdue 光栅化（纯 Rust）、字号自适应、
+   alpha 混合、无字体优雅降级；像素级 gate。CI Linux 安装
+   fonts-noto-cjk 以覆盖 CJK 路径。
+5. **A5 导出默认值记忆（D9）**：`io::export_defaults`（用户配置目录
+   原子写、坏文件忽略）；导出流程缺省字段应用记忆 + 成功后记住。
+   班级级覆盖随项目上下文（M5-B）落地。
+6. **A6 示例名单（D10）**：20 人静态资产（常见姓名、属性覆盖）、
+   构建期校验（9 字段映射/唯一 id/leader/vision 计数/性别均衡/CJK 名/
+   身高成绩范围）。隔离命名空间随班级工作流（M5-B）。
+7. **A7 规则 registry 消费（§4.3/M6 前置）**：React 新增
+   `domain/ruleRegistry.ts` 消费 seam（findRule/requireRule/分类）；
+   gate 断言工作台全部规则 id 在 Rust registry 内。generation.ts
+   自编译逻辑保持 M6 删除登记，未扩展。
+
+**状态变更**：§12.1 print-html/PNG/PDF、§12.3 orientation/page_scale/
+margin_mm/paper_size 共 7 条 `RUST_PARTIAL` → `RUST_PARITY_PENDING`；
+§15 计数 RUST_PARTIAL 61→54、RUST_PARITY_PENDING 99→106。
+验证：workspace 504 测试、React 67 测试 + typecheck、clippy -D
+warnings、340-case 导出差分 0 mismatch、21 CLI golden 0 mismatch。
+剩余 M5 阶段 A：print-html/PDF 的独立 reader 全量验证（可并入
+--exports 扩展）、导出默认值 dogfood 冻结（G-4）、班级级默认值覆盖。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
