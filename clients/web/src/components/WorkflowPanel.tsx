@@ -20,6 +20,7 @@ import type { WorkflowStep } from "../domain/workflow";
 import type { Locale, MessageKey, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
 import { DetailedRulesPanel } from "./DetailedRulesPanel";
+import { HistoryFilesCard } from "./HistoryFilesCard";
 import { BulkConstraintEditor } from "./BulkConstraintEditor";
 import { BulkGroupEditor } from "./BulkGroupEditor";
 import { RotationPlanSummary } from "./RotationPlanSummary";
@@ -76,6 +77,8 @@ type WorkflowPanelProps = {
   canUndo: boolean;
   isGenerating: boolean;
   rosterSlot?: ReactNode;
+  /** Hide the panel footer; the context action bar drives the next step (D1). */
+  hideActions?: boolean;
   onFileSelected: (name: string | null) => void;
   onRoomChange: (roomId: string) => void;
   onGoalChange: (goalId: string) => void;
@@ -175,6 +178,7 @@ export function WorkflowPanel({
   canUndo,
   isGenerating,
   rosterSlot,
+  hideActions = false,
   onFileSelected,
   onRoomChange,
   onGoalChange,
@@ -881,48 +885,14 @@ export function WorkflowPanel({
                   />
                 </div>
                 <fieldset className="advanced-field advanced-field-wide history-input-card">
-                  <legend>{t("generate.historyTitle")}</legend>
-                  <p className="advanced-settings-hint">{t("generate.historyHint")}</p>
-                  <div className="history-input-actions">
-                    <label className="file-input-button">
-                      <span>{t("generate.historyChoose")}</span>
-                      <input
-                        data-testid="history-json-files"
-                        type="file"
-                        accept=".json,application/json"
-                        multiple
-                        onChange={(event) => {
-                          const files = Array.from(event.currentTarget.files ?? []);
-                          event.currentTarget.value = "";
-                          onHistoryFilesChange(files);
-                        }}
-                      />
-                    </label>
-                    {historySnapshotCount > 0 ? (
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={onHistoryClear}
-                      >
-                        {t("generate.historyClear")}
-                      </button>
-                    ) : null}
-                  </div>
-                  {historySnapshotCount > 0 ? (
-                    <p className="history-loaded" role="status">
-                      {t("generate.historyLoaded", {
-                        count: historySnapshotCount,
-                        files: historyFileNames.join(", "),
-                      })}
-                    </p>
-                  ) : (
-                    <small>{t("generate.historyEmpty")}</small>
-                  )}
-                  {historyError ? (
-                    <p className="inline-error" role="alert">
-                      {historyError}
-                    </p>
-                  ) : null}
+                  <HistoryFilesCard
+                    fileNames={historyFileNames}
+                    snapshotCount={historySnapshotCount}
+                    error={historyError}
+                    t={t}
+                    onChange={onHistoryFilesChange}
+                    onClear={onHistoryClear}
+                  />
                 </fieldset>
               </div>
             </details>
@@ -1161,37 +1131,39 @@ export function WorkflowPanel({
         ) : null}
       </div>
 
-      <footer className="panel-actions">
-        {step !== "roster" ? (
-          <button className="text-button" type="button" onClick={onBack}>
-            <span aria-hidden="true">←</span>
-            {t("action.back")}
-          </button>
-        ) : (
-          <span />
-        )}
-        {step === "generate" ? (
-          <button
-            className="primary-button"
-            type="button"
-            onClick={onGenerate}
-            disabled={isGenerating || !rosterValid}
-          >
-            {isGenerating ? t("action.generating") : t("action.generate")}
-            <span aria-hidden="true">→</span>
-          </button>
-        ) : step === "export" ? (
-          <button className="primary-button" type="button" onClick={onPreview}>
-            {t("action.preview")}
-            <span aria-hidden="true">↗</span>
-          </button>
-        ) : (
-          <button className="primary-button" type="button" onClick={onNext}>
-            {t("action.next")}
-            <span aria-hidden="true">→</span>
-          </button>
-        )}
-      </footer>
+      {!hideActions ? (
+        <footer className="panel-actions">
+          {step !== "roster" ? (
+            <button className="text-button" type="button" onClick={onBack}>
+              <span aria-hidden="true">←</span>
+              {t("action.back")}
+            </button>
+          ) : (
+            <span />
+          )}
+          {step === "generate" ? (
+            <button
+              className="primary-button"
+              type="button"
+              onClick={onGenerate}
+              disabled={isGenerating || !rosterValid}
+            >
+              {isGenerating ? t("action.generating") : t("action.generate")}
+              <span aria-hidden="true">→</span>
+            </button>
+          ) : step === "export" ? (
+            <button className="primary-button" type="button" onClick={onPreview}>
+              {t("action.preview")}
+              <span aria-hidden="true">↗</span>
+            </button>
+          ) : (
+            <button className="primary-button" type="button" onClick={onNext}>
+              {t("action.next")}
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
+        </footer>
+      ) : null}
     </section>
   );
 }

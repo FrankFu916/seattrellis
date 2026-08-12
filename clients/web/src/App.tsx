@@ -8,6 +8,7 @@ import {
   fetchEditorState,
   generateClass,
   generateRotationPlan,
+  listRecentProjects,
   loadBootstrap,
   saveDesktopExport,
 } from "./api/client";
@@ -29,6 +30,7 @@ import type {
   HistorySnapshotPayload,
   ProjectRotationLoadResponse,
   AdvancedSolveSettings,
+  RecentProject,
   RotationPlan,
   RotationSettings,
   SeatAssignment,
@@ -37,27 +39,40 @@ import type {
   ExportTemplate,
 } from "./api/types";
 import { AppHeader } from "./components/AppHeader";
+import { ContextBar } from "./components/ContextBar";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ExportPreviewDialog } from "./components/ExportPreviewDialog";
-import { ProjectWorkspacePanel } from "./components/ProjectWorkspacePanel";
+import {
+  FirstRunChecklist,
+  type FirstRunProgress,
+} from "./components/FirstRunChecklist";
+import { HistoryRotationPanel } from "./components/HistoryRotationPanel";
 import { RosterImportPanel } from "./components/RosterImportPanel";
+import { SaveAsClassDialog } from "./components/SaveAsClassDialog";
 import { SeatingCanvas } from "./components/SeatingCanvas";
+import { Sidebar } from "./components/Sidebar";
 import {
   rosterIsValid,
   StudentRosterEditor,
 } from "./components/StudentRosterEditor";
-import { StepNavigation } from "./components/StepNavigation";
 import { UnseatedTray } from "./components/UnseatedTray";
 import { WorkflowPanel } from "./components/WorkflowPanel";
 import {
+  contextActionFor,
+  isContentView,
+  viewToStep,
+  type ClassContext,
+  type ContextAction,
+  type SessionClass,
+  type WorkbenchView,
+} from "./domain/navigation";
+import {
   deriveDiagnostics,
-  getAdjacentStep,
   getUnseatedStudents,
   reconcileStudentAssignments,
   seatRemainingStudents,
   swapStudents,
   toggleSeatLock,
-  type WorkflowStep,
 } from "./domain/workflow";
 import {
   buildGenerateClassRequest,
@@ -76,6 +91,8 @@ import {
 } from "./theme/theme";
 
 const LOCALE_STORAGE_KEY = "seattrellis-locale";
+/** First-run checklist dismissal ("用过即收", D1). */
+const FIRST_RUN_KEY = "seattrellis-first-run:v1";
 
 const DEFAULT_ADVANCED_SETTINGS: AdvancedSolveSettings = {
   candidateCount: 1,
@@ -246,7 +263,19 @@ export function App() {
   const [catalogs, setCatalogs] = useState(demoBootstrap.catalogs);
   const [students, setStudents] = useState<Student[]>(demoStudents);
   const [revision, setRevision] = useState(0);
-  const [step, setStep] = useState<WorkflowStep>("roster");
+  const [view, setView] = useState<WorkbenchView>("roster");
+  const [classContext, setClassContext] = useState<ClassContext>({
+    kind: "temp",
+  });
+  const [sessionClasses, setSessionClasses] = useState<SessionClass[]>([]);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [visitedViews, setVisitedViews] = useState<string[]>([]);
+  const [generationDone, setGenerationDone] = useState(false);
+  const [exportedOnce, setExportedOnce] = useState(false);
+  const [firstRunDismissed, setFirstRunDismissed] = useState(
+    () => window.localStorage.getItem(FIRST_RUN_KEY) === "done",
+  );
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState("compact");
   const [selectedGoalId, setSelectedGoalId] =
@@ -325,6 +354,17 @@ export function App() {
       }
       setCatalogs(bootstrap.catalogs);
       setConnection(bootstrap.source);
+      if (bootstrap.source === "local") {
+        void listRecentProjects()
+          .then((result) => {
+            if (current) {
+              setRecentProjects(result.projects);
+            }
+          })
+          .catch(() => {
+            // The class list is best-effort; the workbench stays usable.
+          });
+      }
       const firstRoom = bootstrap.catalogs.roomTemplates[0];
       const firstGoal = bootstrap.catalogs.teacherGoals[0];
       const firstFormat = bootstrap.catalogs.exportFormats[0];
@@ -368,6 +408,110 @@ export function App() {
   const selectedSeat = assignments.find(
     (seat) => seat.seatId === selectedSeatId,
   );
+  const hasPlan = editorDraftId !== null || rotationPlan !== null;
+  const viewLabel =
+    view === "history" ? t("nav.history") : t(`step.${viewToStep(view)}`);
+  const viewMeta = useMemo(() => {
+    switch (view) {
+      case "roster":
+        return t("app.students", { count: students.length });
+      case "rules":
+        return t("ctx.rulesCount", {
+          count: constraints.length + groups.length + preferences.length,
+        });
+      case "history":
+        return historySnapshots.length > 0
+          ? t("ctx.historyCount", { count: historySnapshots.length })
+          : null;
+      case "canvas":
+      case "export":
+        return isDirty
+          ? t("ctx.planDirty")
+          : hasPlan
+            ? t("ctx.planReady")
+            : t("ctx.noPlan");
+      default:
+        return null;
+    }
+  }, [
+    view,
+    t,
+    students.length,
+    constraints.length,
+    groups.length,
+    preferences.length,
+    historySnapshots.length,
+    isDirty,
+    hasPlan,
+  ]);
+  const firstRunProgress: FirstRunProgress = {
+    roster: visitedViews.includes("roster"),
+    room: visitedViews.includes("room"),
+    rules: visitedViews.includes("rules"),
+    generate: generationDone,
+    export: exportedOnce,
+  };
+  const showFirstRun =
+    !firstRunDismissed && !generationDone && historySnapshots.length === 0;
+
+  function switchView(next: WorkbenchView) {
+    if (isContentView(next) && !visitedViews.includes(next)) {
+      setVisitedViews((current) => [...current, next]);
+    }
+    setView(next);
+  }
+
+  /** Restore the initial workbench draft (context switch, D1). */
+  function resetWorkbench() {
+    setStudents(demoStudents);
+    setRevision(0);
+    setSelectedFileName(null);
+    setSelectedRoomId("compact");
+    setRoomSettings(DEFAULT_ROOM_SETTINGS);
+    setSelectedGoalId("daily-rotation");
+    setAdvancedSettings(DEFAULT_ADVANCED_SETTINGS);
+    setDetailedRules(DEFAULT_DETAILED_RULE_SETTINGS);
+    setConstraints([]);
+    setGroups([]);
+    setPreferences([]);
+    setAssignments(createSeatAssignments(4, 5, demoStudents, 16));
+    setSelectedSeatId(null);
+    setHistory([]);
+    setEditorDraftId(null);
+    setEditorRevision(0);
+    setEditorUndoDepth(0);
+    setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
+    setHistorySnapshots([]);
+    setHistoryFileNames([]);
+    setHistoryError(null);
+    setIsDirty(false);
+    setView("roster");
+  }
+
+  function switchContext(next: ClassContext) {
+    const same =
+      classContext.kind === next.kind &&
+      (next.kind !== "class" ||
+        (classContext.kind === "class" && classContext.id === next.id));
+    if (same) {
+      return;
+    }
+    if (isDirty && !window.confirm(t("app.discardDraft"))) {
+      return;
+    }
+    setClassContext(next);
+    resetWorkbench();
+  }
+
+  function handleSaveAsClass(name: string) {
+    const entry: SessionClass = { id: newCommandId(), name };
+    setSessionClasses((current) => [...current, entry]);
+    setSaveAsOpen(false);
+    // G-5: the scratch draft graduates into the new class context as-is.
+    setClassContext({ kind: "class", id: entry.id, name });
+  }
 
   function handleRoomChange(roomId: string) {
     const room = catalogs.roomTemplates.find((item) => item.id === roomId);
@@ -710,7 +854,7 @@ export function App() {
     setHistory([]);
     setSelectedSeatId(null);
     setSaveError(null);
-    setStep("adjust");
+    setView("canvas");
   }
 
   async function handleGenerate() {
@@ -762,7 +906,10 @@ export function App() {
       setHistory([]);
       setSelectedSeatId(null);
       setIsDirty(false);
-      setStep("adjust");
+      setGenerationDone(true);
+      setFirstRunDismissed(true);
+      window.localStorage.setItem(FIRST_RUN_KEY, "done");
+      setView("canvas");
     } catch (err) {
       if (err instanceof InvalidAdvancedSettingError) {
         setSaveError(
@@ -817,6 +964,7 @@ export function App() {
       }
       setPreviewOpen(false);
       setIsDirty(false);
+      setExportedOnce(true);
     } catch (err) {
       setSaveError(friendlyError(err, t));
     } finally {
@@ -841,7 +989,7 @@ export function App() {
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
-    setStep("room");
+    switchView("room");
   }
 
   function handleStudentsEdited(editedStudents: Student[]) {
@@ -869,6 +1017,24 @@ export function App() {
     setActiveRotationPeriod(1);
   }
 
+  const contextAction = contextActionFor(view, hasPlan);
+
+  function handleContextAction(action: ContextAction) {
+    switch (action.kind) {
+      case "navigate":
+        switchView(action.target);
+        break;
+      case "generate":
+        void handleGenerate();
+        break;
+      case "preview":
+        setPreviewOpen(true);
+        break;
+      case "exportMenu":
+        break;
+    }
+  }
+
   return (
     <>
       <a className="skip-link" href="#main-workspace">
@@ -884,142 +1050,204 @@ export function App() {
         onThemeChange={setTheme}
       />
       <div className="app-shell">
-        <StepNavigation
-          activeStep={step}
+        <Sidebar
+          activeView={isContentView(view) ? view : null}
+          context={classContext}
+          connection={connection}
+          projects={recentProjects}
+          sessionClasses={sessionClasses}
           t={t}
-          onStepChange={setStep}
+          onSelectView={switchView}
+          onSelectClass={(id, name) =>
+            switchContext({ kind: "class", id, name })
+          }
+          onSelectTemp={() => switchContext({ kind: "temp" })}
         />
-        <main id="main-workspace" className="main-workspace" tabIndex={-1}>
-          <WorkflowPanel
-            step={step}
-            locale={locale}
-            t={t}
-            studentCount={students.length}
-            rosterValid={rosterIsValid(students)}
-            students={students}
-            seatIds={assignments.map((seat) => seat.seatId)}
-            selectedFileName={selectedFileName}
-            rooms={catalogs.roomTemplates}
-            selectedRoomId={selectedRoomId}
-            goals={catalogs.teacherGoals}
-            selectedGoalId={selectedGoalId}
+        <div className="workbench-column">
+          <ContextBar
+            context={classContext}
+            viewLabel={viewLabel}
+            meta={viewMeta}
+            action={contextAction}
             exportFormats={catalogs.exportFormats}
-            selectedExportFormat={selectedExportFormat}
-            exportTemplate={exportTemplate}
-            exportPrivacy={exportPrivacy}
-            orientation={orientation}
-            pageScale={pageScale}
-            advancedSettings={advancedSettings}
-            rotationSettings={rotationSettings}
-              detailedRules={detailedRules}
-              historyFileNames={historyFileNames}
-              historySnapshotCount={historySnapshots.length}
-              historyError={historyError}
-            rotationPlan={rotationPlan}
-            activeRotationPeriod={activeRotationPeriod}
-            roomSettings={roomSettings}
-            constraints={constraints}
-            groups={groups}
-            preferences={preferences}
-            error={step === "generate" ? saveError : null}
-            selectedSeat={selectedSeat}
-            canUndo={
-              editorDraftId ? editorUndoDepth > 0 : history.length > 0
-            }
+            locale={locale}
             isGenerating={isGenerating}
-            rosterSlot={
-              <div className="roster-workspace-stack">
-                <RosterImportPanel
-                  locale={locale}
-                  t={t}
-                  currentStudents={students}
-                  currentRevision={revision}
-                  onImportConfirmed={handleRosterImported}
-                />
-                <StudentRosterEditor
-                  students={students}
-                  t={t}
-                  onChange={handleStudentsEdited}
-                />
-              </div>
-            }
-            onFileSelected={setSelectedFileName}
-            onRoomChange={handleRoomChange}
-            onGoalChange={setSelectedGoalId}
-            onExportFormatChange={setSelectedExportFormat}
-            onExportTemplateChange={(template) => {
-              setExportTemplate(template);
-              setExportPrivacy({ ...DEFAULT_EXPORT_PRIVACY[template] });
+            canGenerate={rosterIsValid(students)}
+            t={t}
+            onAction={handleContextAction}
+            onQuickExport={(formatId) => {
+              void handleSave(formatId);
             }}
-            onExportPrivacyChange={(changes) =>
-              setExportPrivacy((current) => ({ ...current, ...changes }))
-            }
-            onOrientationChange={setOrientation}
-            onPageScaleChange={setPageScale}
-            onAdvancedSettingsChange={(changes) =>
-              setAdvancedSettings((current) => ({ ...current, ...changes }))
-            }
-            onRotationSettingsChange={(changes) =>
-              setRotationSettings((current) => ({ ...current, ...changes }))
-            }
-            onDetailedRulesChange={(changes) =>
-              setDetailedRules((current) => ({ ...current, ...changes }))
-            }
-            onHistoryFilesChange={(files) => {
-              void handleHistoryFiles(files);
-            }}
-            onHistoryClear={clearHistoryFiles}
-            onRotationPeriodSelect={(period) => {
-              void handleRotationPeriodSelect(period);
-            }}
-            onRoomSettingsChange={handleRoomSettingsChange}
-            onConstraintAdd={handleConstraintAdd}
-            onConstraintBatchAdd={handleConstraintBatchAdd}
-            onConstraintChange={handleConstraintChange}
-            onConstraintRemove={handleConstraintRemove}
-            onGroupAdd={handleGroupAdd}
-            onGroupBatchAdd={handleGroupBatchAdd}
-            onGroupChange={handleGroupChange}
-            onGroupRemove={handleGroupRemove}
-            onPreferenceToggle={handlePreferenceToggle}
-            onBack={() => setStep((current) => getAdjacentStep(current, -1))}
-            onNext={() => setStep((current) => getAdjacentStep(current, 1))}
-            onGenerate={handleGenerate}
-            onUndo={handleUndo}
-            onToggleLock={handleToggleLock}
-            onPreview={() => setPreviewOpen(true)}
+            onExportSettings={() => switchView("export")}
+            onSaveAsClass={() => setSaveAsOpen(true)}
           />
-
-          <section className="canvas-card" aria-labelledby="canvas-card-title">
-            <header>
-              <div>
-                <span className="eyebrow">{t("room.current")}</span>
-                <h2 id="canvas-card-title">{t("canvas.title")}</h2>
-              </div>
-              <span className="seat-count">
-                {t("room.seats", { count: assignments.length })}
-              </span>
-            </header>
-            <SeatingCanvas
-              assignments={assignments}
-              selectedSeatId={selectedSeatId}
+          {showFirstRun ? (
+            <FirstRunChecklist
+              progress={firstRunProgress}
               t={t}
-              onSeatActivate={handleSeatActivate}
+              onDismiss={() => {
+                setFirstRunDismissed(true);
+                window.localStorage.setItem(FIRST_RUN_KEY, "done");
+              }}
             />
-          </section>
+          ) : null}
+          <main
+            id="main-workspace"
+            className={`main-workspace view-${view}`}
+            tabIndex={-1}
+          >
+            {view === "history" ? (
+              <HistoryRotationPanel
+                locale={locale}
+                t={t}
+                rotationPlan={rotationPlan}
+                rotationDraftIds={rotationEditors.map(
+                  (editor) => editor.draft_id,
+                )}
+                historyFileNames={historyFileNames}
+                historySnapshotCount={historySnapshots.length}
+                historyError={historyError}
+                activeRotationPeriod={activeRotationPeriod}
+                onRotationLoad={handleRotationLoad}
+                onRotationPeriodSelect={(period) => {
+                  void handleRotationPeriodSelect(period);
+                }}
+                onHistoryFilesChange={(files) => {
+                  void handleHistoryFiles(files);
+                }}
+                onHistoryClear={clearHistoryFiles}
+              />
+            ) : (
+              <WorkflowPanel
+                step={viewToStep(view)}
+                locale={locale}
+                t={t}
+                studentCount={students.length}
+                rosterValid={rosterIsValid(students)}
+                students={students}
+                seatIds={assignments.map((seat) => seat.seatId)}
+                selectedFileName={selectedFileName}
+                rooms={catalogs.roomTemplates}
+                selectedRoomId={selectedRoomId}
+                goals={catalogs.teacherGoals}
+                selectedGoalId={selectedGoalId}
+                exportFormats={catalogs.exportFormats}
+                selectedExportFormat={selectedExportFormat}
+                exportTemplate={exportTemplate}
+                exportPrivacy={exportPrivacy}
+                orientation={orientation}
+                pageScale={pageScale}
+                advancedSettings={advancedSettings}
+                rotationSettings={rotationSettings}
+                detailedRules={detailedRules}
+                historyFileNames={historyFileNames}
+                historySnapshotCount={historySnapshots.length}
+                historyError={historyError}
+                rotationPlan={rotationPlan}
+                activeRotationPeriod={activeRotationPeriod}
+                roomSettings={roomSettings}
+                constraints={constraints}
+                groups={groups}
+                preferences={preferences}
+                error={view === "generate" ? saveError : null}
+                selectedSeat={selectedSeat}
+                canUndo={
+                  editorDraftId ? editorUndoDepth > 0 : history.length > 0
+                }
+                isGenerating={isGenerating}
+                hideActions
+                rosterSlot={
+                  <div className="roster-workspace-stack">
+                    <RosterImportPanel
+                      locale={locale}
+                      t={t}
+                      currentStudents={students}
+                      currentRevision={revision}
+                      onImportConfirmed={handleRosterImported}
+                    />
+                    <StudentRosterEditor
+                      students={students}
+                      t={t}
+                      onChange={handleStudentsEdited}
+                    />
+                  </div>
+                }
+                onFileSelected={setSelectedFileName}
+                onRoomChange={handleRoomChange}
+                onGoalChange={setSelectedGoalId}
+                onExportFormatChange={setSelectedExportFormat}
+                onExportTemplateChange={(template) => {
+                  setExportTemplate(template);
+                  setExportPrivacy({ ...DEFAULT_EXPORT_PRIVACY[template] });
+                }}
+                onExportPrivacyChange={(changes) =>
+                  setExportPrivacy((current) => ({ ...current, ...changes }))
+                }
+                onOrientationChange={setOrientation}
+                onPageScaleChange={setPageScale}
+                onAdvancedSettingsChange={(changes) =>
+                  setAdvancedSettings((current) => ({ ...current, ...changes }))
+                }
+                onRotationSettingsChange={(changes) =>
+                  setRotationSettings((current) => ({ ...current, ...changes }))
+                }
+                onDetailedRulesChange={(changes) =>
+                  setDetailedRules((current) => ({ ...current, ...changes }))
+                }
+                onHistoryFilesChange={(files) => {
+                  void handleHistoryFiles(files);
+                }}
+                onHistoryClear={clearHistoryFiles}
+                onRotationPeriodSelect={(period) => {
+                  void handleRotationPeriodSelect(period);
+                }}
+                onRoomSettingsChange={handleRoomSettingsChange}
+                onConstraintAdd={handleConstraintAdd}
+                onConstraintBatchAdd={handleConstraintBatchAdd}
+                onConstraintChange={handleConstraintChange}
+                onConstraintRemove={handleConstraintRemove}
+                onGroupAdd={handleGroupAdd}
+                onGroupBatchAdd={handleGroupBatchAdd}
+                onGroupChange={handleGroupChange}
+                onGroupRemove={handleGroupRemove}
+                onPreferenceToggle={handlePreferenceToggle}
+                onBack={() => undefined}
+                onNext={() => undefined}
+                onGenerate={handleGenerate}
+                onUndo={handleUndo}
+                onToggleLock={handleToggleLock}
+                onPreview={() => setPreviewOpen(true)}
+              />
+            )}
 
-          <aside className="workspace-side-rail">
-            <UnseatedTray students={unseatedStudents} t={t} />
-            <DiagnosticsPanel diagnostics={diagnostics} t={t} />
-            <ProjectWorkspacePanel
-              locale={locale}
-              t={t}
-              rotationPlan={rotationPlan}
-              rotationDraftIds={rotationEditors.map((editor) => editor.draft_id)}
-              onRotationLoad={handleRotationLoad}
-            />
-          </aside>
-        </main>
+            {view === "canvas" ? (
+              <section className="canvas-card" aria-labelledby="canvas-card-title">
+                <header>
+                  <div>
+                    <span className="eyebrow">{t("room.current")}</span>
+                    <h2 id="canvas-card-title">{t("canvas.title")}</h2>
+                  </div>
+                  <span className="seat-count">
+                    {t("room.seats", { count: assignments.length })}
+                  </span>
+                </header>
+                <SeatingCanvas
+                  assignments={assignments}
+                  selectedSeatId={selectedSeatId}
+                  t={t}
+                  onSeatActivate={handleSeatActivate}
+                />
+              </section>
+            ) : null}
+
+            {view === "canvas" ? (
+              <aside className="workspace-side-rail">
+                <UnseatedTray students={unseatedStudents} t={t} />
+                <DiagnosticsPanel diagnostics={diagnostics} t={t} />
+              </aside>
+            ) : null}
+          </main>
+        </div>
       </div>
       <ExportPreviewDialog
         assignments={assignments}
@@ -1033,6 +1261,12 @@ export function App() {
         t={t}
         onClose={() => setPreviewOpen(false)}
         onSave={handleSave}
+      />
+      <SaveAsClassDialog
+        open={saveAsOpen}
+        t={t}
+        onClose={() => setSaveAsOpen(false)}
+        onConfirm={handleSaveAsClass}
       />
     </>
   );
