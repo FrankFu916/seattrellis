@@ -17,29 +17,14 @@ import type {
   Student,
 } from "../api/types";
 import type { WorkflowStep } from "../domain/workflow";
-import type { Locale, MessageKey, Translate } from "../i18n/messages";
+import type { Locale, Translate } from "../i18n/messages";
 import { LayoutEditorPanel } from "./LayoutEditorPanel";
 import { DetailedRulesPanel } from "./DetailedRulesPanel";
 import { HistoryFilesCard } from "./HistoryFilesCard";
-import { BulkConstraintEditor } from "./BulkConstraintEditor";
-import { BulkGroupEditor } from "./BulkGroupEditor";
 import { RotationPlanSummary } from "./RotationPlanSummary";
 import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
 import { RuleSetEditorPanel } from "./RuleSetEditorPanel";
-
-const PREFERENCE_OPTIONS: Array<{
-  id: CommonPreferenceId;
-  label: MessageKey;
-  description: MessageKey;
-}> = [
-  { id: "vision_front", label: "preference.visionFront", description: "preference.visionFrontHint" },
-  { id: "height_back", label: "preference.heightBack", description: "preference.heightBackHint" },
-  { id: "fair_rotation", label: "preference.fairRotation", description: "preference.fairRotationHint" },
-  { id: "avoid_recent_neighbors", label: "preference.avoidNeighbors", description: "preference.avoidNeighborsHint" },
-  { id: "score_position", label: "preference.scorePosition", description: "preference.scorePositionHint" },
-  { id: "score_distribution", label: "preference.scoreDistribution", description: "preference.scoreDistributionHint" },
-  { id: "mentor_pairing", label: "preference.mentorPairing", description: "preference.mentorPairingHint" },
-];
+import { RulesWorkbench } from "./RulesWorkbench";
 
 type WorkflowPanelProps = {
   step: WorkflowStep;
@@ -460,255 +445,32 @@ export function WorkflowPanel({
         ) : null}
 
         {step === "goal" ? (
-          <div className="goal-settings">
-            <fieldset className="choice-list">
-              <legend className="sr-only">{t("step.goal.title")}</legend>
-              {goals.map((goal, index) => (
-                <label
-                  className="choice-card goal-choice"
-                  data-selected={goal.id === selectedGoalId}
-                  key={goal.id}
-                >
-                  <input
-                    type="radio"
-                    name="goal"
-                    value={goal.id}
-                    checked={goal.id === selectedGoalId}
-                    onChange={() => onGoalChange(goal.id)}
-                  />
-                  <span className={`goal-symbol goal-symbol-${index + 1}`} aria-hidden="true">
-                    {index === 0 ? "↻" : index === 1 ? "⌁" : "◇"}
-                  </span>
-                  <span className="choice-copy">
-                    <strong>{optionName(goal, locale)}</strong>
-                    <small>{optionDescription(goal, locale)}</small>
-                  </span>
-                  <span className="choice-check" aria-hidden="true">✓</span>
-                </label>
-              ))}
-            </fieldset>
-            <fieldset className="preference-list">
-              <legend>{t("preference.title")}</legend>
-              <p className="muted">{t("preference.hint")}</p>
-              {PREFERENCE_OPTIONS.map((option) => (
-                <label key={option.id} className="preference-row">
-                  <input
-                    type="checkbox"
-                    checked={preferences.includes(option.id)}
-                    onChange={() => onPreferenceToggle(option.id)}
-                  />
-                  <span>
-                    <strong>{t(option.label)}</strong>
-                    <small>{t(option.description)}</small>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <section className="constraints-card" aria-labelledby="constraints-title">
-              <div className="constraints-heading">
-                <div>
-                  <h2 id="constraints-title">{t("constraints.title")}</h2>
-                  <p>{t("constraints.hint")}</p>
-                </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={onConstraintAdd}
-                  disabled={students.length < 1}
-                >
-                  {t("constraints.add")}
-                </button>
-              </div>
-              {constraints.length === 0 ? (
-                <p className="muted">{t("constraints.empty")}</p>
-              ) : (
-                <div className="constraint-list">
-                  {constraints.map((constraint) => (
-                    <div className="constraint-row" key={constraint.id}>
-                      <select
-                        aria-label={t("constraints.type")}
-                        value={constraint.kind}
-                        onChange={(event) =>
-                          onConstraintChange(constraint.id, {
-                            kind: event.target.value as CommonConstraint["kind"],
-                          })
-                        }
-                      >
-                        <option value="avoid_adjacent">{t("constraints.avoidAdjacent")}</option>
-                        <option value="must_adjacent">{t("constraints.mustAdjacent")}</option>
-                        <option value="fixed_seat">{t("constraints.fixedSeat")}</option>
-                        <option value="min_distance">{t("constraints.minDistance")}</option>
-                      </select>
-                      <select
-                        aria-label={t("constraints.student")}
-                        value={constraint.first}
-                        onChange={(event) =>
-                          onConstraintChange(constraint.id, { first: event.target.value })
-                        }
-                      >
-                        <option value="">{t("constraints.chooseStudent")}</option>
-                        {students.map((student) => (
-                          <option key={student.id} value={student.id}>
-                            {student.name} · {student.id}
-                          </option>
-                        ))}
-                      </select>
-                      {constraint.kind === "fixed_seat" ? (
-                        <input
-                          aria-label={t("constraints.seat")}
-                          list="available-seat-ids"
-                          value={constraint.seatId}
-                          placeholder={t("constraints.seatPlaceholder")}
-                          onChange={(event) =>
-                            onConstraintChange(constraint.id, { seatId: event.target.value })
-                          }
-                        />
-                      ) : (
-                        <select
-                          aria-label={t("constraints.otherStudent")}
-                          value={constraint.second}
-                          onChange={(event) =>
-                            onConstraintChange(constraint.id, { second: event.target.value })
-                          }
-                        >
-                          <option value="">{t("constraints.chooseStudent")}</option>
-                          {students.map((student) => (
-                            <option key={student.id} value={student.id}>
-                              {student.name} · {student.id}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {constraint.kind === "min_distance" ? (
-                        <>
-                          <label className="constraint-detail-field">
-                            <span className="sr-only">{t("constraints.distance")}</span>
-                            <input
-                              type="number"
-                              min={0.1}
-                              step={0.1}
-                              aria-label={t("constraints.distance")}
-                              value={constraint.distance}
-                              onChange={(event) =>
-                                onConstraintChange(constraint.id, {
-                                  distance: Math.max(0.1, Number(event.target.value) || 0.1),
-                                })
-                              }
-                            />
-                          </label>
-                          <select
-                            aria-label={t("constraints.metric")}
-                            value={constraint.metric}
-                            onChange={(event) =>
-                              onConstraintChange(constraint.id, {
-                                metric: event.target.value as CommonConstraint["metric"],
-                              })
-                            }
-                          >
-                            <option value="graph">{t("constraints.metricGraph")}</option>
-                            <option value="euclidean">{t("constraints.metricEuclidean")}</option>
-                          </select>
-                        </>
-                      ) : null}
-                      <button
-                        className="icon-button"
-                        type="button"
-                        aria-label={t("constraints.remove")}
-                        onClick={() => onConstraintRemove(constraint.id)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <datalist id="available-seat-ids">
-                {seatIds.map((seatId) => <option key={seatId} value={seatId} />)}
-              </datalist>
-              <BulkConstraintEditor
-                students={students}
-                seatIds={seatIds}
-                existingConstraints={constraints}
-                t={t}
-                onAdd={onConstraintBatchAdd}
-              />
-            </section>
-            <section className="constraints-card" aria-labelledby="groups-title">
-              <div className="constraints-heading">
-                <div>
-                  <h2 id="groups-title">{t("groups.title")}</h2>
-                  <p>{t("groups.hint")}</p>
-                </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={onGroupAdd}
-                  disabled={students.length < 2}
-                >
-                  {t("groups.add")}
-                </button>
-              </div>
-              {groups.length === 0 ? (
-                <p className="muted">{t("groups.empty")}</p>
-              ) : (
-                <div className="constraint-list">
-                  {groups.map((group) => (
-                    <div className="constraint-row group-row" key={group.id}>
-                      <input
-                        aria-label={t("groups.name")}
-                        value={group.name}
-                        placeholder={t("groups.namePlaceholder")}
-                        onChange={(event) =>
-                          onGroupChange(group.id, { name: event.target.value })
-                        }
-                      />
-                      <select
-                        aria-label={t("groups.mode")}
-                        value={group.mode}
-                        onChange={(event) =>
-                          onGroupChange(group.id, {
-                            mode: event.target.value as CommonGroupRule["mode"],
-                          })
-                        }
-                      >
-                        <option value="separate">{t("groups.separate")}</option>
-                        <option value="together">{t("groups.together")}</option>
-                      </select>
-                      <input
-                        aria-label={t("groups.students")}
-                        value={group.students.join(", ")}
-                        placeholder={t("groups.studentsPlaceholder")}
-                        onChange={(event) =>
-                          onGroupChange(group.id, {
-                            students: event.target.value
-                              .split(/[,，\n]+/u)
-                              .map((student) => student.trim())
-                              .filter(Boolean),
-                          })
-                        }
-                      />
-                      <button
-                        className="icon-button"
-                        type="button"
-                        aria-label={t("groups.remove")}
-                        onClick={() => onGroupRemove(group.id)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <small className="constraint-help">{t("groups.studentsHint")}</small>
-              <BulkGroupEditor
-                students={students}
-                existingGroups={groups}
-                t={t}
-                onAdd={onGroupBatchAdd}
-              />
-            </section>
-          </div>
+          <RulesWorkbench
+            locale={locale}
+            t={t}
+            students={students}
+            seatIds={seatIds}
+            goals={goals}
+            selectedGoalId={selectedGoalId}
+            preferences={preferences}
+            constraints={constraints}
+            groups={groups}
+            detailedRules={detailedRules}
+            customRulesJson={advancedSettings.customRulesJson}
+            onGoalChange={onGoalChange}
+            onPreferenceToggle={onPreferenceToggle}
+            onConstraintAdd={onConstraintAdd}
+            onConstraintBatchAdd={onConstraintBatchAdd}
+            onConstraintChange={onConstraintChange}
+            onConstraintRemove={onConstraintRemove}
+            onGroupAdd={onGroupAdd}
+            onGroupBatchAdd={onGroupBatchAdd}
+            onGroupChange={onGroupChange}
+            onGroupRemove={onGroupRemove}
+            onDetailedRulesChange={onDetailedRulesChange}
+          />
         ) : null}
+
 
         {step === "generate" ? (
           <div className="generate-summary">

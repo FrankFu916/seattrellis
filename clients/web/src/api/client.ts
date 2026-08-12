@@ -30,6 +30,8 @@ import type {
   RosterDraftResponse,
   RosterUpdatePreviewRequest,
   RosterUpdatePreviewResponse,
+  RuleTemplatesResponse,
+  CompiledRule,
 } from "./types";
 
 const API_ROOT = "/api/v1";
@@ -37,8 +39,57 @@ const REQUEST_TIMEOUT_MS = 1800;
 const ROSTER_TIMEOUT_MS = 30_000;
 const GENERATE_TIMEOUT_MS = 30_000;
 let cachedDesktopSessionToken: string | null | undefined;
+let sessionBootstrapPromise: Promise<string | null> | null = null;
 
 export const EDITOR_PROTOCOL_VERSION = "1.0";
+
+/** Bootstrap (or re-bootstrap after a 401) the loopback session token. */
+async function bootstrapSessionToken(): Promise<string | null> {
+  try {
+    const response = await fetch(`${API_ROOT}/session`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json()) as { session_token?: string };
+    const token = data.session_token ?? null;
+    if (token) {
+      cachedDesktopSessionToken = token;
+      try {
+        window.sessionStorage.setItem("seattrellis.desktop.session", token);
+      } catch {
+        // The in-memory copy suffices for this window.
+      }
+    }
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureSessionToken(): Promise<string | null> {
+  const known = readDesktopSessionToken();
+  if (known) {
+    return known;
+  }
+  if (!sessionBootstrapPromise) {
+    sessionBootstrapPromise = bootstrapSessionToken();
+  }
+  return sessionBootstrapPromise;
+}
+
+/** Drop a stale token (server restarted) and bootstrap a fresh one once. */
+async function refreshSessionToken(): Promise<string | null> {
+  cachedDesktopSessionToken = null;
+  sessionBootstrapPromise = null;
+  try {
+    window.sessionStorage.removeItem("seattrellis.desktop.session");
+  } catch {
+    // Best effort; the in-memory copy is cleared above.
+  }
+  return bootstrapSessionToken();
+}
 
 async function fetchJson<T>(
   path: string,
@@ -50,17 +101,29 @@ async function fetchJson<T>(
 
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
-  const sessionToken = await ensureSessionToken();
+  let sessionToken = await ensureSessionToken();
   if (sessionToken) {
     headers.set("Authorization", `Bearer ${sessionToken}`);
   }
 
   try {
-    const response = await fetch(`${API_ROOT}${path}`, {
+    let response = await fetch(`${API_ROOT}${path}`, {
       ...init,
       headers,
       signal: controller.signal,
     });
+    if (response.status === 401 && sessionToken) {
+      // The local service restarted and its token rotated: re-bootstrap once.
+      sessionToken = await refreshSessionToken();
+      if (sessionToken) {
+        headers.set("Authorization", `Bearer ${sessionToken}`);
+        response = await fetch(`${API_ROOT}${path}`, {
+          ...init,
+          headers,
+          signal: controller.signal,
+        });
+      }
+    }
     if (!response.ok) {
       const detail = await safeErrorDetail(response);
       throw new RosterApiError(response.status, detail.code, detail.message);
@@ -399,6 +462,22 @@ export async function restoreProjectBundle(
   }, 30_000);
 }
 
+export async function fetchRuleTemplates(): Promise<RuleTemplatesResponse> {
+  return getJson<RuleTemplatesResponse>("/rules/templates");
+}
+
+/** Compile a filled sentence template into the canonical rule entry (D3). */
+export async function compileRuleSentence(
+  templateId: string,
+  slots: Record<string, string | number>,
+): Promise<CompiledRule> {
+  return fetchJson<CompiledRule>("/rules/compile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template_id: templateId, slots }),
+  });
+}
+
 export async function uploadRosterDraft(
   file: File,
 ): Promise<RosterDraftResponse> {
@@ -616,45 +695,4 @@ function readDesktopSessionToken(): string | null {
     cachedDesktopSessionToken = null;
   }
   return cachedDesktopSessionToken;
-}
-
-// Single-flight bootstrap for the browser workspace: when no token was
-// handed over (Tauri injection or URL), fetch it from the loopback server's
-// /api/v1/session endpoint (which is Host-checked and needs no token itself).
-let sessionBootstrapPromise: Promise<string | null> | null = null;
-
-async function ensureSessionToken(): Promise<string | null> {
-  const known = readDesktopSessionToken();
-  if (known) {
-    return known;
-  }
-  if (!sessionBootstrapPromise) {
-    sessionBootstrapPromise = (async () => {
-      try {
-        const response = await fetch(`${API_ROOT}/session`, {
-          headers: { Accept: "application/json" },
-        });
-        if (!response.ok) {
-          return null;
-        }
-        const data = (await response.json()) as { session_token?: string };
-        const token = data.session_token ?? null;
-        if (token) {
-          cachedDesktopSessionToken = token;
-          try {
-            window.sessionStorage.setItem(
-              "seattrellis.desktop.session",
-              token,
-            );
-          } catch {
-            // In-memory copy suffices for this window.
-          }
-        }
-        return token;
-      } catch {
-        return null;
-      }
-    })();
-  }
-  return sessionBootstrapPromise;
 }

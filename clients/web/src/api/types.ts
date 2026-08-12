@@ -236,6 +236,8 @@ export type CommonGroupRule = {
   name: string;
   mode: "together" | "separate";
   students: string[];
+  /** Disabled rules keep their definition but do not reach the solver. */
+  enabled?: boolean;
 };
 
 export type CommonConstraintKind =
@@ -252,6 +254,8 @@ export type CommonConstraint = {
   seatId: string;
   distance: number;
   metric: "euclidean" | "graph";
+  /** Disabled rules keep their definition but do not reach the solver. */
+  enabled?: boolean;
 };
 
 export type CommonPreferenceId =
@@ -270,6 +274,70 @@ export type RuleRelation =
   | "diagonal"
   | "adjacent_any"
   | "within_distance";
+
+// ---------------------------------------------------------------------------
+// Rule-builder sentence templates (B3 / D3)
+// ---------------------------------------------------------------------------
+
+/** Bilingual copy with the Rust registry's `zh` / `en` keys. */
+export type BilingualText = Record<"zh" | "en", string>;
+
+export type SentenceSlotKind =
+  | "student"
+  | "students"
+  | "seat"
+  | "text"
+  | "number"
+  | "choice";
+
+export type SentenceSlotOption = {
+  value: string;
+  param_value?: unknown;
+  label: BilingualText;
+};
+
+export type SentenceSlot = {
+  key: string;
+  kind: SentenceSlotKind;
+  label: BilingualText;
+  placeholder?: BilingualText | null;
+  /** Slash-separated path into the template entry (e.g. "students/0"). */
+  param_path?: string | null;
+  required: boolean;
+  options?: SentenceSlotOption[] | null;
+  min?: number | null;
+  max?: number | null;
+  step?: number | null;
+  default?: unknown;
+};
+
+export type SentenceTemplate = {
+  id: string;
+  rule_id: string;
+  category: "hard" | "soft";
+  label: BilingualText;
+  sentence: BilingualText;
+  slots: SentenceSlot[];
+  defaults: Record<string, unknown>;
+};
+
+export type RuleTemplatesResponse = {
+  api_version: "1";
+  templates: SentenceTemplate[];
+};
+
+export type CompiledRule = {
+  api_version: "1";
+  category: "hard" | "soft";
+  rule_id: string;
+  entry: Record<string, unknown>;
+};
+
+export type RuleCompileError = {
+  code: string;
+  slot: string | null;
+  message: string;
+};
 
 export type DetailedRuleSettings = {
   enabled: boolean;

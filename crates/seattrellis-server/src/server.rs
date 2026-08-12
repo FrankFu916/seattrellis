@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use seattrellis_domain::editing::{self, EditorDraftStore};
 
@@ -512,6 +512,8 @@ pub(crate) fn route(
     match (request.method.as_str(), segments.as_slice()) {
         ("GET", ["api", "v1", "health"]) => health_response(),
         ("GET", ["api", "v1", "catalogs"]) => catalogs_response(),
+        ("GET", ["api", "v1", "rules", "templates"]) => rules_templates_response(),
+        ("POST", ["api", "v1", "rules", "compile"]) => rules_compile_response(&request.body),
         ("POST", ["api", "v2", "solve"]) => solve_v2_response(&request.body),
         ("POST", ["api", "v1", "classes", "generate"]) | ("POST", ["api", "v1", "solve"]) => {
             generate_response(&request.body, editor_store, solve_requests)
@@ -612,6 +614,64 @@ fn health_response() -> Response {
             "api_version": "1",
         }),
     )
+}
+
+/// `GET /api/v1/rules/templates`: the rule-builder sentence templates
+/// (M4 PD-D3). Slots carry their parameter bindings, so the workbench never
+/// compiles rules itself — it fills slots and posts them to `rules/compile`.
+fn rules_templates_response() -> Response {
+    let templates: Vec<Value> = seattrellis_rules::sentence_templates()
+        .into_iter()
+        .map(|template| serde_json::to_value(template).expect("template serializes"))
+        .collect();
+    Response::json(
+        200,
+        json!({ "api_version": "1", "templates": templates }),
+    )
+}
+
+/// `POST /api/v1/rules/compile`: fill a sentence template's slots and return
+/// the canonical rule entry (hard_rules / rules_overlay fragment). Errors are
+/// 422 with a structured code (missing_slot / invalid_choice / ...).
+fn rules_compile_response(body: &[u8]) -> Response {
+    if body.is_empty() {
+        return json_error(400, "empty request body");
+    }
+    let raw: Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return json_error(400, "request body is not valid JSON"),
+    };
+    let Some(template_id) = raw.get("template_id").and_then(Value::as_str) else {
+        return json_error(400, "compile requires a template_id");
+    };
+    let slots: Map<String, Value> = raw
+        .get("slots")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    match seattrellis_rules::compile_sentence(template_id, &slots) {
+        Ok(compiled) => Response::json(
+            200,
+            json!({
+                "api_version": "1",
+                "category": compiled.category,
+                "rule_id": compiled.rule_id,
+                "entry": compiled.entry,
+            }),
+        ),
+        Err(error) => Response::json(
+            422,
+            json!({
+                "error": error.code,
+                "code": error.code,
+                "message": error.message,
+                "slot": error.slot,
+                "message_key": format!("error.{}", error.code),
+                "recoverable": true,
+                "suggested_action": "review_input",
+            }),
+        ),
+    }
 }
 
 /// `GET /api/v1/catalogs`: static bilingual teacher catalogs, matching the
@@ -2074,6 +2134,90 @@ mod tests {
                 "pptx"
             ]
         );
+    }
+
+    #[test]
+    fn rules_templates_route_returns_sentence_templates() {
+        let root = test_web_root();
+        let response = route_one(&request("GET", "/api/v1/rules/templates", b""), &root);
+        assert_eq!(response.status, 200);
+        let value = body_json(&response);
+        let templates = value["templates"].as_array().unwrap();
+        let ids: Vec<&str> = templates
+            .iter()
+            .map(|template| template["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                "student_distance",
+                "fixed_seat",
+                "must_be_adjacent",
+                "cannot_be_adjacent",
+                "student_group",
+                "vision_front",
+                "score_balance"
+            ]
+        );
+        let distance = &templates[0];
+        assert_eq!(distance["category"], "hard");
+        assert_eq!(distance["rule_id"], "min_distance");
+        assert!(distance["sentence"]["zh"].as_str().unwrap().contains("{student_a}"));
+        assert!(distance["sentence"]["en"].as_str().unwrap().contains("{student_a}"));
+        let slots = distance["slots"].as_array().unwrap();
+        assert_eq!(slots.len(), 3);
+        assert_eq!(slots[0]["kind"], "student");
+        assert_eq!(slots[0]["param_path"], "students/0");
+        assert_eq!(slots[2]["kind"], "number");
+        assert_eq!(slots[2]["min"], 0.1);
+    }
+
+    #[test]
+    fn rules_compile_route_binds_slots_and_reports_errors() {
+        let root = test_web_root();
+        let body = br#"{
+            "template_id": "student_distance",
+            "slots": { "student_a": "S01", "student_b": "S02", "distance": 2.5 }
+        }"#;
+        let response = route_one(&request("POST", "/api/v1/rules/compile", body), &root);
+        assert_eq!(response.status, 200);
+        let value = body_json(&response);
+        assert_eq!(value["category"], "hard");
+        assert_eq!(value["rule_id"], "min_distance");
+        assert_eq!(
+            value["entry"],
+            json!({
+                "students": ["S01", "S02"],
+                "distance": 2.5,
+                "metric": "graph",
+            })
+        );
+
+        // Missing required slot -> structured 422.
+        let missing = route_one(
+            &request(
+                "POST",
+                "/api/v1/rules/compile",
+                br#"{"template_id": "student_distance", "slots": {"student_a": "S01"}}"#,
+            ),
+            &root,
+        );
+        assert_eq!(missing.status, 422);
+        let value = body_json(&missing);
+        assert_eq!(value["code"], "missing_slot");
+        assert_eq!(value["slot"], "student_b");
+
+        // Unknown template -> structured 422.
+        let unknown = route_one(
+            &request(
+                "POST",
+                "/api/v1/rules/compile",
+                br#"{"template_id": "nope", "slots": {}}"#,
+            ),
+            &root,
+        );
+        assert_eq!(unknown.status, 422);
+        assert_eq!(body_json(&unknown)["code"], "unknown_template");
     }
 
     #[test]

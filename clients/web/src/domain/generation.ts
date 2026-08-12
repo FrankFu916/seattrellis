@@ -148,6 +148,9 @@ function buildHardRules(constraints: CommonConstraint[]): HardRulesPayload | und
     metric: "euclidean" | "graph";
   }> = [];
   for (const constraint of constraints) {
+    if (constraint.enabled === false) {
+      continue;
+    }
     if (constraint.kind === "fixed_seat" && constraint.first && constraint.seatId) {
       fixed_seats.push({ student: constraint.first, seat_id: constraint.seatId });
     } else if (constraint.kind === "must_adjacent" && constraint.first && constraint.second) {
@@ -305,6 +308,7 @@ function buildRulesOverlay(
     };
   }
   const validGroups = (groups ?? [])
+    .filter((group) => group.enabled !== false)
     .map((group) => ({
       name: group.name.trim(),
       students: [...new Set(group.students.map((student) => student.trim()).filter(Boolean))],
@@ -456,5 +460,43 @@ export function buildGenerateRotationPlanRequest({
     period_count: rotation.periodCount,
     ...(periodLabels.length ? { period_labels: periodLabels } : {}),
     options: base.options,
+  };
+}
+
+/**
+ * Read-only snapshot of the effective rule set (D3 JSON view). Built from
+ * the same payload builders the generate request uses, so the displayed
+ * representation is exactly what reaches the solver; never editable.
+ */
+export function buildRulesSnapshot({
+  constraints,
+  groups,
+  preferences,
+  detailedRules,
+  customRulesJson,
+  selectedGoalId,
+}: {
+  constraints: CommonConstraint[];
+  groups: CommonGroupRule[];
+  preferences: CommonPreferenceId[];
+  detailedRules?: DetailedRuleSettings;
+  customRulesJson: string;
+  selectedGoalId: string;
+}): Record<string, unknown> {
+  const hardRules = buildHardRules(constraints);
+  const overlay = buildRulesOverlay(preferences, detailedRules, groups);
+  let customRules: Record<string, unknown> | undefined;
+  if (customRulesJson.trim()) {
+    try {
+      customRules = parseJsonObject(customRulesJson, "rules");
+    } catch {
+      // The read-only view still shows the source when it is not valid JSON.
+    }
+  }
+  return {
+    goal_id: customRules ? "custom" : selectedGoalId,
+    ...(customRules ? { custom_rules: customRules } : {}),
+    ...(hardRules ? { hard_rules: hardRules } : {}),
+    ...(overlay ? { rules_overlay: overlay } : {}),
   };
 }

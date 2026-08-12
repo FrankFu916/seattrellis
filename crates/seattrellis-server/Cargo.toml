@@ -12,6 +12,7 @@ seattrellis-domain = { path = "../seattrellis-domain" }
 seattrellis-export = { path = "../seattrellis-export" }
 seattrellis-application = { path = "../seattrellis-application" }
 seattrellis-io = { path = "../seattrellis-io" }
+seattrellis-rules = { path = "../seattrellis-rules" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 tower = { version = "0.5", features = ["limit", "util"] }

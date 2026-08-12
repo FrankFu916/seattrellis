@@ -2563,6 +2563,337 @@ input:focus-visible,
   padding: 0 14px 12px;
 }
 
+/* ---------- chips (semantic status, design §3) ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.chip-red {
+  background: color-mix(in srgb, var(--danger, #dc2626) 12%, transparent);
+  color: var(--danger, #dc2626);
+}
+
+.chip-amber {
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+}
+
+.chip-blue {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.chip-green {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.chip-purple {
+  background: color-mix(in srgb, #7c3aed 12%, transparent);
+  color: #7c3aed;
+}
+
+.chip-gray {
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+/* ---------- rules workbench (B3 / D3) ---------- */
+
+.rules-workbench {
+  display: grid;
+  gap: 18px;
+}
+
+.rules-workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.rules-cards-col,
+.rules-builder-col {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rule-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 4px;
+}
+
+.rule-section-heading .rule-count {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.62rem;
+}
+
+.rule-card {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-medium);
+  background: var(--surface);
+}
+
+.rule-card-hard {
+  border-left-color: var(--danger, #dc2626);
+}
+
+.rule-card-soft {
+  border-left-color: var(--warning);
+}
+
+.rule-card[data-disabled="true"] {
+  opacity: 0.6;
+}
+
+.rule-card[data-disabled="true"] .rc-desc {
+  text-decoration: line-through;
+}
+
+.rc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.rc-title {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-actions {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+}
+
+.rc-actions .text-button.danger {
+  color: var(--danger, #dc2626);
+}
+
+.rc-desc {
+  margin-top: 4px;
+  padding-left: 26px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+/* sentence builder */
+
+.sentence-builder {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface);
+}
+
+.rules-builder-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rules-builder-heading strong {
+  font-size: 0.86rem;
+}
+
+.template-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.template-chip {
+  padding: 3px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.template-chip[data-active="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.rule-sentence {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+  font-size: 0.84rem;
+}
+
+.rule-sentence .seg {
+  color: var(--text);
+}
+
+.sentence-slot {
+  padding: 2px 10px;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.sentence-slot[data-filled="true"] {
+  border-style: solid;
+  background: var(--accent-soft);
+}
+
+.sentence-slot[data-active="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.slot-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.slot-editor-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.slot-editor select,
+.slot-editor input[type="number"],
+.slot-editor input[type="text"] {
+  min-width: 160px;
+}
+
+.slot-students {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 3px 10px;
+  max-height: 130px;
+  overflow: auto;
+}
+
+.slot-students label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+}
+
+.rules-builder-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.compile-status {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.compile-status.ok {
+  color: var(--success);
+  font-weight: 650;
+}
+
+.preview-line {
+  padding: 6px 9px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+}
+
+.rules-builder-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rules-json-view {
+  display: grid;
+  gap: 6px;
+}
+
+.json-view {
+  overflow: auto;
+  max-height: 420px;
+  padding: 12px;
+  border-radius: var(--radius-small);
+  background: #0f172a;
+  color: #a5f3fc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.rules-json-view .note {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.rules-advanced {
+  display: grid;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+@media (max-width: 960px) {
+  .rules-workbench-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- interactive seating editor (B2 / D2) ---------- */
 
 .canvas-toolbar {

@@ -3115,6 +3115,7 @@ dependencies = [
  "seattrellis-domain",
  "seattrellis-export",
  "seattrellis-io",
+ "seattrellis-rules",
  "seattrellis_core",
  "serde",
  "serde_json",
