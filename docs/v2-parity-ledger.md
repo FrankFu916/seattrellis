@@ -1154,6 +1154,62 @@ warnings、340-case 导出差分 0 mismatch、21 CLI golden 0 mismatch。
 剩余 M5 阶段 A：print-html/PDF 的独立 reader 全量验证（可并入
 --exports 扩展）、导出默认值 dogfood 冻结（G-4）、班级级默认值覆盖。
 
+
+### 19.20 2026-08-12：M5 阶段 B 实现（批 1 融合形态 B1–B8）
+
+M5 阶段 B（计划 §4，批 1 八项融合形态，每项 = Rust contract 确认 →
+React 实现 → E2E，对照 `docs/prototypes/decisions/` 目标形态）：
+
+1. **B1 导航（D1）**：侧栏（我的班级/班级内容/任务）+ 上下文操作条
+   （下一步引导链）+ 首次任务清单（用过即收，localStorage 持久）；
+   临时工作台/班级上下文切换（脏稿确认）；另存为班级（G-5，会话级）。
+   班级数据持久化到本地项目服务登记为 alpha.1 后续项。新组件
+   Sidebar/ContextBar/FirstRunChecklist/HistoryRotationPanel 等。
+2. **B2 画布（D2）**：drag-lift（整块跟随、悬停高亮、松手 swap）、
+   框选批量（rubber band + 原子 lock/unlock 命令）、批量移动
+   （原生 `batch_move`，planBatchMove 纯函数 + 环安全）、表格视图
+   （同 draft，move/unseat，重复拒绝仅限目标被他人占用）、共享
+   undo/redo（工具栏 + ⌘Z/⌘⇧Z/⌘Y）、指针→viewBox 缩放映射。
+3. **B3 规则（D3）**：新 Rust API —— `seattrellis-rules::sentence`
+   （7 个句式模板 + 槽位→参数路径绑定）、`POST /api/v1/rules/compile`
+   （结构化 422）；React 句式构建器（槽位编辑器）+ 规则卡片
+   （启停/编辑/删除）+ 高级编辑 + 只读 JSON 视图（PD-D3-ADJ-1）。
+   约束/分组新增 `enabled` 过滤。401 会话重引导（服务重启不再掉
+   demo 模式）。
+4. **B4 快速/高级（D4）**：生成视图 = 3 问（规则集/候选数/本轮优先）
+   + 历史行默认可见（不折叠）+ 高级折叠（种子/预算/后端/去重说明/
+   自定义规则/轮换）；候选数默认 5（G-4 冻结待 dogfood）。
+5. **B5 候选（D5）**：新端点 `GET /api/v1/editing/drafts/{id}/audit`
+   （PlanScore 七维 + 硬约束摘要，与 D6 共用）；`generate_class`
+   接入候选引擎（options.candidate_count > 1 生成去重候选集，耗尽
+   映射 Unknown 领域结果；count=1 路径与七状态语义不变）；React
+   候选面板（理由卡 + A/B 差异高亮 + 分数明细/逐规则 + 复现折叠 +
+   选用切换）。G-1 术语映射表落地（auditTerms）。
+6. **B6 诊断（D6）**：core `diagnostics_report_json`（评估但不拒绝：
+   违反硬规则的完整 assignment 产出 witnesses + 建议修复座；结构
+   非法仍 422，M3-06 不放松）；诊断面板（严重级列表 + 修复按钮 +
+   一键修复全部，走 Rust editing + 重新 audit 复核可见）；画布内联
+   徽章（放大命中区）+ 双向联动。
+7. **B7 历史/轮换（D7）**：历史回顾（时间线 + 恢复此版本，脏稿确认）
+   + 轮换计划（周期卡片并排、点击载入该期）双视图切换；恢复走
+   snapshot 纯函数（按座位 id 匹配当前教室、锁定座保留）。
+8. **B8 导入（D8）**：在既有三步导入（选择/映射/确认）上补齐原子
+   确认栏（原子应用/失败回滚/可审计文案）+ 同屏预览行级冲突徽章
+   与空单元格提示。
+
+**关键 Rust 契约新增**：`sentence_templates/compile_sentence`（B3）、
+`draft audit` 端点（B5/B6）、`diagnostics_report_json`（B6）、候选
+引擎接入 server 生成路径（B5，§6.3 实现路径补齐）。全部走独立
+validator 复核（editing 命令 + audit 重算），无硬编码 feasible。
+
+**验证**：React 132 vitest（+45）、typecheck、vite build；Rust
+core/rules/server/application 全绿（server 79 含多候选与 audit 契约
+测试）、clippy -D warnings 0；浏览器 E2E 覆盖 B1–B7 关键交互
+（生成/拖拽交换/框选锁定/表格编辑/句式编译/候选选用/诊断修复闭环/
+历史双视图，均对本地 Rust server）。
+**已知后续**：班级项目持久化（alpha.1 默认路径）、候选 n=1/5/20 与
+导出独立 reader 的 golden 扩展、G-4 默认值 dogfood 冻结。
+
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
 ### corpus 状态
