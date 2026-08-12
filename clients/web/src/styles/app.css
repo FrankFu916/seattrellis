@@ -1009,6 +1009,25 @@ input:focus-visible,
   flex-shrink: 0;
 }
 
+.student-editor-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px 14px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-medium);
+  background: var(--surface);
+  text-align: center;
+}
+
+.student-editor-empty p {
+  margin: 0;
+  max-width: 34ch;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
 .student-editor-card {
   display: grid;
   gap: 10px;

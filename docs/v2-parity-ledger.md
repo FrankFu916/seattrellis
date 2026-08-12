@@ -58,7 +58,7 @@ Rust 侧：`crates/seattrellis-cli`（手写参数解析，无 clap）在 `0057a
 | `edit` | cli.py:451-505 → `edit_snapshot` service.py:764 | 9 种操作 kind、`--operations-file/--strict` | Rust CLI 无；server 有 editing 协议路径 | `RUST_PARTIAL` |
 | `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | Rust CLI `repair`；**空座锁已实现（§19.18，reserved_empty_seats 镜像）**；saved-lock 语义仍待对齐 | `RUST_PARTIAL` |
 | `history-report` | cli.py:593-611 → `run_history_report` service.py:969 | `--history(-dir)` | Rust CLI `history-report`；**CLI stdout/exit golden（§19.18）+ Python exit 语义对照**；warning 细节仍待全参数 golden | `RUST_PARITY_PENDING` |
-| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | Rust CLI `pair-report`；**CLI stdout/exit golden（§19.18）+ Python exit 语义对照** | `RUST_PARITY_PENDING` |
+| `pair-report` | cli.py:613-635 → `run_pair_report` service.py:990 | `--top/--within-distance` | Rust CLI `pair-report`；**CLI stdout golden `fixtures/cli-goldens/pair-report.json`（§19.18，21/21 0 mismatch）+ Python exit 语义对照** | `RUST_VERIFIED` |
 | `project-init` | cli.py:637-658 → `project_init` service.py:1029 | 默认项目文件 `seattrellis.project.json` | Rust CLI `project-init`（校验 students.csv/layout.json/rules.json 存在后写 workspace）；参数/输出契约无 golden | `RUST_PARTIAL` |
 | `project-list` | cli.py:660-673 → `project_bundle.list_recent_projects` | `--root/--limit` | Rust CLI `project-list`（io `list_projects_json`）；输出 golden 未对齐 | `RUST_PARTIAL` |
 | `project-privacy` | cli.py:675-684 → `project_bundle.scan_project_privacy` | `--include-outputs` | Rust CLI `project-privacy`（io fail-closed scan）；`--include-outputs` 与 scan/export 契约未 golden 对齐 | `RUST_PARTIAL` |
@@ -79,8 +79,8 @@ Rust 侧：`crates/seattrellis-cli`（手写参数解析，无 clap）在 `0057a
 | `presets list` | cli.py:128-130 | 无 | 规则模板价值由 D3 句式模板承接；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
 | `presets show <preset>` | cli.py:132-136 | 位置参数 | 同上 | `INTENTIONALLY_REMOVED_V2` |
 | `presets export <preset>` | cli.py:138-145 | `--output` | 同上 | `INTENTIONALLY_REMOVED_V2` |
-| `schema list` | cli.py:147-149 | 无 | Rust CLI `schema-list`；**CLI stdout golden（§19.18）** | `RUST_PARITY_PENDING` |
-| `schema export` | cli.py:151-165 | `--output-dir` | Rust CLI `schema-export`；**CLI stdout golden（§19.18）** | `RUST_PARITY_PENDING` |
+| `schema list` | cli.py:147-149 | 无 | Rust CLI `schema-list`；**CLI stdout golden `fixtures/cli-goldens/schema-list.json`（§19.18，21/21 0 mismatch）** | `RUST_VERIFIED` |
+| `schema export` | cli.py:151-165 | `--output-dir` | Rust CLI `schema-export`；**CLI stdout golden `fixtures/cli-goldens/schema-export.json`（§19.18，21/21 0 mismatch）** | `RUST_VERIFIED` |
 | `schema migrate` | cli.py:167-189 → `schema_migration.migrate_json_file` | `--input/--output/--in-place/--dry-run/--backup` | Rust CLI `schema-migrate`（`seattrellis-schema::migrate_v1_to_v2`，§19.12） | `RUST_PARTIAL` |
 
 ### 1.3 `seattrellis-desktop`（独立 argparse）
@@ -1395,6 +1395,23 @@ PDF、PNG 解码和 PowerPoint 独立渲染均可见；XLSX/DOCX 由独立 reade
 确认姓名及字体声明。当前 LibreOffice 验证环境连最小 `python-docx` 中文
 文档也无法渲染中文，故不将其空白结果作为 SeatTrellis renderer 失败证据，
 后续 Windows Word/Excel dogfood 仍保留为发布前平台验收项。
+
+### 19.29 2026-08-12：阶段 D2/D3/D4 收口（dogfood 冻结 + parity 升级 + alpha 退出对照）
+
+**D2 dogfood（G-4，`2026-08-12-dogfood-closure.md`）**：导出默认值
+冻结（默认模板 teacher、默认格式 print-html、A4 横向自动缩放、public
+强制匿名，证据=E2E 断言 + §19.26/19.27 实测）；打印字号算法验证
+（最长姓名→统一字号、24pt 上限/8pt 下限/截断）；**补齐 D10 示例
+名单一键使用入口**（空名单空状态 + 按钮，StudentRosterEditor
+`onUseDemo`，154 vitest）；B1–B8 关键交互目检矩阵（E2E 证据为主）。
+**D3 parity 升级**（§19.18 CLI golden 21/21 0 mismatch 为证据）：
+`pair-report`、`schema list`、`schema export` 由 RUST_PARITY_PENDING
+→ `RUST_VERIFIED`（golden 文件已登记）。
+**D4 §8.3 对照（`2026-08-12-alpha-exit-check.md`）**：条件 2（Rust-only
+E2E 4/4）、3（schema round-trip）、4（Python 仅 oracle/test）**达成**；
+条件 1（无 RUST_PARTIAL 必须项）**未达**——CLI doctor/validate/edit/
+repair/history-report 与 project-* 的缺口登记为 **alpha.2**（§8.2
+parity gap 清单 + 发布前平台验收项）。**alpha.1 默认路径收口达成**。
 
 ### 19.28 2026-08-12：阶段 D1（alpha.1 主流程 E2E 扩展 + 暴露的三处真实 bug 修复）
 

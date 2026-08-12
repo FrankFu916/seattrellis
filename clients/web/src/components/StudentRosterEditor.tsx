@@ -7,6 +7,8 @@ type StudentRosterEditorProps = {
   students: Student[];
   t: Translate;
   onChange: (students: Student[]) => void;
+  /** D10: load the built-in sample roster from an empty editor. */
+  onUseDemo?: () => void;
 };
 
 export function rosterIsValid(students: Student[]): boolean {
@@ -55,6 +57,7 @@ export function StudentRosterEditor({
   students,
   t,
   onChange,
+  onUseDemo,
 }: StudentRosterEditorProps) {
   const [showDetails, setShowDetails] = useState(false);
   const invalidRows = useMemo(() => {
@@ -126,6 +129,22 @@ export function StudentRosterEditor({
           </button>
         </div>
       </div>
+
+      {students.length === 0 ? (
+        <div className="student-editor-empty" role="status">
+          <p>{t("studentEditor.emptyHint")}</p>
+          {onUseDemo ? (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onUseDemo}
+              data-testid="student-editor-use-demo"
+            >
+              {t("action.useDemo")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="student-editor-table" role="table" data-detailed={showDetails}>
         <div className={`student-editor-row student-editor-header ${showDetails ? "is-detailed" : "is-compact"}`} role="row">

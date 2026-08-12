@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Student } from "../api/types";
 import { createTranslator } from "../i18n/messages";
@@ -55,5 +55,22 @@ describe("StudentRosterEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "Remove Bob" }));
     expect(screen.queryByRole("button", { name: "Remove Bob" })).not.toBeInTheDocument();
+  });
+
+  it("offers the sample roster when the list is empty (D10)", async () => {
+    const user = userEvent.setup();
+    const onUseDemo = vi.fn();
+    render(
+      <StudentRosterEditor
+        students={[]}
+        t={createTranslator("zh-CN")}
+        onChange={vi.fn()}
+        onUseDemo={onUseDemo}
+      />,
+    );
+
+    expect(screen.getByText(/名单为空/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "使用示例名单" }));
+    expect(onUseDemo).toHaveBeenCalledTimes(1);
   });
 });

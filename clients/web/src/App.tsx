@@ -1259,6 +1259,27 @@ export function App() {
     switchView("room");
   }
 
+  /** D10: fill an empty roster with the built-in sample roster. */
+  function handleUseSampleRoster() {
+    setStudents(demoStudents);
+    setRevision((prev) => prev + 1);
+    setSelectedFileName(null);
+    setHistory([]);
+    setEditorDraftId(null);
+    setEditorRevision(0);
+    setEditorUndoDepth(0);
+    setEditorRedoDepth(0);
+    setAssignments(
+      createSeatAssignments(4, 5, demoStudents, demoStudents.length),
+    );
+    setSelectedSeatId(null);
+    setGroups([]);
+    setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
+    setCandidateMetas([]);
+  }
+
   function handleStudentsEdited(editedStudents: Student[]) {
     setStudents(editedStudents);
     setRevision((prev) => prev + 1);
@@ -1431,6 +1452,7 @@ export function App() {
                       students={students}
                       t={t}
                       onChange={handleStudentsEdited}
+                      onUseDemo={handleUseSampleRoster}
                     />
                     <details
                       className="roster-import-disclosure"
