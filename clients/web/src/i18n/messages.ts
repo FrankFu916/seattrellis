@@ -592,7 +592,7 @@ const zh = {
   "canvas.empty": "空位",
   "canvas.seatLabel": "第 {row} 排第 {column} 座，{student}{locked}",
   "canvas.locked": "，已锁定",
-  "canvas.help": "可用 Tab 选择座位，按回车进行调整。",
+  "canvas.help": "可用 Tab 选择座位，按回车进行调整；{mod}Z 撤销，{mod}+Shift+Z 重做。",
   "canvas.viewLabel": "座位视图",
   "canvas.viewCanvas": "画布",
   "canvas.viewTable": "表格",
@@ -1424,7 +1424,7 @@ const en: Record<MessageKey, string> = {
   "canvas.seatLabel":
     "Row {row}, seat {column}, {student}{locked}",
   "canvas.locked": ", locked",
-  "canvas.help": "Use Tab to reach a seat, then press Enter to adjust it.",
+  "canvas.help": "Use Tab to reach a seat, then press Enter to adjust it. {mod}Z undoes, {mod}+Shift+Z redoes.",
   "canvas.viewLabel": "Seating view",
   "canvas.viewCanvas": "Canvas",
   "canvas.viewTable": "Table",

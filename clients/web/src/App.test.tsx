@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EditorState } from "./api/types";
-import { editorToPlan } from "./App";
+import { editorToPlan, isEditableTarget } from "./App";
 
 function sampleEditor(): EditorState {
   return {
@@ -50,5 +50,23 @@ describe("editorToPlan", () => {
       { id: "S1", name: "Alice" },
       { id: "S2", name: "Bob" },
     ]);
+  });
+});
+
+describe("isEditableTarget (C2: native text undo must win in form controls)", () => {
+  it("is true for inputs, textareas, selects and contenteditable", () => {
+    for (const tag of ["INPUT", "TEXTAREA", "SELECT"]) {
+      const element = document.createElement(tag);
+      expect(isEditableTarget(element)).toBe(true);
+    }
+    const editable = document.createElement("div");
+    editable.contentEditable = "true";
+    expect(isEditableTarget(editable)).toBe(true);
+  });
+
+  it("is false for plain elements and non-elements", () => {
+    expect(isEditableTarget(document.createElement("button"))).toBe(false);
+    expect(isEditableTarget(document.createElement("svg"))).toBe(false);
+    expect(isEditableTarget(null)).toBe(false);
   });
 });

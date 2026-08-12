@@ -9,6 +9,7 @@ import {
   seatsInBox,
   type CanvasGeometry,
 } from "../domain/canvasEdit";
+import { platformModifierLabel } from "../domain/desktop";
 
 type DragState =
   | {
@@ -402,7 +403,9 @@ export function SeatingCanvas({
             {!interactive ? (
               <>
                 <title id="seating-canvas-title">{t("canvas.title")}</title>
-                <desc id="seating-canvas-description">{t("canvas.help")}</desc>
+                <desc id="seating-canvas-description">
+                  {t("canvas.help", { mod: platformModifierLabel() })}
+                </desc>
               </>
             ) : null}
             <g className="teacher-desk" aria-hidden="true">
@@ -561,7 +564,7 @@ export function SeatingCanvas({
       </div>
       {interactive ? (
         <p className="canvas-help" aria-hidden="true">
-          {t("canvas.help")}
+          {t("canvas.help", { mod: platformModifierLabel() })}
         </p>
       ) : null}
     </div>

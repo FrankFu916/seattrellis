@@ -23,6 +23,23 @@ export function isTauriDesktop(): boolean {
   );
 }
 
+/** macOS detection for platform-adaptive chrome (design direction §5). */
+export function isMacOS(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    /Macintosh|Mac OS X|MacIntel/i.test(navigator.userAgent) &&
+    !/Windows|Linux/i.test(navigator.userAgent)
+  );
+}
+
+/**
+ * The platform's primary shortcut modifier, for hint text: `⌘` on macOS,
+ * `Ctrl` elsewhere (design direction §5: browser cannot probe → Ctrl).
+ */
+export function platformModifierLabel(): string {
+  return isMacOS() ? "⌘" : "Ctrl";
+}
+
 /**
  * Validate a manually typed path for the trusted-root reader.
  *

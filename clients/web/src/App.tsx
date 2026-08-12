@@ -265,6 +265,23 @@ export function editorToPlan(editor: EditorState): {
   return { students, assignments };
 }
 
+/**
+ * Whether a keyboard event target is a form control. Global shortcuts
+ * (Cmd/Ctrl+Z undo) must not swallow the platform's native text editing
+ * while the teacher is typing in an input, textarea or select (C2).
+ */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return (
+    target.contentEditable === "true" ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
+
 export function App() {
   const [locale, setLocale] = useState<Locale>(getInitialLocale);
   const [theme, setTheme] = useState<ThemeName>(getInitialTheme);
@@ -387,8 +404,13 @@ export function App() {
   }, [editorDraftId, editorRevision]);
 
   // Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z and Cmd/Ctrl+Y redo (design §6).
+  // The combo is ignored while typing in a form control so the platform's
+  // native text undo keeps working inside editors (C2 platform adaptation).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) {
         return;
       }
