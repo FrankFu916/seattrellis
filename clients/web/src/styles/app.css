@@ -3148,6 +3148,9 @@ input:focus-visible,
     linear-gradient(var(--canvas-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px);
   background-size: 22px 22px;
+  /* The canvas is pointer-event driven (mouse, pen and touch alike); on a
+     tablet the gesture must move seats, not scroll the page (C3). */
+  touch-action: none;
 }
 
 .teacher-desk rect {

@@ -7,6 +7,7 @@ import type {
 } from "../api/types";
 import {
   CANVAS_GEOMETRY,
+  nextCanvasZoom,
   planBatchLock,
   planBatchMove,
   seatAtPoint,
@@ -147,5 +148,17 @@ describe("planBatchMove", () => {
         "R2C1",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("nextCanvasZoom (C3: Ctrl+wheel / trackpad pinch)", () => {
+  it("zooms in on negative deltaY and out on positive", () => {
+    expect(nextCanvasZoom(1, -50)).toBe(1.2);
+    expect(nextCanvasZoom(1, 50)).toBe(0.8);
+  });
+
+  it("clamps to the shared bounds", () => {
+    expect(nextCanvasZoom(1.8, -50)).toBe(1.8);
+    expect(nextCanvasZoom(0.6, 50)).toBe(0.6);
   });
 });

@@ -1,3 +1,8 @@
+import {
+  CANVAS_ZOOM_MAX,
+  CANVAS_ZOOM_MIN,
+  CANVAS_ZOOM_STEP,
+} from "../domain/canvasEdit";
 import type { Translate } from "../i18n/messages";
 
 export type CanvasView = "canvas" | "table";
@@ -61,7 +66,7 @@ export function SeatingToolbar({
         <button
           type="button"
           aria-label={t("canvas.zoomOut")}
-          onClick={() => onZoomChange(Math.max(0.6, zoom - 0.2))}
+          onClick={() => onZoomChange(Math.max(CANVAS_ZOOM_MIN, zoom - CANVAS_ZOOM_STEP))}
         >
           −
         </button>
@@ -69,7 +74,7 @@ export function SeatingToolbar({
         <button
           type="button"
           aria-label={t("canvas.zoomIn")}
-          onClick={() => onZoomChange(Math.min(1.8, zoom + 0.2))}
+          onClick={() => onZoomChange(Math.min(CANVAS_ZOOM_MAX, zoom + CANVAS_ZOOM_STEP))}
         >
           +
         </button>

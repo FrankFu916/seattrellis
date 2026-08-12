@@ -163,3 +163,14 @@ export function planBatchMove(
     },
   ];
 }
+
+/** Canvas zoom bounds shared by the toolbar buttons and Ctrl+wheel/pinch. */
+export const CANVAS_ZOOM_MIN = 0.6;
+export const CANVAS_ZOOM_MAX = 1.8;
+export const CANVAS_ZOOM_STEP = 0.2;
+
+/** Clamp the next zoom level; positive `deltaY` (scroll down) zooms out. */
+export function nextCanvasZoom(current: number, deltaY: number): number {
+  const step = deltaY < 0 ? CANVAS_ZOOM_STEP : -CANVAS_ZOOM_STEP;
+  return Math.min(CANVAS_ZOOM_MAX, Math.max(CANVAS_ZOOM_MIN, current + step));
+}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { SeatAssignment, Student } from "../api/types";
+import { nextCanvasZoom } from "../domain/canvasEdit";
 import type { Translate } from "../i18n/messages";
 import { SeatingCanvas } from "./SeatingCanvas";
 import { SeatingTable } from "./SeatingTable";
@@ -98,40 +99,54 @@ export function SeatingCanvasEditor({
         onUndo={onUndo}
         onRedo={onRedo}
       />
-      {view === "canvas" ? (
-        <SeatingCanvas
-          assignments={assignments}
-          selectedSeatIds={selectedSeatIds}
-          zoom={zoom}
-          t={t}
-          onSeatActivate={onSeatActivate}
-          onSelectChange={setSelectedSeatIds}
-          onSwap={handleSwap}
-          onBatchMove={onBatchMove}
-          diagnosticBadges={diagnosticBadges}
-          focusSeatId={focusSeatId}
-          onDiagnosticClick={onDiagnosticClick}
-          onStatus={notify}
-        />
-      ) : (
-        <SeatingTable
-          assignments={assignments}
-          students={students}
-          t={t}
-          onAssign={onAssign}
-        />
-      )}
-      <div className="canvas-status" aria-live="polite">
-        <span className="canvas-status-text">
-          {status ??
-            (selectedSeatIds.length > 0
-              ? t("canvas.statusSelected", {
-                  count: selectedSeatIds.length,
-                  locked: lockedSelected,
-                })
-              : t("canvas.statusReady"))}
-        </span>
-        <span className="canvas-status-meta">{t("canvas.syncHint")}</span>
+      <div
+        className="canvas-zoom-target"
+        onWheel={(event) => {
+          // Ctrl+wheel zooms the canvas: on macOS the trackpad pinch maps
+          // to this exact event, so one handler covers the trackpad gesture
+          // (design §5) and Windows/Linux Ctrl+wheel alike.
+          if (!event.ctrlKey) {
+            return;
+          }
+          event.preventDefault();
+          setZoom((current) => nextCanvasZoom(current, event.deltaY));
+        }}
+      >
+        {view === "canvas" ? (
+          <SeatingCanvas
+            assignments={assignments}
+            selectedSeatIds={selectedSeatIds}
+            zoom={zoom}
+            t={t}
+            onSeatActivate={onSeatActivate}
+            onSelectChange={setSelectedSeatIds}
+            onSwap={handleSwap}
+            onBatchMove={onBatchMove}
+            diagnosticBadges={diagnosticBadges}
+            focusSeatId={focusSeatId}
+            onDiagnosticClick={onDiagnosticClick}
+            onStatus={notify}
+          />
+        ) : (
+          <SeatingTable
+            assignments={assignments}
+            students={students}
+            t={t}
+            onAssign={onAssign}
+          />
+        )}
+        <div className="canvas-status" aria-live="polite">
+          <span className="canvas-status-text">
+            {status ??
+              (selectedSeatIds.length > 0
+                ? t("canvas.statusSelected", {
+                    count: selectedSeatIds.length,
+                    locked: lockedSelected,
+                  })
+                : t("canvas.statusReady"))}
+          </span>
+          <span className="canvas-status-meta">{t("canvas.syncHint")}</span>
+        </div>
       </div>
     </div>
   );
