@@ -365,8 +365,10 @@ pub fn pair_report_json(
                     *pair.relation_counts.entry(relation.clone()).or_default() += 1;
                     *relation_totals.entry(relation.clone()).or_default() += 1;
                 }
-                let row_delta = (first_seat.row - second_seat.row).unsigned_abs();
-                let col_delta = (first_seat.col - second_seat.col).unsigned_abs();
+                // Deltas in i64: the i32 subtraction of saturated extreme
+                // coordinates would overflow (debug panic).
+                let row_delta = (i64::from(first_seat.row) - i64::from(second_seat.row)).unsigned_abs();
+                let col_delta = (i64::from(first_seat.col) - i64::from(second_seat.col)).unsigned_abs();
                 pair.records.push(json!({
                     "snapshot_index": snapshot_index,
                     "first_seat_id": first_seat_id,

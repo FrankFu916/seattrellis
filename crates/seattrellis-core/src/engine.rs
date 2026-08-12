@@ -1225,6 +1225,22 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
             if !student_keys.insert(student.key.as_str()) {
                 return Err(format!("duplicate student key: {:?}", student.key));
             }
+            // `student_scores` above is already finiteness-checked; the
+            // richer student records must be held to the same contract, or a
+            // NaN/inf score silently propagates NaN costs and percentiles
+            // into the response (serializing as JSON null).
+            if student.score.is_some_and(|score| !score.is_finite()) {
+                return Err(format!(
+                    "invalid student {:?} score: must be a finite number",
+                    student.key
+                ));
+            }
+            if student.height_cm.is_some_and(|height| !height.is_finite()) {
+                return Err(format!(
+                    "invalid student {:?} height_cm: must be a finite number",
+                    student.key
+                ));
+            }
         }
     }
     if !request.student_scores.is_empty() && request.student_scores.len() != request.student_count {

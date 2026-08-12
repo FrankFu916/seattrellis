@@ -337,7 +337,9 @@ pub fn score_assignment_json(
                 };
                 let seat = &ctx.layout.seats[*seat];
                 let height_position = (height - min_height) / (max_height - min_height);
-                let row_position = (seat.row - min_row) as f64 / (max_row - min_row) as f64;
+                // Row deltas in f64: the i32 subtraction of saturated extreme
+                // coordinates would overflow (debug panic) before the cast.
+                let row_position = (seat.row as f64 - min_row as f64) / (max_row as f64 - min_row as f64);
                 errors.push((height_position - row_position).abs());
             }
             if errors.is_empty() {
@@ -383,7 +385,8 @@ pub fn score_assignment_json(
                 let normalized = if min_row == max_row {
                     0.0
                 } else {
-                    (seat.row - min_row) as f64 / (max_row - min_row) as f64
+                    // Row deltas in f64 (overflow-safe for saturated extremes).
+                    (seat.row as f64 - min_row as f64) / (max_row as f64 - min_row as f64)
                 };
                 positions.push(normalized);
             }

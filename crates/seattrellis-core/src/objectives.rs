@@ -618,7 +618,10 @@ fn relation_satisfied(
         _ => return false,
     };
     match relation {
-        PairRelation::DeskMate => first.row == second.row && (first.col - second.col).abs() == 1,
+        PairRelation::DeskMate => {
+            first.row == second.row
+                && (i64::from(first.col) - i64::from(second.col)).abs() == 1
+        }
         PairRelation::AdjacentAny => {
             let edge = normalize_edge(&first.seat_id, &second.seat_id);
             context.adjacency_edges.contains(&edge)
@@ -670,24 +673,28 @@ fn are_adjacent(first: &Seat, second: &Seat, config: &AdjacencyConfig) -> bool {
         return if config.use_xy_distance {
             seat_distance(first, second) <= max_distance
         } else {
-            let row_col_distance = ((first.row - second.row).pow(2) as f64
-                + (first.col - second.col).pow(2) as f64)
+            // Row/col deltas in f64: i32 subtraction of saturated extreme
+            // coordinates would overflow (debug panic) and `.pow(2)` on the
+            // i32 difference would overflow the square before the cast.
+            let row_col_distance = ((first.row as f64 - second.row as f64).powi(2)
+                + (first.col as f64 - second.col as f64).powi(2))
                 .sqrt();
             row_col_distance <= max_distance
         };
     }
-    let row_delta = (first.row - second.row).abs();
-    let col_delta = (first.col - second.col).abs();
-    if row_delta == 0 && 0 < col_delta && col_delta <= config.max_col_delta {
+    // Deltas in i64 for overflow safety with saturated extreme coordinates.
+    let row_delta = (i64::from(first.row) - i64::from(second.row)).abs();
+    let col_delta = (i64::from(first.col) - i64::from(second.col)).abs();
+    if row_delta == 0 && 0 < col_delta && col_delta <= i64::from(config.max_col_delta) {
         return config.include_horizontal;
     }
-    if col_delta == 0 && 0 < row_delta && row_delta <= config.max_row_delta {
+    if col_delta == 0 && 0 < row_delta && row_delta <= i64::from(config.max_row_delta) {
         return config.include_vertical;
     }
     if row_delta != 0 && col_delta != 0 {
         return config.include_diagonal
-            && row_delta <= config.max_row_delta
-            && col_delta <= config.max_col_delta;
+            && row_delta <= i64::from(config.max_row_delta)
+            && col_delta <= i64::from(config.max_col_delta);
     }
     false
 }

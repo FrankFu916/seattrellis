@@ -96,14 +96,29 @@ pub fn individual_cost(
 ) -> i64 {
     let mut cost: i64 = 0;
     if rules.soft.vision_front.enabled && student_needs_front(student) {
-        cost += i64::from(rules.soft.vision_front.weight) * i64::from(seat.row - min_row) * 100;
+        // Row deltas are computed in i64: user-controlled coordinates may
+        // saturate the i32 row/col casts, so the i32 subtraction itself can
+        // overflow (debug panic). Python's arbitrary-precision ints never
+        // overflow here; the i64 form matches for every representable row.
+        let row_offset = i64::from(seat.row) - i64::from(min_row);
+        cost = cost.saturating_add(
+            i64::from(rules.soft.vision_front.weight)
+                .saturating_mul(row_offset)
+                .saturating_mul(100),
+        );
     }
     if rules.soft.height_back.enabled {
         if let Some(height) = student.height_cm {
-            let front_penalty = max_row - seat.row;
-            cost += i64::from(rules.soft.height_back.weight)
-                * round_half_even(height)
-                * i64::from(front_penalty);
+            // A huge-but-finite height (e.g. 1e300) saturates to i64::MAX in
+            // `round_half_even`; the saturating chain keeps the product from
+            // overflowing (debug panic) while behaving identically for the
+            // realistic range.
+            let front_penalty = i64::from(max_row) - i64::from(seat.row);
+            cost = cost.saturating_add(
+                i64::from(rules.soft.height_back.weight)
+                    .saturating_mul(round_half_even(height))
+                    .saturating_mul(front_penalty),
+            );
         }
     }
     if rules.soft.randomize.enabled {
@@ -336,8 +351,11 @@ pub fn detect_neighbor_relation_types(
         return relations;
     }
 
-    let row_delta = (first_seat.row - second_seat.row).abs();
-    let col_delta = (first_seat.col - second_seat.col).abs();
+    // Row/col deltas in i64: extreme coordinates saturate the i32 row/col
+    // casts, so the i32 subtraction can overflow (debug panic). The i64 form
+    // matches Python's arbitrary-precision behavior for every row/col value.
+    let row_delta = (i64::from(first_seat.row) - i64::from(second_seat.row)).abs();
+    let col_delta = (i64::from(first_seat.col) - i64::from(second_seat.col)).abs();
 
     if row_delta == 0 && col_delta == 1 {
         relations.insert("horizontal".to_string());
@@ -365,7 +383,7 @@ pub fn detect_neighbor_relation_types(
         }
     }
 
-    if row_delta.max(col_delta) <= within_distance {
+    if row_delta.max(col_delta) <= i64::from(within_distance) {
         relations.insert("within_distance".to_string());
     }
     relations
@@ -423,18 +441,20 @@ fn are_adjacent(first: &Seat, second: &Seat, config: &AdjacencyConfig) -> bool {
         return distance <= max_distance;
     }
 
-    let row_delta = (first.row - second.row).abs();
-    let col_delta = (first.col - second.col).abs();
-    if row_delta == 0 && 0 < col_delta && col_delta <= config.max_col_delta {
+    // Deltas in i64 for overflow safety with saturated extreme coordinates
+    // (see `detect_neighbor_relation_types`).
+    let row_delta = (i64::from(first.row) - i64::from(second.row)).abs();
+    let col_delta = (i64::from(first.col) - i64::from(second.col)).abs();
+    if row_delta == 0 && 0 < col_delta && col_delta <= i64::from(config.max_col_delta) {
         return config.include_horizontal;
     }
-    if col_delta == 0 && 0 < row_delta && row_delta <= config.max_row_delta {
+    if col_delta == 0 && 0 < row_delta && row_delta <= i64::from(config.max_row_delta) {
         return config.include_vertical;
     }
     if row_delta != 0 && col_delta != 0 {
         return config.include_diagonal
-            && row_delta <= config.max_row_delta
-            && col_delta <= config.max_col_delta;
+            && row_delta <= i64::from(config.max_row_delta)
+            && col_delta <= i64::from(config.max_col_delta);
     }
     false
 }
