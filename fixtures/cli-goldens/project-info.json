@@ -1,5 +1,5 @@
 {
-  "stdout": "project:    <tmp>/proj/seattrellis.project.json\nname:       proj\nroot:       /private<tmp>/proj\nstudents   students.csv (ok)\nlayout     layout.json (ok)\nrules      rules.json (ok)\noutputs_dir: outputs\n",
+  "stdout": "project:    <tmp>/proj/seattrellis.project.json\nname:       proj\nroot:       <tmp>/proj\nstudents   students.csv (ok)\nlayout     layout.json (ok)\nrules      rules.json (ok)\noutputs_dir: outputs",
   "stderr": "",
   "exit": 0
 }

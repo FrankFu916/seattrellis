@@ -1,5 +1,5 @@
 {
-  "stdout": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 69\ntotal_cost: 10980\nstudents seated: 20\nstatus: Solved\n",
+  "stdout": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 69\ntotal_cost: 10980\nstudents seated: 20\nstatus: Solved",
   "stderr": "",
   "exit": 0
 }

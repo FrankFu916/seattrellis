@@ -1,0 +1,5 @@
+{
+  "stdout": "valid: true\nstudents: 20\nseats: 20\nhard rules: 0\nwarnings: 1\n- Preset \"daily\" is missing preferred history data. History-based preferences stay enabled but contribute no cost or score until snapshots are supplied.",
+  "stderr": "error: Warnings treated as errors by --strict:\n- Preset \"daily\" is missing preferred history data. History-based preferences stay enabled but contribute no cost or score until snapshots are supplied.\n",
+  "exit": 2
+}

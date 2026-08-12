@@ -6,17 +6,17 @@
       "student_name": "Student001"
     },
     {
-      "seat_id": "R16C5",
+      "seat_id": "R12C3",
       "student_key": "STU002",
       "student_name": "Student002"
     },
     {
-      "seat_id": "R15C5",
+      "seat_id": "R11C3",
       "student_key": "STU003",
       "student_name": "Student003"
     },
     {
-      "seat_id": "R15C1",
+      "seat_id": "R12C4",
       "student_key": "STU004",
       "student_name": "Student004"
     },
@@ -26,82 +26,82 @@
       "student_name": "Student005"
     },
     {
-      "seat_id": "R16C3",
+      "seat_id": "R12C5",
       "student_key": "STU006",
       "student_name": "Student006"
     },
     {
-      "seat_id": "R16C1",
+      "seat_id": "R12C1",
       "student_key": "STU007",
       "student_name": "Student007"
     },
     {
-      "seat_id": "R16C2",
+      "seat_id": "R11C2",
       "student_key": "STU008",
       "student_name": "Student008"
     },
     {
-      "seat_id": "R15C3",
+      "seat_id": "R12C2",
       "student_key": "STU009",
       "student_name": "Student009"
     },
     {
-      "seat_id": "R1C3",
+      "seat_id": "R1C2",
       "student_key": "STU010",
       "student_name": "Student010"
     },
     {
-      "seat_id": "R1C5",
+      "seat_id": "R1C3",
       "student_key": "STU011",
       "student_name": "Student011"
     },
     {
-      "seat_id": "R15C2",
+      "seat_id": "R11C4",
       "student_key": "STU012",
       "student_name": "Student012"
     },
     {
-      "seat_id": "R15C4",
+      "seat_id": "R11C1",
       "student_key": "STU013",
       "student_name": "Student013"
     },
     {
-      "seat_id": "R14C5",
+      "seat_id": "R11C5",
       "student_key": "STU014",
       "student_name": "Student014"
     },
     {
-      "seat_id": "R1C2",
+      "seat_id": "R2C1",
       "student_key": "STU015",
       "student_name": "Student015"
     },
     {
-      "seat_id": "R16C4",
+      "seat_id": "R10C4",
       "student_key": "STU016",
       "student_name": "Student016"
     },
     {
-      "seat_id": "R14C4",
+      "seat_id": "R10C3",
       "student_key": "STU017",
       "student_name": "Student017"
     },
     {
-      "seat_id": "R14C3",
+      "seat_id": "R10C1",
       "student_key": "STU018",
       "student_name": "Student018"
     },
     {
-      "seat_id": "R14C2",
+      "seat_id": "R10C5",
       "student_key": "STU019",
       "student_name": "Student019"
     },
     {
-      "seat_id": "R2C5",
+      "seat_id": "R1C5",
       "student_key": "STU020",
       "student_name": "Student020"
     },
     {
-      "seat_id": "R13C2",
+      "seat_id": "R9C5",
       "student_key": "STU021",
       "student_name": "Student021"
     },
@@ -111,87 +111,87 @@
       "student_name": "Student022"
     },
     {
-      "seat_id": "R14C1",
+      "seat_id": "R10C2",
       "student_key": "STU023",
       "student_name": "Student023"
     },
     {
-      "seat_id": "R13C1",
+      "seat_id": "R9C2",
       "student_key": "STU024",
       "student_name": "Student024"
     },
     {
-      "seat_id": "R2C1",
+      "seat_id": "R2C5",
       "student_key": "STU025",
       "student_name": "Student025"
     },
     {
-      "seat_id": "R13C5",
+      "seat_id": "R9C3",
       "student_key": "STU026",
       "student_name": "Student026"
     },
     {
-      "seat_id": "R13C4",
+      "seat_id": "R9C1",
       "student_key": "STU027",
       "student_name": "Student027"
     },
     {
-      "seat_id": "R12C2",
+      "seat_id": "R9C4",
       "student_key": "STU028",
       "student_name": "Student028"
     },
     {
-      "seat_id": "R13C3",
+      "seat_id": "R8C3",
       "student_key": "STU029",
       "student_name": "Student029"
     },
     {
-      "seat_id": "R3C1",
+      "seat_id": "R2C3",
       "student_key": "STU030",
       "student_name": "Student030"
     },
     {
-      "seat_id": "R12C4",
+      "seat_id": "R8C2",
       "student_key": "STU031",
       "student_name": "Student031"
     },
     {
-      "seat_id": "R12C5",
+      "seat_id": "R8C1",
       "student_key": "STU032",
       "student_name": "Student032"
     },
     {
-      "seat_id": "R2C2",
+      "seat_id": "R3C4",
       "student_key": "STU033",
       "student_name": "Student033"
     },
     {
-      "seat_id": "R12C1",
+      "seat_id": "R8C5",
       "student_key": "STU034",
       "student_name": "Student034"
     },
     {
-      "seat_id": "R2C3",
+      "seat_id": "R2C2",
       "student_key": "STU035",
       "student_name": "Student035"
     },
     {
-      "seat_id": "R11C4",
+      "seat_id": "R7C3",
       "student_key": "STU036",
       "student_name": "Student036"
     },
     {
-      "seat_id": "R12C3",
+      "seat_id": "R8C4",
       "student_key": "STU037",
       "student_name": "Student037"
     },
     {
-      "seat_id": "R11C1",
+      "seat_id": "R7C2",
       "student_key": "STU038",
       "student_name": "Student038"
     },
     {
-      "seat_id": "R11C3",
+      "seat_id": "R7C1",
       "student_key": "STU039",
       "student_name": "Student039"
     },
@@ -201,17 +201,17 @@
       "student_name": "Student040"
     },
     {
-      "seat_id": "R11C2",
+      "seat_id": "R7C5",
       "student_key": "STU041",
       "student_name": "Student041"
     },
     {
-      "seat_id": "R10C2",
+      "seat_id": "R6C2",
       "student_key": "STU042",
       "student_name": "Student042"
     },
     {
-      "seat_id": "R10C5",
+      "seat_id": "R7C4",
       "student_key": "STU043",
       "student_name": "Student043"
     },
@@ -221,27 +221,27 @@
       "student_name": "Student044"
     },
     {
-      "seat_id": "R4C1",
+      "seat_id": "R3C1",
       "student_key": "STU045",
       "student_name": "Student045"
     },
     {
-      "seat_id": "R10C1",
+      "seat_id": "R6C3",
       "student_key": "STU046",
       "student_name": "Student046"
     },
     {
-      "seat_id": "R10C4",
+      "seat_id": "R6C4",
       "student_key": "STU047",
       "student_name": "Student047"
     },
     {
-      "seat_id": "R9C4",
+      "seat_id": "R6C5",
       "student_key": "STU048",
       "student_name": "Student048"
     },
     {
-      "seat_id": "R11C5",
+      "seat_id": "R6C1",
       "student_key": "STU049",
       "student_name": "Student049"
     },
@@ -251,154 +251,54 @@
       "student_name": "Student050"
     },
     {
-      "seat_id": "R9C5",
+      "seat_id": "R5C5",
       "student_key": "STU051",
       "student_name": "Student051"
     },
     {
-      "seat_id": "R10C3",
+      "seat_id": "R5C1",
       "student_key": "STU052",
       "student_name": "Student052"
     },
     {
-      "seat_id": "R9C3",
+      "seat_id": "R5C3",
       "student_key": "STU053",
       "student_name": "Student053"
     },
     {
-      "seat_id": "R9C1",
+      "seat_id": "R5C2",
       "student_key": "STU054",
       "student_name": "Student054"
     },
     {
-      "seat_id": "R4C3",
+      "seat_id": "R3C3",
       "student_key": "STU055",
       "student_name": "Student055"
     },
     {
-      "seat_id": "R8C2",
+      "seat_id": "R4C1",
       "student_key": "STU056",
       "student_name": "Student056"
     },
     {
-      "seat_id": "R8C5",
+      "seat_id": "R5C4",
       "student_key": "STU057",
       "student_name": "Student057"
     },
     {
-      "seat_id": "R9C2",
+      "seat_id": "R4C3",
       "student_key": "STU058",
       "student_name": "Student058"
     },
     {
-      "seat_id": "R8C3",
+      "seat_id": "R4C2",
       "student_key": "STU059",
       "student_name": "Student059"
     },
     {
-      "seat_id": "R3C3",
+      "seat_id": "R4C5",
       "student_key": "STU060",
       "student_name": "Student060"
-    },
-    {
-      "seat_id": "R8C4",
-      "student_key": "STU061",
-      "student_name": "Student061"
-    },
-    {
-      "seat_id": "R7C1",
-      "student_key": "STU062",
-      "student_name": "Student062"
-    },
-    {
-      "seat_id": "R7C2",
-      "student_key": "STU063",
-      "student_name": "Student063"
-    },
-    {
-      "seat_id": "R7C3",
-      "student_key": "STU064",
-      "student_name": "Student064"
-    },
-    {
-      "seat_id": "R4C5",
-      "student_key": "STU065",
-      "student_name": "Student065"
-    },
-    {
-      "seat_id": "R4C2",
-      "student_key": "STU066",
-      "student_name": "Student066"
-    },
-    {
-      "seat_id": "R7C4",
-      "student_key": "STU067",
-      "student_name": "Student067"
-    },
-    {
-      "seat_id": "R8C1",
-      "student_key": "STU068",
-      "student_name": "Student068"
-    },
-    {
-      "seat_id": "R6C4",
-      "student_key": "STU069",
-      "student_name": "Student069"
-    },
-    {
-      "seat_id": "R5C2",
-      "student_key": "STU070",
-      "student_name": "Student070"
-    },
-    {
-      "seat_id": "R6C2",
-      "student_key": "STU071",
-      "student_name": "Student071"
-    },
-    {
-      "seat_id": "R7C5",
-      "student_key": "STU072",
-      "student_name": "Student072"
-    },
-    {
-      "seat_id": "R6C3",
-      "student_key": "STU073",
-      "student_name": "Student073"
-    },
-    {
-      "seat_id": "R6C5",
-      "student_key": "STU074",
-      "student_name": "Student074"
-    },
-    {
-      "seat_id": "R3C4",
-      "student_key": "STU075",
-      "student_name": "Student075"
-    },
-    {
-      "seat_id": "R5C1",
-      "student_key": "STU076",
-      "student_name": "Student076"
-    },
-    {
-      "seat_id": "R5C4",
-      "student_key": "STU077",
-      "student_name": "Student077"
-    },
-    {
-      "seat_id": "R5C3",
-      "student_key": "STU078",
-      "student_name": "Student078"
-    },
-    {
-      "seat_id": "R6C1",
-      "student_key": "STU079",
-      "student_name": "Student079"
-    },
-    {
-      "seat_id": "R5C5",
-      "student_key": "STU080",
-      "student_name": "Student080"
     }
   ],
   "layout": {
@@ -412,11 +312,11 @@
       "max_row_delta": 1,
       "use_xy_distance": true
     },
-    "layout_id": "p80-rect-exact-dense",
+    "layout_id": "p60-rect-exact-dense",
     "metadata": {
       "platform": "front"
     },
-    "name": "Parity p80-rect-exact-dense",
+    "name": "Parity p60-rect-exact-dense",
     "seats": [
       {
         "attributes": {},
@@ -592,7 +492,7 @@
         "tags": [],
         "x": 1.0,
         "y": 3.0,
-        "zone": "front"
+        "zone": "middle"
       },
       {
         "attributes": {},
@@ -608,7 +508,7 @@
         "tags": [],
         "x": 2.0,
         "y": 3.0,
-        "zone": "front"
+        "zone": "middle"
       },
       {
         "attributes": {},
@@ -624,7 +524,7 @@
         "tags": [],
         "x": 3.0,
         "y": 3.0,
-        "zone": "front"
+        "zone": "middle"
       },
       {
         "attributes": {},
@@ -640,7 +540,7 @@
         "tags": [],
         "x": 4.0,
         "y": 3.0,
-        "zone": "front"
+        "zone": "middle"
       },
       {
         "attributes": {},
@@ -656,7 +556,7 @@
         "tags": [],
         "x": 5.0,
         "y": 3.0,
-        "zone": "front"
+        "zone": "middle"
       },
       {
         "attributes": {},
@@ -1232,7 +1132,7 @@
         "tags": [],
         "x": 1.0,
         "y": 11.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1248,7 +1148,7 @@
         "tags": [],
         "x": 2.0,
         "y": 11.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1264,7 +1164,7 @@
         "tags": [],
         "x": 3.0,
         "y": 11.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1280,7 +1180,7 @@
         "tags": [],
         "x": 4.0,
         "y": 11.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1296,7 +1196,7 @@
         "tags": [],
         "x": 5.0,
         "y": 11.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1312,7 +1212,7 @@
         "tags": [],
         "x": 1.0,
         "y": 12.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1328,7 +1228,7 @@
         "tags": [],
         "x": 2.0,
         "y": 12.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1344,7 +1244,7 @@
         "tags": [],
         "x": 3.0,
         "y": 12.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1360,7 +1260,7 @@
         "tags": [],
         "x": 4.0,
         "y": 12.0,
-        "zone": "middle"
+        "zone": "back"
       },
       {
         "attributes": {},
@@ -1376,326 +1276,6 @@
         "tags": [],
         "x": 5.0,
         "y": 12.0,
-        "zone": "middle"
-      },
-      {
-        "attributes": {},
-        "col": 1,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": true,
-        "row": 13,
-        "seat_id": "R13C1",
-        "tags": [],
-        "x": 1.0,
-        "y": 13.0,
-        "zone": "middle"
-      },
-      {
-        "attributes": {},
-        "col": 2,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 13,
-        "seat_id": "R13C2",
-        "tags": [],
-        "x": 2.0,
-        "y": 13.0,
-        "zone": "middle"
-      },
-      {
-        "attributes": {},
-        "col": 3,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 13,
-        "seat_id": "R13C3",
-        "tags": [],
-        "x": 3.0,
-        "y": 13.0,
-        "zone": "middle"
-      },
-      {
-        "attributes": {},
-        "col": 4,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 13,
-        "seat_id": "R13C4",
-        "tags": [],
-        "x": 4.0,
-        "y": 13.0,
-        "zone": "middle"
-      },
-      {
-        "attributes": {},
-        "col": 5,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": true,
-        "near_platform": false,
-        "near_window": false,
-        "row": 13,
-        "seat_id": "R13C5",
-        "tags": [],
-        "x": 5.0,
-        "y": 13.0,
-        "zone": "middle"
-      },
-      {
-        "attributes": {},
-        "col": 1,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": true,
-        "row": 14,
-        "seat_id": "R14C1",
-        "tags": [],
-        "x": 1.0,
-        "y": 14.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 2,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 14,
-        "seat_id": "R14C2",
-        "tags": [],
-        "x": 2.0,
-        "y": 14.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 3,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 14,
-        "seat_id": "R14C3",
-        "tags": [],
-        "x": 3.0,
-        "y": 14.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 4,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 14,
-        "seat_id": "R14C4",
-        "tags": [],
-        "x": 4.0,
-        "y": 14.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 5,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": true,
-        "near_platform": false,
-        "near_window": false,
-        "row": 14,
-        "seat_id": "R14C5",
-        "tags": [],
-        "x": 5.0,
-        "y": 14.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 1,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": true,
-        "row": 15,
-        "seat_id": "R15C1",
-        "tags": [],
-        "x": 1.0,
-        "y": 15.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 2,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 15,
-        "seat_id": "R15C2",
-        "tags": [],
-        "x": 2.0,
-        "y": 15.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 3,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 15,
-        "seat_id": "R15C3",
-        "tags": [],
-        "x": 3.0,
-        "y": 15.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 4,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 15,
-        "seat_id": "R15C4",
-        "tags": [],
-        "x": 4.0,
-        "y": 15.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 5,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": true,
-        "near_platform": false,
-        "near_window": false,
-        "row": 15,
-        "seat_id": "R15C5",
-        "tags": [],
-        "x": 5.0,
-        "y": 15.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 1,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": true,
-        "row": 16,
-        "seat_id": "R16C1",
-        "tags": [],
-        "x": 1.0,
-        "y": 16.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 2,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 16,
-        "seat_id": "R16C2",
-        "tags": [],
-        "x": 2.0,
-        "y": 16.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 3,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 16,
-        "seat_id": "R16C3",
-        "tags": [],
-        "x": 3.0,
-        "y": 16.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 4,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": false,
-        "near_platform": false,
-        "near_window": false,
-        "row": 16,
-        "seat_id": "R16C4",
-        "tags": [],
-        "x": 4.0,
-        "y": 16.0,
-        "zone": "back"
-      },
-      {
-        "attributes": {},
-        "col": 5,
-        "enabled": true,
-        "group_id": null,
-        "near_ac": false,
-        "near_door": true,
-        "near_platform": false,
-        "near_window": false,
-        "row": 16,
-        "seat_id": "R16C5",
-        "tags": [],
-        "x": 5.0,
-        "y": 16.0,
         "zone": "back"
       }
     ]
@@ -1703,8 +1283,8 @@
   "metadata": {
     "candidate_id": "candidate_01",
     "fairness": {
-      "avoid_recent_neighbors_enabled": false,
-      "cooling_enabled": false,
+      "avoid_recent_neighbors_enabled": true,
+      "cooling_enabled": true,
       "cooling_period": 3,
       "cooling_relation_types": [
         "desk_mate",
@@ -1720,14 +1300,21 @@
     "version": "1.8.4"
   },
   "metrics": {
-    "attempt_limit": 960,
-    "attempts": 960,
+    "attempt_limit": 720,
+    "attempts": 720,
     "fairness": {
-      "avoid_recent_neighbors_enabled": false,
-      "cooling_enabled": false,
+      "avoid_recent_neighbors_enabled": true,
+      "cooling_enabled": true,
+      "cooling_period": 3,
+      "cooling_relation_types": [
+        "desk_mate",
+        "adjacent_any"
+      ],
+      "cooling_within_distance": 2,
       "enabled_rules": [],
       "fair_rotation_enabled": false,
       "history_count": 0,
+      "message": "avoid_recent_neighbors is enabled but no pair history was available; the rule was inactive.",
       "pair_history_count": 0
     },
     "mentor_pairs": [],
@@ -1738,7 +1325,7 @@
     "stopped_by_time_limit": false,
     "time_limit_seconds": 1800.0
   },
-  "objective_value": 180573.40000000002,
+  "objective_value": 97153.1,
   "rules": {
     "groups": [
       {
@@ -1805,7 +1392,7 @@
       ]
     },
     "schema_version": 1,
-    "seed": 235887,
+    "seed": 52953,
     "soft": {
       "avoid_recent_neighbors": {
         "enabled": false,
@@ -1820,7 +1407,7 @@
       },
       "cooling": {
         "cooling_period": 3,
-        "enabled": false,
+        "enabled": true,
         "relation_types": [
           "desk_mate",
           "adjacent_any"
@@ -1880,19 +1467,19 @@
     }
   },
   "schema_version": "1.0",
-  "seed": 235887,
+  "seed": 52953,
   "solver_status": "FEASIBLE",
   "students": [
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 169.0,
+      "height_cm": 189.0,
       "name": "Student001",
       "needs": [
         "vision_front"
       ],
       "notes": null,
-      "score": 92.6,
+      "score": 96.4,
       "student_id": "STU001",
       "tags": [
         "leader"
@@ -1902,11 +1489,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 147.0,
+      "height_cm": 182.0,
       "name": "Student002",
       "needs": [],
       "notes": null,
-      "score": 60.5,
+      "score": 58.2,
       "student_id": "STU002",
       "tags": [],
       "vision": null
@@ -1914,11 +1501,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 184.0,
+      "height_cm": 137.0,
       "name": "Student003",
       "needs": [],
       "notes": null,
-      "score": 91.7,
+      "score": 99.1,
       "student_id": "STU003",
       "tags": [],
       "vision": null
@@ -1926,11 +1513,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 138.0,
+      "height_cm": 173.0,
       "name": "Student004",
       "needs": [],
       "notes": null,
-      "score": 70.6,
+      "score": 79.0,
       "student_id": "STU004",
       "tags": [],
       "vision": null
@@ -1938,11 +1525,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 153.0,
+      "height_cm": 148.0,
       "name": "Student005",
       "needs": [],
       "notes": null,
-      "score": 87.9,
+      "score": 76.9,
       "student_id": "STU005",
       "tags": [],
       "vision": "0.6"
@@ -1950,11 +1537,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 132.0,
+      "height_cm": 153.0,
       "name": "Student006",
       "needs": [],
       "notes": null,
-      "score": 61.6,
+      "score": 70.5,
       "student_id": "STU006",
       "tags": [],
       "vision": null
@@ -1962,11 +1549,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 189.0,
+      "height_cm": 144.0,
       "name": "Student007",
       "needs": [],
       "notes": null,
-      "score": 56.8,
+      "score": 53.0,
       "student_id": "STU007",
       "tags": [],
       "vision": null
@@ -1974,11 +1561,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 160.0,
+      "height_cm": 143.0,
       "name": "Student008",
       "needs": [],
       "notes": null,
-      "score": 88.1,
+      "score": 53.6,
       "student_id": "STU008",
       "tags": [],
       "vision": null
@@ -1986,11 +1573,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 138.0,
+      "height_cm": 168.0,
       "name": "Student009",
       "needs": [],
       "notes": null,
-      "score": 56.8,
+      "score": 96.1,
       "student_id": "STU009",
       "tags": [],
       "vision": null
@@ -1998,11 +1585,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 143.0,
+      "height_cm": 190.0,
       "name": "Student010",
       "needs": [],
       "notes": null,
-      "score": 77.6,
+      "score": 90.3,
       "student_id": "STU010",
       "tags": [],
       "vision": "0.6"
@@ -2010,11 +1597,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 154.0,
+      "height_cm": 166.0,
       "name": "Student011",
       "needs": [],
       "notes": null,
-      "score": 98.2,
+      "score": 54.4,
       "student_id": "STU011",
       "tags": [],
       "vision": "poor"
@@ -2022,11 +1609,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 170.0,
+      "height_cm": 145.0,
       "name": "Student012",
       "needs": [],
       "notes": null,
-      "score": 90.7,
+      "score": 69.1,
       "student_id": "STU012",
       "tags": [],
       "vision": null
@@ -2034,11 +1621,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 133.0,
+      "height_cm": 141.0,
       "name": "Student013",
       "needs": [],
       "notes": null,
-      "score": 67.0,
+      "score": 81.3,
       "student_id": "STU013",
       "tags": [],
       "vision": null
@@ -2046,11 +1633,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 172.0,
+      "height_cm": 171.0,
       "name": "Student014",
       "needs": [],
       "notes": null,
-      "score": 93.6,
+      "score": 78.4,
       "student_id": "STU014",
       "tags": [],
       "vision": null
@@ -2058,11 +1645,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 163.0,
+      "height_cm": 161.0,
       "name": "Student015",
       "needs": [],
       "notes": null,
-      "score": 63.6,
+      "score": 72.3,
       "student_id": "STU015",
       "tags": [],
       "vision": "0.6"
@@ -2070,11 +1657,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 185.0,
+      "height_cm": 145.0,
       "name": "Student016",
       "needs": [],
       "notes": null,
-      "score": 77.2,
+      "score": 58.3,
       "student_id": "STU016",
       "tags": [],
       "vision": null
@@ -2082,11 +1669,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 175.0,
+      "height_cm": 188.0,
       "name": "Student017",
       "needs": [],
       "notes": null,
-      "score": 61.7,
+      "score": 70.9,
       "student_id": "STU017",
       "tags": [],
       "vision": null
@@ -2094,11 +1681,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 150.0,
+      "height_cm": 176.0,
       "name": "Student018",
       "needs": [],
       "notes": null,
-      "score": 99.6,
+      "score": 81.4,
       "student_id": "STU018",
       "tags": [],
       "vision": null
@@ -2106,11 +1693,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 185.0,
+      "height_cm": 152.0,
       "name": "Student019",
       "needs": [],
       "notes": null,
-      "score": 69.6,
+      "score": 64.2,
       "student_id": "STU019",
       "tags": [],
       "vision": null
@@ -2118,11 +1705,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 163.0,
+      "height_cm": 175.0,
       "name": "Student020",
       "needs": [],
       "notes": null,
-      "score": 69.2,
+      "score": 69.6,
       "student_id": "STU020",
       "tags": [],
       "vision": "0.6"
@@ -2130,11 +1717,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 137.0,
+      "height_cm": 141.0,
       "name": "Student021",
       "needs": [],
       "notes": null,
-      "score": 66.3,
+      "score": 92.4,
       "student_id": "STU021",
       "tags": [],
       "vision": null
@@ -2142,11 +1729,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 138.0,
+      "height_cm": 183.0,
       "name": "Student022",
       "needs": [],
       "notes": null,
-      "score": 79.8,
+      "score": 97.5,
       "student_id": "STU022",
       "tags": [],
       "vision": "poor"
@@ -2154,11 +1741,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 158.0,
+      "height_cm": 155.0,
       "name": "Student023",
       "needs": [],
       "notes": null,
-      "score": 51.8,
+      "score": 70.2,
       "student_id": "STU023",
       "tags": [],
       "vision": null
@@ -2166,11 +1753,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 134.0,
+      "height_cm": 130.0,
       "name": "Student024",
       "needs": [],
       "notes": null,
-      "score": 59.4,
+      "score": 84.5,
       "student_id": "STU024",
       "tags": [],
       "vision": null
@@ -2178,11 +1765,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 155.0,
+      "height_cm": 178.0,
       "name": "Student025",
       "needs": [],
       "notes": null,
-      "score": 52.0,
+      "score": 97.2,
       "student_id": "STU025",
       "tags": [],
       "vision": "0.6"
@@ -2190,11 +1777,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 147.0,
+      "height_cm": 146.0,
       "name": "Student026",
       "needs": [],
       "notes": null,
-      "score": 72.3,
+      "score": 62.3,
       "student_id": "STU026",
       "tags": [],
       "vision": null
@@ -2202,11 +1789,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 161.0,
+      "height_cm": 172.0,
       "name": "Student027",
       "needs": [],
       "notes": null,
-      "score": 83.9,
+      "score": 87.0,
       "student_id": "STU027",
       "tags": [],
       "vision": null
@@ -2214,11 +1801,11 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 185.0,
+      "height_cm": 186.0,
       "name": "Student028",
       "needs": [],
       "notes": null,
-      "score": 67.9,
+      "score": 82.6,
       "student_id": "STU028",
       "tags": [],
       "vision": null
@@ -2226,11 +1813,11 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 184.0,
+      "height_cm": 154.0,
       "name": "Student029",
       "needs": [],
       "notes": null,
-      "score": 52.4,
+      "score": 98.9,
       "student_id": "STU029",
       "tags": [],
       "vision": null
@@ -2238,132 +1825,12 @@
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 167.0,
+      "height_cm": 190.0,
       "name": "Student030",
       "needs": [],
       "notes": null,
-      "score": 83.2,
+      "score": 91.9,
       "student_id": "STU030",
-      "tags": [],
-      "vision": "0.6"
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 171.0,
-      "name": "Student031",
-      "needs": [],
-      "notes": null,
-      "score": 79.7,
-      "student_id": "STU031",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 190.0,
-      "name": "Student032",
-      "needs": [],
-      "notes": null,
-      "score": 75.1,
-      "student_id": "STU032",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 139.0,
-      "name": "Student033",
-      "needs": [],
-      "notes": null,
-      "score": 89.7,
-      "student_id": "STU033",
-      "tags": [],
-      "vision": "poor"
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 165.0,
-      "name": "Student034",
-      "needs": [],
-      "notes": null,
-      "score": 73.5,
-      "student_id": "STU034",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 158.0,
-      "name": "Student035",
-      "needs": [],
-      "notes": null,
-      "score": 83.3,
-      "student_id": "STU035",
-      "tags": [],
-      "vision": "0.6"
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 153.0,
-      "name": "Student036",
-      "needs": [],
-      "notes": null,
-      "score": 96.1,
-      "student_id": "STU036",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 141.0,
-      "name": "Student037",
-      "needs": [],
-      "notes": null,
-      "score": 76.9,
-      "student_id": "STU037",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 148.0,
-      "name": "Student038",
-      "needs": [],
-      "notes": null,
-      "score": 56.8,
-      "student_id": "STU038",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 164.0,
-      "name": "Student039",
-      "needs": [],
-      "notes": null,
-      "score": 63.9,
-      "student_id": "STU039",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 144.0,
-      "name": "Student040",
-      "needs": [],
-      "notes": null,
-      "score": 52.9,
-      "student_id": "STU040",
       "tags": [
         "leader"
       ],
@@ -2372,468 +1839,84 @@
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 130.0,
-      "name": "Student041",
+      "height_cm": 180.0,
+      "name": "Student031",
       "needs": [],
       "notes": null,
-      "score": 98.3,
-      "student_id": "STU041",
+      "score": 80.6,
+      "student_id": "STU031",
       "tags": [],
       "vision": null
     },
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 139.0,
-      "name": "Student042",
+      "height_cm": 134.0,
+      "name": "Student032",
       "needs": [],
       "notes": null,
-      "score": 58.6,
-      "student_id": "STU042",
+      "score": 94.4,
+      "student_id": "STU032",
       "tags": [],
       "vision": null
     },
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 131.0,
-      "name": "Student043",
+      "height_cm": 149.0,
+      "name": "Student033",
       "needs": [],
       "notes": null,
-      "score": 84.3,
-      "student_id": "STU043",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 176.0,
-      "name": "Student044",
-      "needs": [],
-      "notes": null,
-      "score": 53.5,
-      "student_id": "STU044",
+      "score": 50.7,
+      "student_id": "STU033",
       "tags": [],
       "vision": "poor"
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 144.0,
-      "name": "Student045",
-      "needs": [],
-      "notes": null,
-      "score": 75.0,
-      "student_id": "STU045",
-      "tags": [],
-      "vision": "0.6"
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 182.0,
-      "name": "Student046",
-      "needs": [],
-      "notes": null,
-      "score": 93.9,
-      "student_id": "STU046",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 143.0,
-      "name": "Student047",
-      "needs": [],
-      "notes": null,
-      "score": 79.8,
-      "student_id": "STU047",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 154.0,
-      "name": "Student048",
-      "needs": [],
-      "notes": null,
-      "score": 75.3,
-      "student_id": "STU048",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 170.0,
-      "name": "Student049",
-      "needs": [],
-      "notes": null,
-      "score": 63.4,
-      "student_id": "STU049",
-      "tags": [],
-      "vision": null
     },
     {
       "attributes": {},
       "gender": "M",
       "height_cm": 155.0,
-      "name": "Student050",
+      "name": "Student034",
       "needs": [],
       "notes": null,
-      "score": 84.6,
-      "student_id": "STU050",
-      "tags": [],
-      "vision": "0.6"
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 144.0,
-      "name": "Student051",
-      "needs": [],
-      "notes": null,
-      "score": 52.6,
-      "student_id": "STU051",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 138.0,
-      "name": "Student052",
-      "needs": [],
-      "notes": null,
-      "score": 66.5,
-      "student_id": "STU052",
+      "score": 65.9,
+      "student_id": "STU034",
       "tags": [],
       "vision": null
     },
     {
       "attributes": {},
       "gender": "F",
-      "height_cm": 132.0,
-      "name": "Student053",
+      "height_cm": 156.0,
+      "name": "Student035",
       "needs": [],
       "notes": null,
-      "score": 64.2,
-      "student_id": "STU053",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 176.0,
-      "name": "Student054",
-      "needs": [],
-      "notes": null,
-      "score": 70.3,
-      "student_id": "STU054",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 190.0,
-      "name": "Student055",
-      "needs": [],
-      "notes": null,
-      "score": 87.3,
-      "student_id": "STU055",
+      "score": 53.5,
+      "student_id": "STU035",
       "tags": [],
       "vision": "0.6"
     },
     {
       "attributes": {},
       "gender": "M",
-      "height_cm": 136.0,
-      "name": "Student056",
+      "height_cm": 168.0,
+      "name": "Student036",
       "needs": [],
       "notes": null,
-      "score": 53.4,
-      "student_id": "STU056",
+      "score": 78.5,
+      "student_id": "STU036",
       "tags": [],
       "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 130.0,
-      "name": "Student057",
-      "needs": [],
-      "notes": null,
-      "score": 92.0,
-      "student_id": "STU057",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 185.0,
-      "name": "Student058",
-      "needs": [],
-      "notes": null,
-      "score": 79.0,
-      "student_id": "STU058",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 182.0,
-      "name": "Student059",
-      "needs": [],
-      "notes": null,
-      "score": 81.3,
-      "student_id": "STU059",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 130.0,
-      "name": "Student060",
-      "needs": [],
-      "notes": null,
-      "score": 70.0,
-      "student_id": "STU060",
-      "tags": [],
-      "vision": "0.6"
     },
     {
       "attributes": {},
       "gender": "F",
       "height_cm": 178.0,
-      "name": "Student061",
+      "name": "Student037",
       "needs": [],
       "notes": null,
-      "score": 78.5,
-      "student_id": "STU061",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 142.0,
-      "name": "Student062",
-      "needs": [],
-      "notes": null,
-      "score": 99.5,
-      "student_id": "STU062",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 189.0,
-      "name": "Student063",
-      "needs": [],
-      "notes": null,
-      "score": 64.8,
-      "student_id": "STU063",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 152.0,
-      "name": "Student064",
-      "needs": [],
-      "notes": null,
-      "score": 71.7,
-      "student_id": "STU064",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 168.0,
-      "name": "Student065",
-      "needs": [],
-      "notes": null,
-      "score": 71.9,
-      "student_id": "STU065",
-      "tags": [],
-      "vision": "0.6"
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 165.0,
-      "name": "Student066",
-      "needs": [],
-      "notes": null,
-      "score": 59.3,
-      "student_id": "STU066",
-      "tags": [],
-      "vision": "poor"
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 142.0,
-      "name": "Student067",
-      "needs": [],
-      "notes": null,
-      "score": 66.6,
-      "student_id": "STU067",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 153.0,
-      "name": "Student068",
-      "needs": [],
-      "notes": null,
-      "score": 92.6,
-      "student_id": "STU068",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 131.0,
-      "name": "Student069",
-      "needs": [],
-      "notes": null,
-      "score": 61.9,
-      "student_id": "STU069",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 158.0,
-      "name": "Student070",
-      "needs": [],
-      "notes": null,
-      "score": 69.2,
-      "student_id": "STU070",
-      "tags": [],
-      "vision": "0.6"
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 131.0,
-      "name": "Student071",
-      "needs": [],
-      "notes": null,
-      "score": 94.5,
-      "student_id": "STU071",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 175.0,
-      "name": "Student072",
-      "needs": [],
-      "notes": null,
-      "score": 74.5,
-      "student_id": "STU072",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 179.0,
-      "name": "Student073",
-      "needs": [],
-      "notes": null,
-      "score": 80.2,
-      "student_id": "STU073",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 186.0,
-      "name": "Student074",
-      "needs": [],
-      "notes": null,
-      "score": 55.1,
-      "student_id": "STU074",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 135.0,
-      "name": "Student075",
-      "needs": [],
-      "notes": null,
-      "score": 83.8,
-      "student_id": "STU075",
-      "tags": [],
-      "vision": "0.6"
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 159.0,
-      "name": "Student076",
-      "needs": [],
-      "notes": null,
-      "score": 81.8,
-      "student_id": "STU076",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 179.0,
-      "name": "Student077",
-      "needs": [],
-      "notes": null,
-      "score": 50.4,
-      "student_id": "STU077",
-      "tags": [],
-      "vision": "poor"
-    },
-    {
-      "attributes": {},
-      "gender": "M",
-      "height_cm": 171.0,
-      "name": "Student078",
-      "needs": [],
-      "notes": null,
-      "score": 60.9,
-      "student_id": "STU078",
-      "tags": [],
-      "vision": null
-    },
-    {
-      "attributes": {},
-      "gender": "F",
-      "height_cm": 189.0,
-      "name": "Student079",
-      "needs": [],
-      "notes": null,
-      "score": 61.3,
-      "student_id": "STU079",
+      "score": 69.0,
+      "student_id": "STU037",
       "tags": [],
       "vision": null
     },
@@ -2841,11 +1924,275 @@
       "attributes": {},
       "gender": "M",
       "height_cm": 174.0,
-      "name": "Student080",
+      "name": "Student038",
       "needs": [],
       "notes": null,
-      "score": 67.7,
-      "student_id": "STU080",
+      "score": 54.7,
+      "student_id": "STU038",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 180.0,
+      "name": "Student039",
+      "needs": [],
+      "notes": null,
+      "score": 65.4,
+      "student_id": "STU039",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 159.0,
+      "name": "Student040",
+      "needs": [],
+      "notes": null,
+      "score": 92.5,
+      "student_id": "STU040",
+      "tags": [],
+      "vision": "0.6"
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 182.0,
+      "name": "Student041",
+      "needs": [],
+      "notes": null,
+      "score": 69.0,
+      "student_id": "STU041",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 156.0,
+      "name": "Student042",
+      "needs": [],
+      "notes": null,
+      "score": 84.9,
+      "student_id": "STU042",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 174.0,
+      "name": "Student043",
+      "needs": [],
+      "notes": null,
+      "score": 91.4,
+      "student_id": "STU043",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 172.0,
+      "name": "Student044",
+      "needs": [],
+      "notes": null,
+      "score": 59.6,
+      "student_id": "STU044",
+      "tags": [],
+      "vision": "poor"
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 148.0,
+      "name": "Student045",
+      "needs": [],
+      "notes": null,
+      "score": 51.4,
+      "student_id": "STU045",
+      "tags": [],
+      "vision": "0.6"
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 190.0,
+      "name": "Student046",
+      "needs": [],
+      "notes": null,
+      "score": 50.2,
+      "student_id": "STU046",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 173.0,
+      "name": "Student047",
+      "needs": [],
+      "notes": null,
+      "score": 88.0,
+      "student_id": "STU047",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 138.0,
+      "name": "Student048",
+      "needs": [],
+      "notes": null,
+      "score": 53.9,
+      "student_id": "STU048",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 159.0,
+      "name": "Student049",
+      "needs": [],
+      "notes": null,
+      "score": 69.5,
+      "student_id": "STU049",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 133.0,
+      "name": "Student050",
+      "needs": [],
+      "notes": null,
+      "score": 96.6,
+      "student_id": "STU050",
+      "tags": [],
+      "vision": "0.6"
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 176.0,
+      "name": "Student051",
+      "needs": [],
+      "notes": null,
+      "score": 64.7,
+      "student_id": "STU051",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 145.0,
+      "name": "Student052",
+      "needs": [],
+      "notes": null,
+      "score": 56.3,
+      "student_id": "STU052",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 189.0,
+      "name": "Student053",
+      "needs": [],
+      "notes": null,
+      "score": 91.4,
+      "student_id": "STU053",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 173.0,
+      "name": "Student054",
+      "needs": [],
+      "notes": null,
+      "score": 52.2,
+      "student_id": "STU054",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 157.0,
+      "name": "Student055",
+      "needs": [],
+      "notes": null,
+      "score": 69.2,
+      "student_id": "STU055",
+      "tags": [],
+      "vision": "0.6"
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 151.0,
+      "name": "Student056",
+      "needs": [],
+      "notes": null,
+      "score": 74.7,
+      "student_id": "STU056",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 174.0,
+      "name": "Student057",
+      "needs": [],
+      "notes": null,
+      "score": 59.2,
+      "student_id": "STU057",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 131.0,
+      "name": "Student058",
+      "needs": [],
+      "notes": null,
+      "score": 51.4,
+      "student_id": "STU058",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "F",
+      "height_cm": 148.0,
+      "name": "Student059",
+      "needs": [],
+      "notes": null,
+      "score": 76.1,
+      "student_id": "STU059",
+      "tags": [],
+      "vision": null
+    },
+    {
+      "attributes": {},
+      "gender": "M",
+      "height_cm": 163.0,
+      "name": "Student060",
+      "needs": [],
+      "notes": null,
+      "score": 82.0,
+      "student_id": "STU060",
       "tags": [],
       "vision": "0.6"
     }

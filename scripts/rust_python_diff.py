@@ -44,6 +44,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -922,6 +923,11 @@ def run_exports_class() -> list[tuple[str, str, str, str, list[str]]]:
     file is then reopened with a *different implementation* — openpyxl /
     python-docx / python-pptx — and checked for structure, seat content, and
     the public-template privacy guarantee (no real student names anywhere).
+    The PNG/PDF rasters are decoded with Pillow/pypdf (A4-ish bounds, Image
+    XObject presence, ledger §19.26), and the dedicated print-html layout
+    (print-layout-spec) is parsed structurally with the standard library
+    (page skeleton, seat grid rows, name presence, structure annotations,
+    reproducibility footer).
 
     Byte parity with the Python exporters is impossible (zip mtimes), so the
     acceptance criterion is exactly what the plan asks for: an independent
@@ -966,6 +972,14 @@ def run_exports_class() -> list[tuple[str, str, str, str, list[str]]]:
                 _verify_exports(CLI, problem_file, solution_file, response, tmp_path, real_names, case, rows)
             except Exception as exc:  # noqa: BLE001 - report, do not abort the class
                 rows.append((case, "EXPORTS", "ERROR", str(exc), notes))
+            # Dedicated print layout (print-layout-spec): independent reader
+            # for the print-html structure (page skeleton, seat grid rows,
+            # name presence, structure annotations, reproducibility footer).
+            try:
+                _verify_print_html_export(CLI, case, tmp_path)
+                rows.append((case, "EXPORTS-PRINT-HTML", "EXPORTS-PRINT-HTML", "independent reader ok", []))
+            except Exception as exc:  # noqa: BLE001
+                rows.append((case, "EXPORTS-PRINT-HTML", "EXPORTS-FAILED", str(exc), []))
     return rows
 
 
@@ -1192,6 +1206,249 @@ def _read_office_text(path: Path) -> str:
     raise AssertionError(f"unknown export format: {path}")
 
 
+# ---------------------------------------------------------------------------
+# print-html independent-reader verification (print-layout-spec.md §2/§3)
+# ---------------------------------------------------------------------------
+
+class _PrintHtmlParser(HTMLParser):
+    """Structural extractor for the Rust print-html export.
+
+    Pulls the doctype, title, header class/meta lines, the platform
+    annotation, the per-row seat cells and the structure/footer notes out of
+    the document with the standard-library parser only. A cell is a
+    ``div.grid-row > div.seat`` entry; its text is the concatenation of all
+    descendant text (including the ``span.sid`` student identifier when the
+    caller enables it), so a renamed class, a dropped row or a lost name
+    changes what this extractor reports.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.doctype = ""
+        self.title = ""
+        self.header_cls = ""
+        self.header_meta = ""
+        self.stage = ""
+        self.structure = ""
+        self.footer = ""
+        # One entry per grid-row: (class tokens, cell text) per cell.
+        self.rows: list[list[tuple[list[str], str]]] = []
+        self._in_title = False
+        self._row: list[tuple[list[str], str]] | None = None
+        self._cell: tuple[list[str], list[str]] | None = None
+        # Element stack of (tag, class tokens) for context routing.
+        self._stack: list[tuple[str, list[str]]] = []
+
+    def handle_decl(self, decl: str) -> None:
+        self.doctype += decl
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        classes = dict(attrs).get("class", "").split()
+        self._stack.append((tag, classes))
+        if tag == "title":
+            self._in_title = True
+        elif tag == "div":
+            if "grid-row" in classes:
+                self._row = []
+            elif "seat" in classes and self._row is not None:
+                self._cell = (classes, [])
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "title":
+            self._in_title = False
+        elif tag == "div":
+            if self._cell is not None and "seat" in self._cell[0]:
+                assert self._row is not None
+                self._row.append((self._cell[0], "".join(self._cell[1]).strip()))
+                self._cell = None
+            elif self._row is not None and self._stack and "grid-row" in self._stack[-1][1]:
+                self.rows.append(self._row)
+                self._row = None
+        if self._stack:
+            self._stack.pop()
+
+    def handle_data(self, data: str) -> None:
+        if self._in_title:
+            self.title += data
+            return
+        if self._cell is not None:
+            self._cell[1].append(data)
+            return
+        # Route by the innermost open element that carries a known class
+        # (the structure/footer notes live in unclassed spans inside their
+        # classed containers).
+        for _, classes in reversed(self._stack):
+            if "cls" in classes:
+                self.header_cls += data
+                return
+            if "meta" in classes:
+                self.header_meta += data
+                return
+            if "stage" in classes:
+                self.stage += data
+                return
+            if "structure" in classes:
+                self.structure += data
+                return
+            if "print-footer" in classes:
+                self.footer += data
+                return
+
+
+def _print_html_expected(case_dir: Path) -> dict[str, object]:
+    """The print-html structural contract for a fixture case, derived from
+    the same input files the synthesized project workspace compiles: roster
+    names, seat-grid row count, structure annotations (window/door from the
+    seat flags) and the aisle lanes (grid columns without an enabled seat)."""
+    names: list[str] = []
+    with (case_dir / "students.csv").open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            name = (row.get("name") or "").strip()
+            if name:
+                names.append(name)
+    layout = json.loads((case_dir / "classroom.json").read_text(encoding="utf-8"))
+    enabled = [s for s in layout.get("seats", []) if s.get("enabled", True)]
+    rows = {int(s["row"]) for s in enabled}
+    cols = {int(s["col"]) for s in enabled}
+    return {
+        "names": names,
+        "student_count": len(names),
+        "seat_count": len(enabled),
+        "row_count": max(rows) - min(rows) + 1,
+        "window": any(bool(s.get("near_window")) for s in enabled),
+        "door": any(bool(s.get("near_door")) for s in enabled),
+        "aisle": any(c not in cols for c in range(min(cols), max(cols) + 1)),
+    }
+
+
+def _verify_print_html(path: Path, expected: dict[str, object]) -> None:
+    """Independent structural verification of a Rust print-html export
+    (print-layout-spec.md §2/§3), standard library only:
+
+    - page skeleton: doctype, html/head with style + title, body;
+    - header line: class name + "座位表" and the "N students / M seats" meta;
+    - platform annotation (讲台);
+    - seat grid: expected row count, every student name rendered in a seat
+      cell (truncation-tolerant), no height/vision detail leakage;
+    - classroom structure notes (窗 / 门) and aisle lanes (过道);
+    - reproducibility footer (seed · 第 1 / 1 页).
+    """
+    with path.open(encoding="utf-8") as handle:
+        text = handle.read()
+    parser = _PrintHtmlParser()
+    parser.feed(text)
+    parser.close()
+
+    if "html" not in parser.doctype.lower():
+        raise AssertionError(f"print-html lacks an html doctype: {parser.doctype!r}")
+    if not parser.title:
+        raise AssertionError("print-html carries no <title>")
+    if "座位表" not in parser.header_cls:
+        raise AssertionError(f"print-html header missing class name: {parser.header_cls!r}")
+    meta_student = f"{expected['student_count']} students"
+    meta_seat = f"{expected['seat_count']} seats"
+    if meta_student not in parser.header_meta or meta_seat not in parser.header_meta:
+        raise AssertionError(
+            f"print-html header meta {parser.header_meta!r} != {meta_student} / {meta_seat}"
+        )
+    if "讲台" not in parser.stage:
+        raise AssertionError(f"print-html missing the platform annotation: {parser.stage!r}")
+
+    row_count = int(expected["row_count"])
+    if len(parser.rows) != row_count:
+        raise AssertionError(
+            f"print-html grid rows {len(parser.rows)} != expected {row_count}"
+        )
+    for index, row in enumerate(parser.rows, start=1):
+        if not row:
+            raise AssertionError(f"print-html grid row {index} carries no cells")
+
+    # Every seat cell that is not an empty/disabled placeholder carries one
+    # student name; all roster students must be seated in a valid corpus case.
+    cell_texts = [cell_text for row in parser.rows for _, cell_text in row]
+    named = [cell_text for cell_text in cell_texts if cell_text and cell_text != "空座"]
+    if len(named) != int(expected["student_count"]):
+        raise AssertionError(
+            f"print-html named seats {len(named)} != students {expected['student_count']}"
+        )
+    names = expected["names"]
+    assert isinstance(names, list)
+    for name in names:
+        if not any(name in cell_text or cell_text.rstrip("…").endswith(name) for cell_text in named):
+            raise AssertionError(f"print-html seat grid misses student name {name!r}")
+
+    # The print view renders names only: height/vision details must never
+    # appear (print-layout-spec §2.4; the dedicated renderer draws no detail
+    # line at all). Check the rendered text, not the raw document — the CSS
+    # block legitimately contains `min-height` etc. The tokens are the exact
+    # detail-line formats ("172 cm" / "vision 0.6"): bare words would trip
+    # on fixture ids embedded in titles (soft-vision-front).
+    rendered_text = " ".join(
+        [parser.title, parser.header_cls, parser.header_meta, parser.stage,
+         parser.structure, parser.footer]
+        + [cell for row in parser.rows for _, cell in row]
+    )
+    for token in (" cm", "vision "):
+        if token in rendered_text:
+            raise AssertionError(f"print-html leaks a student detail token {token!r}")
+
+    if expected["window"] and "窗" not in parser.structure:
+        raise AssertionError(f"print-html missing the window annotation: {parser.structure!r}")
+    if expected["door"] and "门" not in parser.structure:
+        raise AssertionError(f"print-html missing the door annotation: {parser.structure!r}")
+    if expected["aisle"] and "过道" not in text:
+        raise AssertionError("print-html missing the aisle lane annotation")
+
+    if "seed" not in parser.footer or "第 1 / 1 页" not in parser.footer:
+        raise AssertionError(f"print-html footer lacks the reproducibility line: {parser.footer!r}")
+
+
+def _verify_print_html_export(cli: Path, case: str, tmp_path: Path) -> None:
+    """Export a print-html artifact through the CLI project workflow and
+    verify it with the independent reader. The flat `export` command does
+    not expose the print-html format (CLI format surface — the dedicated
+    print layout is a server/workbench format; see ledger §19.31), so the
+    check rides `project-export`, which renders a saved project plan through
+    the same shared `export_plan` renderer (teacher template)."""
+    case_dir = INPUTS / case
+    workspace = tmp_path / f"{case}-print-html-ws"
+    workspace.mkdir(exist_ok=True)
+    for src_name, dst_name in (
+        ("students.csv", "students.csv"),
+        ("classroom.json", "layout.json"),
+        ("rules.json", "rules.json"),
+    ):
+        shutil.copyfile(case_dir / src_name, workspace / dst_name)
+    init = subprocess.run(
+        [str(cli), "project-init", "--dir", str(workspace)],
+        capture_output=True,
+        text=True,
+    )
+    if init.returncode != 0:
+        raise AssertionError(f"project-init failed: {init.stderr.strip()[:200]}")
+    project_file = workspace / "seattrellis.project.json"
+    plan_file = workspace / "plan.json"
+    solved = subprocess.run(
+        [str(cli), "project-solve", "--project", str(project_file), "--output", str(plan_file)],
+        capture_output=True,
+        text=True,
+    )
+    if solved.returncode != 0 or not plan_file.is_file():
+        raise AssertionError(f"project-solve failed: {solved.stderr.strip()[:200]}")
+    out = tmp_path / f"{case}.print.html"
+    exported = subprocess.run(
+        [str(cli), "project-export", "--project", str(project_file),
+         "--format", "print-html", "--snapshot", str(plan_file), "--output", str(out)],
+        capture_output=True,
+        text=True,
+    )
+    if exported.returncode != 0 or not out.is_file():
+        raise AssertionError(
+            f"project-export print-html failed: {exported.stderr.strip()[:200]}"
+        )
+    _verify_print_html(out, _print_html_expected(case_dir))
+
+
 def run_rust_candidates(
     request: dict[str, object], count: int, tmp: Path
 ) -> tuple[str, str, int | None]:
@@ -1381,7 +1638,8 @@ def main() -> int:
         action="store_true",
         help="run the Office export independent-reader class (XLSX/DOCX/PPTX "
         "reopened with openpyxl/python-docx/python-pptx, teacher + public "
-        "privacy checks)",
+        "privacy checks, plus the print-html structure reader and the PDF "
+        "raster-page check)",
     )
     parser.add_argument(
         "--cli-golden",
@@ -1438,8 +1696,33 @@ CLI_GOLDENS = ROOT / "fixtures" / "cli-goldens"
 
 
 def _strip_tmp_paths(text: str, tmp: Path) -> str:
-    """Temporary directories differ between runs; canonicalize them."""
-    return text.replace(str(tmp), "<tmp>")
+    """Temporary directories differ between runs; canonicalize them.
+
+    `str(tmp)` is replaced first (more specific), then the system temp dir,
+    so the doctor golden's temp-dir probe line is replay-safe across hosts.
+    macOS resolves `/var` to `/private/var`, so the `/private`-prefixed form
+    is normalized the same way (the Rust CLI canonicalizes paths it prints).
+    """
+    text = text.replace(str(tmp), "<tmp>")
+    text = text.replace(tempfile.gettempdir(), "<tmp>")
+    text = text.replace("/private<tmp>", "<tmp>")
+    return text
+
+
+#: JSON keys whose values are wall-clock timestamps and must never be part of
+#: the byte contract (e.g. project-list's `modified_at`).
+_TIMESTAMP_KEYS = frozenset({"modified_at", "created_at"})
+
+
+def _canonicalize_json(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: ("<timestamp>" if key in _TIMESTAMP_KEYS else _canonicalize_json(item))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_canonicalize_json(item) for item in value]
+    return value
 
 
 def _normalize_cli_output(text: str, tmp: Path | None = None) -> str:
@@ -1451,7 +1734,34 @@ def _normalize_cli_output(text: str, tmp: Path | None = None) -> str:
         value = json.loads(stripped)
     except json.JSONDecodeError:
         return stripped
-    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return json.dumps(_canonicalize_json(value), sort_keys=True, ensure_ascii=False)
+
+
+def _fixture_layout_value(fixture: Path) -> dict:
+    return json.loads((fixture / "classroom.json").read_text(encoding="utf-8"))
+
+
+def _repair_snapshot_doc(request: dict, snapshot_path: Path, *, saved_locks: dict | None) -> dict:
+    """Editor-style snapshot for the repair CLI: convert the CoreSolveResponse
+    index pairs into {student_key, seat_id} assignments. Seat ids come from
+    the request layout when present, else the core's derived `seat-N` ids.
+    Optional saved locks exercise the Python `reuse_saved_locks` default."""
+    response = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    students = request.get("students") or []
+    layout_seats = (request.get("layout") or {}).get("seats") or []
+    assignments = []
+    for pair in response.get("assignment", []):
+        student_index, seat_index = pair
+        student_key = students[student_index]["key"]
+        if layout_seats:
+            seat_id = layout_seats[seat_index]["seat_id"]
+        else:
+            seat_id = f"seat-{seat_index + 1}"
+        assignments.append({"student_key": student_key, "seat_id": seat_id})
+    doc: dict = {"assignments": assignments}
+    if saved_locks is not None:
+        doc["metadata"] = {"lock_state": saved_locks}
+    return doc
 
 
 def _cli_case_commands(tmp: Path) -> list[dict]:
@@ -1468,6 +1778,51 @@ def _cli_case_commands(tmp: Path) -> list[dict]:
         capture_output=True, text=True, check=False,
     )
     hist = GOLDENS / "hist-short" / "snapshot.json"
+    # Repair input snapshots: plain, and with saved locks in the metadata.
+    repair_snapshot = tmp / "repair-snapshot.json"
+    repair_snapshot.write_text(
+        json.dumps(_repair_snapshot_doc(request, snapshot, saved_locks=None), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    repair_locked_snapshot = tmp / "repair-locked-snapshot.json"
+    repair_locked_snapshot.write_text(
+        json.dumps(
+            _repair_snapshot_doc(
+                request, snapshot, saved_locks={"locked_students": ["STU001"], "locked_seats": []}
+            ),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    # Warning-path problems: the p20 fixture rules are empty, so the
+    # preset-context and group-scope warnings need their soft rules enabled.
+    warnings_problem = tmp / "warnings-problem.json"
+    warnings_request = json.loads(solve_problem.read_text(encoding="utf-8"))
+    warnings_request["rules"] = {
+        "seed": warnings_request.get("seed", 42),
+        "soft": {
+            "vision_front": {"enabled": True, "weight": 20},
+            "height_back": {"enabled": True, "weight": 4},
+            "randomize": {"enabled": True, "weight": 3},
+            "score_balance": {"enabled": True, "weight": 4},
+            "fair_rotation": {"enabled": True, "weight": 12},
+            "avoid_recent_neighbors": {"enabled": True, "weight": 12},
+        },
+    }
+    warnings_problem.write_text(json.dumps(warnings_request), encoding="utf-8")
+    group_problem = tmp / "group-problem.json"
+    group_request = json.loads(solve_problem.read_text(encoding="utf-8"))
+    group_request["rules"] = {
+        "seed": group_request.get("seed", 42),
+        "soft": {"score_distribution": {"enabled": True, "weight": 18, "scope": "group"}},
+    }
+    group_request["layout"] = {
+        "layout_id": "group-layout",
+        "name": "group layout",
+        "seats": _fixture_layout_value(fixture)["seats"],
+        "adjacency": _fixture_layout_value(fixture).get("adjacency", {}),
+    }
+    group_problem.write_text(json.dumps(group_request), encoding="utf-8")
     # Project lifecycle: one workspace under tmp/, commands run in order so
     # later steps consume earlier outputs (project-solve produces the plan
     # that project-export renders).
@@ -1482,41 +1837,92 @@ def _cli_case_commands(tmp: Path) -> list[dict]:
     project_file = project_dir / "seattrellis.project.json"
     plan_file = project_dir / "outputs" / "plan.json"
     project_dir.joinpath("outputs").mkdir(exist_ok=True)
+    bundle_zip = tmp / "bundle.zip"
     return [
         {"name": "project-init", "rust": ["project-init", "--dir", str(project_dir)]},
+        {"name": "project-list", "rust": ["project-list", "--root", str(project_dir)]},
         {"name": "project-info", "rust": ["project-info", "--project", str(project_file)]},
         {"name": "project-validate", "rust": ["project-validate", "--project", str(project_file)]},
         {"name": "project-solve", "rust": ["project-solve", "--project", str(project_file),
                                           "--output", str(plan_file)]},
+        {"name": "project-edit", "rust": ["project-edit", "--project", str(project_file),
+                                          "--snapshot", str(plan_file),
+                                          "--operation", "swap:STU001:STU002",
+                                          "--output", str(tmp / "proj-edited.json")]},
+        {"name": "project-repair", "rust": ["project-repair", "--project", str(project_file),
+                                            "--snapshot", str(tmp / "proj-edited.json"),
+                                            "--output", str(tmp / "proj-repaired.json")]},
         {"name": "project-export", "rust": ["project-export", "--project", str(project_file),
                                             "--format", "svg", "--output", str(project_dir / "out.svg")]},
         {"name": "project-rotate", "rust": ["project-rotate", "--project", str(project_file),
                                             "--periods", "2"]},
         {"name": "project-privacy", "rust": ["project-privacy", "--project", str(project_file)]},
+        {"name": "project-privacy-no-outputs",
+         "rust": ["project-privacy", "--project", str(project_file), "--no-include-outputs"],
+         "python": ["project-privacy", "--project", str(project_file), "--no-include-outputs"]},
         {"name": "project-pack", "rust": ["project-pack", "--project", str(project_file),
-                                          "--output", str(tmp / "bundle.zip")]},
+                                          "--output", str(bundle_zip)]},
+        {"name": "project-restore",
+         "rust": ["project-restore", "--bundle", str(bundle_zip),
+                  "--output-dir", str(tmp / "restored")],
+         "python": ["project-restore", "--bundle", str(bundle_zip),
+                    "--output-dir", str(tmp / "restored-py")]},
         {"name": "help", "rust": ["--help"]},
         {"name": "version", "rust": ["--version"]},
+        {"name": "doctor", "rust": ["doctor"], "python": ["doctor"]},
         {"name": "solve", "rust": ["solve", "--problem", str(solve_problem)],
          "python": ["solve", "--students", str(fixture / "students.csv"),
                     "--layout", str(fixture / "classroom.json"),
                     "--rules", str(fixture / "rules.json"), "--seed", "168996"],
          "json_keys": ["status"]},
-        {"name": "validate", "rust": ["validate", "--problem", str(solve_problem)]},
+        {"name": "validate", "rust": ["validate", "--problem", str(solve_problem)],
+         "python": ["validate", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"),
+                    "--rules", str(fixture / "rules.json")]},
+        {"name": "validate-warnings",
+         "rust": ["validate", "--problem", str(warnings_problem), "--preset", "daily"],
+         "python": ["validate", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"), "--preset", "daily"]},
+        {"name": "validate-strict",
+         "rust": ["validate", "--problem", str(warnings_problem), "--preset", "daily", "--strict"],
+         "python": ["validate", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"), "--preset", "daily", "--strict"]},
+        {"name": "validate-group-scope",
+         "rust": ["validate", "--problem", str(group_problem)],
+         "python": ["validate", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"),
+                    "--rules", str(fixture / "rules.json")]},
         {"name": "precheck", "rust": ["precheck", "--problem", str(solve_problem)]},
         {"name": "audit", "rust": ["audit", "--problem", str(solve_problem),
                                    "--snapshot", str(snapshot)]},
         {"name": "candidates", "rust": ["candidates", "--problem", str(solve_problem), "--count", "3"]},
         {"name": "history-report", "rust": ["history-report", "--problem", str(solve_problem),
-                                            "--history", str(GOLDENS / "hist-short")],
-         "python": ["history-report", "--problem", str(solve_problem),
-                    "--history", str(GOLDENS / "hist-short")]},
+                                            "--history", str(hist)],
+         "python": ["history-report", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"), "--history", str(hist)]},
         {"name": "pair-report", "rust": ["pair-report", "--problem", str(solve_problem),
-                                         "--history", str(GOLDENS / "hist-short")],
-         "python": ["pair-report", "--problem", str(solve_problem),
-                    "--history", str(GOLDENS / "hist-short")]},
+                                         "--history", str(hist)],
+         "python": ["pair-report", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"), "--history", str(hist)]},
         {"name": "repair", "rust": ["repair", "--problem", str(solve_problem),
-                                    "--snapshot", str(snapshot)]},
+                                    "--snapshot", str(repair_snapshot)],
+         "python": ["repair", "--snapshot", str(hist),
+                    "--output", str(tmp / "repaired-py.json")]},
+        {"name": "repair-saved-locks", "rust": ["repair", "--problem", str(solve_problem),
+                                                "--snapshot", str(repair_locked_snapshot)],
+         "python": ["repair", "--snapshot", str(hist),
+                    "--output", str(tmp / "repaired-py2.json")]},
+        {"name": "repair-ignore-saved-locks",
+         "rust": ["repair", "--problem", str(solve_problem),
+                  "--snapshot", str(repair_locked_snapshot), "--ignore-saved-locks"],
+         "python": ["repair", "--snapshot", str(hist),
+                    "--output", str(tmp / "repaired-py3.json")]},
+        {"name": "edit", "rust": ["edit", "--snapshot", str(hist),
+                                  "--operation", "swap:STU001:STU002",
+                                  "--output", str(tmp / "edited.json")],
+         "python": ["edit", "--snapshot", str(hist),
+                    "--operation", "swap:STU001:STU002",
+                    "--output", str(tmp / "edited-py.json")]},
         {"name": "schema-list", "rust": ["schema-list"]},
         {"name": "schema-export", "rust": ["schema-export", "--kind", "student_roster", "--output", str(tmp / "roster.v2.json")]},
         {"name": "schema-migrate", "rust": ["schema-migrate", "--input", str(fixture / "students.csv"), "--dry-run"],
@@ -1546,7 +1952,7 @@ def run_cli_golden_class(record: bool, tmp: Path) -> list[tuple[str, str, str, s
             golden_path.write_text(
                 json.dumps(
                     {
-                        "stdout": _strip_tmp_paths(rust.stdout, tmp),
+                        "stdout": _normalize_cli_output(rust.stdout, tmp),
                         "stderr": _strip_tmp_paths(rust.stderr, tmp),
                         "exit": rust.returncode,
                     },

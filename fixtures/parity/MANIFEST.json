@@ -756,11 +756,15 @@
     }
   },
   "corpus_name": "seattrellis-v2-parity",
-  "corpus_version": "1.0.0",
-  "generated_at": "2026-08-08T06:51:13Z",
+  "corpus_version": "1.1.0",
+  "generated_at": "2026-08-12T14:20:05Z",
   "generator": "scripts/gen_parity_fixtures.py",
   "golden_contract": "Heuristic solutions are not required to match seat-for-seat between Python and Rust; semantics, legality, scoring definitions and quality thresholds must match. Timestamp fields are stripped for stability.",
   "golden_hashes": {
+    ".DS_Store": {
+      "bytes": 8196,
+      "sha256": "de4544e3958ef938baa7dc848291500bbfc8cf3eac1585973f730ad9a8d6254d"
+    },
     "data-missing/candidates.json": {
       "bytes": 91375,
       "sha256": "0f75b1b1d03b83343622941dbb65bdf5d6307d3a35e0b2ac7bd0d9d46f23c401"
@@ -1181,9 +1185,37 @@
       "bytes": 32098,
       "sha256": "ad55a4d15703943db98efa1cc2187ea4dc4ce22e8040e794a5d0ad4e2c6dd548"
     },
+    "p50-custom-adj-sparse/candidates-c01.json": {
+      "bytes": 39065,
+      "sha256": "f4c8cc0aec6f33a1abc36689b6e2d4b26b7516b49e2a6f0e201254e18d36fc7d"
+    },
+    "p50-custom-adj-sparse/candidates-c05.json": {
+      "bytes": 273431,
+      "sha256": "320b6d7cefc8c51de1c795471a96d6da03e2b65adefcf39d005e119c8e1f9b4b"
+    },
+    "p50-custom-adj-sparse/candidates-c20.json": {
+      "bytes": 1092437,
+      "sha256": "0b6e66f39d93cbbd7a2d3851b76c846c977377d64566073226ee72282eef4e01"
+    },
     "p50-custom-adj-sparse/hard-constraints.json": {
       "bytes": 18102,
       "sha256": "73acd38fab0087f0bb33df344c7caef48db65dcdde03d950f18a2635e7a68481"
+    },
+    "p50-custom-adj-sparse/objective-breakdown-c05.json": {
+      "bytes": 19923,
+      "sha256": "05c7768168da344bef4990148825f05facd38fbde83650f092422e508eaf60cb"
+    },
+    "p50-custom-adj-sparse/objective-breakdown-c20.json": {
+      "bytes": 79700,
+      "sha256": "a8dd764e12bb658dfd5bbb0fb63b468e12c39ee07ff38933d0bcd9df2bd68bf3"
+    },
+    "p50-custom-adj-sparse/plan-report-c05.json": {
+      "bytes": 8747,
+      "sha256": "9a4d09a635b612c115749608e48cff629839b6f89a90565245851f925047cfae"
+    },
+    "p50-custom-adj-sparse/plan-report-c20.json": {
+      "bytes": 33699,
+      "sha256": "b5ff6de4728c94bf8eeed0a794052f7ea8ca01c08cd0fb02bb7068ef09ddaa99"
     },
     "p50-custom-adj-sparse/snapshot.json": {
       "bytes": 39065,
@@ -1197,13 +1229,33 @@
       "bytes": 45686,
       "sha256": "4e16afee0d8a371c3b7cd2a90eb386e601a3ff53ea75dff0422be3effc26d92b"
     },
+    "p60-rect-exact-dense/candidates-c01.json": {
+      "bytes": 46759,
+      "sha256": "853c8777f5a4b3dfd42ca90dd5f2bd3fad2f3b7fa0e2d1c2a9ecdd4357fb9495"
+    },
+    "p60-rect-exact-dense/candidates-c05.json": {
+      "bytes": 322639,
+      "sha256": "38a347dd5340954c4ec57b58196991eaaf43b64469d2702e78683dc3cb6e762f"
+    },
     "p60-rect-exact-dense/hard-constraints.json": {
       "bytes": 14683,
       "sha256": "dfb0d6b3fff21057aeb7ef8a73e6ea6449d289e8a6e508cb19dc4020ab0b0fc2"
     },
+    "p60-rect-exact-dense/objective-breakdown-c05.json": {
+      "bytes": 20009,
+      "sha256": "e484c4d0738f62959dc472708fc4a5e227539ee1eb7a4563761aa6310cb1bd26"
+    },
+    "p60-rect-exact-dense/plan-report-c05.json": {
+      "bytes": 8759,
+      "sha256": "b0ab46cab3bb7c5feb8f56461c620bd46b5ec43fd16de728a69c20275f1d242e"
+    },
     "p60-rect-exact-dense/snapshot.json": {
       "bytes": 46759,
       "sha256": "853c8777f5a4b3dfd42ca90dd5f2bd3fad2f3b7fa0e2d1c2a9ecdd4357fb9495"
+    },
+    "p80-rect-exact-dense/candidates-c01.json": {
+      "bytes": 60580,
+      "sha256": "f580060f05f24bdb83a390681cc7e6173c373e6833084f0c49a998daa3563409"
     },
     "p80-rect-exact-dense/hard-constraints.json": {
       "bytes": 19486,
@@ -1491,6 +1543,10 @@
     }
   },
   "input_hashes": {
+    ".DS_Store": {
+      "bytes": 14340,
+      "sha256": "3c455b3667913a7e602cd1d43e92f96ec7232e333835fc0c9e4b02b3456212e2"
+    },
     "data-missing/classroom.json": {
       "bytes": 7494,
       "sha256": "5cd8c6315e9ca1420b812f90fdbce790bc01d794eb803bb3a9817db9d3775010"
@@ -2089,8 +2145,9 @@
     "wall_clock_seconds",
     "snapshot_id"
   ],
-  "python_version": "3.12.13",
+  "pip_extras": "image,excel,pdf,docx,pptx",
+  "python_version": "3.11.5",
   "seattrellis_version": "unknown",
   "solver_backend": "fallback",
-  "source_commit": "d589311cef53600d22cd0430303366424c39239f"
+  "source_commit": "e28bf1892d49624bac0a6487466c7c97564b424a"
 }

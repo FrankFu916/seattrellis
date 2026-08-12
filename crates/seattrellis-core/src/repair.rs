@@ -90,6 +90,28 @@ pub fn repair_json(
     locked_students: &[String],
     locked_seats: &[String],
 ) -> Result<String, String> {
+    repair_json_with_options(
+        request_json,
+        snapshot_json,
+        affected_students,
+        locked_students,
+        locked_seats,
+        true,
+    )
+}
+
+/// `repair_json` with the Python `reuse_saved_locks` switch (repair.py:52):
+/// when `false` (CLI `--ignore-saved-locks`), locks persisted in the snapshot
+/// metadata are NOT merged into the anchor sets — only the explicit
+/// `locked_students` / `locked_seats` parameters apply.
+pub fn repair_json_with_options(
+    request_json: &str,
+    snapshot_json: &str,
+    affected_students: &[String],
+    locked_students: &[String],
+    locked_seats: &[String],
+    reuse_saved_locks: bool,
+) -> Result<String, String> {
     let mut request: CoreSolveRequest = serde_json::from_str(request_json)
         .map_err(|error| format!("invalid native solve request: {error}"))?;
     validate_solve_request(&request)?;
@@ -152,27 +174,30 @@ pub fn repair_json(
     // Saved locks (Python `reuse_saved_locks` semantics): the snapshot's
     // persisted lock state (metadata.lock_state, with tolerant fallback to
     // the older `manual_edit` / `repair` metadata keys) is merged into the
-    // explicit anchor sets, mirroring `repair.py::_saved_locks`.
+    // explicit anchor sets, mirroring `repair.py::_saved_locks`. The CLI
+    // `--ignore-saved-locks` flag turns this off.
     let mut saved_locked_students: Vec<String> = Vec::new();
     let mut saved_locked_seats: Vec<String> = Vec::new();
-    if let Some(metadata) = snapshot.get("metadata").and_then(Value::as_object) {
-        let mut lock_state: Option<&Value> = metadata.get("lock_state");
-        if lock_state.is_none() {
-            lock_state = metadata
-                .get("manual_edit")
-                .or_else(|| metadata.get("repair"));
-        }
-        if let Some(state) = lock_state.and_then(Value::as_object) {
-            for (out, key) in [
-                (&mut saved_locked_students, "locked_students"),
-                (&mut saved_locked_seats, "locked_seats"),
-            ] {
-                if let Some(values) = state.get(key).and_then(Value::as_array) {
-                    for value in values {
-                        if let Some(text) = value.as_str() {
-                            let trimmed = text.trim();
-                            if !trimmed.is_empty() && !out.contains(&trimmed.to_string()) {
-                                out.push(trimmed.to_string());
+    if reuse_saved_locks {
+        if let Some(metadata) = snapshot.get("metadata").and_then(Value::as_object) {
+            let mut lock_state: Option<&Value> = metadata.get("lock_state");
+            if lock_state.is_none() {
+                lock_state = metadata
+                    .get("manual_edit")
+                    .or_else(|| metadata.get("repair"));
+            }
+            if let Some(state) = lock_state.and_then(Value::as_object) {
+                for (out, key) in [
+                    (&mut saved_locked_students, "locked_students"),
+                    (&mut saved_locked_seats, "locked_seats"),
+                ] {
+                    if let Some(values) = state.get(key).and_then(Value::as_array) {
+                        for value in values {
+                            if let Some(text) = value.as_str() {
+                                let trimmed = text.trim();
+                                if !trimmed.is_empty() && !out.contains(&trimmed.to_string()) {
+                                    out.push(trimmed.to_string());
+                                }
                             }
                         }
                     }
@@ -451,8 +476,8 @@ pub fn repair_json(
         "summary": {
             "moved_students": moved,
             "unseated_students": unseated,
-            "locked_students": locked_students.len(),
-            "locked_seats": locked_seats.len(),
+            "locked_students": effective_locked_students.len(),
+            "locked_seats": effective_locked_seats.len(),
         },
     });
     serde_json::to_string(&repaired)

@@ -196,3 +196,78 @@ fn saved_lock_conflicting_with_affected_student_is_rejected() {
         "unexpected error: {error}"
     );
 }
+
+#[test]
+fn ignore_saved_locks_skips_persisted_metadata_locks() {
+    // Python `--ignore-saved-locks` (`reuse_saved_locks=False`): the locks
+    // persisted in the snapshot metadata are NOT merged into the anchors.
+    // Deterministic consequence: a saved-locked student may be listed as
+    // affected (Python rejects affected ∩ saved-locked), and the reserved
+    // empty seat is not forced to stay empty.
+    use seattrellis_core::repair_json_with_options;
+    let request = request_with_spare_seats();
+    let mut snapshot = snapshot_doc();
+    snapshot["metadata"] = json!({
+        "lock_state": {
+            "locked_students": ["s0"],
+            "locked_seats": ["R3C2"]
+        }
+    });
+    // With saved locks ignored, s0 is not locked: affecting s0 succeeds.
+    let repair = repair_json_with_options(
+        &request.to_string(),
+        &snapshot.to_string(),
+        &["s0".to_string()],
+        &[],
+        &[],
+        false, // reuse_saved_locks = false (--ignore-saved-locks)
+    )
+    .expect("affected student may be the saved-locked one when locks are ignored");
+    let repaired: Value = serde_json::from_str(&repair).expect("repair output is JSON");
+    let seats = seats_after(&repaired);
+    assert_eq!(seats.len(), 4, "all four students must be seated");
+    // The same request WITHOUT the ignore flag must reject the conflict,
+    // mirroring Python's affected ∩ saved-locked rejection.
+    let error = repair_json(
+        &request.to_string(),
+        &snapshot.to_string(),
+        &["s0".to_string()],
+        &[],
+        &[],
+    )
+    .expect_err("affected ∩ saved-locked is rejected when saved locks are reused");
+    assert!(
+        error.contains("cannot also be locked"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn ignore_saved_locks_still_honors_explicit_locks() {
+    use seattrellis_core::repair_json_with_options;
+    let request = request_with_spare_seats();
+    let mut snapshot = snapshot_doc();
+    snapshot["metadata"] = json!({
+        "lock_state": {"locked_students": ["s0"], "locked_seats": []}
+    });
+    let repair = repair_json_with_options(
+        &request.to_string(),
+        &snapshot.to_string(),
+        &["s1".to_string()],
+        &["s0".to_string()], // explicit lock still applies
+        &[],
+        false,
+    )
+    .expect("repair succeeds with explicit locks");
+    let repaired: Value = serde_json::from_str(&repair).expect("repair output is JSON");
+    let assignments = repaired["assignments"].as_array().unwrap();
+    let s0_seat = assignments
+        .iter()
+        .find(|row| row["student_key"] == "s0")
+        .and_then(|row| row["seat_id"].as_str())
+        .expect("s0 seated");
+    assert_eq!(
+        s0_seat, "R1C1",
+        "explicit locked student must stay anchored"
+    );
+}

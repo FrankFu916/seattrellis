@@ -14,18 +14,19 @@ use serde_json::json;
 
 use seattrellis_core::{
     audit_report_json, generate_candidates_json_with_latest_snapshot, history_report_json,
-    pair_report_json, precheck_report_json, repair_json, solve_problem_json,
+    pair_report_json, precheck_report_json, repair_json_with_options, solve_problem_json,
     validate_solve_request_json, validate_solve_response, CoreSolveRequest, CoreSolveResponse,
     SolveStatus,
 };
 
+use crate::presets;
 use crate::style::Styler;
 use crate::ValidateArgs;
 use crate::{
-    AuditArgs, CandidatesArgs, ExportArgs, ExportFormat, HistoryReportArgs, PairReportArgs,
-    PrecheckArgs, ProjectArgs, ProjectEditArgs, ProjectInitArgs, ProjectListArgs, ProjectPackArgs,
-    ProjectPrivacyArgs, ProjectRepairArgs, ProjectRestoreArgs, ProjectRotateArgs, RepairArgs,
-    SchemaExportArgs, SchemaMigrateArgs, ScoreArgs, SolveArgs,
+    AuditArgs, CandidatesArgs, EditArgs, ExportArgs, ExportFormat, HistoryReportArgs,
+    PairReportArgs, PrecheckArgs, ProjectArgs, ProjectEditArgs, ProjectInitArgs, ProjectListArgs,
+    ProjectPackArgs, ProjectPrivacyArgs, ProjectRepairArgs, ProjectRestoreArgs, ProjectRotateArgs,
+    RepairArgs, SchemaExportArgs, SchemaMigrateArgs, ScoreArgs, SolveArgs,
 };
 use seattrellis_export::export::export_plan;
 
@@ -67,6 +68,85 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
             .to_string(),
         )
     );
+
+    // Warning semantics mirror `run_validate` (service.py:944 ->
+    // validation.py): capability warnings for the loaded models plus
+    // preset-context warnings for the preferred-data requirements.
+    let mut warnings: Vec<String> = Vec::new();
+
+    // score_distribution with scope='group' requires group_id on every
+    // enabled seat (validation.py `_add_rule_capability_warnings`).
+    if let (Some(rules), Some(layout)) = (&problem.rules, &problem.layout) {
+        let distribution = &rules.soft.score_distribution;
+        if distribution.enabled
+            && distribution.scope == seattrellis_core::models::DistributionScope::Group
+        {
+            let missing: Vec<&str> = layout
+                .seats
+                .iter()
+                .filter(|seat| seat.enabled && seat.group_id.is_none())
+                .map(|seat| seat.seat_id.as_str())
+                .collect();
+            if !missing.is_empty() {
+                let preview = missing[..missing.len().min(5)].join(", ");
+                let suffix = if missing.len() > 5 { "..." } else { "" };
+                warnings.push(format!(
+                    "score_distribution with scope='group' requires group_id on every \
+                     enabled seat. Missing group_id: {preview}{suffix}. The objective \
+                     will be skipped until all enabled seats are grouped."
+                ));
+            }
+        }
+    }
+
+    // History files are counted for preset history warnings; unreadable
+    // paths are errors exactly like the oracle's snapshot loading.
+    for path in &args.history {
+        read_text(path)?;
+    }
+    if let Some(preset_name) = &args.preset {
+        if presets::preset_requirements(preset_name).is_none() {
+            return Err(format!(
+                "Unknown preset {preset_name:?}. Available presets: random, exam, daily, \
+                 fair-rotation, neighbor-aware, balanced, peer-mixing, score-high-front, \
+                 score-high-back, row-score-balanced, group-score-balanced, mentor-pairing, \
+                 height-aware, vision-friendly."
+            ));
+        }
+        let soft = problem
+            .rules
+            .as_ref()
+            .map(|rules| &rules.soft)
+            .cloned()
+            .unwrap_or_default();
+        warnings.extend(presets::preset_context_warnings(
+            preset_name,
+            &problem.students,
+            &soft,
+            args.history.len(),
+        ));
+    }
+
+    if !warnings.is_empty() {
+        println!(
+            "{}: {}",
+            styler.bold("warnings"),
+            styler.yellow(&warnings.len().to_string())
+        );
+        for warning in &warnings {
+            println!("- {warning}");
+        }
+    }
+    if args.strict && !warnings.is_empty() {
+        return Err(format!(
+            "Warnings treated as errors by --strict:\n{}",
+            warnings
+                .iter()
+                .map(|warning| format!("- {warning}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
     Ok(())
 }
 
@@ -408,6 +488,7 @@ pub fn run_project_edit(args: &ProjectEditArgs) -> Result<(), String> {
 
 /// `project-repair`: re-solve a project seating artifact preserving anchors
 /// (plan §5.5 lifecycle; mirrors the Python `project_repair` contract).
+/// `--ignore-saved-locks` skips locks persisted in the snapshot metadata.
 pub fn run_project_repair(args: &ProjectRepairArgs) -> Result<(), String> {
     let request_value = crate::project::build_request(&args.project)?;
     let request_json = serde_json::to_string(&request_value)
@@ -417,12 +498,13 @@ pub fn run_project_repair(args: &ProjectRepairArgs) -> Result<(), String> {
         None => latest_snapshot_artifact(&args.project)?,
     };
     let snapshot_text = read_text(&snapshot_path)?;
-    let repaired = repair_json(
+    let repaired = repair_json_with_options(
         &request_json,
         &snapshot_text,
         &args.affected,
         &args.locked_students,
         &args.locked_seats,
+        !args.ignore_saved_locks,
     )
     .map_err(|error| format!("repair failed: {error}"))?;
     let output = match &args.output {
@@ -594,43 +676,6 @@ fn repaired_snapshot_output_path(source: &Path, project_path: &Path) -> Result<P
     Ok(outputs.join(format!("repaired-{name}")))
 }
 
-/// Parse `--operation <json>` values plus an optional `--operations-file`
-/// (a list, or an object with an `operations` list) into ordered operations.
-fn parse_edit_operations(
-    inline: &[String],
-    file: Option<&Path>,
-) -> Result<Vec<seattrellis_domain::editing::EditorOperation>, String> {
-    let mut operations = Vec::new();
-    if let Some(file) = file {
-        let text = read_text(file)?;
-        let value: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|error| format!("'{}' is not valid JSON: {error}", file.display()))?;
-        let entries = value.get("operations").cloned().unwrap_or(value);
-        let entries = entries.as_array().ok_or_else(|| {
-            format!(
-                "'{}' must be a list or an object with an operations list",
-                file.display()
-            )
-        })?;
-        for entry in entries {
-            operations.push(
-                serde_json::from_value(entry.clone()).map_err(|error| {
-                    format!("invalid operation in '{}': {error}", file.display())
-                })?,
-            );
-        }
-    }
-    for raw in inline {
-        let value: serde_json::Value = serde_json::from_str(raw)
-            .map_err(|error| format!("--operation is not valid JSON: {error}"))?;
-        operations.push(
-            serde_json::from_value(value)
-                .map_err(|error| format!("invalid --operation value: {error}"))?,
-        );
-    }
-    Ok(operations)
-}
-
 /// Convert a saved plan document into `(student_key, seat_id)` assignment
 /// pairs the editor draft understands. Two shapes are accepted, matching
 /// `response_from_snapshot`: the `CoreSolveResponse` JSON written by
@@ -776,7 +821,7 @@ fn edited_snapshot_document(
 /// The v2 JSON Schema document embedded for one artifact kind (the same
 /// files `xtask contract schemas` generates and CI drift-checks). Embedded
 /// at compile time so a release binary works from any directory.
-fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
+pub fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
     match kind.trim().to_ascii_lowercase().as_str() {
         "student_roster" | "studentroster" | "roster" => {
             Ok(include_str!("../../../schemas/student-roster.v2.schema.json").to_string())
@@ -795,29 +840,41 @@ fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
             Ok(include_str!("../../../schemas/project-bundle-manifest.v2.schema.json").to_string())
         }
         "candidate_set" | "candidates" => {
-            Ok(include_str!("../../../schemas/candidate-set.schema.json").to_string())
+            Ok(include_str!("../../../schemas/candidate-set.v2.schema.json").to_string())
         }
+        "plan_comparison" | "plancomparison" | "plan-comparison" => {
+            Ok(include_str!("../../../schemas/plan-comparison-report.v2.schema.json").to_string())
+        }
+        // `rotation_plan` intentionally stays on the v1 schema: the Rust
+        // rotation artifact mirrors the v1 oracle contract
+        // (schema_version "0.2.2", ledger L5), so the v1 schema is the
+        // correct validator for what this crate actually writes.
         "rotation_plan" | "rotation" => {
             Ok(include_str!("../../../schemas/rotation-plan.schema.json").to_string())
         }
         other => Err(format!(
             "no v2 JSON Schema embedded for kind {other:?} (known: student_roster, \
              classroom_layout, ruleset, seating_snapshot, project, \
-             project_bundle_manifest, candidate_set, rotation_plan)"
+             project_bundle_manifest, candidate_set, plan_comparison, rotation_plan; \
+             history_archive/editing_operation_log/export_preset have no typed DTO \
+             and are not generated by `xtask contract schemas`)"
         )),
     }
 }
 
 /// Re-solve a snapshot while preserving requested anchors (D.11 repair).
+/// Saved locks persisted in the snapshot metadata are merged by default
+/// (Python `reuse_saved_locks=True`); `--ignore-saved-locks` turns that off.
 pub fn run_repair(args: &RepairArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
     let snapshot_text = read_text(&args.snapshot)?;
-    let repaired = repair_json(
+    let repaired = repair_json_with_options(
         &problem_text,
         &snapshot_text,
         &args.affected,
         &args.locked_students,
         &args.locked_seats,
+        !args.ignore_saved_locks,
     )
     .map_err(|error| format!("repair failed: {error}"))?;
     if let Some(output) = &args.output {
@@ -829,12 +886,375 @@ pub fn run_repair(args: &RepairArgs) -> Result<(), String> {
     Ok(())
 }
 
+/// `edit`: apply manual editor operations to a snapshot or candidate set
+/// (oracle cli.py `edit_snapshot`). Inline `--operation` values use the
+/// Python string syntax (`swap:STU001:STU002`); a JSON `--operations-file`
+/// applies first. The edited artifact is written in the editor-style
+/// snapshot shape and passes the independent validator when `--strict`.
+pub fn run_edit(args: &EditArgs) -> Result<(), String> {
+    let snapshot_text = read_text(&args.snapshot)?;
+    let artifact: serde_json::Value = serde_json::from_str(&snapshot_text)
+        .map_err(|error| format!("'{}' is not valid JSON: {error}", args.snapshot.display()))?;
+    let artifact = select_edit_artifact(&artifact, args.candidate.as_deref())?;
+
+    // Compile the artifact's embedded students/layout/rules into a core
+    // request through the same io path project plans use, so hard-rule
+    // validation of the edited plan is identical to solve/repair/export.
+    let request_value = compile_edit_request(&artifact)?;
+    let request: CoreSolveRequest = serde_json::from_value(request_value.clone())
+        .map_err(|error| format!("artifact is not core-compatible: {error}"))?;
+
+    let assignment = editor_assignment_pairs(&request, &artifact)?;
+    let assignment_refs: Vec<(&str, &str)> = assignment
+        .iter()
+        .map(|(student, seat)| (student.as_str(), seat.as_str()))
+        .collect();
+    let keys: Vec<String> = request
+        .students
+        .iter()
+        .map(|student| student.key.clone())
+        .collect();
+    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let seats = seattrellis_application::class_generation::seat_specs(&request);
+    let display_names: HashMap<String, String> = request
+        .students
+        .iter()
+        .map(|student| {
+            (
+                student.key.clone(),
+                student
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| student.key.clone()),
+            )
+        })
+        .collect();
+
+    let operations = parse_edit_operations(&args.operations, args.operations_file.as_deref())?;
+    let store = seattrellis_domain::editing::new_draft_store();
+    let mut state = seattrellis_domain::editing::create_draft(
+        &store,
+        "edit",
+        None,
+        &key_refs,
+        seats,
+        &assignment_refs,
+        Some(&display_names),
+    )
+    .map_err(|error| format!("could not open the plan for editing: {error}"))?;
+    for (index, operation) in operations.iter().enumerate() {
+        let envelope = seattrellis_domain::editing::EditorCommandEnvelope {
+            kind: "seattrellis_editor_command".to_string(),
+            protocol_version: "1.0".to_string(),
+            command_id: format!("cli-{index}"),
+            draft_id: "edit".to_string(),
+            base_revision: state.revision,
+            action: "apply".to_string(),
+            operations: vec![operation.clone()],
+        };
+        state = seattrellis_domain::editing::apply_command_in_store(&store, &envelope)
+            .map_err(|error| format!("operation {index} failed: {error}"))?;
+    }
+
+    // Independent validation: the edited product must satisfy the artifact's
+    // hard rules before it is written (feasible=true is never hard-coded).
+    let edited_response = editor_response(&request, &state)?;
+    if args.strict {
+        validate_solve_response(&request, &edited_response)
+            .map_err(|message| format!("edited plan violates hard constraints: {message}"))?;
+    }
+    let hard_satisfied = validate_solve_response(&request, &edited_response).is_ok();
+
+    let output = args
+        .output
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("outputs/edited.snapshot.json"));
+    let document = edited_snapshot_document(&request, &state);
+    let text = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("could not serialize the edited plan: {error}"))?;
+    write_output_atomically(&output, text.as_bytes())?;
+    println!("Edited snapshot written to {}", output.display());
+    println!("{}", edit_summary(&state, operations.len(), hard_satisfied));
+    Ok(())
+}
+
+/// The oracle `_format_edit_summary` shape: operation count, unseated /
+/// locked students, locked seats and the hard-constraint verdict.
+fn edit_summary(
+    state: &seattrellis_domain::editing::EditorState,
+    operation_count: usize,
+    hard_satisfied: bool,
+) -> String {
+    let mut unseated: Vec<&str> = state
+        .students
+        .iter()
+        .filter(|student| student.seat_id.is_none())
+        .map(|student| student.student_key.as_str())
+        .collect();
+    unseated.sort_unstable();
+    let mut locked_students: Vec<&str> = state
+        .students
+        .iter()
+        .filter(|student| student.locked)
+        .map(|student| student.student_key.as_str())
+        .collect();
+    locked_students.sort_unstable();
+    let mut locked_seats: Vec<&str> = state
+        .seats
+        .iter()
+        .filter(|seat| seat.locked)
+        .map(|seat| seat.seat_id.as_str())
+        .collect();
+    locked_seats.sort_unstable();
+    format!(
+        "Manual edit summary:\n\
+         - operations: {operation_count}\n\
+         - unseated students: {}\n\
+         - locked students: {}\n\
+         - locked seats: {}\n\
+         - hard constraints: {}",
+        format_preview(&unseated),
+        format_preview(&locked_students),
+        format_preview(&locked_seats),
+        if hard_satisfied {
+            "satisfied (0 violation(s))"
+        } else {
+            "not satisfied"
+        }
+    )
+}
+
+/// The oracle `_format_preview` helper: first five values, ellipsized.
+fn format_preview(values: &[&str]) -> String {
+    if values.is_empty() {
+        return "none".to_string();
+    }
+    let preview = values[..values.len().min(5)].join(", ");
+    if values.len() > 5 {
+        format!("{preview}, ... ({} total)", values.len())
+    } else {
+        preview
+    }
+}
+
+/// Dispatch on the artifact kind (`load_seating_artifact`): a candidate set
+/// selects one candidate plan (the `--candidate` id, or `recommended` which
+/// resolves to `recommended_candidate_id`); anything else is used as-is.
+fn select_edit_artifact(
+    artifact: &serde_json::Value,
+    candidate: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    if artifact.get("kind").and_then(serde_json::Value::as_str) != Some("candidate_set") {
+        if candidate.is_some() {
+            return Err(
+                "--candidate can only be used when --snapshot is a candidate set.".to_string(),
+            );
+        }
+        return Ok(artifact.clone());
+    }
+    let candidates = artifact
+        .get("candidates")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("candidate set has no candidates array")?;
+    let recommended = artifact
+        .get("recommended_candidate_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("recommended");
+    let wanted = candidate.unwrap_or("recommended");
+    let selected = candidates.iter().find(|plan| {
+        let plan_id = plan
+            .get("candidate_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        plan_id == wanted || (wanted == "recommended" && plan_id == recommended)
+    });
+    let selected = selected.ok_or_else(|| format!("candidate set has no candidate {wanted:?}"))?;
+    selected
+        .get("snapshot")
+        .cloned()
+        .ok_or_else(|| "selected candidate has no snapshot document".to_string())
+}
+
+/// Compile a core request from the artifact's embedded students/layout/rules
+/// through the same io path project plans use.
+fn compile_edit_request(artifact: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let students = artifact
+        .get("students")
+        .ok_or("snapshot has no students array (edit needs a seating snapshot or candidate set)")?;
+    let layout = artifact
+        .get("layout")
+        .ok_or("snapshot has no layout document")?;
+    let rules = artifact
+        .get("rules")
+        .ok_or("snapshot has no rules document")?;
+    seattrellis_io::projects::compile_solve_request_from_json(students, layout, rules)
+}
+
+/// Parse `--operation <text>` string values (the oracle `_parse_edit_operation`
+/// syntax) plus an optional `--operations-file` (a JSON list, or an object
+/// with an `operations` list) into ordered editor operations.
+fn parse_edit_operations(
+    inline: &[String],
+    file: Option<&Path>,
+) -> Result<Vec<seattrellis_domain::editing::EditorOperation>, String> {
+    let mut operations = Vec::new();
+    if let Some(file) = file {
+        let text = read_text(file)?;
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|error| format!("'{}' is not valid JSON: {error}", file.display()))?;
+        let entries = value.get("operations").cloned().unwrap_or(value);
+        let entries = entries.as_array().ok_or_else(|| {
+            format!(
+                "'{}' must be a list or an object with an operations list",
+                file.display()
+            )
+        })?;
+        for entry in entries {
+            operations.push(
+                serde_json::from_value(entry.clone()).map_err(|error| {
+                    format!("invalid operation in '{}': {error}", file.display())
+                })?,
+            );
+        }
+    }
+    for raw in inline {
+        operations.push(parse_edit_operation_string(raw)?);
+    }
+    Ok(operations)
+}
+
+/// The oracle `_parse_edit_operation` string syntax:
+/// `swap:STU001:STU002`, `move:STU003:R2C2`, `batch-move:STU001=R1C2,STU002=R1C1`,
+/// `seat:...`, `unseat:...`, `lock-student:...`, `unlock-student:...`,
+/// `lock-seat:...`, `unlock-seat:...`.
+pub(crate) fn parse_edit_operation_string(
+    raw: &str,
+) -> Result<seattrellis_domain::editing::EditorOperation, String> {
+    use seattrellis_domain::editing::EditorOperation;
+    let text = raw.trim();
+    if text.is_empty() {
+        return Err("Editing operation cannot be empty.".to_string());
+    }
+    let parts: Vec<&str> = text.split(':').map(str::trim).collect();
+    let kind = normalize_edit_operation_kind(parts[0])?;
+    let payload = |keys: &[&str],
+                   values: &[&str]|
+     -> Result<serde_json::Map<String, serde_json::Value>, String> {
+        let mut map = serde_json::Map::new();
+        for (key, value) in keys.iter().zip(values) {
+            map.insert(
+                (*key).to_string(),
+                serde_json::Value::String((*value).to_string()),
+            );
+        }
+        Ok(map)
+    };
+    match kind.as_str() {
+        "swap_students" => {
+            require_parts(text, &parts, 3)?;
+            Ok(EditorOperation {
+                kind: kind.clone(),
+                payload: payload(&["first_student", "second_student"], &[parts[1], parts[2]])?,
+            })
+        }
+        "move_student" | "seat_student" => {
+            require_parts(text, &parts, 3)?;
+            Ok(EditorOperation {
+                kind: kind.clone(),
+                payload: payload(&["student_key", "seat_id"], &[parts[1], parts[2]])?,
+            })
+        }
+        "batch_move" => {
+            require_parts(text, &parts, 2)?;
+            let moves: Vec<serde_json::Value> = parts[1]
+                .split(',')
+                .enumerate()
+                .map(|(index, item)| {
+                    let pair: Vec<&str> = item.splitn(2, '=').map(str::trim).collect();
+                    if pair.len() != 2 || pair[0].is_empty() || pair[1].is_empty() {
+                        return Err(format!(
+                            "Invalid batch move item {} in operation {text:?}. \
+                             Use STUDENT=SEAT pairs separated by commas.",
+                            index + 1
+                        ));
+                    }
+                    Ok(serde_json::json!({
+                        "student_key": pair[0],
+                        "seat_id": pair[1],
+                    }))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(EditorOperation {
+                kind: kind.clone(),
+                payload: serde_json::Map::from_iter([(
+                    "moves".to_string(),
+                    serde_json::Value::Array(moves),
+                )]),
+            })
+        }
+        "unseat_student" | "lock_student" | "unlock_student" => {
+            require_parts(text, &parts, 2)?;
+            Ok(EditorOperation {
+                kind: kind.clone(),
+                payload: payload(&["student_key"], &[parts[1]])?,
+            })
+        }
+        _ => {
+            require_parts(text, &parts, 2)?;
+            Ok(EditorOperation {
+                kind: kind.clone(),
+                payload: payload(&["seat_id"], &[parts[1]])?,
+            })
+        }
+    }
+}
+
+fn require_parts(text: &str, parts: &[&str], count: usize) -> Result<(), String> {
+    if parts.len() < count {
+        return Err(format!(
+            "Editing operation {text:?} is missing required parts (expected at least {count})."
+        ));
+    }
+    Ok(())
+}
+
+/// The oracle `_normalize_edit_operation_kind` aliases.
+pub(crate) fn normalize_edit_operation_kind(value: &str) -> Result<String, String> {
+    let name = value.replace('-', "_").trim().to_lowercase();
+    let kind = match name.as_str() {
+        "swap" | "swap_students" => "swap_students",
+        "move" | "move_student" => "move_student",
+        "batch" | "batch_move" => "batch_move",
+        "seat" | "seat_student" => "seat_student",
+        "unseat" | "unseat_student" => "unseat_student",
+        "lock_student" => "lock_student",
+        "unlock_student" => "unlock_student",
+        "lock_seat" => "lock_seat",
+        "unlock_seat" => "unlock_seat",
+        _ => {
+            return Err(format!(
+                "Unsupported editing operation {value:?}. Use swap, move, batch-move, seat, \
+                 unseat, lock-student, unlock-student, lock-seat, or unlock-seat."
+            ));
+        }
+    };
+    Ok(kind.to_string())
+}
+
 /// Summarize historical seating snapshots (fairness report, ledger B.5).
+/// `--history-dir` scans `*.snapshot.json` (the oracle's default glob) and
+/// `--output` writes the JSON report to a file while still printing it.
 pub fn run_history_report(args: &HistoryReportArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
-    let snapshots = load_snapshot_documents(&args.history)?;
+    let snapshots = load_snapshot_documents(&collect_history_paths(
+        &args.history,
+        args.history_dir.as_deref(),
+    )?)?;
     let report = history_report_json(&problem_text, &snapshots)
         .map_err(|error| format!("history report failed: {error}"))?;
+    if let Some(output) = &args.output {
+        write_output_atomically(output, report.as_bytes())?;
+    }
     println!("{report}");
     Ok(())
 }
@@ -842,11 +1262,48 @@ pub fn run_history_report(args: &HistoryReportArgs) -> Result<(), String> {
 /// Summarize historical desk-mate / neighbor pairs (ledger B.5).
 pub fn run_pair_report(args: &PairReportArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
-    let snapshots = load_snapshot_documents(&args.history)?;
+    let snapshots = load_snapshot_documents(&collect_history_paths(
+        &args.history,
+        args.history_dir.as_deref(),
+    )?)?;
     let report = pair_report_json(&problem_text, &snapshots, args.top, args.within_distance)
         .map_err(|error| format!("pair report failed: {error}"))?;
     println!("{report}");
     Ok(())
+}
+
+/// Combine explicit `--history` files with a `--history-dir` scan. Mirroring
+/// the oracle, `--history` entries are files only; only `--history-dir`
+/// scans a directory for `*.snapshot.json` (the default history glob).
+fn collect_history_paths(
+    history: &[PathBuf],
+    history_dir: Option<&Path>,
+) -> Result<Vec<PathBuf>, String> {
+    let mut paths = history.to_vec();
+    if let Some(dir) = history_dir {
+        let entries = std::fs::read_dir(dir)
+            .map_err(|error| format!("could not read {}: {error}", dir.display()))?;
+        let mut scanned: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_file()
+                    && path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().ends_with(".snapshot.json"))
+                        .unwrap_or(false)
+            })
+            .collect();
+        scanned.sort();
+        paths.extend(scanned);
+    }
+    if paths.is_empty() {
+        return Err(
+            "no history snapshots found (pass --history <snapshot.json> or --history-dir)"
+                .to_string(),
+        );
+    }
+    Ok(paths)
 }
 
 /// Read one or more snapshot JSON files into a single JSON array document.
@@ -1008,16 +1465,26 @@ pub fn run_project_list(args: &ProjectListArgs) -> Result<String, String> {
 }
 
 /// `project-privacy`: scan a project for sensitive fields (io layer).
+/// `--no-include-outputs` mirrors the Python switch; outputs join the scan
+/// by default.
 pub fn run_project_privacy(args: &ProjectPrivacyArgs) -> Result<String, String> {
-    seattrellis_io::projects::project_privacy_json(
+    seattrellis_io::projects::project_privacy_json_with_options(
         args.project
             .to_str()
             .ok_or("project path is not valid UTF-8")?,
+        args.include_outputs,
     )
 }
 
 /// `project-pack`: pack a project workspace into a `.seattrellis.zip` bundle.
+/// Mirroring the oracle, an existing bundle is refused unless `--force`.
 pub fn run_project_pack(args: &ProjectPackArgs) -> Result<(), String> {
+    if args.output.exists() && !args.force {
+        return Err(format!(
+            "Project bundle already exists: {}. Use --force to overwrite it.",
+            args.output.display()
+        ));
+    }
     let bundle = seattrellis_io::projects::pack_project_json(
         args.project
             .to_str()

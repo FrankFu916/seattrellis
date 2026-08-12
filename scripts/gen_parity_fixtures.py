@@ -56,6 +56,15 @@ SOFT_WEIGHTS = {
     "mentor_pairing": 10,
 }
 
+# Candidate-set golden matrix (plan §6.3 / ledger §19.20/§19.31): which
+# requested candidate counts get a byte-stable golden per candidate-matrix
+# case. The budget guard is documented at the generation site.
+CANDIDATES_GOLDEN_COUNTS: dict[str, list[int]] = {
+    "p50-custom-adj-sparse": [1, 5, 20],
+    "p60-rect-exact-dense": [1, 5],
+    "p80-rect-exact-dense": [1],
+}
+
 
 def cli_bin() -> str:
     cand = ROOT / ".venv" / "bin" / "seattrellis"
@@ -590,10 +599,48 @@ def gen_solve_goldens(case: dict, case_dir: Path, gold_dir: Path) -> None:
     else:
         print(f"    snapshot failed: {proc.stderr[:300]}")
 
-    # Candidate set + plan comparison report (small cases only; the
-    # multi-candidate engine for large classes is M4-03 work, and a
-    # candidates=3 golden triples the deterministic-budget runtime).
-    if case["n"] <= 40 and not case.get("invalid"):
+    # Candidate-set goldens for the candidate-matrix cases (plan §6.3 /
+    # §19.20): full candidate-set documents at the 1/5/20 requested counts
+    # for n=50/60/80. `--candidates 1` writes a plain snapshot document that
+    # is byte-identical to the snapshot golden (same solve command), so it
+    # is stored as a copy instead of a duplicate solve.
+    #
+    # Deterministic-budget guard (measured 2026-08-12, Apple silicon; CI
+    # parity-oracle replay is ~1.85x slower, 37 min of a 90-min job): each
+    # requested candidate costs one full deterministic fallback solve
+    # (attempts = max(40, n*12)) - p50 ~30s, p60 ~90s, p80 ~270s per solve.
+    # Counts that would blow the CI replay headroom are not committed as
+    # byte-stable goldens (p60x20 ~65min, p80x5 ~46min, p80x20 ~180min on
+    # CI); those combos remain covered by the live candidates diff class
+    # (15 combos, ledger §19.6) and the Rust candidates gate test.
+    if case["id"] in CANDIDATES_GOLDEN_COUNTS and not case.get("invalid"):
+        for count in CANDIDATES_GOLDEN_COUNTS[case["id"]]:
+            cand = gold_dir / f"candidates-c{count:02d}.json"
+            if count == 1:
+                if snap.exists():
+                    shutil.copyfile(snap, cand)
+                continue
+            report = gold_dir / f"plan-report-c{count:02d}.json"
+            proc = run_cli([
+                "solve", *flags, "--candidates", str(count),
+                "--output", str(cand), "--report", str(report),
+            ])
+            if proc.returncode == 0 and cand.exists():
+                write_json(cand, strip_nondeterministic(read_json(cand)))
+                if report.exists():
+                    write_json(report, strip_nondeterministic(read_json(report)))
+                write_json(
+                    gold_dir / f"objective-breakdown-c{count:02d}.json",
+                    extract_breakdown(read_json(cand)),
+                )
+            else:
+                print(f"    candidates-c{count:02d} failed: {proc.stderr[:300]}")
+
+    # Candidate set + plan comparison report for the smaller corpus cases
+    # (a candidates=3 golden triples the deterministic-budget runtime of the
+    # already-slow cases, so the large-n matrix above uses 1/5/20 and these
+    # keep the original count-3 golden).
+    elif case["n"] <= 40 and not case.get("invalid"):
         cand = gold_dir / "candidates.json"
         report = gold_dir / "plan-report.json"
         proc = run_cli([
@@ -896,7 +943,7 @@ def write_manifest() -> None:
             break
     manifest = {
         "corpus_name": "seattrellis-v2-parity",
-        "corpus_version": "1.0.0",
+        "corpus_version": "1.1.0",
         "source_commit": commit,
         "seattrellis_version": version,
         "python_version": sys.version.split()[0],

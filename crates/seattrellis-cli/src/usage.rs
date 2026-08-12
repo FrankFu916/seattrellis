@@ -19,6 +19,8 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("COMMANDS:"));
     out.push_str("\n    ");
+    out.push_str(&styler.cyan("doctor"));
+    out.push_str("       Check the environment (binary/version/temp dir).\n    ");
     out.push_str(&styler.cyan("validate"));
     out.push_str(" Check a solve-request JSON without running the search.\n    ");
     out.push_str(&styler.cyan("precheck"));
@@ -33,6 +35,14 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("     Summarize historical desk-mate / neighbor pairs.\n    ");
     out.push_str(&styler.cyan("repair"));
     out.push_str("    Re-solve a snapshot while preserving anchors.\n    ");
+    out.push_str(&styler.cyan("edit"));
+    out.push_str("       Apply manual edit operations to a snapshot or candidate set.\n    ");
+    out.push_str(&styler.cyan("score"));
+    out.push_str("      Score a fixed assignment with the PlanScore breakdown.\n    ");
+    out.push_str(&styler.cyan("project-init"));
+    out.push_str("  Create a project workspace file.\n    ");
+    out.push_str(&styler.cyan("project-list"));
+    out.push_str("   List recent projects under a root.\n    ");
     out.push_str(&styler.cyan("project-info"));
     out.push_str("  Show a project workspace summary.\n    ");
     out.push_str(&styler.cyan("project-validate"));
@@ -47,6 +57,12 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("    Apply manual edits to a project seating artifact.\n    ");
     out.push_str(&styler.cyan("project-repair"));
     out.push_str("  Re-solve a project artifact preserving anchors.\n    ");
+    out.push_str(&styler.cyan("project-privacy"));
+    out.push_str(" Scan a project for sensitive fields.\n    ");
+    out.push_str(&styler.cyan("project-pack"));
+    out.push_str("    Back up a project as a .seattrellis.zip bundle.\n    ");
+    out.push_str(&styler.cyan("project-restore"));
+    out.push_str(" Restore a project bundle.\n    ");
     out.push_str(&styler.cyan("schema-list"));
     out.push_str("    List the v2 artifact registry.\n    ");
     out.push_str(&styler.cyan("schema-export"));
@@ -60,15 +76,55 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("help"));
     out.push_str("     Show this help.\n\n");
 
+    out.push_str(&styler.bold("DOCTOR:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("doctor"));
+    out.push_str("\n\n      Prints the binary name, version, core API version and a\n      temp-dir writability probe (fails with exit 2 when not writable).\n\n");
+
+    out.push_str(&styler.bold("EDIT:"));
+    out.push_str("\n    ");
+    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push(' ');
+    out.push_str(&styler.cyan("edit"));
+    out.push_str(" --snapshot <snapshot.json> --operation <op>... [--candidate <id>]\n");
+    out.push_str("             [--operations-file <file>] [--output <file>] [--strict]\n\n");
+    out.push_str("      ");
+    out.push_str(&styler.bold("--snapshot"));
+    out.push_str(" <file>  Snapshot or candidate-set JSON. Required.\n      ");
+    out.push_str(&styler.bold("--candidate"));
+    out.push_str(" <id>   Candidate ID for a candidate set (default: recommended).\n      ");
+    out.push_str(&styler.bold("--operation"));
+    out.push_str(
+        " <op>    String operation, repeatable and ordered. Examples: swap:STU001:STU002,\n",
+    );
+    out.push_str(
+        "             move:STU003:R2C2, batch-move:STU001=R1C2,STU002=R1C1, unseat:STU004,\n",
+    );
+    out.push_str("             lock-seat:R1C1, lock-student:STU001, unlock-seat:R1C1.\n      ");
+    out.push_str(&styler.bold("--operations-file"));
+    out.push_str(" <file> JSON operation log applied before --operation values.\n      ");
+    out.push_str(&styler.bold("--strict"));
+    out.push_str("       Fail instead of writing when hard constraints are violated.\n\n");
+
     out.push_str(&styler.bold("VALIDATE:"));
     out.push_str("\n    ");
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("validate"));
-    out.push_str(" --problem <problem.json>\n\n");
+    out.push_str(
+        " --problem <problem.json> [--preset <name>] [--history <snapshot.json>]... [--strict]\n\n",
+    );
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
-    out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n\n");
+    out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n      ");
+    out.push_str(&styler.bold("--preset"));
+    out.push_str(" <name>  Preset name for preset-context warnings.\n      ");
+    out.push_str(&styler.bold("--history"));
+    out.push_str(" <file>  History snapshot counted for preset history warnings.\n      ");
+    out.push_str(&styler.bold("--strict"));
+    out.push_str("       Treat warnings as validation failures.\n\n");
 
     out.push_str(&styler.bold("PRECHECK:"));
     out.push_str("\n    ");
@@ -125,25 +181,33 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("history-report"));
-    out.push_str(" --problem <problem.json> --history <snapshot.json>...\n\n");
+    out.push_str(" --problem <problem.json> [--history <snapshot.json>]... [--history-dir <dir>] [--output <file>]\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>   Solve-request JSON providing students + layout. Required.\n      ");
     out.push_str(&styler.bold("--history"));
-    out.push_str(" <file>  Snapshot JSON (repeatable). Required.\n\n");
+    out.push_str(" <file>  Snapshot JSON (repeatable).\n      ");
+    out.push_str(&styler.bold("--history-dir"));
+    out.push_str(" <dir>  Directory scanned for *.snapshot.json files.\n      ");
+    out.push_str(&styler.bold("--output"));
+    out.push_str(" <file>   Also write the JSON report to a file.\n\n");
 
     out.push_str(&styler.bold("PAIR-REPORT:"));
     out.push_str("\n    ");
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("pair-report"));
-    out.push_str(" --problem <problem.json> --history <snapshot.json>... [--top <n>]\n");
-    out.push_str("                           [--within-distance <n>]\n\n");
+    out.push_str(
+        " --problem <problem.json> [--history <snapshot.json>]... [--history-dir <dir>]\n",
+    );
+    out.push_str("                           [--top <n>] [--within-distance <n>]\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>   Solve-request JSON providing students + layout. Required.\n      ");
     out.push_str(&styler.bold("--history"));
-    out.push_str(" <file>  Snapshot JSON (repeatable). Required.\n      ");
+    out.push_str(" <file>  Snapshot JSON (repeatable).\n      ");
+    out.push_str(&styler.bold("--history-dir"));
+    out.push_str(" <dir>  Directory scanned for *.snapshot.json files.\n      ");
     out.push_str(&styler.bold("--top"));
     out.push_str(" <n>        High-frequency pairs to display (default 10).\n      ");
     out.push_str(&styler.bold("--within-distance"));
@@ -155,7 +219,10 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push(' ');
     out.push_str(&styler.cyan("repair"));
     out.push_str(" --problem <problem.json> --snapshot <snapshot.json>\n");
-    out.push_str("              [--lock-student <key>]... [--lock-seat <seat>]... [--affected <key>]... [--output <file>]\n\n");
+    out.push_str(
+        "              [--lock-student <key>]... [--lock-seat <seat>]... [--affected <key>]...\n",
+    );
+    out.push_str("              [--ignore-saved-locks] [--output <file>]\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>    Solve-request JSON (students/layout/rules). Required.\n      ");
@@ -167,6 +234,8 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" <seat>    Seat whose occupant keeps it (repeatable).\n      ");
     out.push_str(&styler.bold("--affected"));
     out.push_str(" <key>    Bounds the re-solve scope (repeatable).\n      ");
+    out.push_str(&styler.bold("--ignore-saved-locks"));
+    out.push_str("  Do not reuse locks persisted in the snapshot metadata.\n      ");
     out.push_str(&styler.bold("--output"));
     out.push_str(" <file>   Write the repaired snapshot (default: stdout).\n\n");
 
@@ -235,7 +304,7 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" <file>    Write the rendered plan to <file>. Required.\n\n");
 
     out.push_str(&styler.bold("EXIT STATUS:"));
-    out.push_str("\n    0 on success; 1 on error (bad arguments or unreadable input files).\n    An infeasible solve is a valid result and still exits 0.\n");
+    out.push_str("\n    0 on success; 2 on invalid input/arguments; 3 infeasible; 4 timeout;\n    5 unknown; 70 internal error; 130 cancelled (frozen v2 table, plan M1-03).\n");
     out
 }
 
@@ -249,6 +318,8 @@ mod tests {
         let text = render_usage(&Styler::for_stream(false));
         assert!(text.contains("USAGE:"));
         assert!(text.contains("COMMANDS:"));
+        assert!(text.contains("DOCTOR:"));
+        assert!(text.contains("EDIT:"));
         assert!(text.contains("PRECHECK:"));
         assert!(text.contains("AUDIT:"));
         assert!(text.contains("CANDIDATES:"));
@@ -266,8 +337,13 @@ mod tests {
         assert!(text.contains("history-report"));
         assert!(text.contains("pair-report"));
         assert!(text.contains("repair"));
+        assert!(text.contains("edit"));
+        assert!(text.contains("doctor"));
         assert!(text.contains("project-solve"));
         assert!(text.contains("project-export"));
+        assert!(text.contains("project-privacy"));
+        assert!(text.contains("project-pack"));
+        assert!(text.contains("project-restore"));
         assert!(text.contains("export"));
     }
 

@@ -5,6 +5,7 @@
 //! avoid pulling in clap and to keep the release binary small. See `USAGE`.
 
 mod commands;
+mod presets;
 mod project;
 mod style;
 mod usage;
@@ -67,6 +68,14 @@ pub struct SolveArgs {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ValidateArgs {
     pub problem: PathBuf,
+    /// Optional preset name for preset-context warnings (oracle
+    /// `validate --preset`): warns when the preset's preferred data is
+    /// missing from the problem.
+    pub preset: Option<String>,
+    /// Optional history snapshot paths counted for preset history warnings.
+    pub history: Vec<PathBuf>,
+    /// Treat warnings as validation failures (oracle `--strict`).
+    pub strict: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -131,12 +140,18 @@ pub struct ProjectListArgs {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ProjectPrivacyArgs {
     pub project: PathBuf,
+    /// Mirror the Python `--include-outputs/--no-include-outputs` switch
+    /// (default true): whether generated outputs join the scan.
+    pub include_outputs: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ProjectPackArgs {
     pub project: PathBuf,
     pub output: PathBuf,
+    /// Mirror the Python `--force` switch: replace an existing bundle
+    /// instead of refusing.
+    pub force: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -150,6 +165,11 @@ pub struct ProjectRestoreArgs {
 pub struct HistoryReportArgs {
     pub problem: PathBuf,
     pub history: Vec<PathBuf>,
+    /// Directory scanned for `*.snapshot.json` files (oracle
+    /// `--history-dir` default glob).
+    pub history_dir: Option<PathBuf>,
+    /// Optional JSON report output path (oracle `--output`).
+    pub output: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -192,6 +212,9 @@ pub struct ProjectRepairArgs {
     pub locked_students: Vec<String>,
     pub locked_seats: Vec<String>,
     pub output: Option<PathBuf>,
+    /// Do not reuse locks persisted in the snapshot metadata (oracle
+    /// `--ignore-saved-locks`; default false = reuse).
+    pub ignore_saved_locks: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -208,6 +231,24 @@ pub struct SchemaMigrateArgs {
     pub dry_run: bool,
 }
 
+/// `edit`: apply manual editor operations to a snapshot or candidate set
+/// (oracle cli.py `edit_snapshot`). Operations use the Python string syntax
+/// (`swap:STU001:STU002`, `move:STU003:R2C2`, `lock-seat:R1C1`, ...); a JSON
+/// `--operations-file` applies first, then inline `--operation` values.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EditArgs {
+    pub snapshot: PathBuf,
+    /// Candidate ID for a candidate set, or `recommended` (default).
+    pub candidate: Option<String>,
+    /// Inline string-syntax operations, applied in order after any
+    /// `--operations-file` entries.
+    pub operations: Vec<String>,
+    pub operations_file: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+    /// Fail instead of writing when the edited plan violates hard rules.
+    pub strict: bool,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct RepairArgs {
     pub problem: PathBuf,
@@ -216,12 +257,18 @@ pub struct RepairArgs {
     pub locked_students: Vec<String>,
     pub locked_seats: Vec<String>,
     pub output: Option<PathBuf>,
+    /// Do not reuse locks persisted in the snapshot metadata (oracle
+    /// `--ignore-saved-locks`; default false = reuse).
+    pub ignore_saved_locks: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PairReportArgs {
     pub problem: PathBuf,
     pub history: Vec<PathBuf>,
+    /// Directory scanned for `*.snapshot.json` files (oracle
+    /// `--history-dir` default glob).
+    pub history_dir: Option<PathBuf>,
     pub top: usize,
     pub within_distance: i32,
 }
@@ -244,6 +291,7 @@ enum Command {
     HistoryReport(HistoryReportArgs),
     PairReport(PairReportArgs),
     Repair(RepairArgs),
+    Edit(EditArgs),
     ProjectInfo(ProjectArgs),
     ProjectValidate(ProjectArgs),
     ProjectSolve(ProjectArgs),
@@ -389,6 +437,18 @@ fn parse_validate(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--preset",
+            takes_value: true,
+        },
+        Flag {
+            name: "--history",
+            takes_value: true,
+        },
+        Flag {
+            name: "--strict",
+            takes_value: false,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -398,8 +458,19 @@ fn parse_validate(tokens: &[String]) -> Result<Command, String> {
         return Ok(Command::Help);
     }
     let problem = flag_value(&parsed, "--problem")?.ok_or("validate requires --problem <file>")?;
+    let preset = flag_value(&parsed, "--preset")?.map(str::to_string);
+    let history = parsed
+        .iter()
+        .filter(|(name, _)| name == "--history")
+        .filter_map(|(_, value)| value.clone())
+        .map(PathBuf::from)
+        .collect();
+    let strict = parsed.iter().any(|(name, _)| name == "--strict");
     Ok(Command::Validate(ValidateArgs {
         problem: PathBuf::from(problem),
+        preset,
+        history,
+        strict,
     }))
 }
 
@@ -548,6 +619,14 @@ fn parse_history_report(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--history-dir",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -564,12 +643,19 @@ fn parse_history_report(tokens: &[String]) -> Result<Command, String> {
         .filter_map(|(_, value)| value.clone())
         .map(PathBuf::from)
         .collect::<Vec<_>>();
-    if history.is_empty() {
-        return Err("history-report requires at least one --history <snapshot.json>".to_string());
+    let history_dir = flag_value(&parsed, "--history-dir")?.map(PathBuf::from);
+    if history.is_empty() && history_dir.is_none() {
+        return Err(
+            "history-report requires --history <snapshot.json> or --history-dir <directory>"
+                .to_string(),
+        );
     }
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     Ok(Command::HistoryReport(HistoryReportArgs {
         problem: PathBuf::from(problem),
         history,
+        history_dir,
+        output,
     }))
 }
 
@@ -581,6 +667,10 @@ fn parse_pair_report(tokens: &[String]) -> Result<Command, String> {
         },
         Flag {
             name: "--history",
+            takes_value: true,
+        },
+        Flag {
+            name: "--history-dir",
             takes_value: true,
         },
         Flag {
@@ -608,8 +698,12 @@ fn parse_pair_report(tokens: &[String]) -> Result<Command, String> {
         .filter_map(|(_, value)| value.clone())
         .map(PathBuf::from)
         .collect::<Vec<_>>();
-    if history.is_empty() {
-        return Err("pair-report requires at least one --history <snapshot.json>".to_string());
+    let history_dir = flag_value(&parsed, "--history-dir")?.map(PathBuf::from);
+    if history.is_empty() && history_dir.is_none() {
+        return Err(
+            "pair-report requires --history <snapshot.json> or --history-dir <directory>"
+                .to_string(),
+        );
     }
     let top = match flag_value(&parsed, "--top")? {
         Some(raw) => raw
@@ -626,6 +720,7 @@ fn parse_pair_report(tokens: &[String]) -> Result<Command, String> {
     Ok(Command::PairReport(PairReportArgs {
         problem: PathBuf::from(problem),
         history,
+        history_dir,
         top,
         within_distance,
     }))
@@ -785,7 +880,7 @@ fn parse_project_edit(tokens: &[String]) -> Result<Command, String> {
         .iter()
         .filter(|(name, _)| name == "--operation")
         .filter_map(|(_, value)| value.clone())
-        .collect();
+        .collect::<Vec<String>>();
     let operations_file = flag_value(&parsed, "--operations-file")?.map(PathBuf::from);
     let snapshot = flag_value(&parsed, "--snapshot")?.map(PathBuf::from);
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
@@ -821,6 +916,10 @@ fn parse_project_repair(tokens: &[String]) -> Result<Command, String> {
         Flag {
             name: "--locked-seats",
             takes_value: true,
+        },
+        Flag {
+            name: "--ignore-saved-locks",
+            takes_value: false,
         },
         Flag {
             name: "--output",
@@ -867,6 +966,9 @@ fn parse_project_repair(tokens: &[String]) -> Result<Command, String> {
                 .collect()
         })
         .unwrap_or_default();
+    let ignore_saved_locks = parsed
+        .iter()
+        .any(|(name, _)| name == "--ignore-saved-locks");
     let snapshot = flag_value(&parsed, "--snapshot")?.map(PathBuf::from);
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     Ok(Command::ProjectRepair(ProjectRepairArgs {
@@ -876,6 +978,7 @@ fn parse_project_repair(tokens: &[String]) -> Result<Command, String> {
         locked_students,
         locked_seats,
         output,
+        ignore_saved_locks,
     }))
 }
 
@@ -909,7 +1012,7 @@ fn parse_schema_export(tokens: &[String]) -> Result<Command, String> {
         return Ok(Command::Help);
     }
     let kind = flag_value(&parsed, "--kind")?
-        .ok_or("schema-export requires --kind <student_roster|classroom_layout|ruleset|seating_snapshot|project|project_bundle_manifest|candidate_set|rotation_plan>")?;
+        .ok_or("schema-export requires --kind <student_roster|classroom_layout|ruleset|seating_snapshot|project|project_bundle_manifest|candidate_set|plan_comparison|rotation_plan>")?;
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     Ok(Command::SchemaExport(SchemaExportArgs {
         kind: kind.to_string(),
@@ -1029,6 +1132,10 @@ fn parse_project_privacy(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--no-include-outputs",
+            takes_value: false,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -1039,8 +1146,12 @@ fn parse_project_privacy(tokens: &[String]) -> Result<Command, String> {
     }
     let project =
         flag_value(&parsed, "--project")?.ok_or("project-privacy requires --project <file>")?;
+    let include_outputs = !parsed
+        .iter()
+        .any(|(name, _)| name == "--no-include-outputs");
     Ok(Command::ProjectPrivacy(ProjectPrivacyArgs {
         project: PathBuf::from(project),
+        include_outputs,
     }))
 }
 
@@ -1055,6 +1166,10 @@ fn parse_project_pack(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--force",
+            takes_value: false,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -1066,9 +1181,11 @@ fn parse_project_pack(tokens: &[String]) -> Result<Command, String> {
     let project =
         flag_value(&parsed, "--project")?.ok_or("project-pack requires --project <file>")?;
     let output = flag_value(&parsed, "--output")?.ok_or("project-pack requires --output <file>")?;
+    let force = parsed.iter().any(|(name, _)| name == "--force");
     Ok(Command::ProjectPack(ProjectPackArgs {
         project: PathBuf::from(project),
         output: PathBuf::from(output),
+        force,
     }))
 }
 
@@ -1130,6 +1247,10 @@ fn parse_repair(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--ignore-saved-locks",
+            takes_value: false,
+        },
+        Flag {
             name: "--output",
             takes_value: true,
         },
@@ -1159,6 +1280,9 @@ fn parse_repair(tokens: &[String]) -> Result<Command, String> {
         .filter(|(name, _)| name == "--lock-seat")
         .filter_map(|(_, value)| value.clone())
         .collect();
+    let ignore_saved_locks = parsed
+        .iter()
+        .any(|(name, _)| name == "--ignore-saved-locks");
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     Ok(Command::Repair(RepairArgs {
         problem: PathBuf::from(problem),
@@ -1167,6 +1291,67 @@ fn parse_repair(tokens: &[String]) -> Result<Command, String> {
         locked_students,
         locked_seats,
         output,
+        ignore_saved_locks,
+    }))
+}
+
+fn parse_edit(tokens: &[String]) -> Result<Command, String> {
+    const FLAGS: &[Flag] = &[
+        Flag {
+            name: "--snapshot",
+            takes_value: true,
+        },
+        Flag {
+            name: "--candidate",
+            takes_value: true,
+        },
+        Flag {
+            name: "--operation",
+            takes_value: true,
+        },
+        Flag {
+            name: "--operations-file",
+            takes_value: true,
+        },
+        Flag {
+            name: "--output",
+            takes_value: true,
+        },
+        Flag {
+            name: "--strict",
+            takes_value: false,
+        },
+        Flag {
+            name: "--help",
+            takes_value: false,
+        },
+    ];
+    let parsed = parse_flags(tokens, FLAGS)?;
+    if parsed.iter().any(|(name, _)| name == "--help") {
+        return Ok(Command::Help);
+    }
+    let snapshot = flag_value(&parsed, "--snapshot")?.ok_or("edit requires --snapshot <file>")?;
+    let candidate = flag_value(&parsed, "--candidate")?.map(str::to_string);
+    let operations = parsed
+        .iter()
+        .filter(|(name, _)| name == "--operation")
+        .filter_map(|(_, value)| value.clone())
+        .collect::<Vec<String>>();
+    let operations_file = flag_value(&parsed, "--operations-file")?.map(PathBuf::from);
+    if operations.is_empty() && operations_file.is_none() {
+        return Err(
+            "edit requires at least one --operation <op> or an --operations-file".to_string(),
+        );
+    }
+    let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
+    let strict = parsed.iter().any(|(name, _)| name == "--strict");
+    Ok(Command::Edit(EditArgs {
+        snapshot: PathBuf::from(snapshot),
+        candidate,
+        operations,
+        operations_file,
+        output,
+        strict,
     }))
 }
 
@@ -1248,6 +1433,7 @@ fn parse_args(args: &[OsString]) -> Result<Command, String> {
         "history-report" => parse_history_report(&text[1..]),
         "pair-report" => parse_pair_report(&text[1..]),
         "repair" => parse_repair(&text[1..]),
+        "edit" => parse_edit(&text[1..]),
         "project-init" => parse_project_init(&text[1..]),
         "project-list" => parse_project_list(&text[1..]),
         "project-privacy" => parse_project_privacy(&text[1..]),
@@ -1413,6 +1599,14 @@ fn run_command(command: Command) -> ExitCode {
             }
         },
         Command::Repair(args) => match commands::run_repair(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                let styler = Styler::stderr();
+                eprintln!("{}: {message}", styler.red("error"));
+                ExitCode::from(2)
+            }
+        },
+        Command::Edit(args) => match commands::run_edit(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 let styler = Styler::stderr();
@@ -1662,6 +1856,245 @@ mod tests {
         );
     }
 
+    // ------------------------------------------------------------------
+    // edit: Python string-op syntax + candidate/operations-file flags
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn parse_edit_with_string_operations() {
+        let Command::Edit(args) = parse_args(&args_of(&[
+            "edit",
+            "--snapshot",
+            "s.json",
+            "--operation",
+            "swap:STU001:STU002",
+            "--operation",
+            "lock-seat:R4C3",
+            "--output",
+            "o.json",
+            "--strict",
+        ]))
+        .unwrap() else {
+            panic!("expected an edit command");
+        };
+        assert_eq!(args.snapshot, PathBuf::from("s.json"));
+        assert_eq!(
+            args.operations,
+            vec!["swap:STU001:STU002", "lock-seat:R4C3"]
+        );
+        assert_eq!(args.output, Some(PathBuf::from("o.json")));
+        assert!(args.strict);
+        assert_eq!(args.candidate, None);
+    }
+
+    #[test]
+    fn parse_edit_candidate_and_operations_file() {
+        let Command::Edit(args) = parse_args(&args_of(&[
+            "edit",
+            "--snapshot",
+            "candidates.json",
+            "--candidate",
+            "recommended",
+            "--operations-file",
+            "ops.json",
+        ]))
+        .unwrap() else {
+            panic!("expected an edit command");
+        };
+        assert_eq!(args.candidate.as_deref(), Some("recommended"));
+        assert_eq!(args.operations_file, Some(PathBuf::from("ops.json")));
+    }
+
+    #[test]
+    fn edit_requires_snapshot_and_operations() {
+        let error = parse_args(&args_of(&["edit", "--operation", "swap:A:B"])).unwrap_err();
+        assert!(error.contains("--snapshot"), "unexpected error: {error}");
+        let error = parse_args(&args_of(&["edit", "--snapshot", "s.json"])).unwrap_err();
+        assert!(
+            error.contains("--operation") && error.contains("--operations-file"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn edit_operation_string_parser_mirrors_python() {
+        let cases: &[(&str, &str, &str, &str)] = &[
+            (
+                "swap:STU001:STU002",
+                "swap_students",
+                "first_student",
+                "STU001",
+            ),
+            ("move:STU003:R2C2", "move_student", "student_key", "STU003"),
+            ("seat:STU003:R2C2", "seat_student", "seat_id", "R2C2"),
+            ("unseat:STU004", "unseat_student", "student_key", "STU004"),
+            (
+                "lock-student:STU001",
+                "lock_student",
+                "student_key",
+                "STU001",
+            ),
+            (
+                "unlock_student:STU001",
+                "unlock_student",
+                "student_key",
+                "STU001",
+            ),
+            ("lock-seat:R1C1", "lock_seat", "seat_id", "R1C1"),
+            ("unlock-seat:R1C1", "unlock_seat", "seat_id", "R1C1"),
+        ];
+        for (raw, kind, key, value) in cases {
+            let operation = commands::parse_edit_operation_string(raw).unwrap();
+            assert_eq!(operation.kind, *kind, "raw: {raw}");
+            assert_eq!(
+                operation
+                    .payload
+                    .get(*key)
+                    .and_then(serde_json::Value::as_str),
+                Some(*value),
+                "raw: {raw}"
+            );
+        }
+        // batch-move: STUDENT=SEAT pairs.
+        let batch =
+            commands::parse_edit_operation_string("batch-move:STU001=R1C2,STU002=R1C1").unwrap();
+        assert_eq!(batch.kind, "batch_move");
+        let moves = batch.payload["moves"].as_array().unwrap();
+        assert_eq!(moves.len(), 2);
+        assert_eq!(moves[0]["student_key"], "STU001");
+        assert_eq!(moves[0]["seat_id"], "R1C2");
+        // Unknown kind and malformed batch items are rejected like Python.
+        let error = commands::parse_edit_operation_string("frobnicate:STU001").unwrap_err();
+        assert!(
+            error.contains("Unsupported editing operation"),
+            "unexpected error: {error}"
+        );
+        let error = commands::parse_edit_operation_string("batch-move:STU001").unwrap_err();
+        assert!(
+            error.contains("Invalid batch move item"),
+            "unexpected error: {error}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // preset catalog mirror (validate warnings, oracle presets.py)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn preset_catalog_mirrors_oracle() {
+        // presets.py `_PRESETS` name -> requirements (2026-08-12).
+        let oracle: [(&str, &[&str]); 14] = [
+            ("random", &[]),
+            ("exam", &[]),
+            ("daily", &["history", "score", "height", "vision"]),
+            ("fair-rotation", &["history"]),
+            ("neighbor-aware", &["history"]),
+            ("balanced", &["score"]),
+            ("peer-mixing", &["score"]),
+            ("score-high-front", &["score"]),
+            ("score-high-back", &["score"]),
+            ("row-score-balanced", &["score"]),
+            ("group-score-balanced", &["score"]),
+            ("mentor-pairing", &["score"]),
+            ("height-aware", &["height"]),
+            ("vision-friendly", &["vision"]),
+        ];
+        for (name, requirements) in oracle {
+            assert_eq!(
+                presets::preset_requirements(name),
+                Some(requirements),
+                "preset {name}"
+            );
+            for requirement in requirements {
+                assert!(
+                    presets::REQUIREMENTS.contains(requirement),
+                    "preset {name} requirement {requirement}"
+                );
+            }
+        }
+        assert!(presets::preset_requirements("no-such-preset").is_none());
+    }
+
+    #[test]
+    fn preset_context_warning_message_matches_oracle() {
+        use seattrellis_core::models::{RuleSet, SoftRules, WeightedRule};
+        // run_validate --preset daily without history on score/height/vision
+        // complete students: exactly the history warning, text as in
+        // presets.py `preset_context_warnings`. The soft rules mirror the
+        // daily preset (`_rules(vision=20, height=4, randomize=3, score=4,
+        // fair_rotation=12, neighbors=12)`) so every requirement is enabled.
+        let mut soft = SoftRules::default();
+        soft.fair_rotation.enabled = true;
+        soft.fair_rotation.weight = 12;
+        soft.avoid_recent_neighbors.enabled = true;
+        soft.avoid_recent_neighbors.weight = 12;
+        soft.score_balance.enabled = true;
+        soft.score_balance.weight = 4;
+        soft.height_back = WeightedRule {
+            enabled: true,
+            weight: 4,
+        };
+        soft.vision_front = WeightedRule {
+            enabled: true,
+            weight: 20,
+        };
+        let request = seattrellis_core::CoreSolveRequest {
+            api_version: 2,
+            student_count: 2,
+            seat_positions: vec![[0.0, 0.0], [1.0, 0.0]],
+            edges: vec![[0, 1]],
+            fixed_seats: vec![],
+            must_be_adjacent: vec![],
+            cannot_be_adjacent: vec![],
+            min_distance: vec![],
+            seed: 7,
+            students: vec![
+                seattrellis_core::models::Student {
+                    key: "STU001".to_string(),
+                    display_name: Some("Student001".to_string()),
+                    height_cm: Some(157.0),
+                    score: Some(92.0),
+                    vision: None,
+                    tags: vec!["leader".to_string()],
+                    needs: vec!["vision_front".to_string()],
+                },
+                seattrellis_core::models::Student {
+                    key: "STU002".to_string(),
+                    display_name: Some("Student002".to_string()),
+                    height_cm: Some(177.0),
+                    score: Some(52.0),
+                    vision: None,
+                    tags: vec![],
+                    needs: vec![],
+                },
+            ],
+            student_scores: vec![],
+            rules: Some(RuleSet {
+                seed: 7,
+                soft: soft.clone(),
+                groups: vec![],
+            }),
+            layout: None,
+            history: None,
+            pair_history: None,
+            time_limit_seconds: None,
+        };
+        let warnings = presets::preset_context_warnings("daily", &request.students, &soft, 0);
+        assert_eq!(
+            warnings,
+            vec![
+                "Preset \"daily\" is missing preferred history data. History-based \
+                 preferences stay enabled but contribute no cost or score until \
+                 snapshots are supplied."
+                    .to_string(),
+            ],
+            "daily preset without history warns once"
+        );
+        // Supplying history removes the warning; data-less presets stay silent.
+        assert!(presets::preset_context_warnings("daily", &request.students, &soft, 1).is_empty());
+        assert!(presets::preset_context_warnings("random", &request.students, &soft, 0).is_empty());
+    }
+
     #[test]
     fn parse_export_with_all_options() {
         let Command::Export(args) = parse_args(&args_of(&[
@@ -1853,6 +2286,44 @@ mod tests {
     }
 
     #[test]
+    fn project_pack_refuses_existing_bundle_without_force() {
+        // Python pack_project: an existing bundle is refused unless --force.
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-packforce-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = write_project_workspace(&dir);
+        let bundle = dir.join("bundle.zip");
+        commands::run_project_pack(&ProjectPackArgs {
+            project: project.clone(),
+            output: bundle.clone(),
+            force: false,
+        })
+        .expect("first pack succeeds");
+        let error = commands::run_project_pack(&ProjectPackArgs {
+            project: project.clone(),
+            output: bundle.clone(),
+            force: false,
+        })
+        .expect_err("packing over an existing bundle must be refused");
+        assert!(
+            error.contains("already exists") && error.contains("--force"),
+            "unexpected error: {error}"
+        );
+        commands::run_project_pack(&ProjectPackArgs {
+            project: project.clone(),
+            output: bundle.clone(),
+            force: true,
+        })
+        .expect("--force replaces the bundle");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn project_lifecycle_solves_then_exports_the_saved_plan() {
         let dir = std::env::temp_dir().join(format!(
             "seattrellis-cli-lifecycle-{}-{}",
@@ -1973,6 +2444,7 @@ mod tests {
         // privacy: fail-closed verdict on a teacher project
         let privacy = commands::run_project_privacy(&ProjectPrivacyArgs {
             project: project.clone(),
+            include_outputs: true,
         })
         .unwrap();
         assert!(privacy.contains("\"verdict\""), "got: {privacy}");
@@ -1981,6 +2453,7 @@ mod tests {
         commands::run_project_pack(&ProjectPackArgs {
             project: project.clone(),
             output: bundle.clone(),
+            force: false,
         })
         .unwrap();
         let restored_root = std::env::temp_dir().join(format!(
@@ -2068,15 +2541,13 @@ mod tests {
         assert_eq!(plan["kind"], "rotation_plan");
         assert_eq!(plan["periods"].as_array().unwrap().len(), 2);
 
-        // project-edit: swap two students, then a lock via operations file.
+        // project-edit: swap two students (Python string-op syntax), then a
+        // lock via operations file.
         let edited = dir.join("outputs").join("edited.snapshot.json");
         commands::run_project_edit(&ProjectEditArgs {
             project: project.clone(),
             snapshot: Some(snapshot.clone()),
-            operations: vec![
-                r#"{"kind":"swap_students","payload":{"first_student":"1","second_student":"2"}}"#
-                    .to_string(),
-            ],
+            operations: vec!["swap:1:2".to_string()],
             operations_file: None,
             output: Some(edited.clone()),
             strict: false,
@@ -2114,6 +2585,7 @@ mod tests {
             locked_students: vec!["1".to_string()],
             locked_seats: vec![],
             output: Some(dir.join("outputs").join("repaired.snapshot.json")),
+            ignore_saved_locks: false,
         })
         .unwrap();
         assert!(dir.join("outputs").join("repaired.snapshot.json").is_file());
@@ -2153,5 +2625,50 @@ mod tests {
         assert_eq!(migrated["schema_version"], 2);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn schema_export_serves_v2_schemas_for_typed_kinds() {
+        // Every kind with a typed DTO must resolve to its `.v2.` schema
+        // (schema audit M3: candidate_set used to point at the v1 file and
+        // plan_comparison was missing entirely).
+        let candidate = commands::v2_schema_for_kind("candidate_set").unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&candidate).unwrap();
+        assert!(
+            parsed["title"]
+                .as_str()
+                .unwrap()
+                .contains("SeatTrellis v2 artifact"),
+            "candidate_set resolves to the v2 schema, got: {}",
+            parsed["title"]
+        );
+        let comparison = commands::v2_schema_for_kind("plan_comparison").unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&comparison).unwrap()["title"]
+                .as_str()
+                .unwrap()
+                .contains("SeatTrellis v2 artifact"),
+            "plan_comparison resolves to the v2 schema"
+        );
+        // rotation_plan intentionally mirrors the v1 oracle artifact
+        // contract (schema_version 0.2.2), so it must keep the v1 schema.
+        let rotation = commands::v2_schema_for_kind("rotation_plan").unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&rotation).unwrap()["title"],
+            "SeatTrellis Rotation Plan"
+        );
+        // Kinds without a typed DTO fail with an explicit, documented error.
+        assert!(
+            commands::v2_schema_for_kind("history_archive")
+                .unwrap_err()
+                .contains("no typed DTO"),
+            "history_archive reports the missing-DTO gap"
+        );
+        assert!(
+            commands::v2_schema_for_kind("export_preset")
+                .unwrap_err()
+                .contains("no typed DTO"),
+            "export_preset reports the missing-DTO gap"
+        );
     }
 }

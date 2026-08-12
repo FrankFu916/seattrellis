@@ -446,33 +446,70 @@ pub fn load_project_document(project_path: &Path) -> Result<(Value, PathBuf), St
 pub fn build_project_solve_request(project_path: &Path) -> Result<Value, String> {
     let workspace = resolve_project_workspace(project_path)?;
 
-    // Roster CSV -> core student records (automatic header mapping).
+    // Roster CSV -> roster-style student records (automatic header mapping),
+    // then the shared JSON compile path (the same shapes seating snapshots
+    // embed, so `edit` validates edited artifacts identically).
     let roster_bytes = fs::read(&workspace.students)
         .map_err(|error| format!("could not read {}: {error}", workspace.students.display()))?;
     let students = crate::roster::parse_roster_students(&roster_bytes)?;
-    let core_students: Vec<Value> = students
-        .iter()
-        .map(|student| {
-            let key = student
-                .student_id
-                .clone()
-                .filter(|id| !id.is_empty())
-                .or_else(|| student.name.clone())
-                .unwrap_or_default();
-            json!({
-                "key": key,
-                "display_name": student.name,
-                "height_cm": student.height_cm,
-                "score": student.score,
-                "vision": student.vision.as_ref().map(|v| match v {
-                    crate::roster::VisionValue::Num(value) => value.to_string(),
-                    crate::roster::VisionValue::Str(value) => value.clone(),
-                }),
-                "tags": student.tags,
-                "needs": student.needs,
-            })
+    let students_value = serde_json::to_value(&students)
+        .map_err(|error| format!("could not serialize the roster: {error}"))?;
+    let layout_text = fs::read_to_string(&workspace.layout)
+        .map_err(|error| format!("could not read {}: {error}", workspace.layout.display()))?;
+    let layout: Value = serde_json::from_str(&layout_text)
+        .map_err(|error| format!("layout file is not valid JSON: {error}"))?;
+    let rules_text = fs::read_to_string(&workspace.rules)
+        .map_err(|error| format!("could not read {}: {error}", workspace.rules.display()))?;
+    let rules: Value = serde_json::from_str(&rules_text)
+        .map_err(|error| format!("rules file is not valid JSON: {error}"))?;
+    compile_solve_request_from_json(&students_value, &layout, &rules)
+}
+
+/// Compile a core `CoreSolveRequest` JSON from roster-style student objects,
+/// a layout document and a rules document — the JSON shapes shared by project
+/// workspaces and seating snapshots. `build_project_solve_request` and the
+/// standalone `edit` CLI both compile through this path, so edited artifacts
+/// are validated against the same rule resolution as project plans.
+pub fn compile_solve_request_from_json(
+    students_value: &Value,
+    layout_value: &Value,
+    rules_value: &Value,
+) -> Result<Value, String> {
+    let layout = layout_value;
+    let rules = rules_value;
+
+    // Roster-style student objects -> core student records. `key` mirrors the
+    // Python `student_id or name or ""` resolution; numeric vision values are
+    // rendered as strings exactly like the roster CSV path.
+    let core_students: Vec<Value> = students_value
+        .as_array()
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|student| {
+                    let student_id = student.get("student_id").and_then(Value::as_str);
+                    let name = student.get("name").and_then(Value::as_str);
+                    let key = student_id
+                        .filter(|id| !id.is_empty())
+                        .or(name)
+                        .unwrap_or("");
+                    json!({
+                        "key": key,
+                        "display_name": name,
+                        "height_cm": student.get("height_cm").and_then(Value::as_f64),
+                        "score": student.get("score").and_then(Value::as_f64),
+                        "vision": student.get("vision").map(|vision| match vision {
+                            Value::Number(number) => number.to_string(),
+                            Value::String(text) => text.clone(),
+                            _ => String::new(),
+                        }).filter(|text| !text.is_empty()),
+                        "tags": student.get("tags").cloned().unwrap_or_else(|| json!([])),
+                        "needs": student.get("needs").cloned().unwrap_or_else(|| json!([])),
+                    })
+                })
+                .collect()
         })
-        .collect();
+        .ok_or_else(|| "students must be a JSON array".to_string())?;
     if core_students.iter().any(|student| {
         student
             .get("key")
@@ -484,10 +521,6 @@ pub fn build_project_solve_request(project_path: &Path) -> Result<Value, String>
     }
 
     // Layout JSON -> enabled seat grid + adjacency.
-    let layout_text = fs::read_to_string(&workspace.layout)
-        .map_err(|error| format!("could not read {}: {error}", workspace.layout.display()))?;
-    let layout: Value = serde_json::from_str(&layout_text)
-        .map_err(|error| format!("layout file is not valid JSON: {error}"))?;
     let seats = layout
         .get("seats")
         .and_then(Value::as_array)
@@ -567,10 +600,6 @@ pub fn build_project_solve_request(project_path: &Path) -> Result<Value, String>
     edges.dedup();
 
     // Rules JSON -> soft rules + resolved hard-rule index pairs.
-    let rules_text = fs::read_to_string(&workspace.rules)
-        .map_err(|error| format!("could not read {}: {error}", workspace.rules.display()))?;
-    let rules: Value = serde_json::from_str(&rules_text)
-        .map_err(|error| format!("rules file is not valid JSON: {error}"))?;
     // Strict schema mirroring the Python RuleSet models (extra="forbid"):
     // unknown rule kinds / soft objectives must never be silently dropped —
     // a dropped constraint changes the plan the teacher asked for.
@@ -1132,10 +1161,19 @@ fn file_name_of(path: &str) -> String {
 
 /// Scan a project's referenced text files for sensitive fields, mirroring
 /// `scan_project_privacy` in `project_bundle.py`. File contents are inspected
-/// locally and reduced to field names only.
+/// locally and reduced to field names only. `include_outputs` mirrors the
+/// Python `--include-outputs/--no-include-outputs` switch (default true).
 pub fn project_privacy(project_path: &str) -> Result<ProjectPrivacy, String> {
+    project_privacy_with_options(project_path, true)
+}
+
+/// [`project_privacy`] with the Python `include_outputs` switch.
+pub fn project_privacy_with_options(
+    project_path: &str,
+    include_outputs: bool,
+) -> Result<ProjectPrivacy, String> {
     let (_, paths) = resolve_project(Path::new(project_path), true)?;
-    let report = privacy_report(&paths, true)?;
+    let report = privacy_report(&paths, include_outputs)?;
     Ok(ProjectPrivacy {
         api_version: "1",
         project_path: paths.project_file.to_string_lossy().into_owned(),
@@ -1149,6 +1187,15 @@ pub fn project_privacy(project_path: &str) -> Result<ProjectPrivacy, String> {
 /// JSON form of [`project_privacy`], matching `ProjectPrivacyResponse`.
 pub fn project_privacy_json(project_path: &str) -> Result<String, String> {
     let privacy = project_privacy(project_path)?;
+    serde_json::to_string(&privacy).map_err(|e| format!("Could not serialize project privacy: {e}"))
+}
+
+/// JSON form of [`project_privacy_with_options`].
+pub fn project_privacy_json_with_options(
+    project_path: &str,
+    include_outputs: bool,
+) -> Result<String, String> {
+    let privacy = project_privacy_with_options(project_path, include_outputs)?;
     serde_json::to_string(&privacy).map_err(|e| format!("Could not serialize project privacy: {e}"))
 }
 

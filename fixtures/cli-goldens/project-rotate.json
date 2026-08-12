@@ -1,5 +1,5 @@
 {
-  "stdout": "saved rotation plan (2 periods) to '/private<tmp>/proj/outputs/rotation-plan.json'\n",
+  "stdout": "saved rotation plan (2 periods) to '<tmp>/proj/outputs/rotation-plan.json'",
   "stderr": "",
   "exit": 0
 }

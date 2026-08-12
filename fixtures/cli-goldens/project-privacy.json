@@ -1,5 +1,5 @@
 {
-  "stdout": "{\"api_version\":\"1\",\"project_path\":\"/private<tmp>/proj/seattrellis.project.json\",\"files_scanned\":6,\"verdict\":\"Unsafe\",\"safe_for_public_sharing\":false,\"findings\":[{\"file\":\"layout.json\",\"fields\":[\"name\"]},{\"file\":\"outputs/rotation-plan.json\",\"fields\":[\"name\",\"student_key\",\"student_name\"]},{\"file\":\"seattrellis.project.json\",\"fields\":[\"name\"]},{\"file\":\"students.csv\",\"fields\":[\"height_cm\",\"name\",\"needs\",\"notes\",\"score\",\"student_id\",\"vision\"]}]}\n",
+  "stdout": "{\"api_version\": \"1\", \"files_scanned\": 6, \"findings\": [{\"fields\": [\"name\"], \"file\": \"layout.json\"}, {\"fields\": [\"name\", \"student_key\", \"student_name\"], \"file\": \"outputs/rotation-plan.json\"}, {\"fields\": [\"name\"], \"file\": \"seattrellis.project.json\"}, {\"fields\": [\"height_cm\", \"name\", \"needs\", \"notes\", \"score\", \"student_id\", \"vision\"], \"file\": \"students.csv\"}], \"project_path\": \"<tmp>/proj/seattrellis.project.json\", \"safe_for_public_sharing\": false, \"verdict\": \"Unsafe\"}",
   "stderr": "",
   "exit": 0
 }

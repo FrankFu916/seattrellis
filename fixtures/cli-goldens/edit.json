@@ -1,0 +1,5 @@
+{
+  "stdout": "Edited snapshot written to <tmp>/edited.json\nManual edit summary:\n- operations: 1\n- unseated students: none\n- locked students: none\n- locked seats: none\n- hard constraints: satisfied (0 violation(s))",
+  "stderr": "",
+  "exit": 0
+}

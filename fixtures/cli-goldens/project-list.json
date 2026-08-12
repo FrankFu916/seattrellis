@@ -1,0 +1,5 @@
+{
+  "stdout": "{\"api_version\": \"1\", \"projects\": [{\"modified_at\": \"<timestamp>\", \"name\": \"proj\", \"path\": \"<tmp>/proj/seattrellis.project.json\"}], \"root\": \"<tmp>/proj\"}",
+  "stderr": "",
+  "exit": 0
+}

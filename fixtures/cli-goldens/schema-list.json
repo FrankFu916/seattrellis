@@ -1,5 +1,5 @@
 {
-  "stdout": "kind                   version   migratable\nstudentroster          v2        false\nclassroomlayout        v2        false\nruleset                v2        false\nseatingsnapshot        v2        false\ncandidateset           v2        false\nplancomparison         v2        false\nhistoryarchive         v2        false\nrotationplan           v2        false\neditingoperationlog    v2        false\nproject                v2        false\nprojectbundlemanifest  v2        false\nexportpreset           v2        false\n",
+  "stdout": "kind                   version   migratable\nstudentroster          v2        false\nclassroomlayout        v2        false\nruleset                v2        false\nseatingsnapshot        v2        false\ncandidateset           v2        false\nplancomparison         v2        false\nhistoryarchive         v2        false\nrotationplan           v2        false\neditingoperationlog    v2        false\nproject                v2        false\nprojectbundlemanifest  v2        false\nexportpreset           v2        false",
   "stderr": "",
   "exit": 0
 }

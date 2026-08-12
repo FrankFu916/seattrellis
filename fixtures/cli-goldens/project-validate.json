@@ -1,5 +1,5 @@
 {
-  "stdout": "valid: true\nstudents: 20\nseats: 20\nedges: 31\nhard rules: 0 fixed, 0 must, 0 cannot, 0 min-distance\n",
+  "stdout": "valid: true\nstudents: 20\nseats: 20\nedges: 31\nhard rules: 0 fixed, 0 must, 0 cannot, 0 min-distance",
   "stderr": "",
   "exit": 0
 }
