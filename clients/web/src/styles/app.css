@@ -84,7 +84,7 @@ input:focus-visible,
   color: var(--text-strong);
   font-family: var(--font-display);
   font-size: 1rem;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .brand-lockup small {
@@ -494,7 +494,7 @@ input:focus-visible,
   color: var(--text-strong);
   font-family: var(--font-display);
   font-size: clamp(1.35rem, 2vw, 1.72rem);
-  letter-spacing: -0.035em;
+  letter-spacing: -0.01em;
   line-height: 1.18;
 }
 
@@ -540,12 +540,15 @@ input:focus-visible,
 }
 
 .primary-button {
-  background: var(--accent);
-  color: var(--accent-contrast);
+  /* Ink primary (Anthropic-style): slate-dark button, clay reserved for
+     links/active states. Keeps the primary action distinct from the warm
+     red of violations. */
+  background: var(--text-strong);
+  color: var(--background);
 }
 
 .primary-button:hover:not(:disabled) {
-  background: var(--accent-hover);
+  opacity: 0.88;
   transform: translateY(-1px);
 }
 
@@ -3197,7 +3200,7 @@ input:focus-visible,
 }
 
 .seat-locked > rect {
-  stroke: var(--warning);
+  stroke: var(--locked);
 }
 
 .seat-row-label,
@@ -3225,8 +3228,8 @@ input:focus-visible,
 }
 
 .seat-lock-mark {
-  fill: var(--warning);
-  stroke: var(--warning);
+  fill: var(--locked);
+  stroke: var(--locked);
   stroke-width: 1.4;
 }
 
@@ -3358,7 +3361,7 @@ input:focus-visible,
   color: var(--text-strong);
   font-family: var(--font-display);
   font-size: 1rem;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .project-workspace-content {
@@ -4003,83 +4006,6 @@ input:focus-visible,
 .project-tools[open] summary {
   margin-bottom: 10px;
   color: var(--text);
-}
-
-/* Each theme keeps the same information architecture while changing its
-   visual rhythm, density, edge treatment, and typographic character. */
-:root[data-theme="calm"] .brand-mark {
-  border-radius: 14px 6px 14px 6px;
-}
-
-:root[data-theme="calm"] .control-panel,
-:root[data-theme="calm"] .canvas-card,
-:root[data-theme="calm"] .side-card {
-  border-color: transparent;
-}
-
-:root[data-theme="native"] .app-header,
-:root[data-theme="native"] .sidebar {
-  backdrop-filter: blur(28px) saturate(165%);
-}
-
-:root[data-theme="native"] .header-preferences {
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: rgb(255 255 255 / 55%);
-}
-
-:root[data-theme="native"] .header-preferences select {
-  border: 0;
-  background: transparent;
-}
-
-:root[data-theme="focus"] .brand-lockup strong,
-:root[data-theme="focus"] .panel-heading h1,
-:root[data-theme="focus"] .canvas-card h2,
-:root[data-theme="focus"] .side-card h2 {
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-}
-
-:root[data-theme="focus"] .brand-mark {
-  stroke-width: 3;
-}
-
-:root[data-theme="focus"] .sidebar-item[data-active="true"] {
-  box-shadow: inset 4px 0 0 var(--accent);
-}
-
-:root[data-theme="focus"] .choice-card:hover,
-:root[data-theme="focus"] .primary-button:hover:not(:disabled) {
-  transform: translate(2px, -2px);
-}
-
-:root[data-theme="paper"] .app-header {
-  border-bottom-style: double;
-  border-bottom-width: 3px;
-}
-
-:root[data-theme="paper"] .brand-mark {
-  border: 1px solid var(--accent);
-  background: transparent;
-  color: var(--accent);
-}
-
-:root[data-theme="paper"] .control-panel,
-:root[data-theme="paper"] .canvas-card,
-:root[data-theme="paper"] .side-card,
-:root[data-theme="paper"] .choice-card {
-  border-style: solid;
-}
-
-:root[data-theme="paper"] .panel-heading,
-:root[data-theme="paper"] .side-card > header {
-  border-bottom-style: dashed;
-}
-
-:root[data-theme="paper"] .eyebrow {
-  letter-spacing: 0.16em;
 }
 
 @media (max-width: 1260px) {

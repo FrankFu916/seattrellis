@@ -93,11 +93,6 @@ import {
   type Locale,
   type Translate,
 } from "./i18n/messages";
-import {
-  applyTheme,
-  getInitialTheme,
-  type ThemeName,
-} from "./theme/theme";
 
 const LOCALE_STORAGE_KEY = "seattrellis-locale";
 /** First-run checklist dismissal ("用过即收", D1). */
@@ -284,7 +279,6 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 
 export function App() {
   const [locale, setLocale] = useState<Locale>(getInitialLocale);
-  const [theme, setTheme] = useState<ThemeName>(getInitialTheme);
   const [connection, setConnection] = useState<
     "loading" | BootstrapData["source"]
   >("loading");
@@ -355,10 +349,6 @@ export function App() {
   const [editorUndoDepth, setEditorUndoDepth] = useState(0);
   const [editorRedoDepth, setEditorRedoDepth] = useState(0);
   const t = useMemo(() => createTranslator(locale), [locale]);
-
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -1316,12 +1306,10 @@ export function App() {
       </a>
       <AppHeader
         locale={locale}
-        theme={theme}
         studentCount={students.length}
         connection={connection}
         t={t}
         onLocaleChange={setLocale}
-        onThemeChange={setTheme}
       />
       <div className="app-shell">
         <Sidebar

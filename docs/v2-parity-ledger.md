@@ -1241,6 +1241,28 @@ tap/拖拽 + `touch-action:none` + Ctrl+滚轮缩放=macOS trackpad 捏合
 **阶段 C 退出**：C1/C2/C3 各自验收（Rust 测试+clippy 0、Web 146
 测试、typecheck/build、浏览器 E2E 覆盖路径读取闭环与绝对路径拒
 绝）；提交 591e95f / fd5d147 / 411e229。
+
+### 19.23 2026-08-12：主题收敛 + Anthropic 风格视觉重做（决策记录
+### `2026-08-12-single-theme-anthropic.md`）
+
+产品负责人决策：**5 套主题 → 单一主题**（删除主题选择器，浅/深色
+跟随系统），风格基准改为 **Anthropic 设计系统**（swatch 命名
+slate/ivory/clay/cloud/olive/coral/sky/heather + 衬线标题/无衬线
+正文，色值与字体经抓取 anthropic.com 生产 CSS 实证）：
+
+1. tokens.css 重写为单一主题：暖白底 #faf9f5、石板墨字 #141413、
+   陶土强调 #c6613f、云灰边框；语义色映射 olive(满足)/kraft(建议)/
+   sky(提示)/coral 深(违规)/heather 深(锁定，画布锁定色从 warning
+   切换落实"紫=锁定")；深色为同系反转；圆角收敛 6/10/14px。
+2. 主操作按钮改墨色（slate-dark），陶土仅做链接/激活/聚焦——与
+   Anthropic 官网 CTA 一致，并避免与违规红撞色。
+3. 标题字体栈改衬线：Tiempos Text→Georgia→Times New Roman +
+   中文 Songti SC/Noto Serif SC/SimSun（不打包字体，延续 D12）；
+   负字距放宽至 -0.01em。
+4. 删除 theme/theme.ts、AppHeader 主题选择器、i18n theme.* keys、
+   app.css 全部 `data-theme` 特定段（77 行）。
+5. 验证：146 vitest、typecheck、build 全绿；浏览器确认页头仅剩
+   语言选择器；像素值待 G-4 dogfood 冻结。
 ### 19.21 2026-08-12：UI 视觉打磨首轮（设计方向 §8.2 像素 token 制定）
 
 产品负责人决策（记录：`docs/product-decisions/2026-08-12-ui-visual-polish.md`）：

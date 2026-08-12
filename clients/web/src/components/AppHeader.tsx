@@ -1,24 +1,19 @@
 import type { Locale, Translate } from "../i18n/messages";
-import { themes, type ThemeName } from "../theme/theme";
 
 type AppHeaderProps = {
   locale: Locale;
-  theme: ThemeName;
   studentCount: number;
   connection: "loading" | "local" | "demo";
   t: Translate;
   onLocaleChange: (locale: Locale) => void;
-  onThemeChange: (theme: ThemeName) => void;
 };
 
 export function AppHeader({
   locale,
-  theme,
   studentCount,
   connection,
   t,
   onLocaleChange,
-  onThemeChange,
 }: AppHeaderProps) {
   const connectionLabel =
     connection === "loading"
@@ -57,21 +52,6 @@ export function AppHeader({
 
       <div className="header-preferences">
         <label>
-          <span>{t("header.theme")}</span>
-          <select
-            value={theme}
-            onChange={(event) =>
-              onThemeChange(event.target.value as ThemeName)
-            }
-          >
-            {themes.map((item) => (
-              <option key={item} value={item}>
-                {t(`theme.${item}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
           <span>{t("header.language")}</span>
           <select
             value={locale}
@@ -87,4 +67,3 @@ export function AppHeader({
     </header>
   );
 }
-
