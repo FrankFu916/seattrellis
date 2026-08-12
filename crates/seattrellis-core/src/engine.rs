@@ -1213,6 +1213,15 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
     if request.student_count > seat_count {
         return Err("native solve cannot seat more students than available seats".to_string());
     }
+    // Scale guard (core audit 2026-08-12): validation and search build
+    // O(V^2) distance matrices, so an unbounded seat count is a memory
+    // DoS surface on the loopback API. Classroom grids are far below this.
+    const MAX_SOLVE_SEATS: usize = 10_000;
+    if seat_count > MAX_SOLVE_SEATS {
+        return Err(format!(
+            "native solve supports at most {MAX_SOLVE_SEATS} seats, got {seat_count}"
+        ));
+    }
     if !request.students.is_empty() && request.students.len() != request.student_count {
         return Err("students must be empty or match student_count".to_string());
     }

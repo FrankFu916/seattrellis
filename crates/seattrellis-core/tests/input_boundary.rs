@@ -180,3 +180,20 @@ fn extreme_rows_do_not_panic_pair_report() {
     let value: serde_json::Value = serde_json::from_str(&report).unwrap();
     assert_eq!(value["history_count"], 1);
 }
+
+#[test]
+fn oversized_seat_count_is_rejected() {
+    // Core audit 2026-08-12: validation builds O(V^2) matrices, so an
+    // unbounded seat count is a memory DoS surface on the loopback API.
+    let seats: Vec<[f64; 2]> = (0..10_001)
+        .map(|index| [(index % 200) as f64 * 0.5, (index / 200) as f64 * 0.5])
+        .collect();
+    let request = serde_json::json!({
+        "api_version": 2,
+        "student_count": 10,
+        "seat_positions": seats,
+        "seed": 0,
+    });
+    let error = solve_problem_json(&request.to_string()).unwrap_err();
+    assert!(error.contains("at most 10000 seats"), "{error}");
+}
