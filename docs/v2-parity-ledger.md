@@ -195,7 +195,7 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 | 用例 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
 | `import_roster` / `import_roster_records` / `summarize_roster` | application/roster_import.py:39/:51/:61 | app roster.rs:976 上传端点 | `RUST_PARITY_PENDING` |
-| `suggest_roster_mapping`（含表头/身份列启发式） | application/roster_mapping.py:238 | Rust `suggest_mapping`/`looks_like_identifier`/`looks_like_person_name` 实现存在（roster.rs:452/:675/:689），表头别名经 `roster_alias_mirror.rs` 测试逐项锁死（§19.18）；**剩余边界：启发式判定结果无 Python 差分 golden** | `RUST_PARTIAL` |
+| `suggest_roster_mapping`（含表头/身份列启发式） | application/roster_mapping.py:238 | Rust `suggest_mapping`/`looks_like_identifier`/`looks_like_person_name` 实现存在（roster.rs:452/:675/:689），表头别名经 `roster_alias_mirror.rs` 测试逐项锁死（§19.18）；**§19.36 roster-mapping parity corpus（10 case）Rust 与 Python oracle 差分全等** | `RUST_VERIFIED` |
 | `preview_roster_update` / `apply_roster_update`（指纹+冲突+版本） | application/roster_update.py:133/:366 | app roster.rs:1000 预览端点 | `RUST_PARITY_PENDING` |
 
 ### 2.11 layout（见 §6 详细条目）
@@ -308,7 +308,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 |---|---|---|---|
 | CSV/XLSX 上传解析（20MB 上限、413/503） | api/rosters.py:48；DEFAULT_MAX_ROSTER_FILE_BYTES | roster.rs:976（server.rs:434） | `RUST_PARITY_PENDING` |
 | 名单摘要（总人数/性别/高度等） | application/roster_import.py:61 | 对应响应字段 | `RUST_PARITY_PENDING` |
-| 自动推断列映射（`_looks_like_identifier`/`_looks_like_person_name` 启发式） | application/roster_mapping.py:214-238 | Rust 同名启发式实现存在（roster.rs:675/:689，`suggest_mapping` roster.rs:452）；**剩余边界：启发式判定结果无 Python 差分 golden**（表头别名已由 roster_alias_mirror.rs 逐项锁死，§19.18） | `RUST_PARTIAL` |
+| 自动推断列映射（`_looks_like_identifier`/`_looks_like_person_name` 启发式） | application/roster_mapping.py:214-238 | Rust 同名启发式实现存在（roster.rs:675/:689，`suggest_mapping` roster.rs:452）；**§19.36 roster-mapping parity corpus（10 case）Rust 与 Python oracle 差分全等**（表头别名已由 roster_alias_mirror.rs 逐项锁死，§19.18） | `RUST_VERIFIED` |
 | 映射校验/模板生成/模板应用 | application/roster_mapping.py:351/:394/:407 | 映射校验存在（`mapping_issues` roster.rs:129-186）；**模板生成/模板应用无对应（roster.rs 无 template 实现）** | `RUST_PARTIAL` |
 | `roster_fingerprint`（防无变更提交） | application/roster_update.py:119 | **无对应**（roster.rs/server.rs 无 fingerprint 实现；preview 端点未做"无变更拒绝"） | `RUST_PARTIAL` |
 | 增量/替换更新预览（匹配链 student_id→name→new、冲突检测） | application/roster_update.py:133 | roster.rs:1000（server.rs:440） | `RUST_PARITY_PENDING` |
@@ -481,10 +481,10 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | 领域 | 条目数 | PYTHON_ONLY | RUST_PARTIAL | RUST_PARITY_PENDING | RUST_VERIFIED | INTENTIONALLY_REMOVED_V2 |
 |---|---|---|---|---|---|---|
 | §1 CLI（30 命令 + 契约） | 31 | 0 | 4 | 1 | 20 | 6 |
-| §2 service/application | 41 | 0 | 8 | 12 | 20 | 1 |
+| §2 service/application | 41 | 0 | 7 | 12 | 21 | 1 |
 | §3 React `/api/v1/*`（31 调用） | 31 | 0 | 2 | 28 | 1 | 0 |
 | §4 Schema（10 文件 + 协议机制） | 16 | 0 | 1 | 9 | 6 | 0 |
-| §5 roster | 8 | 0 | 3 | 5 | 0 | 0 |
+| §5 roster | 8 | 0 | 1 | 5 | 2 | 0 |
 | §6 layout editor | 5 | 0 | 0 | 5 | 0 | 0 |
 | §7 hard rules | 5 | 0 | 0 | 5 | 0 | 0 |
 | §8 soft objectives | 10 | 0 | 1 | 9 | 0 | 0 |
@@ -494,7 +494,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §12 export（格式/隐私/页面） | 18 | 1 | 3 | 7 | 7 | 0 |
 | §13 migration/backup/restore | 9 | 0 | 1 | 7 | 1 | 0 |
 | §14 desktop workflows | 7 | 0 | 0 | 5 | 0 | 2 |
-| **合计** | **200** | **2** | **23** | **102** | **64** | **9** |
+| **合计** | **200** | **2** | **21** | **102** | **66** | **9** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（§19.32 升级 `RUST_VERIFIED`，33 golden 逐命令 exit 码 + Python 0/非零语义对照）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条（1 个 `RUST_VERIFIED` + 2 个 `RUST_PARTIAL`）；§2 因 `init_demo/project_init`、`project_info/project_validate` 两行拆分（`INTENTIONALLY_REMOVED_V2` + `RUST_VERIFIED` / `RUST_VERIFIED` + `RUST_PARTIAL`）由 39 行变 41 行；§14 `seattrellis-desktop` 与 `desktop` 并入 PD-D15 移除登记。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
@@ -1746,6 +1746,27 @@ golden `rotation-3-periods/rotation-plan.json`（Python 生成）本就是 "1.0"
 alpha.2 仍有 7 行 v2 必须项未 verified（artifacts compare/restore ×5、
 roster mapping ×2），不宣称 §8.2 Exit Gate 通过。遗留：schema DTO 测试文档中的
 "0.2.2" 字符串为测试数据（`schema_version` 为 String 字段不校验常量），不影响契约。
+
+### 19.36 2026-08-12：roster-mapping 启发式差分 corpus（10 case 全等）
+
+关闭 §19.32 判定必须项中 suggest_roster_mapping 启发式的证据缺口：
+
+- 新增 `fixtures/roster-mapping/`（10 个 CSV + `expected.json`）：
+  normal-headers / chinese-aliases / headerless-numeric-id /
+  headerless-short-id / duplicate-alias / fuzzy-headers（"StudentID"
+  可识别、"Full Name" 不在别名表）/ missing-identity /
+  mixed-alias-prefix / headerless-name-only / needs-plus-tags。
+- `expected.json` 由 Python oracle `suggest_roster_mapping` 记录
+  （assignments `{field: column_index}` + issues code/field/indices）。
+- Rust 侧：`crates/seattrellis-io/tests/roster_mapping_parity.rs` 对
+  每个 case 跑 `parse_roster_csv` → 建议映射，与 golden 逐字段全等
+  （含 issue 顺序与 column_indices）——**10/10 0 差异**。
+- Python 侧：`tests/test_roster_mapping_parity.py` 守卫 golden 与
+  oracle 同步（实现变更必须重录 golden 并两侧同验）。
+- 状态变更：§2.10 `suggest_roster_mapping` 与 §5 自动推断列映射
+  两行 `RUST_PARTIAL` → `RUST_VERIFIED`。计数：200 行
+  `PYTHON_ONLY=2`、`RUST_PARTIAL=21`、`RUST_PARITY_PENDING=102`、
+  `RUST_VERIFIED=66`、`INTENTIONALLY_REMOVED_V2=9`。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 

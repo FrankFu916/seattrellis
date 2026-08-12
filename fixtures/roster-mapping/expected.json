@@ -1,0 +1,100 @@
+{
+  "normal-headers": {
+    "assignments": {
+      "student_id": 0,
+      "name": 1,
+      "height_cm": 2,
+      "score": 3,
+      "vision": 4,
+      "needs": 5
+    },
+    "issues": []
+  },
+  "chinese-aliases": {
+    "assignments": {
+      "student_id": 1,
+      "name": 0,
+      "height_cm": 2,
+      "score": 3,
+      "needs": 4
+    },
+    "issues": []
+  },
+  "headerless-numeric-id": {
+    "assignments": {
+      "student_id": 1,
+      "name": 0
+    },
+    "issues": []
+  },
+  "headerless-short-id": {
+    "assignments": {
+      "name": 0
+    },
+    "issues": []
+  },
+  "duplicate-alias": {
+    "assignments": {
+      "student_id": 0
+    },
+    "issues": [
+      {
+        "code": "ambiguous_header",
+        "field": "name",
+        "column_indices": [
+          1,
+          2
+        ]
+      }
+    ]
+  },
+  "fuzzy-headers": {
+    "assignments": {
+      "student_id": 0,
+      "height_cm": 2,
+      "notes": 4
+    },
+    "issues": []
+  },
+  "missing-identity": {
+    "assignments": {
+      "height_cm": 0,
+      "score": 1
+    },
+    "issues": [
+      {
+        "code": "missing_identity",
+        "field": null,
+        "column_indices": []
+      }
+    ]
+  },
+  "mixed-alias-prefix": {
+    "assignments": {
+      "student_id": 0,
+      "name": 1,
+      "height_cm": 2,
+      "score": 3
+    },
+    "issues": []
+  },
+  "headerless-name-only": {
+    "assignments": {},
+    "issues": [
+      {
+        "code": "missing_identity",
+        "field": null,
+        "column_indices": []
+      }
+    ]
+  },
+  "needs-plus-tags": {
+    "assignments": {
+      "student_id": 0,
+      "name": 1,
+      "tags": 3,
+      "needs": 2
+    },
+    "issues": []
+  }
+}
