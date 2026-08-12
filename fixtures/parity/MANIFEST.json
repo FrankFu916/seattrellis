@@ -757,7 +757,7 @@
   },
   "corpus_name": "seattrellis-v2-parity",
   "corpus_version": "1.1.0",
-  "generated_at": "2026-08-12T14:20:05Z",
+  "generated_at": "2026-08-12T14:58:08Z",
   "generator": "scripts/gen_parity_fixtures.py",
   "golden_contract": "Heuristic solutions are not required to match seat-for-seat between Python and Rust; semantics, legality, scoring definitions and quality thresholds must match. Timestamp fields are stripped for stability.",
   "golden_hashes": {
@@ -2146,8 +2146,8 @@
     "snapshot_id"
   ],
   "pip_extras": "image,excel,pdf,docx,pptx",
-  "python_version": "3.11.5",
+  "python_version": "3.12.13",
   "seattrellis_version": "unknown",
   "solver_backend": "fallback",
-  "source_commit": "e28bf1892d49624bac0a6487466c7c97564b424a"
+  "source_commit": "4911352853b41ab5a0517bb68c4f43fccd33530f"
 }
