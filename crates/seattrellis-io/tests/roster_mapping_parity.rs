@@ -42,7 +42,7 @@ fn roster_mapping_matches_the_python_oracle_corpus() {
         // assignments: {field: column_index} sorted by field name.
         let mut rust_assignments: BTreeMap<String, usize> = BTreeMap::new();
         for item in &response.suggested_mapping {
-            let field = serde_json::to_value(&item.field).unwrap();
+            let field = serde_json::to_value(item.field).unwrap();
             rust_assignments.insert(field.as_str().unwrap().to_string(), item.column_index);
         }
         let oracle_assignments: BTreeMap<String, usize> = case["assignments"]
@@ -65,7 +65,7 @@ fn roster_mapping_matches_the_python_oracle_corpus() {
                 let field = issue
                     .field
                     .as_ref()
-                    .map(|field| serde_json::to_value(field).unwrap())
+                    .map(|field| serde_json::to_value(*field).unwrap())
                     .map(|value| value.as_str().unwrap().to_string());
                 (issue.code.clone(), field, issue.column_indices.clone())
             })
