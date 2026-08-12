@@ -1396,6 +1396,33 @@ PDF、PNG 解码和 PowerPoint 独立渲染均可见；XLSX/DOCX 由独立 reade
 文档也无法渲染中文，故不将其空白结果作为 SeatTrellis renderer 失败证据，
 后续 Windows Word/Excel dogfood 仍保留为发布前平台验收项。
 
+### 19.28 2026-08-12：阶段 D1（alpha.1 主流程 E2E 扩展 + 暴露的三处真实 bug 修复）
+
+NO_PYTHON_RUNTIME E2E 扩展为完整主流程（import → solve → edit →
+rotation 保存 → 项目重开 → rotation 加载 → 导出默认值），4/4 全绿
+（真实 Chromium vs Rust 二进制），并暴露/修复三处真实 bug：
+
+1. **座位点击失效（回归）**：pointer capture 在 pointerdown 时于
+   stage 容器上激活，浏览器合成 click 被重定向到容器，座位 g 的
+   onClick 永远收不到。修复：capture 推迟到首次真实拖拽移动时激活；
+   纯按压正常点击、拖拽仍捕获（SeatingCanvas）。
+2. **generate 视图轮换设置不可达**：panel-content 缺 min-height:0，
+   flex 子项拒绝收缩，内容被卡片 min-height + overflow:hidden 裁剪且
+   无法滚动（轮换设置在折叠区下方不可见）。修复：panel-content
+   min-height:0 + overflow-y:auto。
+3. **轮换加载崩溃**：load 响应缺 editor/period_editors（M2 声称接好
+   但只在 generate 路径构造了 drafts），handleRotationLoad 在
+   period_editors.length 上崩溃（M2 的 E2E 因画布仍显示旧方案而假
+   绿）。修复：服务端 load 时从项目 roster + layout 重建每期 editable
+   draft（candidate_id period-N，与 generate wiring 一致）。
+
+E2E 同步更新（B7/D1 后的 UI 变化）：catalogs 断言改 7 格式（html
+隐藏）、向导由上下文操作条驱动（footer 移除）、导入渐进披露、
+项目工具在历史视图折叠区内、项目 layout fixture 与 standard-30 过道
+几何一致（draft 可重建）；新增导出默认值测试（print-html 保真名 +
+PDF 光栅页，锁 public 匿名回归）。验证：E2E 4/4、React 153、
+server 107 + export 53 + io、clippy -D warnings 全绿。
+
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
 ### corpus 状态
