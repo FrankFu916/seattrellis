@@ -333,9 +333,7 @@ pub fn rotation_load_json(project_path: &str) -> Result<String, String> {
 ///
 /// Returns `(project_file, artifact_path, plan)` so the wiring layer can
 /// rebuild editable drafts without re-reading the project file itself.
-pub fn rotation_load_plan(
-    project_path: &str,
-) -> Result<(PathBuf, PathBuf, Value), String> {
+pub fn rotation_load_plan(project_path: &str) -> Result<(PathBuf, PathBuf, Value), String> {
     let (project_file, project) = load_project_file(project_path)?;
     let root = parent_dir(&project_file);
     let outputs_dir = resolve_outputs_dir(&root, &project)?;
