@@ -2563,6 +2563,179 @@ input:focus-visible,
   padding: 0 14px 12px;
 }
 
+/* ---------- interactive seating editor (B2 / D2) ---------- */
+
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: var(--line-width) solid var(--border);
+  flex-wrap: wrap;
+}
+
+.view-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.view-switch button {
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.view-switch button[data-active="true"] {
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-small);
+}
+
+.zoom-controls button {
+  padding: 3px 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.zoom-controls button:hover {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.zoom-value {
+  min-width: 40px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.canvas-stage {
+  position: relative;
+  overflow: auto;
+  margin: 12px 0 4px;
+}
+
+.seating-holder {
+  width: max-content;
+}
+
+.seat {
+  cursor: grab;
+}
+
+.seat-dragging {
+  z-index: 30;
+  opacity: 0.92;
+  cursor: grabbing;
+}
+
+.seat-dragging > rect {
+  filter: drop-shadow(0 10px 22px rgb(15 23 42 / 35%));
+}
+
+.seat-hover-target > rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.rubber-band {
+  position: absolute;
+  z-index: 25;
+  border: 1.5px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
+}
+
+.batch-ghost {
+  position: absolute;
+  z-index: 30;
+  padding: 5px 10px;
+  border-radius: var(--radius-small);
+  background: var(--accent-soft);
+  border: 1.5px solid var(--accent);
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+  pointer-events: none;
+  box-shadow: var(--shadow-raised);
+}
+
+.canvas-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 14px 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.canvas-status-text {
+  color: var(--text);
+}
+
+.canvas-status-meta {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.seating-table-wrap {
+  overflow: auto;
+  padding: 12px 14px;
+  max-height: 480px;
+}
+
+.seating-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.seating-table th,
+.seating-table td {
+  padding: 6px 10px;
+  border-bottom: var(--line-width) solid var(--border);
+  text-align: left;
+}
+
+.seating-table th {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.seating-table select {
+  min-width: 200px;
+}
+
+.seating-table .num {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
 .seating-canvas {
   width: 100%;
   min-width: 430px;

@@ -49,7 +49,7 @@ import {
 import { HistoryRotationPanel } from "./components/HistoryRotationPanel";
 import { RosterImportPanel } from "./components/RosterImportPanel";
 import { SaveAsClassDialog } from "./components/SaveAsClassDialog";
-import { SeatingCanvas } from "./components/SeatingCanvas";
+import { SeatingCanvasEditor } from "./components/SeatingCanvasEditor";
 import { Sidebar } from "./components/Sidebar";
 import {
   rosterIsValid,
@@ -57,6 +57,10 @@ import {
 } from "./components/StudentRosterEditor";
 import { UnseatedTray } from "./components/UnseatedTray";
 import { WorkflowPanel } from "./components/WorkflowPanel";
+import {
+  planBatchLock,
+  planBatchMove,
+} from "./domain/canvasEdit";
 import {
   contextActionFor,
   isContentView,
@@ -322,6 +326,7 @@ export function App() {
   const [editorDraftId, setEditorDraftId] = useState<string | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
   const [editorUndoDepth, setEditorUndoDepth] = useState(0);
+  const [editorRedoDepth, setEditorRedoDepth] = useState(0);
   const t = useMemo(() => createTranslator(locale), [locale]);
 
   useEffect(() => {
@@ -345,6 +350,30 @@ export function App() {
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [isDirty, t]);
+
+  // Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z and Cmd/Ctrl+Y redo (design §6).
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if (key === "y") {
+        event.preventDefault();
+        handleRedo();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   useEffect(() => {
     let current = true;
@@ -409,6 +438,7 @@ export function App() {
     (seat) => seat.seatId === selectedSeatId,
   );
   const hasPlan = editorDraftId !== null || rotationPlan !== null;
+  const canRedo = editorDraftId ? editorRedoDepth > 0 : false;
   const viewLabel =
     view === "history" ? t("nav.history") : t(`step.${viewToStep(view)}`);
   const viewMeta = useMemo(() => {
@@ -480,6 +510,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+      setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -533,6 +564,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+      setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -544,6 +576,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+      setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -761,6 +794,7 @@ export function App() {
       setStudents(plan.students);
       setEditorRevision(editor.revision);
       setEditorUndoDepth(editor.undo_depth);
+      setEditorRedoDepth(editor.redo_depth);
       setSelectedSeatId(null);
       setIsDirty(true);
     } catch (err) {
@@ -784,6 +818,12 @@ export function App() {
       setIsDirty(true);
       return previous.slice(0, -1);
     });
+  }
+
+  function handleRedo() {
+    if (editorDraftId) {
+      void applyEditorCommand({ action: "redo", operations: [] });
+    }
   }
 
   function handleToggleLock() {
@@ -818,8 +858,124 @@ export function App() {
     setEditorDraftId(editor.draft_id);
     setEditorRevision(editor.revision);
     setEditorUndoDepth(editor.undo_depth);
+    setEditorRedoDepth(editor.redo_depth);
     setSelectedSeatId(null);
     setIsDirty(false);
+  }
+
+  /** Batch lock/unlock from the canvas box selection (one atomic command). */
+  function handleLockSelection(seatIds: string[], lock: boolean) {
+    if (seatIds.length === 0) {
+      return;
+    }
+    if (editorDraftId) {
+      void applyEditorCommand({
+        action: "apply",
+        operations: planBatchLock(seatIds, lock),
+      });
+      return;
+    }
+    setHistory((previous) => [...previous, assignments]);
+    setAssignments((current) => {
+      const locked = new Set(seatIds);
+      return current.map((seat) =>
+        locked.has(seat.seatId) ? { ...seat, locked: lock } : seat,
+      );
+    });
+    setIsDirty(true);
+  }
+
+  /** Batch move of a canvas multi-selection onto a drop seat. */
+  function handleBatchMove(selectedIds: string[], dropSeatId: string) {
+    const ops = planBatchMove(assignments, selectedIds, dropSeatId);
+    if (ops.length === 0) {
+      return;
+    }
+    if (editorDraftId) {
+      void applyEditorCommand({ action: "apply", operations: ops });
+      return;
+    }
+    setHistory((previous) => [...previous, assignments]);
+    setAssignments((current) => {
+      let next = current;
+      for (const move of (ops[0].payload as { moves: Array<{ student_key: string; seat_id: string }> }).moves) {
+        const student = next.find(
+          (seat) => seat.student?.id === move.student_key,
+        )?.student;
+        if (!student) {
+          continue;
+        }
+        next = next.map((seat) =>
+          seat.seatId === move.seat_id
+            ? { ...seat, student }
+            : seat.student?.id === move.student_key
+              ? { ...seat, student: undefined }
+              : seat,
+        );
+      }
+      return next;
+    });
+    setIsDirty(true);
+  }
+
+  /**
+   * Table view edit (D2): place or remove a student on one seat. A student
+   * already seated elsewhere is rejected up front — the Rust editor applies
+   * the same rule.
+   */
+  function handleTableAssign(seatId: string, studentId: string | null) {
+    const seat = assignments.find((item) => item.seatId === seatId);
+    if (!seat || seat.locked) {
+      return;
+    }
+    if (studentId) {
+      const otherSeat = assignments.find(
+        (item) => item.seatId !== seatId && item.student?.id === studentId,
+      );
+      if (otherSeat) {
+        setSaveError(
+          t("canvas.tableDuplicate", { seat: otherSeat.seatId }),
+        );
+        return;
+      }
+    }
+    const operations: EditorOperation[] = studentId
+      ? [
+          {
+            kind: "move_student",
+            payload: { student_key: studentId, seat_id: seatId },
+          },
+        ]
+      : seat.student
+        ? [
+            {
+              kind: "unseat_student",
+              payload: { student_key: seat.student.id },
+            },
+          ]
+        : [];
+    if (operations.length === 0) {
+      return;
+    }
+    if (editorDraftId) {
+      void applyEditorCommand({ action: "apply", operations });
+      return;
+    }
+    setHistory((previous) => [...previous, assignments]);
+    setAssignments((current) =>
+      current.map((item) =>
+        item.seatId === seatId
+          ? {
+              ...item,
+              student: studentId
+                ? current.find((candidate) => candidate.student?.id === studentId)
+                    ?.student
+                : undefined,
+            }
+          : item,
+      ),
+    );
+    setIsDirty(true);
   }
 
   async function handleRotationPeriodSelect(period: number) {
@@ -986,6 +1142,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+      setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -1012,6 +1169,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
+      setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -1231,11 +1389,37 @@ export function App() {
                     {t("room.seats", { count: assignments.length })}
                   </span>
                 </header>
-                <SeatingCanvas
+                {saveError ? (
+                  <p className="inline-error" role="alert">
+                    {saveError}
+                  </p>
+                ) : null}
+                <SeatingCanvasEditor
                   assignments={assignments}
-                  selectedSeatId={selectedSeatId}
+                  students={students}
+                  canUndo={
+                    editorDraftId ? editorUndoDepth > 0 : history.length > 0
+                  }
+                  canRedo={canRedo}
                   t={t}
                   onSeatActivate={handleSeatActivate}
+                  onSwap={(from, to) => {
+                    const first = assignments.find(
+                      (seat) => seat.seatId === from,
+                    );
+                    const second = assignments.find(
+                      (seat) => seat.seatId === to,
+                    );
+                    if (first && second) {
+                      void syncSwap(first, second);
+                    }
+                  }}
+                  onBatchMove={handleBatchMove}
+                  onLockSelection={(ids) => handleLockSelection(ids, true)}
+                  onUnlockSelection={(ids) => handleLockSelection(ids, false)}
+                  onAssign={handleTableAssign}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
                 />
               </section>
             ) : null}

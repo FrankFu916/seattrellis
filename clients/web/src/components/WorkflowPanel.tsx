@@ -992,15 +992,6 @@ export function WorkflowPanel({
               <button
                 className="secondary-button"
                 type="button"
-                onClick={onUndo}
-                disabled={!canUndo}
-              >
-                <span aria-hidden="true">↶</span>
-                {t("action.undo")}
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
                 onClick={onToggleLock}
                 disabled={!selectedSeat}
               >

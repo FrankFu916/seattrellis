@@ -526,9 +526,20 @@ export type ExportPrivacyOptions = {
   show_vision: boolean;
 };
 
+/** Scalar payload of a simple editor operation. */
+export type EditorOperationPayload = Record<
+  string,
+  string | null | number
+>;
+
+/** Payload of the atomic `batch_move` operation (Rust editing protocol). */
+export type BatchMovePayload = {
+  moves: Array<{ student_key: string; seat_id: string }>;
+};
+
 export type EditorOperation = {
   kind: string;
-  payload: Record<string, string | null | number>;
+  payload: EditorOperationPayload | BatchMovePayload;
 };
 
 export type EditorCommand = {
