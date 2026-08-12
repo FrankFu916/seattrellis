@@ -5,20 +5,31 @@
     Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Noto Sans SC", sans-serif;
   --font-display: var(--font-ui);
-  --background: #f4f5f7;
+
+  /* Type scale (design §3, 8pt-based). Text below 11px is reserved for
+     viewBox-scaled canvas glyphs only; UI copy never goes smaller. */
+  --text-2xs: 0.6875rem; /* 11px — captions, step numbers */
+  --text-xs: 0.75rem; /* 12px — table headers, badges */
+  --text-sm: 0.8125rem; /* 13px — secondary body, chips */
+  --text-md: 0.875rem; /* 14px — body, buttons */
+  --text-lg: 0.9375rem; /* 15px — emphasized body */
+  --text-xl: 1rem; /* 16px — panel titles, brand */
+  --text-2xl: 1.125rem; /* 18px — section titles */
+
+  --background: #f5f6f8;
   --background-pattern: none;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-soft: #f7f8fa;
-  --surface-tint: #eef2ff;
-  --text: #20232a;
-  --text-strong: #121419;
-  --muted: #69707d;
-  --border: #e1e4e9;
-  --border-strong: #c6cbd3;
-  --accent: #4361ee;
-  --accent-hover: #324dcc;
-  --accent-soft: #e8edff;
+  --surface-soft: #f1f2f5;
+  --surface-tint: #e9edf9;
+  --text: #1c2027;
+  --text-strong: #0e1116;
+  --muted: #565d69;
+  --border: #dde0e6;
+  --border-strong: #b9bfc9;
+  --accent: #3457d5;
+  --accent-hover: #2943b0;
+  --accent-soft: #e4eafc;
   --accent-contrast: #ffffff;
   --success: #1d8a61;
   --success-soft: #e5f7ef;
@@ -30,14 +41,14 @@
   --header-background: rgb(255 255 255 / 88%);
   --nav-background: #fbfbfc;
   --seat-fill: #ffffff;
-  --seat-empty: #f3f4f6;
-  --seat-stroke: #d9dde4;
-  --seat-text: #262b34;
-  --canvas-background: #f8f9fb;
-  --canvas-grid: #e8ebef;
+  --seat-empty: #f1f2f5;
+  --seat-stroke: #d6dae1;
+  --seat-text: #23262d;
+  --canvas-background: #f7f8fa;
+  --canvas-grid: #e6e9ee;
   --radius-small: 8px;
   --radius-medium: 12px;
-  --radius-large: 18px;
+  --radius-large: 16px;
   --radius-pill: 999px;
   --shadow-card: 0 1px 2px rgb(16 24 40 / 5%);
   --shadow-raised:
@@ -53,16 +64,16 @@
     --surface: #181b20;
     --surface-raised: #1d2026;
     --surface-soft: #22262d;
-    --surface-tint: #202841;
+    --surface-tint: #232c46;
     --text: #e6e9ef;
     --text-strong: #ffffff;
-    --muted: #a3aab5;
+    --muted: #9aa2ae;
     --border: #2d323b;
     --border-strong: #454c58;
-    --accent: #8298ff;
-    --accent-hover: #9badff;
+    --accent: #8b9eff;
+    --accent-hover: #9fafff;
     --accent-soft: #28335f;
-    --accent-contrast: #101424;
+    --accent-contrast: #0f1424;
     --success: #66d0a5;
     --success-soft: #183b2e;
     --warning: #f0ad62;
