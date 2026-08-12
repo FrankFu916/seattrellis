@@ -65,6 +65,9 @@ import {
   planBatchMove,
 } from "./domain/canvasEdit";
 import {
+  restoreSnapshotPlan,
+} from "./components/HistoryRotationPanel";
+import {
   contextActionFor,
   isContentView,
   viewToStep,
@@ -577,6 +580,31 @@ export function App() {
     }
     setClassContext(next);
     resetWorkbench();
+  }
+
+  function handleRestoreSnapshot(snapshot: HistorySnapshotPayload) {
+    if (isDirty && !window.confirm(t("app.discardDraft"))) {
+      return;
+    }
+    const { students: restoredStudents, assignments: restoredAssignments } =
+      restoreSnapshotPlan(snapshot, assignments);
+    if (restoredStudents.length === 0) {
+      setSaveError(t("history.notRestorable"));
+      return;
+    }
+    setStudents(restoredStudents);
+    setAssignments(restoredAssignments);
+    setEditorDraftId(null);
+    setEditorRevision(0);
+    setEditorUndoDepth(0);
+    setEditorRedoDepth(0);
+    setRotationPlan(null);
+    setRotationEditors([]);
+    setActiveRotationPeriod(1);
+    setSelectedSeatId(null);
+    setSaveError(null);
+    setIsDirty(true);
+    switchView("canvas");
   }
 
   function handleSaveAsClass(name: string) {
@@ -1329,8 +1357,11 @@ export function App() {
                   (editor) => editor.draft_id,
                 )}
                 historyFileNames={historyFileNames}
-                historySnapshotCount={historySnapshots.length}
+                historySnapshots={historySnapshots}
                 historyError={historyError}
+                assignments={assignments}
+                students={students}
+                isDirty={isDirty}
                 activeRotationPeriod={activeRotationPeriod}
                 onRotationLoad={handleRotationLoad}
                 onRotationPeriodSelect={(period) => {
@@ -1340,6 +1371,7 @@ export function App() {
                   void handleHistoryFiles(files);
                 }}
                 onHistoryClear={clearHistoryFiles}
+                onRestoreSnapshot={handleRestoreSnapshot}
               />
             ) : (
               <WorkflowPanel
