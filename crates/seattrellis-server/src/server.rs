@@ -617,7 +617,7 @@ pub(crate) fn route(
             rotation_save_response(&request.body)
         }
         ("POST", ["api", "v1", "projects", "rotation", "load"]) => {
-            rotation_load_response(&request.body)
+            rotation_load_response(&request.body, editor_store)
         }
         ("POST", ["api", "v1", "projects", "rotation", "group-register"]) => {
             rotation_register_download_response(&request.body)
@@ -1614,7 +1614,7 @@ fn rotation_save_response(body: &[u8]) -> Response {
 /// (`{project_path, artifact_path?}`). `artifact_path` is accepted for
 /// workbench compatibility; the module locates `rotation-plan.json` in the
 /// project's outputs directory.
-fn rotation_load_response(body: &[u8]) -> Response {
+fn rotation_load_response(body: &[u8], editor_store: &EditorDraftStore) -> Response {
     let value = match parse_body_json(body) {
         Ok(value) => value,
         Err(response) => return response,
@@ -1624,10 +1624,165 @@ fn rotation_load_response(body: &[u8]) -> Response {
         Err(response) => return response,
     };
     let project_path = resolve_request_path(&project_path);
-    match seattrellis_io::rotation::rotation_load_json(&project_path) {
-        Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+    match seattrellis_io::rotation::rotation_load_plan(&project_path) {
+        Ok((project_file, artifact_path, plan)) => {
+            match rotation_load_drafts(&project_file, &artifact_path, &plan, editor_store) {
+                Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
+                Err(message) => rotation_error_response(&message),
+            }
+        }
         Err(message) => rotation_error_response(&message),
     }
+}
+
+/// Rebuild the editable per-period drafts for a saved rotation plan and
+/// return the load envelope with `editor` (period 1) + `period_editors`
+/// (every period, candidate_id "period-N"), mirroring the generate wiring
+/// (M2 §5.7 / ledger §19.10: the workbench loads a period by matching
+/// `candidate_id == "period-N"`).
+fn rotation_load_drafts(
+    project_file: &Path,
+    artifact_path: &Path,
+    plan: &Value,
+    editor_store: &EditorDraftStore,
+) -> Result<String, String> {
+    let root = project_file
+        .parent()
+        .ok_or_else(|| "project file has no parent directory".to_string())?;
+    let project: Value = serde_json::from_slice(
+        &std::fs::read(project_file)
+            .map_err(|error| format!("could not read project file: {error}"))?,
+    )
+    .map_err(|error| format!("could not parse project file: {error}"))?;
+
+    // Roster: project["students"] (default students.csv) next to the file.
+    let students_rel = project
+        .get("students")
+        .and_then(Value::as_str)
+        .unwrap_or("students.csv");
+    let roster_bytes = std::fs::read(root.join(students_rel))
+        .map_err(|error| format!("could not read roster: {error}"))?;
+    let roster = seattrellis_io::roster::parse_roster_csv(&roster_bytes)?;
+    let mut id_col = None;
+    let mut name_col = None;
+    for item in &roster.suggested_mapping {
+        match item.field {
+            seattrellis_io::roster::RosterField::StudentId => id_col = Some(item.column_index),
+            seattrellis_io::roster::RosterField::Name => name_col = Some(item.column_index),
+            _ => {}
+        }
+    }
+    let id_col = id_col.ok_or_else(|| "roster has no student_id column".to_string())?;
+    let mut keys: Vec<String> = Vec::new();
+    let mut display_names = std::collections::HashMap::new();
+    for row in &roster.rows {
+        let id = row
+            .cells
+            .get(id_col)
+            .filter(|cell| !cell.is_empty())
+            .cloned();
+        if let Some(id) = id {
+            let name = name_col
+                .and_then(|column| row.cells.get(column))
+                .filter(|cell| !cell.is_empty())
+                .cloned()
+                .unwrap_or_else(|| id.clone());
+            keys.push(id.clone());
+            display_names.insert(id, name);
+        }
+    }
+    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+
+    // Layout: project["layout"] (default layout.json) next to the file.
+    let layout_rel = project
+        .get("layout")
+        .and_then(Value::as_str)
+        .unwrap_or("layout.json");
+    let layout_bytes = std::fs::read(root.join(layout_rel))
+        .map_err(|error| format!("could not read layout: {error}"))?;
+    #[derive(serde::Deserialize)]
+    struct LayoutFile {
+        seats: Vec<LayoutSeat>,
+    }
+    #[derive(serde::Deserialize)]
+    struct LayoutSeat {
+        seat_id: String,
+        row: i64,
+        col: i64,
+        #[serde(default = "default_enabled")]
+        enabled: bool,
+    }
+    fn default_enabled() -> bool {
+        true
+    }
+    let layout: LayoutFile = serde_json::from_slice(&layout_bytes)
+        .map_err(|error| format!("could not parse layout: {error}"))?;
+    let seats: Vec<seattrellis_domain::editing::EditorSeatSpec> = layout
+        .seats
+        .iter()
+        .map(|seat| seattrellis_domain::editing::EditorSeatSpec {
+            seat_id: seat.seat_id.clone(),
+            row: seat.row as i32,
+            col: seat.col as i32,
+            enabled: seat.enabled,
+        })
+        .collect();
+
+    // One validated draft per period, rebuilt from the saved snapshot.
+    let periods = plan
+        .get("periods")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "rotation plan has no periods".to_string())?;
+    let mut period_editors: Vec<Value> = Vec::with_capacity(periods.len());
+    let mut first_editor: Option<Value> = None;
+    for (index, period) in periods.iter().enumerate() {
+        let period_number = period
+            .get("period")
+            .and_then(Value::as_i64)
+            .unwrap_or(index as i64 + 1);
+        let assignments = period
+            .pointer("/snapshot/assignments")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("period {period_number} snapshot has no assignments"))?;
+        let pairs: Vec<(&str, &str)> = assignments
+            .iter()
+            .filter_map(|assignment| {
+                Some((
+                    assignment.get("student_key")?.as_str()?,
+                    assignment.get("seat_id")?.as_str()?,
+                ))
+            })
+            .collect();
+        let candidate_id = format!("period-{period_number}");
+        let editor = seattrellis_domain::editing::create_draft(
+            editor_store,
+            candidate_id.clone(),
+            Some(candidate_id.clone()),
+            &key_refs,
+            seats.clone(),
+            &pairs,
+            Some(&display_names),
+        )
+        .map_err(|message| format!("could not rebuild period draft: {message}"))?;
+        let editor_value = serde_json::to_value(editor)
+            .map_err(|error| format!("could not serialize period draft: {error}"))?;
+        if first_editor.is_none() {
+            first_editor = Some(editor_value.clone());
+        }
+        period_editors.push(editor_value);
+    }
+    let editor = first_editor
+        .ok_or_else(|| "rotation plan has no validated periods".to_string())?;
+
+    serde_json::to_string(&json!({
+        "api_version": "1",
+        "project_path": project_file.to_string_lossy(),
+        "artifact_path": artifact_path.to_string_lossy(),
+        "rotation_plan": plan,
+        "editor": editor,
+        "period_editors": period_editors,
+    }))
+    .map_err(|error| format!("could not encode rotation load response: {error}"))
 }
 
 /// `POST /api/v1/projects/rotation/group-register`: render a printable HTML or
@@ -4980,8 +5135,22 @@ mod tests {
         });
         let project_file = dir.join("project.seattrellis.json");
         fs::write(&project_file, serde_json::to_vec(&project).unwrap()).unwrap();
-        fs::write(dir.join("students.csv"), "student_id,name\n").unwrap();
-        fs::write(dir.join("classroom.json"), r#"{"seats":[]}"#).unwrap();
+        // Roster + layout must let the load wiring rebuild editable drafts
+        // (one per period, matching the plan's assignments).
+        fs::write(
+            dir.join("students.csv"),
+            "student_id,name\nSTU001,Alice\nSTU002,Bob\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("classroom.json"),
+            r#"{"seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"enabled":true},
+                {"seat_id":"R1C3","row":1,"col":3,"enabled":true},
+                {"seat_id":"R2C2","row":2,"col":2,"enabled":true}
+            ]}"#,
+        )
+        .unwrap();
         fs::write(dir.join("rules.json"), r#"{}"#).unwrap();
         project_file.to_string_lossy().into_owned()
     }
@@ -5094,6 +5263,23 @@ mod tests {
                 .len(),
             2
         );
+        // The load wiring rebuilds one editable draft per period (M2 §5.7:
+        // `editor` = period 1, `period_editors` = every period, candidate
+        // id "period-N"), so the workbench can load and switch periods.
+        let period_editors = load_val["period_editors"].as_array().unwrap();
+        assert_eq!(period_editors.len(), 2, "one draft per period");
+        assert_eq!(load_val["editor"]["candidate_id"], "period-1");
+        assert_eq!(period_editors[0]["candidate_id"], "period-1");
+        assert_eq!(period_editors[1]["candidate_id"], "period-2");
+        // Names come from the project roster, not raw keys.
+        let names: Vec<&str> = period_editors[0]["students"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|student| student["display_name"].as_str())
+            .collect();
+        assert!(names.contains(&"Alice"), "roster names survive reload");
+        assert!(names.contains(&"Bob"));
 
         // 3. Preview defaults to period 1 and groups by row and column.
         let preview = route_one(

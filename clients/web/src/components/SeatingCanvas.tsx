@@ -20,6 +20,10 @@ type DragState =
       lastX: number;
       lastY: number;
       moved: boolean;
+      /** Pointer capture is armed on the first real move, not on press:
+          capturing on pointerdown redirects the synthesized click to the
+          stage container and seat clicks would never fire. */
+      captured: boolean;
     }
   | {
       mode: "batch";
@@ -29,6 +33,7 @@ type DragState =
       lastX: number;
       lastY: number;
       moved: boolean;
+      captured: boolean;
     };
 
 type SeatingCanvasProps = {
@@ -185,6 +190,7 @@ export function SeatingCanvas({
         lastX: point.x,
         lastY: point.y,
         moved: false,
+        captured: false,
       };
       dragRef.current = next;
       setDrag(next);
@@ -199,6 +205,7 @@ export function SeatingCanvas({
       lastX: point.x,
       lastY: point.y,
       moved: false,
+      captured: false,
     };
     dragRef.current = next;
     setDrag(next);
@@ -209,6 +216,18 @@ export function SeatingCanvas({
     const current = dragRef.current;
     if (!current) {
       return;
+    }
+    if (!current.captured) {
+      // Arm pointer capture on the first real move so a drag keeps
+      // receiving move/up events after leaving the stage; a plain press
+      // (no move) never captures and the seat click still fires.
+      try {
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      } catch {
+        // jsdom and older engines have no pointer capture; events keep
+        // flowing while the pointer stays over the stage.
+      }
+      current.captured = true;
     }
     const point = dragPointerPoint(event);
     const deltaX = point.x - current.lastX;
@@ -261,12 +280,9 @@ export function SeatingCanvas({
     if (!interactive) {
       return;
     }
-    try {
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-    } catch {
-      // jsdom and older engines have no pointer capture; events keep
-      // flowing while the pointer stays over the stage.
-    }
+    // No pointer capture on press: capturing redirects the browser's
+    // synthesized click to this container, which would swallow seat clicks
+    // entirely. Capture is armed on the first real drag move instead.
     suppressClickRef.current = false;
     const target = event.target as Element;
     if (target.closest?.("[data-diagnostic]")) {

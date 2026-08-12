@@ -318,6 +318,24 @@ pub fn rotation_save_json(project_path: &str, rotation_plan_json: &str) -> Resul
 /// Read the saved `rotation-plan.json` and return the
 /// `ProjectRotationLoadResponse` JSON envelope with the full plan document.
 pub fn rotation_load_json(project_path: &str) -> Result<String, String> {
+    let (project_file, artifact_path, plan) = rotation_load_plan(project_path)?;
+    let response = RotationLoadResponse {
+        api_version: "1",
+        project_path: project_file.to_string_lossy().into_owned(),
+        artifact_path: artifact_path.to_string_lossy().into_owned(),
+        rotation_plan: plan,
+    };
+    serde_json::to_string(&response)
+        .map_err(|e| format!("Could not serialize rotation load response: {e}"))
+}
+
+/// Locate and read the saved rotation plan artifact for a project.
+///
+/// Returns `(project_file, artifact_path, plan)` so the wiring layer can
+/// rebuild editable drafts without re-reading the project file itself.
+pub fn rotation_load_plan(
+    project_path: &str,
+) -> Result<(PathBuf, PathBuf, Value), String> {
     let (project_file, project) = load_project_file(project_path)?;
     let root = parent_dir(&project_file);
     let outputs_dir = resolve_outputs_dir(&root, &project)?;
@@ -329,15 +347,7 @@ pub fn rotation_load_json(project_path: &str) -> Result<String, String> {
         ));
     }
     let plan = read_rotation_plan(&artifact_path)?;
-
-    let response = RotationLoadResponse {
-        api_version: "1",
-        project_path: project_file.to_string_lossy().into_owned(),
-        artifact_path: artifact_path.to_string_lossy().into_owned(),
-        rotation_plan: plan,
-    };
-    serde_json::to_string(&response)
-        .map_err(|e| format!("Could not serialize rotation load response: {e}"))
+    Ok((project_file, artifact_path, plan))
 }
 
 // ---------------------------------------------------------------------------

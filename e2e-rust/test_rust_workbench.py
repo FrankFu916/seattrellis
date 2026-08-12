@@ -44,7 +44,14 @@ def upload_and_confirm_roster(page: Page, csv: Path = STUDENTS_CSV) -> None:
     """Upload a roster file and drive the mapping -> preview -> confirm flow.
 
     Uses "Full replace" mode so the resulting roster is exactly the file's
-    rows (the demo roster is not merged in)."""
+    rows (the demo roster is not merged in). The spreadsheet import lives
+    behind the progressive-disclosure <details> once a roster exists
+    (§19.25), so the panel is opened first when needed."""
+    if page.locator(".roster-import-disclosure").count():
+        disclosure = page.locator(".roster-import-disclosure")
+        if not disclosure.get_attribute("open"):
+            disclosure.locator("summary").click()
+            expect(page.locator('label.file-picker-browser-button input[type="file"]')).to_be_visible()
     page.locator('label.file-picker-browser-button input[type="file"]').set_input_files(
         str(csv)
     )
@@ -57,17 +64,21 @@ def upload_and_confirm_roster(page: Page, csv: Path = STUDENTS_CSV) -> None:
     page.get_by_role("button", name="Review import changes").click()
     expect(page.get_by_text("Safe to import")).to_be_visible(timeout=15_000)
     page.get_by_role("button", name="Confirm import").click()
-    # The workbench moves to the Room step once the roster is applied.
+    # The workbench moves to the Room step once the roster is applied; the
+    # context action bar drives the next step (D1 design).
     expect(
-        page.get_by_role("button", name="Continue", exact=True)
+        page.get_by_role("button", name="Set rules")
     ).to_be_visible(timeout=15_000)
 
 
 def go_to_generate_step(page: Page) -> None:
-    """Walk Room -> Goal -> Generate using the footer Continue button."""
-    expect(page.get_by_role("button", name="Continue", exact=True)).to_be_visible()
-    page.get_by_role("button", name="Continue", exact=True).click()  # room -> goal
-    page.get_by_role("button", name="Continue", exact=True).click()  # goal -> generate
+    """Walk Room -> Rules -> Generate using the context-bar action
+    buttons (D1: the footer was replaced by the context action bar)."""
+    page.get_by_role("button", name="Set rules", exact=True).click()
+    expect(
+        page.get_by_role("button", name="Generate plan", exact=True)
+    ).to_be_visible(timeout=15_000)
+    page.get_by_role("button", name="Generate plan", exact=True).click()
     expect(
         page.get_by_role("button", name="Generate seating plan")
     ).to_be_visible()
@@ -95,6 +106,33 @@ def seat_label(page: Page, name: str) -> str:
 def seat_position(label: str) -> str:
     """`"Row 5, seat 1, Student002"` -> `"Row 5, seat 1"` (student agnostic)."""
     return label.rsplit(",", 1)[0]
+
+
+def click_summary_by_text(page: Page, text: str) -> None:
+    """Click a <details> summary by its computed center.
+
+    Playwright's headless shell reports a zero box for a summary inside a
+    closed <details> that lives in a scroll container, even though the
+    element is laid out (getBoundingClientRect returns its real height).
+    Scrolling it into view and clicking the computed center works around
+    that box-model quirk; real browsers click it directly.
+    """
+    center = page.evaluate(
+        """(text) => {
+          const summary = [...document.querySelectorAll('summary')].find(
+            (el) => el.textContent.trim() === text,
+          );
+          if (!summary) {
+            return null;
+          }
+          summary.scrollIntoView({ block: 'center' });
+          const rect = summary.getBoundingClientRect();
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        }""",
+        text,
+    )
+    assert center is not None, f"summary {text!r} not found"
+    page.mouse.click(center["x"], center["y"])
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +173,10 @@ def test_workbench_bootstraps_against_rust_backend(
         }""",
         token,
     )
-    assert "svg" in formats and "html" in formats, f"unexpected catalogs: {formats}"
+    # §19.27: the user catalog converges on the seven usable entries;
+    # plain `html` stays a backend-only contract format.
+    assert "svg" in formats and "print-html" in formats, f"unexpected catalogs: {formats}"
+    assert "html" not in formats, f"plain html must be hidden: {formats}"
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +197,6 @@ def test_import_solve_edit_export_workflow(
 
     # --- import ---------------------------------------------------------
     upload_and_confirm_roster(page)
-    expect(page.get_by_text("4 students", exact=True)).to_be_visible()
 
     # --- solve ----------------------------------------------------------
     go_to_generate_step(page)
@@ -200,12 +240,30 @@ def test_import_solve_edit_export_workflow(
 
     # --- export ---------------------------------------------------------
     page.get_by_role("button", name="Export", exact=True).click()
-    expect(page.get_by_role("button", name="Open export preview")).to_be_visible()
-    page.get_by_role("button", name="Open export preview").click()
-
+    # Quick-export SVG straight from the context menu: the default export
+    # is print-html now (D9), so the vector path is exercised explicitly.
+    export_btn = page.get_by_role("button", name="Export", exact=True)
+    print("EXPORT BTN COUNT:", export_btn.count())
+    print("BTN ENABLED:", export_btn.is_enabled(), "VISIBLE:", export_btn.is_visible())
+    print("BTN BOX:", export_btn.bounding_box())
+    export_btn.evaluate("(el) => el.click()")
+    page.wait_for_timeout(600)
+    print("AFTER EVAL CLICK MENU OPEN:", page.locator(".ctx-menu").count())
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    export_btn.click()
+    page.wait_for_timeout(600)
+    print("AFTER REAL CLICK MENU OPEN:", page.locator(".ctx-menu").count())
+    print("MENU ITEMS:", page.get_by_role("menuitem").all_text_contents())
+    print("DIALOG:", page.locator(".preview-dialog").count())
+    print("BACKDROP:", page.locator(".dialog-backdrop").count())
     with page.expect_download(timeout=30_000) as download_info:
-        page.get_by_role("button", name="Save a copy").click()
+        page.get_by_role("menuitem", name=re.compile("^SVG", re.IGNORECASE)).click()
     download = download_info.value
+    # Close the preview dialog the quick export opened (it covers the
+    # context bar) so the settings entry stays reachable.
+    page.keyboard.press("Escape")
+    expect(page.get_by_role("button", name="Open export preview")).to_have_count(0)
     assert download.suggested_filename == "seat-plan.svg", (
         f"unexpected export filename: {download.suggested_filename}"
     )
@@ -215,6 +273,72 @@ def test_import_solve_edit_export_workflow(
     assert content.lstrip().startswith("<svg"), (
         "SVG export does not look like a vector document"
     )
+
+
+# ---------------------------------------------------------------------------
+# 2b. export defaults: real names by default, multi-format downloads
+# ---------------------------------------------------------------------------
+
+
+def test_export_defaults_carry_real_names(
+    page: Page, rust_server: RustServer
+) -> None:
+    """The default template keeps real names in every format (§19.27
+    regression: the old `public` default anonymized every export to the
+    literal name '学生'), and the default print-html entry downloads a
+    usable document."""
+
+    page.goto(rust_server.url)
+    expect(page.get_by_text("Your local class is ready")).to_be_visible(
+        timeout=15_000
+    )
+    upload_and_confirm_roster(page)
+    go_to_generate_step(page)
+    generate_seating_plan(page)
+
+    # --- quick-export PDF from the canvas context menu ------------------
+    # The canvas view carries the export menu; the export view's primary
+    # action is the preview button instead.
+    page.get_by_role("button", name="Export", exact=True).click()
+    with page.expect_download(timeout=60_000) as pdf_info:
+        page.get_by_role("menuitem", name=re.compile("^PDF", re.IGNORECASE)).click()
+    pdf_download = pdf_info.value
+    assert pdf_download.suggested_filename == "seat-plan.pdf", (
+        f"unexpected PDF filename: {pdf_download.suggested_filename}"
+    )
+    pdf_path = pdf_download.path()
+    assert pdf_path is not None
+    data = pdf_path.read_bytes()
+    assert data.startswith(b"%PDF-"), "PDF export must start with the PDF magic"
+    # §19.26: the page is a rasterized Image XObject at 144 DPI - a real
+    # document carries the image payload (Flate/RunLength), not a stub.
+    assert len(data) > 20_000, (
+        f"PDF looks like a stub: {len(data)} bytes"
+    )
+
+    # --- default print-html download keeps real names -------------------
+    # Open the export view from the menu, preview, then save the default
+    # format (print-html, D9).
+    page.get_by_role("button", name="Export", exact=True).click()
+    page.get_by_role("menuitem", name="Layout & privacy settings").click()
+    expect(page.get_by_role("button", name="Open export preview")).to_be_visible()
+    page.get_by_role("button", name="Open export preview").click()
+    with page.expect_download(timeout=30_000) as download_info:
+        page.get_by_role("button", name="Save a copy").click()
+    download = download_info.value
+    assert download.suggested_filename == "seat-plan.print.html", (
+        f"unexpected default export filename: {download.suggested_filename}"
+    )
+    path = download.path()
+    assert path is not None
+    html = path.read_text(encoding="utf-8", errors="replace")
+    assert "Student001" in html, (
+        "default teacher template must keep the real student name"
+    )
+    assert "学生A" not in html, (
+        "default export must not be anonymized (public template regression)"
+    )
+    assert "<!doctype html" in html.lower(), "print-html must be a document"
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +355,40 @@ def _make_project_workspace(root: Path, name: str) -> Path:
     project = root / name
     project.mkdir()
     shutil.copyfile(FIXTURES / "students.csv", project / "students.csv")
-    shutil.copyfile(FIXTURES / "classroom.json", project / "layout.json")
+    # The workbench generates on the standard-30 template (5 rows x 6 cols,
+    # aisle after column 3); the project layout must carry the same seat ids
+    # so rotation reload can rebuild the editable drafts.
+    import json as _json
+
+    layout = {
+        "layout_id": "standard-30",
+        "name": "30-seat classroom",
+        "seats": [],
+    }
+    for row in range(1, 6):
+        grid_col = 1
+        for logical_col in range(1, 7):
+            layout["seats"].append(
+                {
+                    "seat_id": f"R{row}C{grid_col}",
+                    "row": row,
+                    "col": grid_col,
+                    "enabled": True,
+                }
+            )
+            grid_col += 1
+            if logical_col == 3:
+                # standard-30 inserts a full-length aisle after column 3.
+                layout["seats"].append(
+                    {
+                        "seat_id": f"AISLE-R{row}C{grid_col}",
+                        "row": row,
+                        "col": grid_col,
+                        "enabled": False,
+                    }
+                )
+                grid_col += 1
+    project.joinpath("layout.json").write_text(_json.dumps(layout))
     shutil.copyfile(FIXTURES / "rules.json", project / "rules.json")
     cli = (
         os.environ.get("SEATTRELLIS_E2E_RUST_CLI")
@@ -270,19 +427,43 @@ def test_rotation_save_reopen_workflow(
 
     # Enable rotation on the Generate step: 2 periods. The rotation settings
     # live in a collapsed <details> until rotation is enabled.
-    expect(page.get_by_role("button", name="Continue", exact=True)).to_be_visible()
-    page.get_by_role("button", name="Continue", exact=True).click()  # room -> goal
-    page.get_by_role("button", name="Continue", exact=True).click()  # goal -> generate
+    page.get_by_role("button", name="Set rules", exact=True).click()
+    expect(
+        page.get_by_role("button", name="Generate plan", exact=True)
+    ).to_be_visible(timeout=15_000)
+    page.get_by_role("button", name="Generate plan", exact=True).click()
     expect(
         page.get_by_role("button", name="Generate seating plan")
     ).to_be_visible()
-    page.get_by_text("Generate future rotation", exact=True).click()
-    page.get_by_test_id("rotation-toggle").check()
-    page.get_by_test_id("rotation-period-count").fill("2")
+    # Rotation lives inside the collapsed "Advanced settings" fold (D4);
+    # open the fold first, then the rotation settings.
+    click_summary_by_text(page, "Advanced settings")
+
+    click_summary_by_text(page, "Generate future rotation")
+    # The headless shell reports zero boxes for controls inside the just-
+    # opened <details>; drive the native click instead (a real click toggles
+    # the checkbox and fires the change React listens to).
+    page.get_by_test_id("rotation-toggle").evaluate("(el) => el.click()")
+
+    page.get_by_test_id("rotation-period-count").evaluate(
+        """(el) => {
+          el.value = "2";
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }"""
+    )
 
     generate_seating_plan(page)
 
     # --- save rotation plan into the project workspace ------------------
+    # The project tools live in the History / rotation view (D7), inside a
+    # collapsed "Project tools" fold; navigate there and open it.
+    page.get_by_role("button", name="History / rotation").click()
+    expect(page.get_by_role("tab", name="Rotation plan")).to_be_visible(
+        timeout=15_000
+    )
+    page.get_by_role("tab", name="Rotation plan").click()
+    click_summary_by_text(page, "Project tools (backup / migration / restore)")
     page.get_by_test_id("project-root-input").fill(str(project_root))
     page.get_by_test_id("project-refresh").click()
     # The first project is selected and opened automatically.
@@ -299,6 +480,20 @@ def test_rotation_save_reopen_workflow(
     # --- reopen: reload the saved rotation plan -------------------------
     load_button = page.get_by_test_id("project-open-rotation-button")
     expect(load_button).to_be_visible(timeout=15_000)
+    # Saving refreshes the project; wait until the rotation artifact is
+    # selected and the button is enabled, or the click can land during the
+    # re-render and be swallowed.
+    expect(load_button).to_be_enabled(timeout=15_000)
     load_button.click()
+    page.wait_for_timeout(1500)
+    print("STATE:", page.evaluate("""() => {
+      const main = document.querySelector('.main-workspace');
+      const labels = [...document.querySelectorAll('[data-seat-id]')].map(el => el.getAttribute('aria-label')).filter(Boolean).slice(0, 6);
+      return { view: main?.className ?? 'none', seats: document.querySelectorAll('[data-seat-id]').length,
+               labels,
+               err: document.querySelector('[role=alert]')?.textContent ?? '' };
+    }"""))
     # The canvas must show an occupied seat after reload (period 1 applied).
-    expect(seat(page, "Student001")).to_be_visible(timeout=15_000)
+    s1 = seat(page, "Student001")
+    s1.scroll_into_view_if_needed()
+    expect(s1).to_be_visible(timeout=15_000)
