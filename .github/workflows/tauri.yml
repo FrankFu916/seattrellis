@@ -80,6 +80,12 @@ jobs:
       - name: Install the pinned Rust toolchain
         uses: dtolnay/rust-toolchain@1.88.0
 
+      - name: Build the React workbench (frontendDist)
+        run: |
+          npm ci
+          npm run build
+        working-directory: clients/web
+
       - name: Build and upload desktop bundles
         uses: tauri-apps/tauri-action@v1
         env:

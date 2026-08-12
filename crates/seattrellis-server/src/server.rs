@@ -205,6 +205,10 @@ fn generate_session_token() -> String {
 pub fn resolve_web_root() -> Result<PathBuf, ServerError> {
     let disk_candidates = [
         std::env::var_os("SEATTRELLIS_WEB_STATIC").map(PathBuf::from),
+        // M6: the React build is the workbench; prefer it over the
+        // Python-tree copy (deleted with Python retirement).
+        Some(PathBuf::from("clients/web/dist")),
+        Some(PathBuf::from("../clients/web/dist")),
         Some(PathBuf::from("src/seattrellis/web_static")),
         Some(PathBuf::from("../src/seattrellis/web_static")),
     ];
