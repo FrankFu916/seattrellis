@@ -1210,6 +1210,37 @@ core/rules/server/application 全绿（server 79 含多候选与 audit 契约
 **已知后续**：班级项目持久化（alpha.1 默认路径）、候选 n=1/5/20 与
 导出独立 reader 的 golden 扩展、G-4 默认值 dogfood 冻结。
 
+### 19.22 2026-08-12：M5 阶段 C 实现（桌面与平台，计划 §5）
+
+**C1 三入口文件选择（PD-D14）**：`tauri-plugin-dialog` 接入壳
+（dialog:default 权限 + `read_user_file`/`write_user_file` 两个 IPC
+命令，8MB 上限）；后端新增 `POST /api/v1/files/read`（可信根内
+**相对路径**读取：绝对路径/`..`/NUL/反斜杠拒绝，canonical 包含性
+防 symlink 逃逸，8MB→413；M1-05 中间件自动生效）+ `GET
+/api/v1/files/root`（暴露可信根供 UI 提示）；`ServerConfig.trusted_root`
+（默认 cwd，壳在 Finder 启动 cwd=/ 时回退 HOME）。React
+`FilePicker` 组件三入口融合（① 系统对话框=Tauri ② 拖拽=语义色边框
+高亮 ③ 路径输入=相对路径+客户端/服务端双重校验），浏览器保留
+input[type=file] 兜底；名单导入与导出保存均切换至新桥（v1
+pywebview 桥不再被 UI 消费，删除留 M6）。壳 devUrl 指向 vite dev
+server，`SEATTRELLIS_PORT` 支持 dev 环回。服务端 86 测试（+7
+files/read/root 契约）、Web 146 测试全绿。
+**C2 平台自适应**：`isMacOS`/`platformModifierLabel`（⌘/Ctrl）驱动
+画布帮助文案（含 SVG aria 描述）；全局 Cmd/Ctrl+Z 不再吞掉表单
+控件的原生文本撤销（`isEditableTarget` 守卫）；`prefers-reduced-motion`
+全局 CSS 已存在并验收（动画/过渡/滚动 kill-switch，无 JS 装饰动画）；
+SF Symbols 替换（设计方向 §5 可选项）**评估后暂缓**——线性单套图标
+与苹果视觉语言已一致，手写 SF path 数据有字形错误风险，列入 M7
+打磨候选。
+**C3 触控 Decision Gate（§7.2）**：决策记录
+`docs/product-decisions/2026-08-12-touch-decision-gate.md`——触控
+**不作为 v2 final 必须项**（桌面优先），降级可用（Pointer Events
+tap/拖拽 + `touch-action:none` + Ctrl+滚轮缩放=macOS trackpad 捏合
+同一事件）；双指捏合/触控消歧/44px 目标审计/真机验证列 M7 候选，
+不阻断 alpha/beta。
+**阶段 C 退出**：C1/C2/C3 各自验收（Rust 测试+clippy 0、Web 146
+测试、typecheck/build、浏览器 E2E 覆盖路径读取闭环与绝对路径拒
+绝）；提交 591e95f / fd5d147 / 411e229。
 ### 19.21 2026-08-12：UI 视觉打磨首轮（设计方向 §8.2 像素 token 制定）
 
 产品负责人决策（记录：`docs/product-decisions/2026-08-12-ui-visual-polish.md`）：
