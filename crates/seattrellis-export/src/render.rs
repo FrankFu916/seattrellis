@@ -49,6 +49,13 @@ pub struct SeatingGrid {
     pub max_col: i32,
 }
 
+/// Safety bounds for the recovered grid extent (guards against pathological
+/// row/col values from crafted layouts or extreme-but-finite seat
+/// coordinates): every renderer iterates the whole extent, so an unbounded
+/// range would overflow i32 arithmetic and loop for effectively forever.
+const MAX_GRID_EXTENT: i64 = 10_000;
+const MAX_GRID_CELLS: i64 = 10_000;
+
 impl SeatingGrid {
     /// Recover the grid from a solve request and a solve response.
     pub fn build(request: &CoreSolveRequest, response: &CoreSolveResponse) -> Result<Self, String> {
@@ -101,6 +108,21 @@ impl SeatingGrid {
                 detail: detail_by_seat.get(&seat_index).cloned(),
                 enabled,
             });
+        }
+
+        // Reject pathological extents before any renderer iterates them
+        // (positions are only required to be finite, so `round() as i32`
+        // can saturate to the i32 extremes and produce a ~2^32-cell grid).
+        let extent_rows = i64::from(max_row) - i64::from(min_row) + 1;
+        let extent_cols = i64::from(max_col) - i64::from(min_col) + 1;
+        if extent_rows > MAX_GRID_EXTENT
+            || extent_cols > MAX_GRID_EXTENT
+            || extent_rows * extent_cols > MAX_GRID_CELLS
+        {
+            return Err(format!(
+                "grid extent {extent_rows}x{extent_cols} is too large to render \
+                 (limit {MAX_GRID_EXTENT} rows/cols, {MAX_GRID_CELLS} cells)"
+            ));
         }
 
         let title = match &request.layout {
@@ -209,11 +231,11 @@ const RECT_W: f64 = 102.0;
 const RECT_H: f64 = 56.0;
 
 fn grid_cols(grid: &SeatingGrid) -> i64 {
-    i64::from(grid.max_col - grid.min_col) + 1
+    i64::from(grid.max_col) - i64::from(grid.min_col) + 1
 }
 
 fn grid_rows(grid: &SeatingGrid) -> i64 {
-    i64::from(grid.max_row - grid.min_row) + 1
+    i64::from(grid.max_row) - i64::from(grid.min_row) + 1
 }
 
 /// Top-left origin of the grid cell at `(row, col)`.
@@ -487,6 +509,14 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     if width == 0 || height == 0 {
         return Err("cannot render an empty grid to PNG".to_string());
     }
+    // Fail with an error instead of allocating an unbounded raster for a
+    // wide/tall grid (2x scale: a 1000x100 room would need ~8.5 GiB).
+    if u64::from(width) * u64::from(height) * 3 > MAX_RASTER_BYTES {
+        return Err(format!(
+            "grid is too large to rasterize to PNG ({width}x{height} px exceeds \
+             the {MAX_RASTER_BYTES}-byte buffer limit)"
+        ));
+    }
 
     let mut data = vec![0u8; width as usize * height as usize * 3];
     let mut canvas = Canvas::new(&mut data, width, height);
@@ -605,6 +635,9 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
 }
 
 const PNG_RASTER_SCALE: f64 = 2.0;
+
+/// Upper bound for a PNG raster buffer (3 bytes per pixel at 2x density).
+const MAX_RASTER_BYTES: u64 = 512 * 1024 * 1024;
 
 #[allow(clippy::too_many_arguments)]
 fn draw_text_in_rect(
@@ -1344,6 +1377,53 @@ mod tests {
             error.contains("seat_positions"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn build_rejects_pathological_grid_extent() {
+        // Extreme-but-finite positions pass core validation (only finiteness
+        // is checked) and saturate to the i32 extremes on rounding; the
+        // resulting ~2^32-cell extent must be rejected instead of
+        // overflowing i32 math and hanging every renderer.
+        let mut request = sample_request();
+        request.student_count = 2;
+        request.students.truncate(2);
+        request.seat_positions = vec![[1e300, 1e300], [-1e300, -1e300]];
+        let response = CoreSolveResponse {
+            assignment: vec![[0, 0], [1, 1]],
+            ..sample_response()
+        };
+        let error = SeatingGrid::build(&request, &response).unwrap_err();
+        assert!(error.contains("too large"), "unexpected error: {error}");
+
+        // Same guard when the extremes come from the layout's row/col fields.
+        let mut request = sample_request();
+        request.student_count = 2;
+        request.students.truncate(2);
+        request.seat_positions = vec![[1.0, 1.0], [2.0, 1.0]];
+        request.layout = Some(Layout::new(vec![
+            Seat::new("a", i32::MAX, 1),
+            Seat::new("b", i32::MIN, 1),
+        ]));
+        let error = SeatingGrid::build(&request, &response).unwrap_err();
+        assert!(error.contains("too large"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn png_rejects_oversized_raster_instead_of_allocating() {
+        // A wide grid within the extent guard would need gigabytes of pixel
+        // buffer at 2x density; render_png must fail cleanly, not allocate.
+        let grid = SeatingGrid {
+            title: "t".into(),
+            subtitle: "s".into(),
+            cells: Vec::new(),
+            min_row: 1,
+            max_row: 100,
+            min_col: 1,
+            max_col: 1000,
+        };
+        let error = render_png(&grid).unwrap_err();
+        assert!(error.contains("too large"), "unexpected error: {error}");
     }
 
     #[test]

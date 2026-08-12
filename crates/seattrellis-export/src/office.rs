@@ -468,7 +468,10 @@ pub fn render_pptx(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
         shapes.push_str(&pptx_shape(
             shape_id,
             &seat_id_for(grid, cell),
-            (x, y, cell_w - 10_000, cell_h - 10_000),
+            // Keep the shape extent non-negative: with more than ~1100
+            // columns the 10_000 EMU gap exceeds the cell width, and a
+            // negative a:ext would corrupt the slide.
+            (x, y, (cell_w - 10_000).max(0), (cell_h - 10_000).max(0)),
             true,
             &refs,
         ));
@@ -732,6 +735,36 @@ mod tests {
             "raw special characters must not appear"
         );
         assert_well_formed_xml(seating, "sheet1.xml");
+    }
+
+    #[test]
+    fn pptx_shape_extents_never_go_negative() {
+        // With more than ~1100 columns the 10_000 EMU gap exceeds the cell
+        // width; the shape extent must clamp to zero instead of emitting a
+        // negative a:ext (which would corrupt the slide).
+        let mut grid = sample_grid();
+        grid.max_col = 1100;
+        grid.min_col = 1;
+        grid.cells.clear();
+        for col in 1..=1100 {
+            grid.cells.push(GridCell {
+                row: 1,
+                col,
+                seat_index: (col - 1) as usize,
+                student: None,
+                student_key: None,
+                detail: None,
+                enabled: true,
+            });
+        }
+        let bytes = render_pptx(&grid).expect("pptx renders");
+        let entries = unzip(&bytes);
+        let slide = &entries["ppt/slides/slide1.xml"];
+        assert!(
+            !slide.contains("cx=\"-") && !slide.contains("cy=\"-"),
+            "negative shape extents must be clamped"
+        );
+        assert_well_formed_xml(slide, "slide1.xml");
     }
 
     #[test]

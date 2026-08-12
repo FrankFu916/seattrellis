@@ -89,7 +89,7 @@ pub fn render_print_html(
   .print-header .meta {{ color: #444; }}
   .stage {{ text-align: center; font-size: 10pt; color: #333;
     letter-spacing: .2em; margin: 1mm 0 2mm; font-weight: 600; }}
-  .seats {{ display: grid; grid-template-columns: {columns}; gap: 0;
+  .grid-row {{ display: grid; grid-template-columns: {columns}; gap: 0;
     width: 100%; }}
   .seat {{ display: grid; place-items: center; text-align: center;
     border: 0.4mm solid #1a1a1a; margin: 0.6mm; min-height: {cell_h}mm;
@@ -116,7 +116,7 @@ pub fn render_print_html(
 </body>
 </html>
 "#,
-        lang = options.locale,
+        lang = html_escape(&options.locale),
         title = html_escape(&grid.title),
         page_w = page_dim(options, 0),
         page_h = page_dim(options, 1),
@@ -290,6 +290,11 @@ fn html_seat_table(
             }
             let cell = grid.cells.iter().find(|c| c.row == row && c.col == col);
             let Some(cell) = cell else {
+                // Void grid position (no seat): emit an empty filler so CSS
+                // grid auto-placement keeps later seats in their true columns
+                // (matches the SVG/HTML/PNG/PDF renderers, which reserve the
+                // slot).
+                cells_html.push_str(r#"<div></div>"#);
                 continue;
             };
             if !cell.enabled {
@@ -402,7 +407,7 @@ fn html_escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::{PaperSize, SeatingGrid};
+    use crate::render::{GridCell, PaperSize, SeatingGrid};
     use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
     use serde_json::json;
 
@@ -536,5 +541,131 @@ mod tests {
         options.paper = PaperSize::A3;
         let html = render_print_html(&grid, &request, &options);
         assert!(html.contains("@page { size: 420mm 297mm"), "A3 landscape");
+    }
+
+    #[test]
+    fn locale_attribute_is_escaped() {
+        // The locale lands in a double-quoted HTML attribute; a crafted
+        // value must not break out of it (exported files get opened in
+        // browsers).
+        let request = sample_request();
+        let response = sample_response();
+        let grid = SeatingGrid::build(&request, &response).unwrap();
+        let options = PrintHtmlOptions {
+            landscape: true,
+            paper: PaperSize::A4,
+            margin_mm: 12.0,
+            page_scale: 1.0,
+            show_student_ids: false,
+            locale: "zh\" onmouseover=\"alert(1)".to_string(),
+            seed: None,
+            period_label: None,
+        };
+        let html = render_print_html(&grid, &request, &options);
+        assert!(
+            html.contains(r#"<html lang="zh&quot; onmouseover=&quot;alert(1)">"#),
+            "locale must be entity-escaped in the lang attribute"
+        );
+        assert!(
+            !html.contains(r#"lang="zh" onmouseover"#),
+            "raw attribute injection must not survive"
+        );
+    }
+
+    #[test]
+    fn seat_grid_css_targets_the_row_wrapper() {
+        // Regression: the grid template used to be declared on a `.seats`
+        // class that never appears in the markup, so seat boxes rendered as
+        // stacked blocks instead of a row of columns.
+        let html = render();
+        assert!(
+            html.contains(".grid-row { display: grid; grid-template-columns:"),
+            "grid template must live on the row wrapper"
+        );
+        assert!(!html.contains("class=\"seats\""), "no dead seats wrapper");
+    }
+
+    #[test]
+    fn mid_row_hole_keeps_column_alignment() {
+        // Row 2 has seats only at cols 1 and 3; the missing col-2 position
+        // must still occupy a CSS track so the col-3 seat does not shift
+        // into track 2 (the SVG/HTML/PNG/PDF renderers reserve the slot).
+        let request = sample_request();
+        let grid = SeatingGrid {
+            title: "t".into(),
+            subtitle: "s".into(),
+            min_row: 1,
+            max_row: 2,
+            min_col: 1,
+            max_col: 3,
+            cells: vec![
+                GridCell {
+                    row: 1,
+                    col: 1,
+                    seat_index: 0,
+                    student: Some("A".into()),
+                    student_key: None,
+                    detail: None,
+                    enabled: true,
+                },
+                GridCell {
+                    row: 1,
+                    col: 2,
+                    seat_index: 1,
+                    student: Some("B".into()),
+                    student_key: None,
+                    detail: None,
+                    enabled: true,
+                },
+                GridCell {
+                    row: 1,
+                    col: 3,
+                    seat_index: 2,
+                    student: Some("C".into()),
+                    student_key: None,
+                    detail: None,
+                    enabled: true,
+                },
+                GridCell {
+                    row: 2,
+                    col: 1,
+                    seat_index: 3,
+                    student: Some("D".into()),
+                    student_key: None,
+                    detail: None,
+                    enabled: true,
+                },
+                GridCell {
+                    row: 2,
+                    col: 3,
+                    seat_index: 4,
+                    student: Some("E".into()),
+                    student_key: None,
+                    detail: None,
+                    enabled: true,
+                },
+            ],
+        };
+        let options = PrintHtmlOptions {
+            landscape: true,
+            paper: PaperSize::A4,
+            margin_mm: 12.0,
+            page_scale: 1.0,
+            show_student_ids: false,
+            locale: "zh".to_string(),
+            seed: None,
+            period_label: None,
+        };
+        let html = render_print_html(&grid, &request, &options);
+        let rows: Vec<&str> = html
+            .lines()
+            .filter(|line| line.contains(r#"class="grid-row""#))
+            .collect();
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows[1].contains(r#"<div class="seat">D</div><div></div><div class="seat">E</div>"#),
+            "col-3 seat must follow a track-preserving filler: {}",
+            rows[1]
+        );
     }
 }

@@ -433,6 +433,10 @@ fn filter_detail_grid(grid: &SeatingGrid, show_height: bool, show_vision: bool) 
 /// Copy of the grid with every occupied seat's label replaced by a locale-aware
 /// placeholder. The renderers draw whatever labels the grid carries, so this is
 /// the single place public/anonymized exports differ from teacher exports.
+/// Student keys are scrubbed too: the Office writers and print-html render the
+/// key when present (XLSX "Assignments" sheet, `.sid` spans), and the key is a
+/// personal identifier (often a student number) that a public export must not
+/// carry even when the name itself is replaced.
 fn anonymize_grid(grid: &SeatingGrid, locale: &str) -> SeatingGrid {
     let placeholder = match locale.trim().to_ascii_lowercase().as_str() {
         "en" => "student",
@@ -453,8 +457,8 @@ fn anonymize_grid(grid: &SeatingGrid, locale: &str) -> SeatingGrid {
                 col: cell.col,
                 seat_index: cell.seat_index,
                 student: cell.student.as_ref().map(|_| placeholder.to_string()),
-                // Anonymized exports never carry detail lines either.
-                student_key: cell.student_key.clone(),
+                // Anonymized exports never carry detail lines or identifiers.
+                student_key: None,
                 detail: None,
                 enabled: cell.enabled,
             })
@@ -641,6 +645,54 @@ mod tests {
             svg.contains(">student<"),
             "en placeholder is lowercase 'student'"
         );
+    }
+
+    #[test]
+    fn anonymized_exports_carry_no_student_keys() {
+        // The XLSX "Assignments" sheet renders student_key when present; a
+        // public export must not leak identifiers even though the name is
+        // replaced by the placeholder.
+        let bytes = export_ok(&export_body("xlsx", "public"));
+        let reader = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(reader).expect("xlsx opens as zip");
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index).expect("entry opens");
+            let name = file.name().to_string();
+            let mut content = String::new();
+            std::io::Read::read_to_string(&mut file, &mut content).expect("entry reads");
+            assert!(
+                !content.contains("S1") && !content.contains("S4"),
+                "part {name} of a public export must not carry student keys"
+            );
+        }
+
+        // print-html renders `.sid` spans when show_student_ids is set; the
+        // anonymized grid must leave nothing to render.
+        let mut body = export_body("print-html", "public");
+        body["show_student_ids"] = serde_json::Value::Bool(true);
+        let html = String::from_utf8(export_ok(&body)).unwrap();
+        assert!(
+            !html.contains("S1") && !html.contains("S4"),
+            "public print-html must not render student keys"
+        );
+        assert!(html.contains("学生"), "placeholder still rendered: {html}");
+    }
+
+    #[test]
+    fn teacher_exports_keep_student_keys() {
+        let bytes = export_ok(&export_body("xlsx", "teacher"));
+        let reader = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(reader).expect("xlsx opens as zip");
+        let mut found_key = false;
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index).expect("entry opens");
+            let mut content = String::new();
+            std::io::Read::read_to_string(&mut file, &mut content).expect("entry reads");
+            if content.contains("S1") && content.contains("Alice") {
+                found_key = true;
+            }
+        }
+        assert!(found_key, "teacher XLSX keeps the Assignments sheet rows");
     }
 
     #[test]
