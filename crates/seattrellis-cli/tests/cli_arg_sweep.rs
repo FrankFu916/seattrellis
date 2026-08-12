@@ -1156,12 +1156,16 @@ fn standalone_commands_sweep() {
             ),
             Case::new(
                 "solve:unwritable-output",
+                // A parent that is a regular file fails identically on
+                // every platform (Windows would happily auto-create
+                // `/nonexistent-dir` at the drive root, so an absolute
+                // missing dir is NOT a portable "unwritable" path).
                 args![
                     "solve",
                     "--problem",
                     &fx.problem,
                     "--output",
-                    "/nonexistent-dir/solve.json",
+                    format!("{}/nested/solve.json", fx.garbage),
                 ],
                 Kind::Clean,
             ),
