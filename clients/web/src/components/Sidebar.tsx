@@ -57,20 +57,20 @@ export function Sidebar({
         <h2 id="sidebar-classes" className="sidebar-heading">
           {t("nav.classes")}
         </h2>
-        {connection === "local" || sessionClasses.length > 0 ? (
+        {projects.length > 0 || sessionClasses.length > 0 ? (
           <ul className="sidebar-list">
             {projects.map((project) => (
               <li key={project.path}>
                 <button
                   type="button"
-                  className="sidebar-item"
+                  className="sidebar-item sidebar-context-item"
                   data-active={isClass(project.path)}
                   onClick={() => onSelectClass(project.path, project.name)}
                 >
                   <SchoolIcon />
                   <span className="sidebar-item-copy">
                     <span>{project.name}</span>
-                    <small>{project.path}</small>
+                    <small>{t("nav.savedProject")}</small>
                   </span>
                 </button>
               </li>
@@ -79,7 +79,7 @@ export function Sidebar({
               <li key={entry.id}>
                 <button
                   type="button"
-                  className="sidebar-item"
+                  className="sidebar-item sidebar-context-item"
                   data-active={isClass(entry.id)}
                   onClick={() => onSelectClass(entry.id, entry.name)}
                 >
@@ -95,7 +95,9 @@ export function Sidebar({
             ))}
           </ul>
         ) : (
-          <p className="sidebar-empty">{t("nav.classesEmpty")}</p>
+          <p className="sidebar-empty">
+            {t(connection === "local" ? "nav.classesEmptyLocal" : "nav.classesEmpty")}
+          </p>
         )}
       </section>
 
@@ -108,7 +110,7 @@ export function Sidebar({
             <li key={item.view}>
               <button
                 type="button"
-                className="sidebar-item"
+                className="sidebar-item sidebar-content-item"
                 data-active={activeView === item.view}
                 aria-current={activeView === item.view ? "page" : undefined}
                 onClick={() => onSelectView(item.view)}
@@ -129,7 +131,7 @@ export function Sidebar({
           <li>
             <button
               type="button"
-              className="sidebar-item"
+              className="sidebar-item sidebar-context-item"
               data-active={isTemp}
               aria-current={isTemp ? "page" : undefined}
               onClick={onSelectTemp}

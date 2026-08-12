@@ -116,7 +116,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("seattrellis-ed-{}", std::process::id()));
         let path = dir.join("export-defaults.json");
         let defaults = ExportDefaults {
-            template: "public".to_string(),
+            template: "teacher".to_string(),
             anonymize: true,
             orientation: Some("landscape".to_string()),
             paper_size: "a3".to_string(),
@@ -125,7 +125,10 @@ mod tests {
         defaults.save_to(&path).expect("save");
         let loaded = ExportDefaults::load_from(&path).expect("load");
         assert_eq!(loaded, defaults);
-        assert!(!dir.join("export-defaults.json.tmp").exists(), "no temp leftover");
+        assert!(
+            !dir.join("export-defaults.json.tmp").exists(),
+            "no temp leftover"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -88,10 +88,10 @@ export const demoCatalogs: CatalogResponse = {
   exportFormats: [
     {
       id: "print-html",
-      name: { "zh-CN": "打印版", en: "Print sheet" },
+      name: { "zh-CN": "HTML / 打印版", en: "HTML / Print sheet" },
       description: {
-        "zh-CN": "适合 A4 打印和存为 PDF",
-        en: "Designed for A4 printing or saving as PDF",
+        "zh-CN": "可在浏览器查看，也适合 A4 打印和存为 PDF",
+        en: "View in a browser, print on A4, or save as PDF",
       },
     },
     {

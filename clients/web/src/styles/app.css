@@ -45,10 +45,10 @@ input:focus-visible,
   z-index: 20;
   top: 0;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
+  grid-template-columns: minmax(220px, 1fr) auto;
   align-items: center;
-  min-height: calc(72px * var(--density));
-  padding: 10px 22px;
+  min-height: calc(64px * var(--density));
+  padding: 8px 22px;
   border-bottom: var(--line-width) solid var(--border);
   background: var(--header-background);
   backdrop-filter: blur(20px) saturate(135%);
@@ -64,10 +64,8 @@ input:focus-visible,
 .brand-mark {
   width: 35px;
   height: 35px;
-  padding: 3px;
-  border-radius: calc(var(--radius-small) + 2px);
-  background: var(--accent);
-  color: var(--accent-contrast);
+  padding: 2px;
+  color: var(--accent);
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -83,7 +81,7 @@ input:focus-visible,
 .brand-lockup strong {
   color: var(--text-strong);
   font-family: var(--font-display);
-  font-size: 1rem;
+  font-size: 1.0625rem;
   letter-spacing: -0.01em;
 }
 
@@ -176,31 +174,31 @@ input:focus-visible,
 
 .app-shell {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
-  min-height: calc(100vh - 72px);
+  grid-template-columns: 224px minmax(0, 1fr);
+  min-height: calc(100vh - 64px);
 }
 
 /* ---------- sidebar (D1: classes / class content / tasks) ---------- */
 
 .sidebar {
   position: sticky;
-  top: 72px;
+  top: 64px;
   align-self: start;
-  height: calc(100vh - 72px);
-  padding: 18px 10px 26px;
+  height: calc(100vh - 64px);
+  padding: 22px 12px 28px;
   border-right: var(--line-width) solid var(--border);
   background: var(--nav-background);
   overflow-y: auto;
 }
 
 .sidebar-section + .sidebar-section {
-  margin-top: 20px;
+  margin-top: 24px;
 }
 
 .sidebar-heading {
   padding: 0 8px 6px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-2xs);
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -217,7 +215,7 @@ input:focus-visible,
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 40px;
+  min-height: 42px;
   padding: 8px 10px;
   border-radius: var(--radius-small);
   background: transparent;
@@ -237,6 +235,17 @@ input:focus-visible,
   background: var(--accent-soft);
   color: var(--text-strong);
   font-weight: 650;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.sidebar-context-item[data-active="true"] {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 var(--line-width) var(--border);
+}
+
+.sidebar-content-item[data-active="true"] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .sidebar-item-copy {
@@ -261,9 +270,9 @@ input:focus-visible,
 }
 
 .sidebar-empty {
-  padding: 4px 8px 8px;
+  padding: 6px 8px 10px;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 
@@ -278,12 +287,12 @@ input:focus-visible,
 .context-bar {
   position: sticky;
   z-index: 10;
-  top: 72px;
+  top: 64px;
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 50px;
-  padding: 8px 20px;
+  min-height: 54px;
+  padding: 8px 24px;
   border-bottom: var(--line-width) solid var(--border);
   background: var(--surface);
 }
@@ -372,12 +381,13 @@ input:focus-visible,
 /* ---------- first-run checklist (D1: shown once, retracts after use) --- */
 
 .first-run {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 18px;
-  padding: 9px 20px;
-  border-bottom: 1px dashed var(--border-strong);
-  background: var(--accent-soft);
+  gap: 20px;
+  padding: 10px 24px;
+  border-bottom: var(--line-width) solid var(--border);
+  background: var(--surface-tint);
 }
 
 .first-run-heading {
@@ -398,9 +408,10 @@ input:focus-visible,
 }
 
 .first-run-steps {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(max-content, 1fr));
   align-items: center;
-  gap: 14px;
+  gap: 6px;
   min-width: 0;
   overflow-x: auto;
 }
@@ -412,10 +423,22 @@ input:focus-visible,
   flex: none;
   color: var(--muted);
   font-size: 0.8125rem;
+  white-space: nowrap;
 }
 
 .first-run-steps li[data-done="true"] {
   color: var(--text);
+}
+
+.first-run-steps li[data-current="true"] {
+  color: var(--text-strong);
+  font-weight: 650;
+}
+
+.first-run-steps li[data-current="true"] .first-run-tick {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .first-run-tick {
@@ -445,17 +468,35 @@ input:focus-visible,
   gap: 16px;
   align-items: start;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 24px;
 }
 
 .main-workspace.view-canvas {
-  grid-template-columns:
-    minmax(284px, 330px)
-    minmax(440px, 1fr)
-    minmax(210px, 248px);
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
   max-width: 1650px;
+}
+
+.main-workspace.view-canvas > .control-panel {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.main-workspace.view-canvas > .canvas-card {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.main-workspace.view-canvas > .workspace-side-rail {
+  grid-column: 2;
+  grid-row: 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.main-workspace.view-canvas > .candidates-panel {
+  grid-column: 1 / -1;
+  grid-row: 3;
 }
 
 .control-panel,
@@ -470,7 +511,7 @@ input:focus-visible,
 .control-panel {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 112px);
+  min-height: min(680px, calc(100vh - 166px));
   overflow: hidden;
 }
 
@@ -585,7 +626,43 @@ input:focus-visible,
 
 .roster-workspace-stack {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+}
+
+.roster-import-disclosure {
+  border: var(--line-width) solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.roster-import-disclosure > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 14px 16px;
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: var(--text-md);
+  font-weight: 650;
+  list-style-position: inside;
+}
+
+.roster-import-disclosure > summary small {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.roster-import-disclosure[open] > summary {
+  border-bottom: var(--line-width) solid var(--border);
+  background: var(--surface-soft);
+}
+
+.roster-import-disclosure > .roster-import-panel {
+  border: 0;
+  border-radius: 0;
 }
 
 .roster-import-panel {
@@ -928,10 +1005,10 @@ input:focus-visible,
 .student-editor-card {
   display: grid;
   gap: 10px;
-  padding: 13px;
+  padding: 16px;
   border: var(--line-width) solid var(--border);
   border-radius: var(--radius-medium);
-  background: var(--surface-soft);
+  background: var(--surface);
 }
 
 .student-editor-heading {
@@ -939,6 +1016,28 @@ input:focus-visible,
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+}
+
+.student-editor-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.student-count-label {
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.student-details-toggle {
+  min-height: 36px;
+  color: var(--accent);
 }
 
 .student-editor-heading h3 {
@@ -963,12 +1062,20 @@ input:focus-visible,
 
 .student-editor-row {
   display: grid;
-  grid-template-columns: 86px minmax(120px, 1.25fr) 70px 88px 86px minmax(120px, 1.25fr) minmax(130px, 1.4fr) 30px;
   gap: 6px;
   align-items: center;
-  min-width: 850px;
   padding: 6px 7px;
   border-bottom: var(--line-width) solid var(--border);
+}
+
+.student-editor-row.is-compact {
+  grid-template-columns: minmax(100px, 0.45fr) minmax(160px, 1fr) 36px;
+  min-width: 0;
+}
+
+.student-editor-row.is-detailed {
+  grid-template-columns: 86px minmax(120px, 1.25fr) 70px 88px 86px minmax(120px, 1.25fr) minmax(130px, 1.4fr) 36px;
+  min-width: 850px;
 }
 
 .student-editor-row:last-child {
@@ -3039,7 +3146,57 @@ input:focus-visible,
 }
 
 .seating-holder {
-  width: max-content;
+  width: 100%;
+  min-width: 430px;
+}
+
+.canvas-focus-scrim {
+  position: fixed;
+  z-index: 59;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: rgb(30 29 27 / 48%);
+  backdrop-filter: blur(4px);
+}
+
+.seating-editor.is-focus-mode {
+  position: fixed;
+  z-index: 60;
+  inset: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: var(--line-width) solid var(--border-strong);
+  border-radius: var(--radius-large);
+  background: var(--surface);
+  box-shadow: 0 24px 80px rgb(30 29 27 / 28%);
+}
+
+.seating-editor.is-focus-mode .canvas-zoom-target,
+.seating-editor.is-focus-mode .canvas-frame,
+.seating-editor.is-focus-mode .canvas-stage {
+  min-height: 0;
+}
+
+.seating-editor.is-focus-mode .canvas-zoom-target {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.seating-editor.is-focus-mode .canvas-frame,
+.seating-editor.is-focus-mode .canvas-stage {
+  flex: 1;
+}
+
+.seating-editor.is-focus-mode .canvas-stage {
+  margin: 8px 0 0;
+}
+
+.canvas-focus-button {
+  gap: 6px;
 }
 
 .seat {
@@ -4018,6 +4175,26 @@ input:focus-visible,
     grid-template-columns: 1fr 1fr;
   }
 
+  .main-workspace.view-canvas > .control-panel {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .main-workspace.view-canvas > .canvas-card {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .main-workspace.view-canvas > .candidates-panel {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .main-workspace.view-canvas > .workspace-side-rail {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
   .control-panel {
     min-height: 650px;
   }
@@ -4039,7 +4216,7 @@ input:focus-visible,
   .sidebar {
     position: sticky;
     z-index: 15;
-    top: 72px;
+    top: 64px;
     display: flex;
     align-items: start;
     gap: 18px;
@@ -4085,7 +4262,23 @@ input:focus-visible,
   }
 
   .main-workspace.view-canvas .control-panel {
-    grid-row: auto;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .main-workspace.view-canvas > .canvas-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .main-workspace.view-canvas > .candidates-panel {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .main-workspace.view-canvas > .workspace-side-rail {
+    grid-column: 1;
+    grid-row: 4;
   }
 }
 
@@ -4125,10 +4318,15 @@ input:focus-visible,
   }
 
   .first-run {
+    grid-template-columns: 1fr;
     align-items: start;
-    flex-direction: column;
     gap: 6px;
     padding-inline: 12px;
+  }
+
+  .first-run-steps {
+    width: 100%;
+    overflow-x: auto;
   }
 
   .main-workspace {

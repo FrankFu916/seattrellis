@@ -66,7 +66,8 @@ use crate::render::{
 // Format / template / orientation enums
 // ---------------------------------------------------------------------------
 
-/// The four export formats the app can produce.
+/// Export formats accepted by the compatibility contract. The UI presents
+/// `print-html` as the single HTML choice because it is also browser-viewable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportFormat {
     Svg,
@@ -92,7 +93,7 @@ impl ExportFormat {
             "docx" => Ok(ExportFormat::Docx),
             "pptx" => Ok(ExportFormat::Pptx),
             other => Err(format!(
-                "unknown export format '{other}' (expected svg, html, png, pdf, xlsx, docx or pptx)"
+                "unknown export format '{other}' (expected svg, html, print-html, png, pdf, xlsx, docx or pptx)"
             )),
         }
     }
@@ -197,7 +198,7 @@ pub struct ExportPrivacyOptions {
 }
 
 fn default_template() -> String {
-    "public".to_string()
+    "teacher".to_string()
 }
 
 fn default_paper_size() -> String {
@@ -565,40 +566,24 @@ mod tests {
             "A4 portrait by default"
         );
         assert!(pdf.ends_with("%%EOF\n"), "PDF trailer");
-        assert!(
-            pdf.contains("/BaseFont /Helvetica") || pdf.contains("/Subtype /Type0"),
-            "pdf must carry a usable font"
-        );
+        assert!(pdf.contains("/Subtype /Image"), "page is self-contained");
+        assert!(pdf.contains("/FlateDecode"), "image is losslessly encoded");
     }
 
     #[test]
-    fn pdf_cjk_text_uses_identity_h_glyph_indices_not_cmap_dependent_encoding() {
-        // Regression: UniGB-UCS2-H relies on a CMap file that poppler and
-        // several viewers do not ship, so CJK pages rendered blank. The
-        // Identity-H + CIDToGIDMap=Identity scheme is built into every PDF
-        // viewer; strings are 2-byte glyph-index hex without a BOM.
+    fn pdf_rasterizes_system_font_instead_of_delegating_glyph_mapping() {
+        // Regression: both UniGB-UCS2-H and the later Identity-H attempt
+        // delegated glyph interpretation to the viewer without embedding the
+        // source font. Font substitution then produced blank text, dots, or
+        // unrelated glyphs. The page image resolves the system font once,
+        // during export, and is independent of the viewer's font inventory.
         let bytes = export_ok(&export_body("pdf", "teacher"));
         let pdf = String::from_utf8(bytes).unwrap();
-        assert!(
-            !pdf.contains("UniGB"),
-            "must not reference the CMap-dependent encoding"
-        );
-        let cjk_path = pdf.contains("/Encoding /Identity-H");
-        let helvetica_path = pdf.contains("/BaseFont /Helvetica");
-        assert!(
-            cjk_path || helvetica_path,
-            "either the Identity-H CJK path or the ASCII Helvetica path"
-        );
-        if cjk_path {
-            assert!(
-                pdf.contains("/CIDToGIDMap /Identity"),
-                "glyph indices map 1:1 to the referenced font"
-            );
-            assert!(
-                !pdf.contains("<FEFF"),
-                "no UTF-16 BOM: the first 2 bytes are the first glyph index"
-            );
-        }
+        assert!(pdf.contains("/Subtype /Image"));
+        assert!(!pdf.contains("UniGB"));
+        assert!(!pdf.contains("/Identity-H"));
+        assert!(!pdf.contains("/CIDToGIDMap"));
+        assert!(!pdf.contains("/Subtype /Type0"));
     }
 
     #[test]
@@ -622,6 +607,16 @@ mod tests {
             public.contains("学生"),
             "public export shows the zh placeholder"
         );
+    }
+
+    #[test]
+    fn omitted_template_defaults_to_name_preserving_teacher_export() {
+        let mut body = export_body("svg", "teacher");
+        body.as_object_mut().unwrap().remove("template");
+        let svg = String::from_utf8(export_ok(&body)).unwrap();
+        assert!(svg.contains("Alice"));
+        assert!(svg.contains("张伟"));
+        assert!(!svg.contains(">学生<"));
     }
 
     #[test]

@@ -1,4 +1,3 @@
-#![cfg(test)]
 //! Fault-injection rollback goldens (revised plan §17.2.4).
 //!
 //! Every project write path must roll back when the underlying transaction

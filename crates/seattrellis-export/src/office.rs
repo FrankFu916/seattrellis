@@ -106,7 +106,7 @@ const XLSX_WORKBOOK_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standal
 
 const XLSX_STYLES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fonts count="1"><font><sz val="11"/><name val="Noto Sans CJK SC"/><family val="2"/><charset val="134"/></font></fonts>
   <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
   <borders count="1"><border/></borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
@@ -226,6 +226,8 @@ const DOCX_CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standal
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>
 </Types>"#;
 
 const DOCX_ROOT_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -233,16 +235,36 @@ const DOCX_ROOT_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone=
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>"#;
 
+const DOCX_DOCUMENT_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
+</Relationships>"#;
+
+const DOCX_STYLES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault><w:rPr><w:rFonts w:ascii="Noto Sans CJK SC" w:hAnsi="Noto Sans CJK SC" w:eastAsia="Noto Sans CJK SC" w:cs="Noto Sans CJK SC"/><w:lang w:val="zh-CN" w:eastAsia="zh-CN"/></w:rPr></w:rPrDefault>
+    <w:pPrDefault><w:pPr/></w:pPrDefault>
+  </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>
+</w:styles>"#;
+
+const DOCX_FONT_TABLE: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:font w:name="Noto Sans CJK SC"><w:charset w:val="86"/><w:family w:val="swiss"/><w:pitch w:val="variable"/></w:font>
+</w:fonts>"#;
+
 /// A bordered seat grid table (mirrors the oracle's `Table Grid` style).
 fn docx_seat_table(grid: &SeatingGrid) -> String {
     let mut table = String::from(
-        r#"<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>\
-<w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>\
-<w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>\
-<w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>\
-<w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>\
-<w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>\
-<w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>\
+        r#"<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>
+<w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+<w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+<w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+<w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+<w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+<w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>
 </w:tblBorders></w:tblPr>"#,
     );
     // python-docx requires the <w:tblGrid> column definition.
@@ -267,7 +289,7 @@ fn docx_seat_table(grid: &SeatingGrid) -> String {
                 },
             };
             table.push_str(&format!(
-                r#"<w:tc><w:p><w:r><w:t xml:space="preserve">{}</w:t></w:r></w:p></w:tc>"#,
+                r#"<w:tc><w:p><w:r><w:rPr><w:rFonts w:ascii="Noto Sans CJK SC" w:hAnsi="Noto Sans CJK SC" w:eastAsia="Noto Sans CJK SC" w:cs="Noto Sans CJK SC"/><w:lang w:val="zh-CN" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">{}</w:t></w:r></w:p></w:tc>"#,
                 xml_escape(&text)
             ));
         }
@@ -289,8 +311,8 @@ pub fn render_docx(grid: &SeatingGrid, landscape: bool) -> Result<Vec<u8>, Strin
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
-    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">{title}</w:t></w:r></w:p>
-    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">{subtitle}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Noto Sans CJK SC" w:hAnsi="Noto Sans CJK SC" w:eastAsia="Noto Sans CJK SC" w:cs="Noto Sans CJK SC"/><w:lang w:val="zh-CN" w:eastAsia="zh-CN"/><w:b/></w:rPr><w:t xml:space="preserve">{title}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Noto Sans CJK SC" w:hAnsi="Noto Sans CJK SC" w:eastAsia="Noto Sans CJK SC" w:cs="Noto Sans CJK SC"/><w:lang w:val="zh-CN" w:eastAsia="zh-CN"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">{subtitle}</w:t></w:r></w:p>
     <w:p/>
     {table}
     <w:sectPr><w:pgSz w:w="{doc_w}" w:h="{doc_h}"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>
@@ -306,6 +328,9 @@ pub fn render_docx(grid: &SeatingGrid, landscape: bool) -> Result<Vec<u8>, Strin
         ("[Content_Types].xml", DOCX_CONTENT_TYPES),
         ("_rels/.rels", DOCX_ROOT_RELS),
         ("word/document.xml", &document),
+        ("word/_rels/document.xml.rels", DOCX_DOCUMENT_RELS),
+        ("word/styles.xml", DOCX_STYLES),
+        ("word/fontTable.xml", DOCX_FONT_TABLE),
     ])
 }
 
@@ -395,7 +420,7 @@ fn pptx_shape(
         .iter()
         .map(|line| {
             format!(
-                r#"<a:p><a:r><a:rPr lang="en-US" sz="1400" b="0"/><a:t xml:space="preserve">{}</a:t></a:r></a:p>"#,
+                r#"<a:p><a:r><a:rPr lang="zh-CN" altLang="en-US" sz="1400" b="0"><a:latin typeface="Noto Sans CJK SC"/><a:ea typeface="Noto Sans CJK SC"/></a:rPr><a:t xml:space="preserve">{}</a:t></a:r></a:p>"#,
                 xml_escape(line)
             )
         })
@@ -638,7 +663,14 @@ mod tests {
     fn docx_package_is_well_formed_and_carries_title_and_table() {
         let bytes = render_docx(&sample_grid(), false).expect("docx renders");
         let entries = unzip(&bytes);
-        for part in ["[Content_Types].xml", "_rels/.rels", "word/document.xml"] {
+        for part in [
+            "[Content_Types].xml",
+            "_rels/.rels",
+            "word/document.xml",
+            "word/_rels/document.xml.rels",
+            "word/styles.xml",
+            "word/fontTable.xml",
+        ] {
             let content = entries
                 .get(part)
                 .unwrap_or_else(|| panic!("missing part {part}"));
@@ -700,5 +732,31 @@ mod tests {
             "raw special characters must not appear"
         );
         assert_well_formed_xml(seating, "sheet1.xml");
+    }
+
+    #[test]
+    fn office_formats_preserve_cjk_names_and_declare_east_asian_text() {
+        let mut grid = sample_grid();
+        grid.cells[0].student = Some("林晓雨".to_string());
+
+        let xlsx = unzip(&render_xlsx(&grid).expect("xlsx renders"));
+        assert!(xlsx["xl/worksheets/sheet1.xml"].contains("林晓雨"));
+        assert!(xlsx["xl/worksheets/sheet2.xml"].contains("林晓雨"));
+        assert!(xlsx["xl/styles.xml"].contains(r#"charset val="134""#));
+
+        let docx = unzip(&render_docx(&grid, true).expect("docx renders"));
+        let document = &docx["word/document.xml"];
+        assert!(document.contains("林晓雨"));
+        assert!(document.contains(r#"w:eastAsia="Noto Sans CJK SC""#));
+        assert!(
+            !document.contains("/>\\"),
+            "no literal slash escapes in OOXML"
+        );
+
+        let pptx = unzip(&render_pptx(&grid).expect("pptx renders"));
+        let slide = &pptx["ppt/slides/slide1.xml"];
+        assert!(slide.contains("林晓雨"));
+        assert!(slide.contains(r#"<a:ea typeface="Noto Sans CJK SC"/>"#));
+        assert!(slide.contains(r#"lang="zh-CN""#));
     }
 }

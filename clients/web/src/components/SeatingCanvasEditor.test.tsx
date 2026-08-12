@@ -156,4 +156,21 @@ describe("SeatingCanvasEditor", () => {
     renderEditor({ canRedo: false });
     expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
   });
+
+  it("opens a large focus view and exits with Escape", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.click(screen.getByRole("button", { name: "Focus view" }));
+    expect(
+      screen.getByRole("button", { name: "Exit focus view", pressed: true }),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".seating-editor.is-focus-mode")).not.toBeNull();
+
+    await user.keyboard("{Escape}");
+    expect(
+      screen.getByRole("button", { name: "Focus view", pressed: false }),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".seating-editor.is-focus-mode")).toBeNull();
+  });
 });

@@ -29,7 +29,8 @@ const MAX_BRIDGE_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// endpoint instead (absolute paths are rejected there).
 #[tauri::command]
 fn read_user_file(path: String) -> Result<Vec<u8>, String> {
-    let metadata = std::fs::metadata(&path).map_err(|error| format!("cannot stat file: {error}"))?;
+    let metadata =
+        std::fs::metadata(&path).map_err(|error| format!("cannot stat file: {error}"))?;
     if !metadata.is_file() {
         return Err("path is not a file".to_string());
     }

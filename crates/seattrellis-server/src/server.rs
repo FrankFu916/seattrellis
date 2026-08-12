@@ -541,9 +541,7 @@ pub(crate) fn route(
         ("GET", ["api", "v1", "rules", "templates"]) => rules_templates_response(),
         ("POST", ["api", "v1", "rules", "compile"]) => rules_compile_response(&request.body),
         ("POST", ["api", "v2", "solve"]) => solve_v2_response(&request.body),
-        ("POST", ["api", "v1", "files", "read"]) => {
-            file_read_response(&request.body, trusted_root)
-        }
+        ("POST", ["api", "v1", "files", "read"]) => file_read_response(&request.body, trusted_root),
         ("GET", ["api", "v1", "files", "root"]) => file_root_response(trusted_root),
         ("POST", ["api", "v1", "classes", "generate"]) | ("POST", ["api", "v1", "solve"]) => {
             generate_response(&request.body, editor_store, solve_requests)
@@ -657,10 +655,7 @@ fn rules_templates_response() -> Response {
         .into_iter()
         .map(|template| serde_json::to_value(template).expect("template serializes"))
         .collect();
-    Response::json(
-        200,
-        json!({ "api_version": "1", "templates": templates }),
-    )
+    Response::json(200, json!({ "api_version": "1", "templates": templates }))
 }
 
 /// `POST /api/v1/rules/compile`: fill a sentence template's slots and return
@@ -787,11 +782,6 @@ fn catalogs_response() -> Response {
                     "description": localized("矢量格式，方便继续编辑。", "Vector image that stays easy to edit."),
                 },
                 {
-                    "id": "html",
-                    "name": localized("网页版", "HTML"),
-                    "description": localized("适合在浏览器中查看。", "Open in any browser."),
-                },
-                {
                     "id": "png",
                     "name": localized("PNG 图片", "PNG image"),
                     "description": localized("适合截图和分享。", "A simple image for sharing."),
@@ -803,8 +793,8 @@ fn catalogs_response() -> Response {
                 },
                 {
                     "id": "print-html",
-                    "name": localized("打印版", "Print sheet"),
-                    "description": localized("适合 A4 打印或存为 PDF。", "Designed for A4 printing or saving as PDF."),
+                    "name": localized("HTML / 打印版", "HTML / Print sheet"),
+                    "description": localized("可在浏览器查看，也适合 A4 打印或存为 PDF。", "View in a browser, print on A4, or save as PDF."),
                 },
                 {
                     "id": "xlsx",
@@ -1032,11 +1022,8 @@ fn draft_audit_response(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
 ) -> Response {
-    match seattrellis_application::draft_audit::audit_draft(
-        editor_store,
-        solve_requests,
-        draft_id,
-    ) {
+    match seattrellis_application::draft_audit::audit_draft(editor_store, solve_requests, draft_id)
+    {
         Ok(report) => Response::json(200, report),
         Err(error) => app_error_response(error),
     }
@@ -2303,16 +2290,7 @@ mod tests {
             .collect();
         assert_eq!(
             format_ids,
-            vec![
-                "svg",
-                "html",
-                "png",
-                "pdf",
-                "print-html",
-                "xlsx",
-                "docx",
-                "pptx"
-            ]
+            vec!["svg", "png", "pdf", "print-html", "xlsx", "docx", "pptx"]
         );
     }
 
@@ -2342,8 +2320,14 @@ mod tests {
         let distance = &templates[0];
         assert_eq!(distance["category"], "hard");
         assert_eq!(distance["rule_id"], "min_distance");
-        assert!(distance["sentence"]["zh"].as_str().unwrap().contains("{student_a}"));
-        assert!(distance["sentence"]["en"].as_str().unwrap().contains("{student_a}"));
+        assert!(distance["sentence"]["zh"]
+            .as_str()
+            .unwrap()
+            .contains("{student_a}"));
+        assert!(distance["sentence"]["en"]
+            .as_str()
+            .unwrap()
+            .contains("{student_a}"));
         let slots = distance["slots"].as_array().unwrap();
         assert_eq!(slots.len(), 3);
         assert_eq!(slots[0]["kind"], "student");
@@ -2524,15 +2508,27 @@ mod tests {
             &solve_requests,
         );
         let value = body_json(&generated);
-        let draft_id = value["recommended_candidate_id"].as_str().unwrap().to_string();
+        let draft_id = value["recommended_candidate_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let audit = route_with_store(
-            &request("GET", &format!("/api/v1/editing/drafts/{draft_id}/audit"), b""),
+            &request(
+                "GET",
+                &format!("/api/v1/editing/drafts/{draft_id}/audit"),
+                b"",
+            ),
             &root,
             &editor_store,
             &solve_requests,
         );
-        assert_eq!(audit.status, 200, "body: {}", String::from_utf8_lossy(&audit.body));
+        assert_eq!(
+            audit.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&audit.body)
+        );
         let report = body_json(&audit);
         assert_eq!(report["api_version"], "1");
         assert_eq!(report["draft_id"], draft_id);
@@ -2582,7 +2578,12 @@ mod tests {
             &editor_store,
             &solve_requests,
         );
-        assert_eq!(response.status, 200, "body: {}", String::from_utf8_lossy(&response.body));
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
         let value = body_json(&response);
         let candidates = value["candidates"].as_array().unwrap();
         assert_eq!(candidates.len(), 5, "expected 5 candidates: {value}");
@@ -2603,7 +2604,11 @@ mod tests {
         // Every candidate is an editable, auditable draft.
         for candidate_id in ids {
             let audit = route_with_store(
-                &request("GET", &format!("/api/v1/editing/drafts/{candidate_id}/audit"), b""),
+                &request(
+                    "GET",
+                    &format!("/api/v1/editing/drafts/{candidate_id}/audit"),
+                    b"",
+                ),
                 &root,
                 &editor_store,
                 &solve_requests,
@@ -3692,7 +3697,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(
             preview.status,
@@ -3726,7 +3731,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(
             gen.status,
@@ -3746,7 +3751,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(fetch.status, 200);
         let before = body_json(&fetch);
@@ -3788,7 +3793,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(
             swapped.status,
@@ -3835,7 +3840,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(
             export.status,
@@ -3861,7 +3866,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(del.status, 204);
         let del_again = route(
@@ -3873,7 +3878,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(del_again.status, 404);
     }
@@ -3898,7 +3903,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(gen.status, 200);
         let draft_id = body_json(&gen)["editor"]["draft_id"]
@@ -3925,7 +3930,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(
             export.status,
@@ -3969,7 +3974,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(export.status, 404);
     }
@@ -3995,7 +4000,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(generated.status, 200);
         let draft_id = body_json(&generated)["editor"]["draft_id"]
@@ -4026,7 +4031,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(edited.status, 200);
 
@@ -4049,7 +4054,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(export.status, 422);
         assert_eq!(body_json(&export)["error"], "invalid_export_assignment");
@@ -4080,7 +4085,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(response.status, 404);
 
@@ -4100,7 +4105,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(gen.status, 200);
         let draft_id = body_json(&gen)["editor"]["draft_id"]
@@ -4126,7 +4131,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(ok.status, 200);
         assert_eq!(body_json(&ok)["revision"], 1);
@@ -4150,7 +4155,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(stale.status, 409);
         assert!(body_json(&stale)["error"]
@@ -4168,7 +4173,7 @@ mod tests {
             &root,
             &editor_store,
             &solve_requests,
-                &root,
+            &root,
         );
         assert_eq!(bad.status, 400);
     }
@@ -5417,7 +5422,10 @@ mod tests {
 
     #[test]
     fn trusted_path_validation_rejects_absolute_traversal_and_drive_prefixes() {
-        assert_eq!(trusted_relative_path("rosters/a.csv"), Some("rosters/a.csv".into()));
+        assert_eq!(
+            trusted_relative_path("rosters/a.csv"),
+            Some("rosters/a.csv".into())
+        );
         assert_eq!(trusted_relative_path("a.csv"), Some("a.csv".into()));
         // Absolute forms.
         assert_eq!(trusted_relative_path("/etc/passwd"), None);
@@ -5433,7 +5441,10 @@ mod tests {
         assert_eq!(trusted_relative_path(""), None);
         assert_eq!(trusted_relative_path("."), None);
         // Harmless dots collapse.
-        assert_eq!(trusted_relative_path("rosters/./a.csv"), Some("rosters/a.csv".into()));
+        assert_eq!(
+            trusted_relative_path("rosters/./a.csv"),
+            Some("rosters/a.csv".into())
+        );
     }
 
     #[test]
@@ -5453,7 +5464,10 @@ mod tests {
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(value["content_base64"].as_str().unwrap())
             .unwrap();
-        assert_eq!(String::from_utf8(decoded).unwrap(), "student_id,name\nS01,Lin\n");
+        assert_eq!(
+            String::from_utf8(decoded).unwrap(),
+            "student_id,name\nS01,Lin\n"
+        );
     }
 
     #[test]
@@ -5503,7 +5517,8 @@ mod tests {
         );
         assert_eq!(dir.status, 400);
         // Malformed bodies.
-        let empty = route_one_with_root(&request("POST", "/api/v1/files/read", b""), &root, &trusted);
+        let empty =
+            route_one_with_root(&request("POST", "/api/v1/files/read", b""), &root, &trusted);
         assert_eq!(empty.status, 400);
         let no_path = route_one_with_root(
             &request(
@@ -5527,7 +5542,8 @@ mod tests {
     fn file_root_reports_the_canonical_trusted_root() {
         let (trusted, _) = test_trusted_root();
         let root = test_web_root();
-        let response = route_one_with_root(&request("GET", "/api/v1/files/root", b""), &root, &trusted);
+        let response =
+            route_one_with_root(&request("GET", "/api/v1/files/root", b""), &root, &trusted);
         assert_eq!(response.status, 200);
         let value: Value = serde_json::from_slice(&response.body).unwrap();
         assert_eq!(

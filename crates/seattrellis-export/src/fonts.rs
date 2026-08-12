@@ -149,9 +149,8 @@ fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-/// Load the discovered CJK font for rasterization (M5-A4 PNG text).
-/// Returns `None` when no CJK font file is available (the PNG renderer then
-/// falls back to textless output).
+/// Load the discovered CJK font for PNG/PDF export-time rasterization.
+/// Returns `None` when no supported CJK font file is available.
 pub fn load_cjk_font() -> Option<fontdue::Font> {
     let font = find_system_cjk_font();
     let file = font.file?;

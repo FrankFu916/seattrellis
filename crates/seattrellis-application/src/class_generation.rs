@@ -820,7 +820,6 @@ pub(crate) fn new_draft_id() -> String {
     format!("draft-{nanos:x}{seq:x}")
 }
 
-
 /// Produce `candidate_count` distinct feasible plans (plan §6.3): each
 /// candidate becomes an editable draft; every draft remembers its originating
 /// request so export and audit can rebuild it after edits. The recommended
@@ -844,31 +843,31 @@ fn generate_candidate_set(
     // The stored value is already the core-shaped request; serialize it as-is
     // (CoreSolveRequest is Deserialize-only by contract).
     let request_json = core_request.to_string();
-    let report_json = match seattrellis_core::generate_candidates_json(&request_json, candidate_count)
-    {
-        Ok(report) => report,
-        Err(message) if message.contains("did not produce any feasible plan") => {
-            // Heuristic exhaustion across the requested set is a normal
-            // domain result, never a transport error (M0-03).
-            return Ok(GenerateClassOutcome {
-                feasible: false,
-                status: seattrellis_core::SolveStatus::Unknown,
-                class_name,
-                goal_id,
-                total_score: None,
-                draft_id: None,
-                candidates: Vec::new(),
-                recommended_candidate_id: None,
-                editor: None,
-            });
-        }
-        Err(message) => {
-            return Err(AppError::unprocessable(
-                "invalid_class_draft",
-                format!("candidate generation failed: {message}"),
-            ))
-        }
-    };
+    let report_json =
+        match seattrellis_core::generate_candidates_json(&request_json, candidate_count) {
+            Ok(report) => report,
+            Err(message) if message.contains("did not produce any feasible plan") => {
+                // Heuristic exhaustion across the requested set is a normal
+                // domain result, never a transport error (M0-03).
+                return Ok(GenerateClassOutcome {
+                    feasible: false,
+                    status: seattrellis_core::SolveStatus::Unknown,
+                    class_name,
+                    goal_id,
+                    total_score: None,
+                    draft_id: None,
+                    candidates: Vec::new(),
+                    recommended_candidate_id: None,
+                    editor: None,
+                });
+            }
+            Err(message) => {
+                return Err(AppError::unprocessable(
+                    "invalid_class_draft",
+                    format!("candidate generation failed: {message}"),
+                ))
+            }
+        };
     let report: Value = match serde_json::from_str(&report_json) {
         Ok(report) => report,
         Err(error) => {
@@ -975,9 +974,7 @@ fn generate_candidate_set(
         });
     }
     let Some(editor) = recommended_state else {
-        return Err(AppError::internal(
-            "candidate set has no recommended plan",
-        ));
+        return Err(AppError::internal("candidate set has no recommended plan"));
     };
 
     Ok(GenerateClassOutcome {

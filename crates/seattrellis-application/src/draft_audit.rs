@@ -45,9 +45,13 @@ pub fn audit_draft(
     let request_json = request_value.to_string();
     let assignment = &response.assignment;
 
-    let score = score_assignment_json(&request_json, assignment, "[]", None).map_err(|message| {
-        AppError::unprocessable("invalid_assignment", format!("plan cannot be scored: {message}"))
-    })?;
+    let score =
+        score_assignment_json(&request_json, assignment, "[]", None).map_err(|message| {
+            AppError::unprocessable(
+                "invalid_assignment",
+                format!("plan cannot be scored: {message}"),
+            )
+        })?;
     // Diagnostics (not the strict audit): a hand-edited plan that violates a
     // hard rule is *reported* with witnesses, never rejected — the strict
     // audit stays the CLI's blessing validator (M3-06).

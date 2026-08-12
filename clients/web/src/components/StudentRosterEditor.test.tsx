@@ -24,6 +24,22 @@ function Harness() {
 }
 
 describe("StudentRosterEditor", () => {
+  it("keeps optional seating data out of the default editing path", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    expect(screen.queryByRole("spinbutton", { name: "Student 1 score" })).toBeNull();
+    const details = screen.getByRole("button", { name: "Show seating details" });
+    expect(details).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(details);
+    expect(screen.getByRole("spinbutton", { name: "Student 1 score" })).toHaveValue(92);
+    expect(screen.getByRole("button", { name: "Hide seating details" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
   it("edits fields, adds a student, and removes a row", async () => {
     const user = userEvent.setup();
     render(<Harness />);

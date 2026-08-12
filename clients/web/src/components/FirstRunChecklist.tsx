@@ -36,6 +36,8 @@ export function FirstRunChecklist({
   t,
   onDismiss,
 }: FirstRunChecklistProps) {
+  const currentStep = STEPS.findIndex((step) => !progress[step.key]);
+
   return (
     <section
       className="first-run"
@@ -57,7 +59,11 @@ export function FirstRunChecklist({
         {STEPS.map((step, index) => {
           const done = progress[step.key];
           return (
-            <li key={step.key} data-done={done}>
+            <li
+              key={step.key}
+              data-done={done}
+              data-current={!done && index === currentStep}
+            >
               <span className="first-run-tick" aria-hidden="true">
                 {done ? <CheckIcon size={13} /> : index + 1}
               </span>

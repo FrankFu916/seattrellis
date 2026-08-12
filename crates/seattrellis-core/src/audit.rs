@@ -325,7 +325,6 @@ pub fn audit_report_json(request_json: &str, assignment: &[[usize; 2]]) -> Resul
 
 // ---------------------------------------------------------------------------
 
-
 /// Diagnostics report (M5 B6 / D6): like [`audit_report_json`] but built for
 /// *reporting* — the assignment must still be structurally complete and
 /// conflict-free, but hard-rule violations are evaluated and itemized into
@@ -462,12 +461,8 @@ pub fn diagnostics_report_json(
     }
 
     for (index, rule) in request.min_distance.iter().enumerate() {
-        if assigned_students_meet_distance(
-            &request.seat_positions,
-            &probe,
-            &graph_distances,
-            rule,
-        ) {
+        if assigned_students_meet_distance(&request.seat_positions, &probe, &graph_distances, rule)
+        {
             continue;
         }
         let fix = suggested_fix_seat(
@@ -555,7 +550,9 @@ pub fn diagnostics_report_json(
             }
         }
         let weight = ctx.rules.soft.score_balance.weight as f64;
-        evaluation.losses.insert("score_balance".to_string(), Some(loss));
+        evaluation
+            .losses
+            .insert("score_balance".to_string(), Some(loss));
         evaluation
             .weighted_costs
             .insert("score_balance".to_string(), -loss * weight);
@@ -601,7 +598,11 @@ pub fn diagnostics_report_json(
     });
 
     let mut suggested_actions: Vec<Value> = Vec::new();
-    for witness in &hard_constraint_summary["witnesses"].as_array().cloned().unwrap_or_default() {
+    for witness in &hard_constraint_summary["witnesses"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    {
         let kind = witness["kind"].as_str().unwrap_or("rule");
         suggested_actions.push(json!({
             "message_key": format!("audit.witness_{kind}"),
@@ -691,8 +692,8 @@ fn suggested_fix_seat(
     let current = probe.get(student).copied().flatten();
     let occupied: HashSet<usize> = probe.iter().flatten().copied().collect();
     let satisfies = |seat: usize| -> bool {
-        let adjacent = adjacency[seat].contains(&other_seat)
-            || adjacency[other_seat].contains(&seat);
+        let adjacent =
+            adjacency[seat].contains(&other_seat) || adjacency[other_seat].contains(&seat);
         match kind {
             FixKind::MustBeAdjacent => adjacent,
             FixKind::CannotBeAdjacent => !adjacent,
@@ -861,11 +862,35 @@ mod diagnostics_tests {
         assert!(fix.is_some(), "min-distance witness should offer a fix");
         // The suggested seat must actually resolve the rule against S03's seat.
         let fix_seat = fix.unwrap()["seat_id"].as_str().unwrap();
-        let index = fix_seat.strip_prefix("seat-").unwrap().parse::<usize>().unwrap() - 1;
-        let adjacency = build_index_adjacency(9, &[[0,1],[1,2],[0,3],[1,4],[2,5],[3,4],[4,5],[3,6],[4,7],[5,8],[6,7],[7,8]]);
+        let index = fix_seat
+            .strip_prefix("seat-")
+            .unwrap()
+            .parse::<usize>()
+            .unwrap()
+            - 1;
+        let adjacency = build_index_adjacency(
+            9,
+            &[
+                [0, 1],
+                [1, 2],
+                [0, 3],
+                [1, 4],
+                [2, 5],
+                [3, 4],
+                [4, 5],
+                [3, 6],
+                [4, 7],
+                [5, 8],
+                [6, 7],
+                [7, 8],
+            ],
+        );
         let distances = build_graph_distance_matrix(&adjacency);
         let distance = distances[index][3].unwrap();
-        assert!(distance >= 2, "suggested seat {fix_seat} must satisfy distance >= 2");
+        assert!(
+            distance >= 2,
+            "suggested seat {fix_seat} must satisfy distance >= 2"
+        );
     }
 
     #[test]

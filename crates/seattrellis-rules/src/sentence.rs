@@ -395,7 +395,11 @@ pub fn compile_sentence(
     slots: &Map<String, Value>,
 ) -> Result<CompiledRule, CompileError> {
     let template = sentence_template(template_id).ok_or_else(|| {
-        CompileError::new("unknown_template", None, format!("unknown template {template_id:?}"))
+        CompileError::new(
+            "unknown_template",
+            None,
+            format!("unknown template {template_id:?}"),
+        )
     })?;
     let mut entry = template.defaults.clone();
 
@@ -464,15 +468,16 @@ pub fn compile_sentence(
                 }
             }
             SlotKind::Number => {
-                let number = value.as_f64().filter(|number| number.is_finite()).ok_or_else(
-                    || {
+                let number = value
+                    .as_f64()
+                    .filter(|number| number.is_finite())
+                    .ok_or_else(|| {
                         CompileError::new(
                             "invalid_value",
                             Some(&slot.key),
                             format!("slot '{}' must be a number", slot.key),
                         )
-                    },
-                )?;
+                    })?;
                 if let Some(min) = slot.min {
                     if number < min {
                         return Err(CompileError::new(
@@ -498,17 +503,22 @@ pub fn compile_sentence(
             SlotKind::Choice => {
                 let text = value.as_str().unwrap_or("");
                 let options = slot.options.as_deref().ok_or_else(|| {
-                    CompileError::new("invalid_template", Some(&slot.key), "choice without options")
+                    CompileError::new(
+                        "invalid_template",
+                        Some(&slot.key),
+                        "choice without options",
+                    )
                 })?;
-                let option = options.iter().find(|option| option.value == text).ok_or_else(
-                    || {
+                let option = options
+                    .iter()
+                    .find(|option| option.value == text)
+                    .ok_or_else(|| {
                         CompileError::new(
                             "invalid_choice",
                             Some(&slot.key),
                             format!("slot '{}' has no option {text:?}", slot.key),
                         )
-                    },
-                )?;
+                    })?;
                 if let Some(path) = &slot.param_path {
                     let bound = option
                         .param_value

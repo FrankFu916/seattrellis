@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { SeatAssignment, Student } from "../api/types";
 import { nextCanvasZoom } from "../domain/canvasEdit";
@@ -53,6 +53,20 @@ export function SeatingCanvasEditor({
   const [zoom, setZoom] = useState(1);
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
+
+  useEffect(() => {
+    if (!focusMode) {
+      return undefined;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setFocusMode(false);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [focusMode]);
 
   function notify(message: string) {
     setStatus(message);
@@ -84,16 +98,27 @@ export function SeatingCanvasEditor({
   ).length;
 
   return (
-    <div className="seating-editor">
+    <>
+      {focusMode ? (
+        <button
+          type="button"
+          className="canvas-focus-scrim"
+          aria-label={t("canvas.exitFocus")}
+          onClick={() => setFocusMode(false)}
+        />
+      ) : null}
+      <div className={`seating-editor${focusMode ? " is-focus-mode" : ""}`}>
       <SeatingToolbar
         view={view}
         zoom={zoom}
+        focusMode={focusMode}
         selectedCount={selectedSeatIds.length}
         canUndo={canUndo}
         canRedo={canRedo}
         t={t}
         onViewChange={setView}
         onZoomChange={setZoom}
+        onFocusModeChange={setFocusMode}
         onLockSelection={handleLockSelection}
         onUnlockSelection={handleUnlockSelection}
         onUndo={onUndo}
@@ -148,6 +173,7 @@ export function SeatingCanvasEditor({
           <span className="canvas-status-meta">{t("canvas.syncHint")}</span>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

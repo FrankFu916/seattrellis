@@ -796,8 +796,8 @@ export function WorkflowPanel({
               <legend>{t("export.use")}</legend>
               <div className="segmented-options export-template-options">
                 {([
-                  ["public", "export.templatePublic", "export.templatePublicHint"],
                   ["teacher", "export.templateTeacher", "export.templateTeacherHint"],
+                  ["public", "export.templatePublic", "export.templatePublicHint"],
                   ["report", "export.templateReport", "export.templateReportHint"],
                 ] as const).map(([template, label, hint]) => (
                   <label
@@ -857,9 +857,7 @@ export function WorkflowPanel({
                     <input
                       type="checkbox"
                       checked={exportPrivacy[key]}
-                      disabled={
-                        exportTemplate === "public" && key !== "anonymize"
-                      }
+                      disabled={exportTemplate === "public"}
                       onChange={(event) =>
                         onExportPrivacyChange({ [key]: event.target.checked })
                       }

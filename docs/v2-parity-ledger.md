@@ -1266,6 +1266,9 @@ slate/ivory/clay/cloud/olive/coral/sky/heather + 衬线标题/无衬线
 
 ### 19.24 2026-08-12：导出功能实测修复（dogfood 反馈）
 
+> **后续实证修订**：本节第 1 项 Identity-H 结论已被 §19.26 推翻并替代；
+> 保留原记录用于解释回归来源，不再代表当前实现或验收结论。
+
 产品负责人实测反馈：导出"几乎全部不可用"——文字不显示 / HTML 表格
 巨大占满屏幕且字小。逐格式实测（8 格式全部导出 + reader 检查）：
 
@@ -1291,6 +1294,28 @@ slate/ivory/clay/cloud/olive/coral/sky/heather + 衬线标题/无衬线
    XLSX（inlineStr 含名）、DOCX（w:t 含名）、PPTX（a:t 含名）。
 4. 验证：export 51 测试（+2：Identity-H 契约）、server 86 测试全绿；
    8 格式产物经 reader/渲染实测。
+
+### 19.25 2026-08-12：工作台 UI 第二轮重设计与真实主流程修复
+
+对照 M4 已冻结 D1–D8、M5 阶段 B 与
+`2026-08-12-single-theme-anthropic.md`，用真实 Rust 本地服务在浏览器走通
+名单 → 教室 → 规则 → 生成（5 候选）→ 座位编辑，修复以下展示/可用性问题：
+
+1. 页头删除硬编码班级名，当前上下文只由 ContextBar 呈现；修复本地最近
+   班级为空时侧栏无内容，并隐藏侧栏项目绝对路径。
+2. 名单默认只显示姓名/学号；排座资料与表格导入渐进披露，减少非核心决定；
+   能力和原子导入事务不变。
+3. 侧栏区分“工作上下文选中”和“当前页面选中”；新手引导按有效名单自动
+   完成第一步并强化当前步骤。
+4. 修复 canvas grid 自动放置：候选比较原先抢占整行、导致画布跌出首屏；
+   现在微调/画布/诊断首行同屏，候选比较第二行，且无水平溢出。
+5. 参考边界明确：Anthropic 官网用于品牌色与留白，Claude.ai 产品壳用于
+   任务聚焦，Apple HIG 用于层级/反馈/可访问性；不复制营销站衬线正文到
+   名单与控件。
+
+**证据**：React 148 vitest、typecheck、production build 全绿；浏览器真实
+生成后画布首屏可见。仅改 React 展示与输入级状态，未新增 TS 规则语义、未改
+Rust/schema/API contract，**不据此提升任何 parity 状态**。
 ### 19.21 2026-08-12：UI 视觉打磨首轮（设计方向 §8.2 像素 token 制定）
 
 产品负责人决策（记录：`docs/product-decisions/2026-08-12-ui-visual-polish.md`）：
@@ -1311,6 +1336,65 @@ slate/ivory/clay/cloud/olive/coral/sky/heather + 衬线标题/无衬线
 **验证**：132 vitest 全绿、typecheck 通过、vite HMR 无错、DOM 结构
 完整；浏览器实时目检交付产品负责人。**未冻结**：像素 token 待 G-4
 dogfood 目检（含深色主题）后按 §8.2 正式冻结，数值可随目检修订。
+
+### 19.26 2026-08-12：座位主视图与导出 correctness 整改
+
+产品负责人 dogfood 报告：座位画布/姓名过小，PDF 姓名显示为点，其他导出
+也难以正常使用。复现与整改如下：
+
+1. **PDF 根因及 D12 修订**：上一轮 `/Identity-H` +
+   `/CIDToGIDMap /Identity` 写入的是生成端系统字体 GID，却未嵌入该字体；
+   查看器替换字体后 GID 不等价。Poppler 实测报告
+   `Unknown character collection Adobe-UCS`，渲染为点/方框/错误字母。
+   已移除 Type0/GID 路径，改为导出端用系统字体完成整页排版，以 144 DPI
+   RGB Image XObject + ASCIIHex/FlateDecode 无损封装（编码异常时回退
+   RunLengthDecode）。当前取舍为跨查看器
+   可读优先、文字暂不可搜索；未来可搜索 PDF 只允许字体子集嵌入。
+2. **PNG 完整性**：原 PNG 虽绘制姓名，但标题/讲台/空座缺失且只有 1x，
+   群聊和投影中明显过小。现为 2x 输出，包含标题、副标题、讲台方向、姓名、
+   座位号和空座标签，与 PDF 共用系统字体光栅化。
+3. **前端导出默认值**：修复不存在的默认 format `print` → 契约值
+   `print-html`；随后按 dogfood 合并用途重复的 HTML/打印版，快速导出目录
+   显示 SVG/PNG/PDF/print-html/XLSX/DOCX/PPTX 七项；底层 `html` 仍兼容。
+4. **座位画布**：修复 holder 固定在 430px 的内在宽度和三列挤压；画布改为
+   第一行全宽主舞台，新增一键专注视图（遮罩/Esc 可退出），编辑状态与 undo
+   栈仍为同一份。
+
+**自动证据**：`seattrellis-export` 51 单测 + 6 export-options + 2 fuzz-style
+测试 + doctest 全绿；`cargo clippy --all-targets -p seattrellis-export --
+-D warnings` 全绿；PDF 经 `pdftoppm -r 144` 独立渲染并人工确认文字/中文标签
+可见，示例由错误版 5.6KB / 无文字变为 87KB / 可读（Flate 与 RunLength
+页面渲染逐字节一致）；PNG 独立解码为 976×712 并人工确认标题/姓名/座位号。React 专注视图
+新增测试，typecheck 通过；真实 Rust 服务完成名单→5 候选→画布，常规与专注
+视图浏览器目检通过。D12 冻结记录已在
+`2026-08-10-batch2-export-wrapup.md` 以 R2 实证修订。
+
+该整改修复已登记实现的导出路径，不新增 oracle 等价 golden，故不改变 ledger
+parity 状态计数；PDF 可搜索性与无系统 CJK 字体的失败策略继续登记为边界。
+
+### 19.27 2026-08-12：全格式姓名缺失与 HTML 入口收敛
+
+产品负责人提供的 SVG/print-html/PNG/XLSX/DOCX/PPTX 产物经逐一解包检查：
+每个已占座位均写入固定文本“学生”（示例 18 处），PPTX/DOCX/XLSX 的 OOXML
+内部同样如此。根因不是七个 renderer 同时丢字，而是首次导出模板错误设为
+`public`，Rust `render_export` 在格式分发前统一执行 `anonymize_grid`；同时
+前端预览此前只检查 `privacy.anonymize`，没有展示 public 模板会匿名，造成
+预览与下载不一致。
+
+整改：Rust 缺省模板、Rust 导出设置记忆和 React 首次模板统一改为
+`teacher`，真实姓名默认保留；`public` 仍强制匿名且界面明确写明“只显示
+学生”。预览与后端采用相同匿名条件。Office OOXML 增补中文语言、东亚字体、
+DOCX styles/fontTable/relationships，并去除表格 XML 中的字面反斜线。
+用户目录合并基础 HTML 与打印版，仅展示 `print-html`；后端仍接受基础
+`html` 以维持 8 格式契约兼容。
+
+**自动/独立证据**：新增缺省模板保留 `Alice`/`张伟`、public 隐藏、预览
+一致性及三种 Office 包内 `林晓雨` 回归；`seattrellis-export` 53 测试、
+React 153 测试与 typecheck 通过。35 个中文姓名的真实产物经 Poppler 验证
+PDF、PNG 解码和 PowerPoint 独立渲染均可见；XLSX/DOCX 由独立 reader 解包
+确认姓名及字体声明。当前 LibreOffice 验证环境连最小 `python-docx` 中文
+文档也无法渲染中文，故不将其空白结果作为 SeatTrellis renderer 失败证据，
+后续 Windows Word/Excel dogfood 仍保留为发布前平台验收项。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 

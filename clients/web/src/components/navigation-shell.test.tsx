@@ -83,6 +83,24 @@ describe("Sidebar", () => {
     expect(screen.getByText(/连接本地服务后/)).toBeInTheDocument();
   });
 
+  it("does not leave the class section blank when the local list is empty", () => {
+    render(
+      <Sidebar
+        activeView="roster"
+        context={{ kind: "temp" }}
+        connection="local"
+        projects={[]}
+        sessionClasses={[]}
+        t={t}
+        onSelectView={() => undefined}
+        onSelectClass={() => undefined}
+        onSelectTemp={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText(/还没有保存的班级/)).toBeInTheDocument();
+  });
+
   it("notifies navigation targets", async () => {
     const user = userEvent.setup();
     const onView = vi.fn();

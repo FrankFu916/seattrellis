@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import type { EditorState } from "./api/types";
-import { editorToPlan, isEditableTarget } from "./App";
+import {
+  DEFAULT_EXPORT_FORMAT,
+  DEFAULT_EXPORT_TEMPLATE,
+  editorToPlan,
+  isEditableTarget,
+} from "./App";
+
+describe("export defaults", () => {
+  it("uses the Rust catalog id for the print-ready format", () => {
+    expect(DEFAULT_EXPORT_FORMAT).toBe("print-html");
+  });
+
+  it("preserves student names unless public sharing is explicitly selected", () => {
+    expect(DEFAULT_EXPORT_TEMPLATE).toBe("teacher");
+  });
+});
 
 function sampleEditor(): EditorState {
   return {

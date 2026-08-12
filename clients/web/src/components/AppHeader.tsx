@@ -2,7 +2,6 @@ import type { Locale, Translate } from "../i18n/messages";
 
 type AppHeaderProps = {
   locale: Locale;
-  studentCount: number;
   connection: "loading" | "local" | "demo";
   t: Translate;
   onLocaleChange: (locale: Locale) => void;
@@ -10,7 +9,6 @@ type AppHeaderProps = {
 
 export function AppHeader({
   locale,
-  studentCount,
   connection,
   t,
   onLocaleChange,
@@ -41,16 +39,11 @@ export function AppHeader({
         </span>
       </div>
 
-      <div className="class-summary">
-        <strong>{t("app.className")}</strong>
-        <span>{t("app.students", { count: studentCount })}</span>
+      <div className="header-preferences">
         <span className={`connection-pill connection-${connection}`}>
           <i aria-hidden="true" />
           {connectionLabel}
         </span>
-      </div>
-
-      <div className="header-preferences">
         <label>
           <span>{t("header.language")}</span>
           <select

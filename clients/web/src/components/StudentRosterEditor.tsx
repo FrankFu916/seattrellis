@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import type { Student } from "../api/types";
 import type { Translate } from "../i18n/messages";
@@ -56,6 +56,7 @@ export function StudentRosterEditor({
   t,
   onChange,
 }: StudentRosterEditorProps) {
+  const [showDetails, setShowDetails] = useState(false);
   const invalidRows = useMemo(() => {
     const seen = new Set<string>();
     const invalid = new Set<number>();
@@ -103,30 +104,47 @@ export function StudentRosterEditor({
           <h3 id="student-editor-title">{t("studentEditor.title")}</h3>
           <p>{t("studentEditor.hint")}</p>
         </div>
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={addStudent}
-          data-testid="student-editor-add"
-        >
-          {t("studentEditor.add")}
-        </button>
+        <div className="student-editor-heading-actions">
+          <span className="student-count-label">
+            {t("app.students", { count: students.length })}
+          </span>
+          <button
+            className="text-button student-details-toggle"
+            type="button"
+            aria-expanded={showDetails}
+            onClick={() => setShowDetails((visible) => !visible)}
+          >
+            {t(showDetails ? "studentEditor.hideDetails" : "studentEditor.showDetails")}
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={addStudent}
+            data-testid="student-editor-add"
+          >
+            {t("studentEditor.add")}
+          </button>
+        </div>
       </div>
 
-      <div className="student-editor-table" role="table">
-        <div className="student-editor-row student-editor-header" role="row">
+      <div className="student-editor-table" role="table" data-detailed={showDetails}>
+        <div className={`student-editor-row student-editor-header ${showDetails ? "is-detailed" : "is-compact"}`} role="row">
           <span role="columnheader">{t("studentEditor.id")}</span>
           <span role="columnheader">{t("studentEditor.name")}</span>
-          <span role="columnheader">{t("studentEditor.score")}</span>
-          <span role="columnheader">{t("studentEditor.height")}</span>
-          <span role="columnheader">{t("studentEditor.vision")}</span>
-          <span role="columnheader">{t("studentEditor.needs")}</span>
-          <span role="columnheader">{t("studentEditor.notes")}</span>
+          {showDetails ? (
+            <>
+              <span role="columnheader">{t("studentEditor.score")}</span>
+              <span role="columnheader">{t("studentEditor.height")}</span>
+              <span role="columnheader">{t("studentEditor.vision")}</span>
+              <span role="columnheader">{t("studentEditor.needs")}</span>
+              <span role="columnheader">{t("studentEditor.notes")}</span>
+            </>
+          ) : null}
           <span className="sr-only">{t("studentEditor.remove")}</span>
         </div>
         {students.map((student, index) => (
           <div
-            className={`student-editor-row${invalidRows.has(index) ? " is-invalid" : ""}`}
+            className={`student-editor-row ${showDetails ? "is-detailed" : "is-compact"}${invalidRows.has(index) ? " is-invalid" : ""}`}
             key={`${student.id}-${index}`}
             role="row"
           >
@@ -146,50 +164,54 @@ export function StudentRosterEditor({
                 onChange={(event) => updateStudent(index, { name: event.target.value })}
               />
             </label>
-            <label>
-              <span className="sr-only">{t("studentEditor.score")}</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                aria-label={t("studentEditor.scoreFor", { index: index + 1 })}
-                value={student.score ?? ""}
-                onChange={(event) => updateStudent(index, { score: optionalNumber(event.target.value) })}
-              />
-            </label>
-            <label>
-              <span className="sr-only">{t("studentEditor.height")}</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                aria-label={t("studentEditor.heightFor", { index: index + 1 })}
-                value={student.heightCm ?? ""}
-                onChange={(event) => updateStudent(index, { heightCm: optionalNumber(event.target.value) })}
-              />
-            </label>
-            <label>
-              <span className="sr-only">{t("studentEditor.vision")}</span>
-              <input
-                aria-label={t("studentEditor.visionFor", { index: index + 1 })}
-                value={student.vision ?? ""}
-                onChange={(event) => updateStudent(index, { vision: event.target.value || null })}
-              />
-            </label>
-            <label>
-              <span className="sr-only">{t("studentEditor.needs")}</span>
-              <input
-                aria-label={t("studentEditor.needsFor", { index: index + 1 })}
-                value={joinList(student.needs)}
-                onChange={(event) => updateStudent(index, { needs: splitList(event.target.value) })}
-              />
-            </label>
-            <label>
-              <span className="sr-only">{t("studentEditor.notes")}</span>
-              <input
-                aria-label={t("studentEditor.notesFor", { index: index + 1 })}
-                value={student.notes ?? ""}
-                onChange={(event) => updateStudent(index, { notes: event.target.value || null })}
-              />
-            </label>
+            {showDetails ? (
+              <>
+                <label>
+                  <span className="sr-only">{t("studentEditor.score")}</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    aria-label={t("studentEditor.scoreFor", { index: index + 1 })}
+                    value={student.score ?? ""}
+                    onChange={(event) => updateStudent(index, { score: optionalNumber(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="sr-only">{t("studentEditor.height")}</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    aria-label={t("studentEditor.heightFor", { index: index + 1 })}
+                    value={student.heightCm ?? ""}
+                    onChange={(event) => updateStudent(index, { heightCm: optionalNumber(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="sr-only">{t("studentEditor.vision")}</span>
+                  <input
+                    aria-label={t("studentEditor.visionFor", { index: index + 1 })}
+                    value={student.vision ?? ""}
+                    onChange={(event) => updateStudent(index, { vision: event.target.value || null })}
+                  />
+                </label>
+                <label>
+                  <span className="sr-only">{t("studentEditor.needs")}</span>
+                  <input
+                    aria-label={t("studentEditor.needsFor", { index: index + 1 })}
+                    value={joinList(student.needs)}
+                    onChange={(event) => updateStudent(index, { needs: splitList(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="sr-only">{t("studentEditor.notes")}</span>
+                  <input
+                    aria-label={t("studentEditor.notesFor", { index: index + 1 })}
+                    value={student.notes ?? ""}
+                    onChange={(event) => updateStudent(index, { notes: event.target.value || null })}
+                  />
+                </label>
+              </>
+            ) : null}
             <button
               className="icon-button student-editor-remove"
               type="button"

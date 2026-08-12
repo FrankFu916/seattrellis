@@ -65,7 +65,10 @@ pub fn export_draft(
                 ("locale", memory.locale.as_str()),
             ] {
                 if !object.contains_key(key) {
-                    patch.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+                    patch.insert(
+                        key.to_string(),
+                        serde_json::Value::String(value.to_string()),
+                    );
                 }
             }
             if !object.contains_key("orientation") {
@@ -270,7 +273,9 @@ pub(crate) fn editor_solve_response(
 /// (PD-D9). Best-effort: a failure to write the memory file never fails the
 /// export itself.
 fn remember_defaults(export_json: &Value) -> Result<(), String> {
-    let object = export_json.as_object().ok_or("export json is not an object")?;
+    let object = export_json
+        .as_object()
+        .ok_or("export json is not an object")?;
     let privacy = object
         .get("privacy")
         .and_then(Value::as_object)

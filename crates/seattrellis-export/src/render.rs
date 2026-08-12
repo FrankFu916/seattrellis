@@ -12,6 +12,7 @@
 //! [`render_pdf`] behaviour.
 
 use std::collections::HashMap;
+use std::io::Write;
 
 use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
 
@@ -475,16 +476,14 @@ fn cell_colors(grid: &SeatingGrid, row: i32, col: i32) -> (Rgb, Rgb) {
 
 /// Rasterize the plan as an RGB PNG.
 ///
-/// The seat grid is drawn as solid colored rectangles with a thin border using
-/// the same palette as the SVG renderer. No text is drawn: drawing legible
-/// labels would require either embedding a font or carrying a hand-rolled
-/// bitmap font, and the mandate here is a small binary over glyph fidelity.
-/// The output is a standard PNG (IHDR/IDAT/IEND) readable by any image tool.
+/// The image is rendered at 2× density so names remain legible in documents,
+/// messaging apps, and classroom projectors. Text uses the same discovered
+/// system CJK font as PDF and is resolved at export time.
 pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     let cols = grid_cols(grid);
     let rows = grid_rows(grid);
-    let width = (PAD * 2.0 + cols as f64 * CELL_W).ceil() as u32;
-    let height = (HEADER_H + PAD * 2.0 + rows as f64 * CELL_H).ceil() as u32;
+    let width = ((PAD * 2.0 + cols as f64 * CELL_W) * PNG_RASTER_SCALE).ceil() as u32;
+    let height = ((HEADER_H + PAD * 2.0 + rows as f64 * CELL_H) * PNG_RASTER_SCALE).ceil() as u32;
     if width == 0 || height == 0 {
         return Err("cannot render an empty grid to PNG".to_string());
     }
@@ -492,36 +491,96 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     let mut data = vec![0u8; width as usize * height as usize * 3];
     let mut canvas = Canvas::new(&mut data, width, height);
     canvas.fill(0, 0, width, height, WHITE);
-    // Front-of-room divider under the (textless) header band.
-    let divider_y = (HEADER_H + 4.0) as u32;
-    canvas.fill(0, divider_y, width, 1, DIVIDER);
+    let divider_y = ((HEADER_H + 4.0) * PNG_RASTER_SCALE) as u32;
+    canvas.fill(0, divider_y, width, 2, DIVIDER);
 
-    // Student names inside the seat rectangles (M5-A4, PD-D13): rasterized
-    // with the discovered system CJK font; textless output when no font file
-    // exists (CI/containers without fonts degrade gracefully).
     let font = crate::fonts::load_cjk_font();
+    if let Some(font) = &font {
+        draw_text_in_rect(
+            &mut canvas,
+            font,
+            &grid.title,
+            PAD * PNG_RASTER_SCALE,
+            6.0 * PNG_RASTER_SCALE,
+            (f64::from(width) / PNG_RASTER_SCALE - PAD * 2.0) * PNG_RASTER_SCALE,
+            26.0 * PNG_RASTER_SCALE,
+            18.0 * PNG_RASTER_SCALE,
+            (20, 20, 19),
+        );
+        draw_text_in_rect(
+            &mut canvas,
+            font,
+            &grid.subtitle,
+            PAD * PNG_RASTER_SCALE,
+            31.0 * PNG_RASTER_SCALE,
+            (f64::from(width) / PNG_RASTER_SCALE - PAD * 2.0) * PNG_RASTER_SCALE,
+            16.0 * PNG_RASTER_SCALE,
+            9.0 * PNG_RASTER_SCALE,
+            (94, 93, 89),
+        );
+        draw_text_in_rect(
+            &mut canvas,
+            font,
+            "讲台 / FRONT OF ROOM",
+            PAD * PNG_RASTER_SCALE,
+            47.0 * PNG_RASTER_SCALE,
+            (f64::from(width) / PNG_RASTER_SCALE - PAD * 2.0) * PNG_RASTER_SCALE,
+            15.0 * PNG_RASTER_SCALE,
+            8.0 * PNG_RASTER_SCALE,
+            (94, 93, 89),
+        );
+    }
     for row in grid.min_row..=grid.max_row {
         for col in grid.min_col..=grid.max_col {
             let (x, y) = cell_origin(grid, row, col);
             canvas.rect(
-                x + 4.0,
-                y + 4.0,
-                RECT_W,
-                RECT_H,
+                (x + 4.0) * PNG_RASTER_SCALE,
+                (y + 4.0) * PNG_RASTER_SCALE,
+                RECT_W * PNG_RASTER_SCALE,
+                RECT_H * PNG_RASTER_SCALE,
                 cell_colors(grid, row, col),
                 2,
             );
             if let Some(cell) = grid.cell_at(row, col) {
-                if let Some(name) = &cell.student {
-                    if let Some(font) = &font {
-                        draw_name_on_canvas(
+                if let Some(font) = &font {
+                    let text_x = (x + 4.0) * PNG_RASTER_SCALE;
+                    let text_y = (y + 4.0) * PNG_RASTER_SCALE;
+                    let text_w = RECT_W * PNG_RASTER_SCALE;
+                    let text_h = RECT_H * PNG_RASTER_SCALE;
+                    if let Some(name) = &cell.student {
+                        draw_text_in_rect(
                             &mut canvas,
                             font,
                             name,
-                            x + 4.0,
-                            y + 4.0,
-                            RECT_W,
-                            RECT_H,
+                            text_x,
+                            text_y + text_h * 0.08,
+                            text_w,
+                            text_h * 0.56,
+                            14.0 * PNG_RASTER_SCALE,
+                            (30, 34, 40),
+                        );
+                        draw_text_in_rect(
+                            &mut canvas,
+                            font,
+                            &(cell.seat_index + 1).to_string(),
+                            text_x,
+                            text_y + text_h * 0.72,
+                            text_w,
+                            text_h * 0.2,
+                            7.0 * PNG_RASTER_SCALE,
+                            (94, 93, 89),
+                        );
+                    } else if cell.enabled {
+                        draw_text_in_rect(
+                            &mut canvas,
+                            font,
+                            "空座",
+                            text_x,
+                            text_y,
+                            text_w,
+                            text_h,
+                            9.0 * PNG_RASTER_SCALE,
+                            (154, 167, 181),
                         );
                     }
                 }
@@ -545,11 +604,10 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// A small RGB raster with bounds-clipping fill helpers (kept private; the
-/// Rasterize `text` with `font` and draw it centered inside the seat
-/// rectangle `(x, y, w, h)`. The font size is chosen to fit the longest
-/// name into the rectangle width (≥2px side padding), capped at 14px.
-fn draw_name_on_canvas(
+const PNG_RASTER_SCALE: f64 = 2.0;
+
+#[allow(clippy::too_many_arguments)]
+fn draw_text_in_rect(
     canvas: &mut Canvas<'_>,
     font: &fontdue::Font,
     text: &str,
@@ -557,12 +615,14 @@ fn draw_name_on_canvas(
     y: f64,
     w: f64,
     h: f64,
+    max_font_px: f64,
+    color: (u8, u8, u8),
 ) {
     if text.is_empty() {
         return;
     }
-    let max_px = ((w - 4.0).max(2.0) / text.chars().count().max(1) as f64).min(14.0);
-    let px_size = max_px.clamp(6.0, 14.0).round() as f32;
+    let max_px = ((w - 4.0).max(2.0) / text.chars().count().max(1) as f64).min(max_font_px);
+    let px_size = max_px.clamp(6.0, max_font_px).round() as f32;
     // Total advance width to center the string.
     let total_width: f64 = text
         .chars()
@@ -578,12 +638,7 @@ fn draw_name_on_canvas(
             for col in 0..metrics.width {
                 let alpha = bitmap[row * metrics.width + col];
                 if alpha > 0 {
-                    canvas.blend_pixel(
-                        draw_x + col as u32,
-                        draw_y + row as u32,
-                        (30, 34, 40),
-                        alpha,
-                    );
+                    canvas.blend_pixel(draw_x + col as u32, draw_y + row as u32, color, alpha);
                 }
             }
         }
@@ -681,7 +736,7 @@ fn default_margin_pt() -> f64 {
 /// Vertical space reserved for the title, subtitle, and front-of-room label.
 const PDF_HEADER_SPACE: f64 = 100.0;
 
-/// Page geometry for the hand-written PDF renderer (app extension).
+/// Page geometry for the PDF page-image renderer (app extension).
 ///
 /// Defaults to A4 portrait at the natural fit-to-page scale. The export domain
 /// module swaps in [`PdfLayout::landscape`] for `orientation: "landscape"` and
@@ -728,10 +783,10 @@ pub struct PdfLayout {
     pub scale_multiplier: f64,
     /// Printable margin in points (from `margin_mm`).
     pub margin_pt: f64,
-    /// Referenced CJK font (system font reference, PD-D12): `None` keeps
-    /// the ASCII-only Helvetica path.
+    /// Discovered CJK font name for quality diagnostics and export metadata.
+    /// Glyphs themselves are rasterized at export time (PD-D12 R2).
     pub font_name: Option<String>,
-    /// Quality band of the referenced font (drives the export warning).
+    /// Quality band of the discovered font (drives the export warning).
     pub font_quality: crate::fonts::FontQuality,
 }
 
@@ -765,7 +820,7 @@ impl PdfLayout {
         }
     }
 
-    /// Override the referenced font (tests / explicit user selection).
+    /// Override font metadata (tests / explicit user selection).
     pub fn with_font(mut self, name: &str, quality: crate::fonts::FontQuality) -> Self {
         self.font_name = Some(name.to_string());
         self.font_quality = quality;
@@ -779,14 +834,12 @@ impl PdfLayout {
     }
 }
 
-/// Render the plan as a single-page, hand-written PDF.
+/// Render the plan as a single-page, viewer-independent PDF.
 ///
-/// The document is generated directly (catalog -> pages -> page -> content
-/// stream -> Helvetica font, plus a correct xref table) rather than via
-/// `printpdf` or similar, keeping the dependency tree — and the binary — tiny.
-/// Text uses the standard-14 Helvetica, so ASCII labels render everywhere; a
-/// non-ASCII label (e.g. a CJK name) falls back to a plain placeholder because
-/// encoding it would require embedding a CID font, which is not worth the size.
+/// The page is rasterized with the system font at export time and stored as a
+/// losslessly encoded image.  The previous system-font-reference path wrote
+/// one font's glyph IDs without embedding that font; viewers that substituted
+/// another font displayed dots, boxes, or unrelated letters.
 pub fn render_pdf(grid: &SeatingGrid) -> String {
     render_pdf_with(
         grid,
@@ -796,23 +849,20 @@ pub fn render_pdf(grid: &SeatingGrid) -> String {
 
 /// [`render_pdf`] with an explicit page geometry (orientation + scale).
 pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
-    // Identity-H + glyph-index text needs the actual font metrics/cmap.
-    // `None` here (no CJK font file on disk) keeps the ASCII Helvetica path
-    // instead of emitting unreadable glyph references.
-    let cjk_font = if layout.font_name.is_some() {
-        crate::fonts::load_cjk_font()
-    } else {
-        None
-    };
-    let content = build_pdf_content(grid, &layout, cjk_font.as_ref());
+    let (image_width, image_height, rgb) = rasterize_pdf_page(grid, &layout);
+    let (filter, compressed) = pdf_compress_image(&rgb);
+    let encoded = ascii_hex(&compressed);
+    let content = format!(
+        "q\n{:.2} 0 0 {:.2} 0 0 cm\n/Im0 Do\nQ\n",
+        layout.page_w, layout.page_h
+    );
 
-    let mut bodies: Vec<String> = Vec::new();
+    let mut bodies = Vec::new();
     bodies.push("<< /Type /Catalog /Pages 2 0 R >>".to_string()); // obj 1
     bodies.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string()); // obj 2
     bodies.push(format!(
-        // obj 3
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w} {page_h}] \
-         /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+         /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
         page_w = layout.page_w,
         page_h = layout.page_h
     ));
@@ -820,25 +870,12 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
         "<< /Length {} >>\nstream\n{content}\nendstream",
         content.len()
     )); // obj 4
-    let font_dict = match &layout.font_name {
-        Some(name) => format!(
-            "<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /Identity-H \
-             /DescendantFonts [6 0 R] >>"
-        ),
-        None => "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
-    };
-    bodies.push(font_dict); // obj 5
-    if let Some(name) = &layout.font_name {
-        bodies.push(format!(
-            "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{name} \
-             /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> \
-             /CIDToGIDMap /Identity /FontDescriptor 7 0 R /DW 1000 >>"
-        )); // obj 6
-        bodies.push(format!(
-            "<< /Type /FontDescriptor /FontName /{name} /Flags 4 /FontBBox [-1000 -300 2200 1100] \
-             /ItalicAngle 0 /Ascent 900 /Descent -300 /CapHeight 700 /StemV 80 >>"
-        )); // obj 7
-    }
+    bodies.push(format!(
+        "<< /Type /XObject /Subtype /Image /Width {image_width} /Height {image_height} \
+         /ColorSpace /DeviceRGB /BitsPerComponent 8 \
+         /Filter [/ASCIIHexDecode {filter}] /Length {} >>\nstream\n{encoded}>\nendstream",
+        encoded.len() + 2
+    )); // obj 5
 
     let count = bodies.len() + 1;
     let mut out = String::with_capacity(4096 + content.len());
@@ -860,255 +897,213 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
     out
 }
 
-/// The page content stream: white background, header text, front-of-room
-/// label, and one colored rectangle (+ label) per seat.
-fn build_pdf_content(
-    grid: &SeatingGrid,
-    layout: &PdfLayout,
-    font: Option<&fontdue::Font>,
-) -> String {
+fn pdf_compress_image(data: &[u8]) -> (&'static str, Vec<u8>) {
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    if encoder.write_all(data).is_ok() {
+        if let Ok(compressed) = encoder.finish() {
+            return ("/FlateDecode", compressed);
+        }
+    }
+    ("/RunLengthDecode", pdf_run_length_encode(data))
+}
+
+const PDF_RASTER_SCALE: f64 = 2.0;
+
+/// Rasterize the page at 144 DPI. The flat classroom palette compresses well
+/// with FlateDecode while names stay crisp on paper and on screen.
+fn rasterize_pdf_page(grid: &SeatingGrid, layout: &PdfLayout) -> (u32, u32, Vec<u8>) {
+    let width = (layout.page_w * PDF_RASTER_SCALE).round() as u32;
+    let height = (layout.page_h * PDF_RASTER_SCALE).round() as u32;
+    let mut data = vec![0_u8; width as usize * height as usize * 3];
+    let mut canvas = Canvas::new(&mut data, width, height);
+    canvas.fill(0, 0, width, height, WHITE);
+
     let cols = grid_cols(grid) as f64;
     let rows = grid_rows(grid) as f64;
     let grid_w = cols * CELL_W;
     let grid_h = rows * CELL_H;
-
-    // Scale the SVG geometry down (or up) to fit the printable area, then apply
-    // the user page_scale multiplier on top.
     let avail_w = layout.page_w - layout.margin_pt * 2.0;
-    let avail_h = layout.page_h - PDF_HEADER_SPACE - layout.margin_pt;
+    let avail_h = layout.page_h - PDF_HEADER_SPACE - layout.margin_pt * 0.5;
     let base_scale = (avail_w / grid_w).min(avail_h / grid_h).clamp(0.1, 2.0);
     let scale = (base_scale * layout.scale_multiplier).clamp(0.1, 2.0);
-
     let grid_x = layout.margin_pt;
-    let grid_top = layout.page_h - PDF_HEADER_SPACE + 10.0;
+    let grid_top = 112.0;
 
-    let mut ops = String::with_capacity(4096 + grid.cells.len() * 140);
-
-    // White page background.
-    ops.push_str(&format!(
-        "q\n{} rg\n0 0 {} {} re f\nQ\n",
-        pdf_rgb(WHITE),
-        layout.page_w,
-        layout.page_h
-    ));
-
-    // Font-quality warning (PD-D12): a fallback CJK font (e.g. SimSun only)
-    // renders but the effect may be below expectation - say so on the page.
-    if layout.font_quality == crate::fonts::FontQuality::Fallback {
-        let warning = "字体效果可能不及预期：当前系统仅有基础中文字体";
-        ops.push_str(&text_op(layout, warning, 8.0, layout.margin_pt, 18.0, font));
+    let font = crate::fonts::load_cjk_font();
+    if let Some(font) = &font {
+        draw_text_in_rect(
+            &mut canvas,
+            font,
+            &grid.title,
+            layout.margin_pt * PDF_RASTER_SCALE,
+            22.0 * PDF_RASTER_SCALE,
+            (layout.page_w - layout.margin_pt * 2.0) * PDF_RASTER_SCALE,
+            30.0 * PDF_RASTER_SCALE,
+            20.0 * PDF_RASTER_SCALE,
+            (20, 20, 19),
+        );
+        draw_text_in_rect(
+            &mut canvas,
+            font,
+            &grid.subtitle,
+            layout.margin_pt * PDF_RASTER_SCALE,
+            54.0 * PDF_RASTER_SCALE,
+            (layout.page_w - layout.margin_pt * 2.0) * PDF_RASTER_SCALE,
+            20.0 * PDF_RASTER_SCALE,
+            11.0 * PDF_RASTER_SCALE,
+            (94, 93, 89),
+        );
+        draw_text_in_rect(
+            &mut canvas,
+            font,
+            "讲台 / FRONT OF ROOM",
+            grid_x * PDF_RASTER_SCALE,
+            78.0 * PDF_RASTER_SCALE,
+            grid_w * scale * PDF_RASTER_SCALE,
+            18.0 * PDF_RASTER_SCALE,
+            9.0 * PDF_RASTER_SCALE,
+            (94, 93, 89),
+        );
     }
-
-    // Title + subtitle: full text with a referenced CJK font, ASCII
-    // placeholders otherwise (non-Latin text cannot render in Helvetica).
-    let title = if text_is_cjk(layout) {
-        grid.title.as_str()
-    } else {
-        pdf_text(&grid.title).unwrap_or("Seating Plan")
-    };
-    ops.push_str(&text_op_centered(
-        layout, title, 16.0, layout.page_w / 2.0, layout.page_h - 48.0, font
-    ));
-    let subtitle = if text_is_cjk(layout) {
-        grid.subtitle.as_str()
-    } else {
-        pdf_text(&grid.subtitle).unwrap_or("")
-    };
-    ops.push_str(&text_op_centered(
-        layout, subtitle, 11.0, layout.page_w / 2.0, layout.page_h - 66.0, font
-    ));
-
-    // Front-of-room divider line and label above the grid.
-    let front_y = grid_top - 8.0;
-    ops.push_str(&format!(
-        "{} RG\n0.8 w\n{grid_x:.2} {front_y:.2} m {:.2} {front_y:.2} l S\n",
-        pdf_rgb(DIVIDER),
-        grid_x + grid_w * scale
-    ));
-    ops.push_str(&text_op_centered(
-        layout,
-        "front of room",
-        9.0,
-        grid_x + grid_w * scale / 2.0,
-        front_y - 7.0,
-        font,
-    ));
+    canvas.fill(
+        (grid_x * PDF_RASTER_SCALE).round() as u32,
+        (102.0 * PDF_RASTER_SCALE).round() as u32,
+        (grid_w * scale * PDF_RASTER_SCALE).round() as u32,
+        2,
+        DIVIDER,
+    );
 
     for row in grid.min_row..=grid.max_row {
         for col in grid.min_col..=grid.max_col {
-            let (x, y) = cell_origin(grid, row, col);
-            let rect_x = grid_x + (x - PAD) * scale;
-            let offset = (y - HEADER_H - PAD) / CELL_H; // row index within the grid
-            let cell_top = grid_top - offset * CELL_H * scale;
-            let inner_x = rect_x + 4.0 * scale;
+            let col_offset = f64::from(col - grid.min_col);
+            let row_offset = f64::from(row - grid.min_row);
+            let inner_x = grid_x + col_offset * CELL_W * scale + 4.0 * scale;
+            let inner_y = grid_top + row_offset * CELL_H * scale + 4.0 * scale;
             let inner_w = RECT_W * scale;
-            let inner_y = cell_top - CELL_H * scale + 4.0 * scale;
             let inner_h = RECT_H * scale;
+            canvas.rect(
+                inner_x * PDF_RASTER_SCALE,
+                inner_y * PDF_RASTER_SCALE,
+                inner_w * PDF_RASTER_SCALE,
+                inner_h * PDF_RASTER_SCALE,
+                cell_colors(grid, row, col),
+                2,
+            );
 
-            let (fill, stroke) = cell_colors(grid, row, col);
-            ops.push_str(&format!(
-                "q\n{} rg\n{inner_x:.2} {inner_y:.2} {inner_w:.2} {inner_h:.2} re f\n\
-                 {} RG\n0.6 w\n{inner_x:.2} {inner_y:.2} {inner_w:.2} {inner_h:.2} re S\nQ\n",
-                pdf_rgb(fill),
-                pdf_rgb(stroke)
-            ));
-
-            let center_x = inner_x + inner_w / 2.0;
-            let center_y = inner_y + inner_h / 2.0;
-            if let Some(cell) = grid.cell_at(row, col) {
-                if let Some(name) = &cell.student {
-                    // CJK names render when a CJK font is referenced;
-                    // otherwise only ASCII names draw (Helvetica path).
-                    let label: Option<&str> = if text_is_cjk(layout) {
-                        Some(name)
-                    } else {
-                        pdf_text(name)
-                    };
-                    if let Some(label) = label {
-                        let size = (name_font_size(name) as f64 * scale).clamp(6.0, 12.0);
-                        ops.push_str(&text_op_centered(
-                            layout, label, size, center_x, center_y - size * 0.35, font
-                        ));
-                    }
-                    let detail: Option<&str> = if text_is_cjk(layout) {
-                        cell.detail.as_deref()
-                    } else {
-                        cell.detail.as_deref().and_then(pdf_text)
-                    };
-                    if let Some(detail) = detail {
-                        // Detail line (height/vision) under the name.
-                        ops.push_str(&text_op_centered(
-                            layout, detail, 7.0, center_x, center_y + 9.0 * scale, font
-                        ));
-                    }
-                    let num = (cell.seat_index + 1).to_string();
-                    ops.push_str(&text_op_centered(
-                        layout, &num, 7.0, center_x, inner_y + 9.0, font
-                    ));
-                } else {
-                    let label = if cell.enabled { "empty" } else { "unused" };
-                    ops.push_str(&text_op_centered(
-                        layout, label, 8.0, center_x, center_y - 2.8, font
-                    ));
+            let Some(cell) = grid.cell_at(row, col) else {
+                continue;
+            };
+            let Some(font) = &font else {
+                continue;
+            };
+            let x = inner_x * PDF_RASTER_SCALE;
+            let y = inner_y * PDF_RASTER_SCALE;
+            let w = inner_w * PDF_RASTER_SCALE;
+            let h = inner_h * PDF_RASTER_SCALE;
+            if let Some(name) = &cell.student {
+                draw_text_in_rect(
+                    &mut canvas,
+                    font,
+                    name,
+                    x,
+                    y + h * 0.10,
+                    w,
+                    h * 0.48,
+                    13.0 * PDF_RASTER_SCALE,
+                    (20, 20, 19),
+                );
+                if let Some(detail) = &cell.detail {
+                    draw_text_in_rect(
+                        &mut canvas,
+                        font,
+                        detail,
+                        x,
+                        y + h * 0.53,
+                        w,
+                        h * 0.25,
+                        7.5 * PDF_RASTER_SCALE,
+                        (94, 93, 89),
+                    );
                 }
+                draw_text_in_rect(
+                    &mut canvas,
+                    font,
+                    &(cell.seat_index + 1).to_string(),
+                    x,
+                    y + h * 0.78,
+                    w,
+                    h * 0.17,
+                    7.0 * PDF_RASTER_SCALE,
+                    (94, 93, 89),
+                );
+            } else if cell.enabled {
+                draw_text_in_rect(
+                    &mut canvas,
+                    font,
+                    "空座",
+                    x,
+                    y,
+                    w,
+                    h,
+                    9.0 * PDF_RASTER_SCALE,
+                    (154, 167, 181),
+                );
             }
         }
     }
-    ops
+    (width, height, data)
 }
 
-/// A color as a PDF nonstroking/stroking operand (`r g b`).
-fn pdf_rgb(rgb: Rgb) -> String {
-    format!(
-        "{:.3} {:.3} {:.3}",
-        rgb[0] as f64 / 255.0,
-        rgb[1] as f64 / 255.0,
-        rgb[2] as f64 / 255.0
-    )
-}
-
-/// Escape text for a PDF literal string. Non-ASCII characters (e.g. CJK)
-/// become `?` — the standard-14 Helvetica cannot encode them.
-fn escape_pdf_literal(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '(' => out.push_str("\\("),
-            ')' => out.push_str("\\)"),
-            '\x20'..='\x7e' => out.push(ch),
-            _ => out.push('?'),
+/// PDF RunLengthEncode packets (the same packet layout as TIFF PackBits).
+fn pdf_run_length_encode(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len() / 4);
+    let mut index = 0;
+    while index < data.len() {
+        let mut repeated = 1_usize;
+        while index + repeated < data.len()
+            && data[index + repeated] == data[index]
+            && repeated < 128
+        {
+            repeated += 1;
         }
+        if repeated >= 3 {
+            out.push((257 - repeated) as u8);
+            out.push(data[index]);
+            index += repeated;
+            continue;
+        }
+
+        let literal_start = index;
+        index += repeated;
+        while index < data.len() && index - literal_start < 128 {
+            let mut next_repeated = 1_usize;
+            while index + next_repeated < data.len()
+                && data[index + next_repeated] == data[index]
+                && next_repeated < 128
+            {
+                next_repeated += 1;
+            }
+            if next_repeated >= 3 || index - literal_start + next_repeated > 128 {
+                break;
+            }
+            index += next_repeated;
+        }
+        let literal_len = index - literal_start;
+        out.push((literal_len - 1) as u8);
+        out.extend_from_slice(&data[literal_start..index]);
     }
+    out.push(128);
     out
 }
 
-/// `Some(text)` when `text` is pure printable ASCII (safe for Helvetica);
-/// `None` when it contains non-ASCII characters.
-fn pdf_text(text: &str) -> Option<&str> {
-    if text.chars().all(|ch| matches!(ch, '\x20'..='\x7e')) {
-        Some(text)
-    } else {
-        None
+fn ascii_hex(data: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(data.len() * 2);
+    for byte in data {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
     }
-}
-
-/// Renderable text when a CJK font is referenced: glyph indices as
-/// 2-byte CIDs under `/Encoding /Identity-H` (CIDToGIDMap = Identity).
-/// Identity-H is built into every PDF viewer, so no CMap file (e.g.
-/// UniGB-UCS2-H, missing in poppler and several viewers) is required.
-fn pdf_text_cjk(text: &str, font: &fontdue::Font) -> Option<String> {
-    if text.is_empty() {
-        return Some(String::new());
-    }
-    let mut out = String::from("<");
-    for ch in text.chars() {
-        out.push_str(&format!("{:04X}", font.lookup_glyph_index(ch)));
-    }
-    out.push('>');
-    Some(out)
-}
-
-fn text_is_cjk(layout: &PdfLayout) -> bool {
-    layout.font_name.is_some()
-}
-
-/// A left-aligned text run: `BT /F1 <size> Tf 1 0 0 1 <x> <y> Tm (text) Tj ET`.
-/// With a referenced CJK font the string is glyph-index hex (Identity-H);
-/// without one the ASCII Helvetica literal path applies. Text that cannot be
-/// encoded at all is skipped (empty ops) rather than emitted as garbage.
-fn text_op(
-    layout: &PdfLayout,
-    text: &str,
-    size: f64,
-    x: f64,
-    y: f64,
-    font: Option<&fontdue::Font>,
-) -> String {
-    let body = if text_is_cjk(layout) {
-        match font {
-            Some(font) => pdf_text_cjk(text, font).unwrap_or_default(),
-            // The font name was discovered but its file is unreadable:
-            // keep the ASCII-only path instead of emitting bad glyph refs.
-            None => match pdf_text(text) {
-                Some(ascii) => format!("({})", escape_pdf_literal(ascii)),
-                None => return String::new(),
-            },
-        }
-    } else {
-        format!("({})", escape_pdf_literal(text))
-    };
-    format!("BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm {body} Tj ET\n")
-}
-
-/// Center `text` horizontally at `center_x` with its baseline at `baseline_y`.
-fn text_op_centered(
-    layout: &PdfLayout,
-    text: &str,
-    size: f64,
-    center_x: f64,
-    baseline_y: f64,
-    font: Option<&fontdue::Font>,
-) -> String {
-    let width = approx_text_width(text, size);
-    text_op(layout, text, size, center_x - width / 2.0, baseline_y, font)
-}
-
-/// Rough Helvetica advance widths so centered text lands close to the mark.
-fn approx_text_width(text: &str, size: f64) -> f64 {
-    let mut units = 0.0;
-    for ch in text.chars() {
-        let factor = match ch {
-            // Narrow glyphs first so the broad ranges below don't shadow them.
-            'i' | 'l' | 'I' | 'j' | 't' | 'f' | '\'' | '.' | ',' | ':' | ';' => 0.25,
-            ' ' => 0.28,
-            'A'..='Z' => 0.72,
-            '0'..='9' | 'a'..='z' => 0.5,
-            _ => 0.42,
-        };
-        units += factor;
-    }
-    units * size
+    out
 }
 
 #[cfg(test)]
@@ -1381,8 +1376,14 @@ mod tests {
         let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
         let cols = grid_cols(&grid) as f64;
         let rows = grid_rows(&grid) as f64;
-        assert_eq!(width, (PAD * 2.0 + cols * CELL_W).ceil() as u32);
-        assert_eq!(height, (HEADER_H + PAD * 2.0 + rows * CELL_H).ceil() as u32);
+        assert_eq!(
+            width,
+            ((PAD * 2.0 + cols * CELL_W) * PNG_RASTER_SCALE).ceil() as u32
+        );
+        assert_eq!(
+            height,
+            ((HEADER_H + PAD * 2.0 + rows * CELL_H) * PNG_RASTER_SCALE).ceil() as u32
+        );
         // Closes with an IEND chunk.
         let tail = &bytes[bytes.len() - 8..bytes.len() - 4];
         assert_eq!(tail, b"IEND", "last chunk must be IEND");
@@ -1394,70 +1395,56 @@ mod tests {
         let pdf = render_pdf(&grid);
         assert!(pdf.starts_with("%PDF-1.4"));
         assert!(pdf.contains("/Type /Page"));
-        // Either the ASCII Helvetica path (no CJK font on the machine)
-        // or the Type0 system-font reference.
-        assert!(
-            pdf.contains("/BaseFont /Helvetica") || pdf.contains("/Subtype /Type0"),
-            "pdf must carry a usable font"
-        );
+        assert!(pdf.contains("/Subtype /Image"));
+        assert!(pdf.contains("/ASCIIHexDecode /FlateDecode"));
         assert!(pdf.contains("stream\n"));
         assert!(pdf.contains("endstream"));
         assert!(pdf.contains("startxref"));
         assert!(pdf.ends_with("%%EOF\n"));
-        // Labels survive: as PDF literal text on the Helvetica path, or as
-        // glyph-index hex strings on the Identity-H system-font path.
-        if pdf.contains("/Subtype /Type0") {
-            assert!(
-                pdf.contains("/Encoding /Identity-H"),
-                "CJK path uses Identity-H (no CMap dependency)"
-            );
-            // Glyph indices are 4-hex-digit pairs in a <> string; the exact
-            // values depend on the discovered system font, so assert the form.
-            assert!(
-                pdf.contains("Tm <"),
-                "glyph-index strings follow the text matrix"
-            );
-            assert!(
-                pdf.contains("> Tj"),
-                "glyph-index strings close with Tj"
-            );
-        } else {
-            assert!(pdf.contains("(Alice)"));
-            assert!(pdf.contains("(S3)"));
-            assert!(
-                pdf.contains("(3)") || pdf.contains("0033"),
-                "seat numbers render next to names"
-            );
-        }
+        assert!(!pdf.contains("/Identity-H"));
+        assert!(!pdf.contains("/CIDToGIDMap"));
     }
 
     #[test]
-    fn pdf_cjk_names_fall_back_to_ascii_without_system_font() {
+    fn pdf_does_not_delegate_glyph_mapping_to_the_viewer() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
-        // Force the ASCII path (no CJK font reference) deterministically.
         let mut layout = PdfLayout::portrait();
         layout.font_name = None;
         layout.font_quality = crate::fonts::FontQuality::None;
         let pdf = render_pdf_with(&grid, layout);
-        // The non-ASCII name must not appear raw in the literal string.
+
+        assert!(pdf.contains("/Subtype /Image"));
         assert!(!pdf.contains("张伟"));
-        // The cell still renders its seat number instead.
-        assert!(pdf.contains("(4)"));
-        // An ASCII name does appear.
-        assert!(pdf.contains("(Bob)"));
+        assert!(!pdf.contains("/Type0"));
+        assert!(!pdf.contains("/Encoding /Identity-H"));
     }
 
     #[test]
-    fn pdf_renders_cjk_names_with_system_font_reference() {
-        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
-        let pdf = render_pdf(&grid);
-        if pdf.contains("/Subtype /Type0") {
-            // CJK font present: the name renders as a UTF-16BE hex string.
-            assert!(
-                pdf.contains("<FEFF") || !pdf.contains("张伟"),
-                "CJK text must be hex-encoded in Type0 output"
-            );
+    fn pdf_run_length_encoding_handles_literals_and_repeats() {
+        let input = b"abcccdefggggggghij";
+        let encoded = pdf_run_length_encode(input);
+        assert_eq!(encoded.last(), Some(&128));
+
+        let mut decoded = Vec::new();
+        let mut cursor = 0;
+        while cursor < encoded.len() {
+            let header = encoded[cursor];
+            cursor += 1;
+            match header {
+                0..=127 => {
+                    let len = header as usize + 1;
+                    decoded.extend_from_slice(&encoded[cursor..cursor + len]);
+                    cursor += len;
+                }
+                129..=255 => {
+                    let len = 257 - header as usize;
+                    decoded.extend(std::iter::repeat_n(encoded[cursor], len));
+                    cursor += 1;
+                }
+                128 => break,
+            }
         }
+        assert_eq!(decoded, input);
     }
 
     #[test]
@@ -1485,10 +1472,7 @@ mod tests {
         let mut counts = counts.split_whitespace();
         let first_obj: usize = counts.next().unwrap().parse().unwrap();
         let count: usize = counts.next().unwrap().parse().unwrap();
-        assert!(
-            (first_obj, count) == (0, 6) || (first_obj, count) == (0, 8),
-            "expected 6 objects (Helvetica) or 8 (Type0 + CIDFont + descriptor), got ({first_obj}, {count})"
-        );
+        assert_eq!((first_obj, count), (0, 6));
 
         // Entry 0 is the free list head; entries 1..=5 must point at objects.
         assert!(lines.next().unwrap().contains(" f "), "free head entry");
@@ -1524,7 +1508,6 @@ mod tests {
     // M5-A4 gates: the PNG renderer draws student names with the system
     // CJK font when a font file is available, and degrades to textless
     // output otherwise (no panic on fontless machines).
-    
 
     fn decode_png(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
         let decoder = png::Decoder::new(bytes);
@@ -1549,12 +1532,12 @@ mod tests {
         // First seat rectangle: center should contain dark text pixels
         // (name color 30,34,40) rather than only the seat background.
         let (x, y) = cell_origin(&grid, grid.min_row, grid.min_col);
-        let cx = (x + 4.0 + RECT_W / 2.0) as u32;
-        let cy = (y + 4.0 + RECT_H * 0.6) as u32;
+        let start_x = ((x + 4.0) * PNG_RASTER_SCALE) as u32;
+        let start_y = ((y + 4.0) * PNG_RASTER_SCALE) as u32;
         let mut dark = 0;
-        for dy in 0..RECT_H as u32 {
-            for dx in 0..RECT_W as u32 {
-                let px = (cy + dy) * width + (cx + dx);
+        for dy in 0..(RECT_H * PNG_RASTER_SCALE) as u32 {
+            for dx in 0..(RECT_W * PNG_RASTER_SCALE) as u32 {
+                let px = (start_y + dy) * width + (start_x + dx);
                 let idx = px as usize * 3;
                 if data[idx] < 90 && data[idx + 1] < 90 && data[idx + 2] < 110 {
                     dark += 1;

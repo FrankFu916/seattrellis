@@ -94,7 +94,12 @@ mod tests {
         assert_eq!(females, SAMPLE_ROSTER_SIZE / 2, "balanced genders");
         for student in &students {
             assert!(
-                student.name.as_deref().unwrap_or("").chars().all(|ch| !ch.is_ascii()),
+                student
+                    .name
+                    .as_deref()
+                    .unwrap_or("")
+                    .chars()
+                    .all(|ch| !ch.is_ascii()),
                 "names should be CJK: {:?}",
                 student.name
             );
@@ -108,7 +113,13 @@ mod tests {
         let scores: Vec<f64> = students.iter().filter_map(|s| s.score).collect();
         assert_eq!(heights.len(), SAMPLE_ROSTER_SIZE, "all heights present");
         assert_eq!(scores.len(), SAMPLE_ROSTER_SIZE, "all scores present");
-        assert!(heights.iter().all(|h| (130.0..=180.0).contains(h)), "height range");
-        assert!(scores.iter().all(|s| (55.0..=98.0).contains(s)), "score range");
+        assert!(
+            heights.iter().all(|h| (130.0..=180.0).contains(h)),
+            "height range"
+        );
+        assert!(
+            scores.iter().all(|s| (55.0..=98.0).contains(s)),
+            "score range"
+        );
     }
 }

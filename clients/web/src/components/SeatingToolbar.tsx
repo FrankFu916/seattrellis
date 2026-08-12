@@ -10,12 +10,14 @@ export type CanvasView = "canvas" | "table";
 type SeatingToolbarProps = {
   view: CanvasView;
   zoom: number;
+  focusMode: boolean;
   selectedCount: number;
   canUndo: boolean;
   canRedo: boolean;
   t: Translate;
   onViewChange: (view: CanvasView) => void;
   onZoomChange: (zoom: number) => void;
+  onFocusModeChange: (focused: boolean) => void;
   onLockSelection: () => void;
   onUnlockSelection: () => void;
   onUndo: () => void;
@@ -29,12 +31,14 @@ type SeatingToolbarProps = {
 export function SeatingToolbar({
   view,
   zoom,
+  focusMode,
   selectedCount,
   canUndo,
   canRedo,
   t,
   onViewChange,
   onZoomChange,
+  onFocusModeChange,
   onLockSelection,
   onUnlockSelection,
   onUndo,
@@ -79,6 +83,15 @@ export function SeatingToolbar({
           +
         </button>
       </div>
+      <button
+        type="button"
+        className="secondary-button canvas-focus-button"
+        aria-pressed={focusMode}
+        onClick={() => onFocusModeChange(!focusMode)}
+      >
+        <span aria-hidden="true">{focusMode ? "↙" : "↗"}</span>
+        {focusMode ? t("canvas.exitFocus") : t("canvas.enterFocus")}
+      </button>
       {selectedCount > 0 ? (
         <span className="ctx-chip" data-testid="selection-chip">
           {t("canvas.selectedCount", { count: selectedCount })}

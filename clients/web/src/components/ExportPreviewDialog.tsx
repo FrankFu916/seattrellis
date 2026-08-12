@@ -89,9 +89,10 @@ export function ExportPreviewDialog({
       ...assignment,
       student: {
         ...assignment.student,
-        name: privacy.anonymize
-          ? t("export.anonymousStudent", { index: anonymousIndex })
-          : assignment.student.name,
+        name:
+          template === "public" || privacy.anonymize
+            ? t("export.anonymousStudent", { index: anonymousIndex })
+            : assignment.student.name,
       },
     };
   });

@@ -97,6 +97,10 @@ import {
 const LOCALE_STORAGE_KEY = "seattrellis-locale";
 /** First-run checklist dismissal ("用过即收", D1). */
 const FIRST_RUN_KEY = "seattrellis-first-run:v1";
+/** Rust catalog id for the no-decision, print-ready default export. */
+export const DEFAULT_EXPORT_FORMAT = "print-html";
+/** Normal exports keep names visible; anonymization is an explicit sharing choice. */
+export const DEFAULT_EXPORT_TEMPLATE: ExportTemplate = "teacher";
 
 const DEFAULT_ADVANCED_SETTINGS: AdvancedSolveSettings = {
   // D4: the quick panel asks for the candidate count; 5 is the frozen
@@ -128,7 +132,7 @@ const DEFAULT_EXPORT_PRIVACY: Record<ExportTemplate, ExportPrivacyOptions> = {
     hide_scores: true,
     hide_notes: true,
     hide_special_needs: true,
-    anonymize: false,
+    anonymize: true,
     show_height: false,
     show_vision: false,
   },
@@ -302,14 +306,14 @@ export function App() {
   const [selectedRoomId, setSelectedRoomId] = useState("compact");
   const [selectedGoalId, setSelectedGoalId] =
     useState("daily-rotation");
-  const [selectedExportFormat, setSelectedExportFormat] = useState("print");
+  const [selectedExportFormat, setSelectedExportFormat] = useState(DEFAULT_EXPORT_FORMAT);
   const [orientation, setOrientation] = useState<
     "portrait" | "landscape"
   >("landscape");
   const [exportTemplate, setExportTemplate] =
-    useState<ExportTemplate>("public");
+    useState<ExportTemplate>(DEFAULT_EXPORT_TEMPLATE);
   const [exportPrivacy, setExportPrivacy] = useState<ExportPrivacyOptions>(
-    DEFAULT_EXPORT_PRIVACY.public,
+    DEFAULT_EXPORT_PRIVACY[DEFAULT_EXPORT_TEMPLATE],
   );
   const [pageScale, setPageScale] = useState(1);
   const [advancedSettings, setAdvancedSettings] =
@@ -532,7 +536,7 @@ export function App() {
   }, [draftAudit]);
 
   const firstRunProgress: FirstRunProgress = {
-    roster: visitedViews.includes("roster"),
+    roster: rosterIsValid(students),
     room: visitedViews.includes("room"),
     rules: visitedViews.includes("rules"),
     generate: generationDone,
@@ -1306,7 +1310,6 @@ export function App() {
       </a>
       <AppHeader
         locale={locale}
-        studentCount={students.length}
         connection={connection}
         t={t}
         onLocaleChange={setLocale}
@@ -1424,18 +1427,27 @@ export function App() {
                 hideActions
                 rosterSlot={
                   <div className="roster-workspace-stack">
-                    <RosterImportPanel
-                      locale={locale}
-                      t={t}
-                      currentStudents={students}
-                      currentRevision={revision}
-                      onImportConfirmed={handleRosterImported}
-                    />
                     <StudentRosterEditor
                       students={students}
                       t={t}
                       onChange={handleStudentsEdited}
                     />
+                    <details
+                      className="roster-import-disclosure"
+                      open={students.length === 0 ? true : undefined}
+                    >
+                      <summary>
+                        <span>{t("roster.importDisclosure")}</span>
+                        <small>{t("roster.importDisclosureHint")}</small>
+                      </summary>
+                      <RosterImportPanel
+                        locale={locale}
+                        t={t}
+                        currentStudents={students}
+                        currentRevision={revision}
+                        onImportConfirmed={handleRosterImported}
+                      />
+                    </details>
                   </div>
                 }
                 onFileSelected={setSelectedFileName}
