@@ -11,6 +11,9 @@ type SeatingCanvasEditorProps = {
   students: Student[];
   canUndo: boolean;
   canRedo: boolean;
+  diagnosticBadges?: Record<string, "error" | "warning">;
+  focusSeatId?: string | null;
+  onDiagnosticClick?: (seatId: string) => void;
   t: Translate;
   onSeatActivate: (seatId: string) => void;
   onSwap: (fromSeatId: string, toSeatId: string) => void;
@@ -32,6 +35,9 @@ export function SeatingCanvasEditor({
   students,
   canUndo,
   canRedo,
+  diagnosticBadges,
+  focusSeatId,
+  onDiagnosticClick,
   t,
   onSeatActivate,
   onSwap,
@@ -102,6 +108,9 @@ export function SeatingCanvasEditor({
           onSelectChange={setSelectedSeatIds}
           onSwap={handleSwap}
           onBatchMove={onBatchMove}
+          diagnosticBadges={diagnosticBadges}
+          focusSeatId={focusSeatId}
+          onDiagnosticClick={onDiagnosticClick}
           onStatus={notify}
         />
       ) : (

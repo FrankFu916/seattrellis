@@ -4589,3 +4589,117 @@ input:focus-visible,
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- diagnostics panel (B6 / D6) ---------- */
+
+.diagnostics-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.diag-count {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--danger, #dc2626) 14%, transparent);
+  color: var(--danger, #dc2626);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+}
+
+.diagnostics-body {
+  padding: 10px 12px;
+}
+
+.diag-empty {
+  font-size: 0.76rem;
+}
+
+.issue-list {
+  display: grid;
+  gap: 8px;
+}
+
+.issue-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.issue-row-error {
+  border-left: 3px solid var(--danger, #dc2626);
+}
+
+.issue-row-warning {
+  border-left: 3px solid var(--warning);
+}
+
+.issue-row[data-linked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.i-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.i-title {
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.i-seats {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.i-seats code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.64rem;
+}
+
+.i-fix {
+  margin-top: 2px;
+}
+
+/* canvas diagnostic badges */
+
+.seat-diagnostic {
+  cursor: pointer;
+}
+
+.seat-diagnostic circle {
+  fill: var(--danger, #dc2626);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+
+.seat-diagnostic-warning circle {
+  fill: var(--warning);
+}
+
+.seat-diagnostic text {
+  fill: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.seat-diagnostic-focus > rect {
+  stroke: var(--accent);
+  stroke-width: 3;
+}

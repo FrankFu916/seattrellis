@@ -6,7 +6,7 @@
 
 use serde_json::{json, Value};
 
-use seattrellis_core::audit_report_json;
+use seattrellis_core::diagnostics_report_json;
 use seattrellis_core::score_assignment_json;
 use seattrellis_domain::editing::{self, EditorDraftStore};
 
@@ -48,8 +48,11 @@ pub fn audit_draft(
     let score = score_assignment_json(&request_json, assignment, "[]", None).map_err(|message| {
         AppError::unprocessable("invalid_assignment", format!("plan cannot be scored: {message}"))
     })?;
-    let audit = audit_report_json(&request_json, assignment)
-        .map_err(|message| AppError::internal(format!("audit failed: {message}")))?;
+    // Diagnostics (not the strict audit): a hand-edited plan that violates a
+    // hard rule is *reported* with witnesses, never rejected — the strict
+    // audit stays the CLI's blessing validator (M3-06).
+    let audit = diagnostics_report_json(&request_json, assignment)
+        .map_err(|message| AppError::unprocessable("invalid_assignment", message))?;
 
     let score_value: Value = serde_json::from_str(&score)
         .map_err(|error| AppError::internal(format!("could not encode plan score: {error}")))?;

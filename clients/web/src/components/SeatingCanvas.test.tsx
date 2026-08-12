@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { createSeatAssignments, demoStudents } from "../api/demo";
@@ -52,3 +52,45 @@ describe("SeatingCanvas", () => {
   });
 });
 
+
+describe("SeatingCanvas diagnostics badges", () => {
+  it("renders a badge per issue seat and notifies on click", async () => {
+    const user = userEvent.setup();
+    const handleDiagnostic = vi.fn();
+    const assignments = createSeatAssignments(1, 2, demoStudents.slice(0, 2)).map(
+      (seat) =>
+        seat.seatId === "R1C1" ? { ...seat, locked: false } : seat,
+    );
+    render(
+      <SeatingCanvas
+        assignments={assignments}
+        t={createTranslator("en")}
+        diagnosticBadges={{ R1C1: "error" }}
+        onDiagnosticClick={handleDiagnostic}
+      />,
+    );
+
+    const badge = screen.getByRole("button", { name: "R1C1: violation" });
+    await user.click(badge);
+    expect(handleDiagnostic).toHaveBeenCalledWith("R1C1");
+  });
+
+  it("does not start a drag when the pointer lands on a badge", () => {
+    const handleSwap = vi.fn();
+    const assignments = createSeatAssignments(1, 2, demoStudents.slice(0, 2));
+    render(
+      <SeatingCanvas
+        assignments={assignments}
+        t={createTranslator("en")}
+        diagnosticBadges={{ R1C1: "error" }}
+        onSwap={handleSwap}
+      />,
+    );
+    // Pointer events on the badge are ignored by the drag handler.
+    const badge = screen.getByRole("button", { name: "R1C1: violation" });
+    fireEvent.pointerDown(badge, { pointerId: 9, clientX: 40, clientY: 40 });
+    fireEvent.pointerMove(badge, { pointerId: 9, clientX: 60, clientY: 60 });
+    fireEvent.pointerUp(badge, { pointerId: 9, clientX: 60, clientY: 60 });
+    expect(handleSwap).not.toHaveBeenCalled();
+  });
+});

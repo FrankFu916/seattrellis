@@ -5,6 +5,7 @@ import {
   RosterApiError,
   dispatchEditorCommand,
   exportDraft,
+  fetchDraftAudit,
   fetchEditorState,
   generateClass,
   generateRotationPlan,
@@ -31,6 +32,7 @@ import type {
   ProjectRotationLoadResponse,
   AdvancedSolveSettings,
   RecentProject,
+  DraftAuditReport,
   RotationPlan,
   RotationSettings,
   SeatAssignment,
@@ -72,7 +74,6 @@ import {
   type WorkbenchView,
 } from "./domain/navigation";
 import {
-  deriveDiagnostics,
   getUnseatedStudents,
   reconcileStudentAssignments,
   seatRemainingStudents,
@@ -310,6 +311,8 @@ export function App() {
   );
   const [rotationPlan, setRotationPlan] = useState<RotationPlan | null>(null);
   const [candidateMetas, setCandidateMetas] = useState<CandidateMeta[]>([]);
+  const [draftAudit, setDraftAudit] = useState<DraftAuditReport | null>(null);
+  const [diagnosticFocus, setDiagnosticFocus] = useState<string | null>(null);
   const [rotationEditors, setRotationEditors] = useState<EditorState[]>([]);
   const [activeRotationPeriod, setActiveRotationPeriod] = useState(1);
   const [roomSettings, setRoomSettings] =
@@ -354,6 +357,31 @@ export function App() {
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [isDirty, t]);
+
+  // Re-audit the current draft whenever it changes (D6): the diagnostics
+  // panel and the canvas badges consume the same Rust report.
+  useEffect(() => {
+    let current = true;
+    if (!editorDraftId) {
+      setDraftAudit(null);
+      setDiagnosticFocus(null);
+      return;
+    }
+    void fetchDraftAudit(editorDraftId)
+      .then((report) => {
+        if (current) {
+          setDraftAudit(report);
+        }
+      })
+      .catch(() => {
+        if (current) {
+          setDraftAudit(null);
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [editorDraftId, editorRevision]);
 
   // Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z and Cmd/Ctrl+Y redo (design §6).
   useEffect(() => {
@@ -434,10 +462,6 @@ export function App() {
     () => getUnseatedStudents(students, assignments),
     [students, assignments],
   );
-  const diagnostics = useMemo(
-    () => deriveDiagnostics(assignments, students, selectedSeatId),
-    [assignments, students, selectedSeatId],
-  );
   const selectedSeat = assignments.find(
     (seat) => seat.seatId === selectedSeatId,
   );
@@ -478,6 +502,20 @@ export function App() {
     isDirty,
     hasPlan,
   ]);
+  const diagnosticBadges = useMemo(() => {
+    const badges: Record<string, "error" | "warning"> = {};
+    for (const witness of draftAudit?.audit.hard_constraint_summary
+      .witnesses ?? []) {
+      const seatIds = (witness as { seat_ids?: unknown }).seat_ids;
+      if (Array.isArray(seatIds)) {
+        for (const seatId of seatIds) {
+          badges[String(seatId)] = "error";
+        }
+      }
+    }
+    return badges;
+  }, [draftAudit]);
+
   const firstRunProgress: FirstRunProgress = {
     roster: visitedViews.includes("roster"),
     room: visitedViews.includes("room"),
@@ -934,13 +972,15 @@ export function App() {
       return;
     }
     if (studentId) {
-      const otherSeat = assignments.find(
-        (item) => item.seatId !== seatId && item.student?.id === studentId,
+      const occupant = assignments.find(
+        (item) => item.seatId === seatId && item.student,
       );
-      if (otherSeat) {
-        setSaveError(
-          t("canvas.tableDuplicate", { seat: otherSeat.seatId }),
-        );
+      // Reject only when the target seat holds a *different* student (the
+      // Rust editor applies the same rule). Moving a student from another
+      // seat into an empty seat is a plain move; occupying a seat that
+      // already holds this student is a no-op.
+      if (occupant?.student && occupant.student.id !== studentId) {
+        setSaveError(t("canvas.tableDuplicate", { seat: seatId }));
         return;
       }
     }
@@ -1449,6 +1489,9 @@ export function App() {
                     editorDraftId ? editorUndoDepth > 0 : history.length > 0
                   }
                   canRedo={canRedo}
+                  diagnosticBadges={diagnosticBadges}
+                  focusSeatId={diagnosticFocus}
+                  onDiagnosticClick={setDiagnosticFocus}
                   t={t}
                   onSeatActivate={handleSeatActivate}
                   onSwap={(from, to) => {
@@ -1475,7 +1518,21 @@ export function App() {
             {view === "canvas" ? (
               <aside className="workspace-side-rail">
                 <UnseatedTray students={unseatedStudents} t={t} />
-                <DiagnosticsPanel diagnostics={diagnostics} t={t} />
+                <DiagnosticsPanel
+                  report={draftAudit}
+                  students={students}
+                  focusSeatId={diagnosticFocus}
+                  t={t}
+                  onFocusChange={setDiagnosticFocus}
+                  onFix={(operations) => {
+                    if (editorDraftId) {
+                      void applyEditorCommand({
+                        action: "apply",
+                        operations: operations as EditorOperation[],
+                      });
+                    }
+                  }}
+                />
               </aside>
             ) : null}
           </main>

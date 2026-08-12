@@ -46,6 +46,11 @@ type SeatingCanvasProps = {
   onSwap?: (fromSeatId: string, toSeatId: string) => void;
   /** Dragging a multi-selection onto a seat. */
   onBatchMove?: (selectedIds: string[], dropSeatId: string) => void;
+  /** Inline diagnostics badges per seat (D6): "error" / "warning". */
+  diagnosticBadges?: Record<string, "error" | "warning">;
+  /** Seat the diagnostics list is currently linked to (D6). */
+  focusSeatId?: string | null;
+  onDiagnosticClick?: (seatId: string) => void;
   onStatus?: (message: string) => void;
 };
 
@@ -80,6 +85,9 @@ export function SeatingCanvas({
   onSelectChange,
   onSwap,
   onBatchMove,
+  diagnosticBadges,
+  focusSeatId = null,
+  onDiagnosticClick,
   onStatus,
 }: SeatingCanvasProps) {
   const geometry: CanvasGeometry = CANVAS_GEOMETRY;
@@ -260,6 +268,9 @@ export function SeatingCanvas({
     }
     suppressClickRef.current = false;
     const target = event.target as Element;
+    if (target.closest?.("[data-diagnostic]")) {
+      return;
+    }
     const seatEl = target.closest?.("[data-seat-id]");
     if (seatEl) {
       const seatId = seatEl.getAttribute("data-seat-id") as string;
@@ -429,6 +440,7 @@ export function SeatingCanvas({
                 selected.has(seat.seatId) ? "seat-selected" : "",
                 dragSeat === seat.seatId ? "seat-dragging" : "",
                 hoverTarget === seat.seatId ? "seat-hover-target" : "",
+                focusSeatId === seat.seatId ? "seat-diagnostic-focus" : "",
               ]
                 .filter(Boolean)
                 .join(" ");
@@ -488,6 +500,31 @@ export function SeatingCanvas({
                     >
                       <rect x="0" y="5" width="10" height="8" rx="2" />
                       <path d="M2 5V3a3 3 0 0 1 6 0v2" />
+                    </g>
+                  ) : null}
+                  {diagnosticBadges?.[seat.seatId] ? (
+                    <g
+                      className={`seat-diagnostic seat-diagnostic-${diagnosticBadges[seat.seatId]}`}
+                      data-diagnostic="true"
+                      transform={`translate(${seatWidth - 26} 2)`}
+                      role="button"
+                      aria-label={`${seat.seatId}: ${
+                        diagnosticBadges[seat.seatId] === "error"
+                          ? t("diagnostics.badgeViolation")
+                          : t("diagnostics.badgeSuggestion")
+                      }`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDiagnosticClick?.(seat.seatId);
+                      }}
+                    >
+                      {/* Generous invisible hit area (design §6: >= 44px
+                          targets where seats are content, not controls). */}
+                      <circle cx="12" cy="12" r="17" fill="transparent" />
+                      <circle cx="12" cy="12" r="11" />
+                      <text x="12" y="15.5" textAnchor="middle">
+                        {diagnosticBadges[seat.seatId] === "error" ? "!" : "i"}
+                      </text>
                     </g>
                   ) : null}
                 </g>
