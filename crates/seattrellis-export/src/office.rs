@@ -278,7 +278,9 @@ fn docx_seat_table(grid: &SeatingGrid) -> String {
 }
 
 /// Render the seating grid as a minimal DOCX document (title + meta + table).
-pub fn render_docx(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
+pub fn render_docx(grid: &SeatingGrid, landscape: bool) -> Result<Vec<u8>, String> {
+    // A4 portrait in twips; landscape swaps width/height (plan §12.3).
+    let (doc_w, doc_h) = if landscape { ("16838", "11906") } else { ("11906", "16838") };
     let document = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -287,9 +289,11 @@ pub fn render_docx(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">{subtitle}</w:t></w:r></w:p>
     <w:p/>
     {table}
-    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>
+    <w:sectPr><w:pgSz w:w="{doc_w}" w:h="{doc_h}"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>
   </w:body>
 </w:document>"#,
+        doc_w = doc_w,
+        doc_h = doc_h,
         title = xml_escape(&grid.title),
         subtitle = xml_escape(&grid.subtitle),
         table = docx_seat_table(grid),
@@ -628,7 +632,7 @@ mod tests {
 
     #[test]
     fn docx_package_is_well_formed_and_carries_title_and_table() {
-        let bytes = render_docx(&sample_grid()).expect("docx renders");
+        let bytes = render_docx(&sample_grid(), false).expect("docx renders");
         let entries = unzip(&bytes);
         for part in ["[Content_Types].xml", "_rels/.rels", "word/document.xml"] {
             let content = entries

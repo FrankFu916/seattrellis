@@ -200,6 +200,14 @@ fn default_orientation() -> String {
     "portrait".to_string()
 }
 
+fn default_paper_size() -> String {
+    "a4".to_string()
+}
+
+fn default_margin_mm() -> f64 {
+    12.0
+}
+
 fn default_page_scale() -> f64 {
     1.0
 }
@@ -225,6 +233,12 @@ pub struct ExportRequest {
     pub orientation: String,
     #[serde(default = "default_page_scale")]
     pub page_scale: f64,
+    /// `a4` | `a3` | `letter` (plan §12.3 unification; default a4).
+    #[serde(default = "default_paper_size")]
+    pub paper_size: String,
+    /// Printable margin in mm (clamped 5–25; default 12).
+    #[serde(default = "default_margin_mm")]
+    pub margin_mm: f64,
     #[serde(default = "default_locale")]
     pub locale: String,
     #[serde(default)]
@@ -264,7 +278,9 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
     let format = ExportFormat::parse(&request.format)?;
     let template = ExportTemplate::parse(&request.template)?;
     let orientation = ExportOrientation::parse(&request.orientation)?;
+    let paper = crate::render::PaperSize::parse(&request.paper_size)?;
     let page_scale = validate_page_scale(request.page_scale)?;
+    let margin_mm = validate_margin_mm(request.margin_mm)?;
 
     // Export is a release artifact boundary, not a best-effort renderer.
     // Re-check the complete assignment independently so forged response flags,
@@ -296,14 +312,17 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
         ExportFormat::Html => Ok(render_html(&grid).into_bytes()),
         ExportFormat::Png => render_png(&grid),
         ExportFormat::Pdf => {
-            let layout = match orientation {
-                ExportOrientation::Portrait => PdfLayout::portrait(),
-                ExportOrientation::Landscape => PdfLayout::landscape(),
-            };
+            let layout = PdfLayout::from_paper(
+                paper,
+                orientation == ExportOrientation::Landscape,
+                margin_mm,
+            );
             Ok(render_pdf_with(&grid, layout.with_scale(page_scale)).into_bytes())
         }
         ExportFormat::Xlsx => crate::office::render_xlsx(&grid),
-        ExportFormat::Docx => crate::office::render_docx(&grid),
+        ExportFormat::Docx => {
+            crate::office::render_docx(&grid, orientation == ExportOrientation::Landscape)
+        }
         ExportFormat::Pptx => crate::office::render_pptx(&grid),
     }
 }
@@ -321,6 +340,15 @@ fn parse_export_request(request_json: &str) -> Result<ExportRequest, String> {
     serde_json::from_value(value).map_err(|error| {
         format!("export request is missing required fields (format, request, response): {error}")
     })
+}
+
+fn validate_margin_mm(raw: f64) -> Result<f64, String> {
+    if !raw.is_finite() || raw <= 0.0 {
+        return Err(format!(
+            "invalid margin_mm '{raw}' (expected a positive number)"
+        ));
+    }
+    Ok(raw.clamp(5.0, 25.0))
 }
 
 fn validate_page_scale(raw: f64) -> Result<f64, String> {

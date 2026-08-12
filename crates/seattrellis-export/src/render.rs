@@ -590,6 +590,12 @@ impl Canvas<'_> {
 /// A4 portrait page size in points (PDF coordinates grow up and to the right).
 const PAGE_W: f64 = 595.0;
 const PAGE_H: f64 = 842.0;
+
+/// Default printable margin in points (12mm ≈ 34pt), matching the print
+/// layout spec (margins 12/14mm).
+fn default_margin_pt() -> f64 {
+    (12.0_f64 * 72.0 / 25.4).round()
+}
 const PDF_MARGIN: f64 = 36.0;
 /// Vertical space reserved for the title, subtitle, and front-of-room label.
 const PDF_HEADER_SPACE: f64 = 100.0;
@@ -601,6 +607,36 @@ const PDF_HEADER_SPACE: f64 = 100.0;
 /// applies the frontend `page_scale` via [`PdfLayout::with_scale`] so the
 /// `orientation`/`page_scale` fields of `ExportDraftRequest` map without
 /// changing the default [`render_pdf`] behaviour.
+/// Standard page sizes for document exports (plan §12.3 unification).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaperSize {
+    A4,
+    A3,
+    Letter,
+}
+
+impl PaperSize {
+    /// Page dimensions in points (portrait order: width, height).
+    pub fn points(self) -> (f64, f64) {
+        match self {
+            PaperSize::A4 => (595.0, 842.0),
+            PaperSize::A3 => (842.0, 1191.0),
+            PaperSize::Letter => (612.0, 792.0),
+        }
+    }
+
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "a4" => Ok(PaperSize::A4),
+            "a3" => Ok(PaperSize::A3),
+            "letter" => Ok(PaperSize::Letter),
+            other => Err(format!(
+                "unknown export paper_size '{other}' (expected a4, a3, or letter)"
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct PdfLayout {
     /// Page width in points.
@@ -609,30 +645,32 @@ pub struct PdfLayout {
     pub page_h: f64,
     /// Extra multiplier on top of the automatic fit-to-page scale.
     pub scale_multiplier: f64,
-}
-
-impl Default for PdfLayout {
-    fn default() -> Self {
-        PdfLayout {
-            page_w: PAGE_W,
-            page_h: PAGE_H,
-            scale_multiplier: 1.0,
-        }
-    }
+    /// Printable margin in points (from `margin_mm`).
+    pub margin_pt: f64,
 }
 
 impl PdfLayout {
-    /// A4 portrait, the renderer's default.
+    /// A4 portrait with the default margin.
     pub fn portrait() -> Self {
-        Self::default()
+        Self::from_paper(PaperSize::A4, false, default_margin_pt())
     }
 
-    /// A4 landscape (width/height swapped).
+    /// A4 landscape with the default margin.
     pub fn landscape() -> Self {
+        Self::from_paper(PaperSize::A4, true, default_margin_pt())
+    }
+
+    /// Page geometry from paper size + orientation + margin (mm→pt).
+    pub fn from_paper(paper: PaperSize, landscape: bool, margin_mm: f64) -> Self {
+        let (mut w, mut h) = paper.points();
+        if landscape {
+            std::mem::swap(&mut w, &mut h);
+        }
         PdfLayout {
-            page_w: PAGE_H,
-            page_h: PAGE_W,
-            ..Self::default()
+            page_w: w,
+            page_h: h,
+            scale_multiplier: 1.0,
+            margin_pt: (margin_mm.clamp(5.0, 25.0) * 72.0 / 25.4).round(),
         }
     }
 
@@ -652,7 +690,7 @@ impl PdfLayout {
 /// non-ASCII label (e.g. a CJK name) falls back to a plain placeholder because
 /// encoding it would require embedding a CID font, which is not worth the size.
 pub fn render_pdf(grid: &SeatingGrid) -> String {
-    render_pdf_with(grid, PdfLayout::default())
+    render_pdf_with(grid, PdfLayout::from_paper(PaperSize::A4, false, default_margin_pt()))
 }
 
 /// [`render_pdf`] with an explicit page geometry (orientation + scale).
@@ -705,12 +743,12 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
 
     // Scale the SVG geometry down (or up) to fit the printable area, then apply
     // the user page_scale multiplier on top.
-    let avail_w = layout.page_w - PDF_MARGIN * 2.0;
-    let avail_h = layout.page_h - PDF_HEADER_SPACE - PDF_MARGIN;
+    let avail_w = layout.page_w - layout.margin_pt * 2.0;
+    let avail_h = layout.page_h - PDF_HEADER_SPACE - layout.margin_pt;
     let base_scale = (avail_w / grid_w).min(avail_h / grid_h).clamp(0.1, 2.0);
     let scale = (base_scale * layout.scale_multiplier).clamp(0.1, 2.0);
 
-    let grid_x = PDF_MARGIN;
+    let grid_x = layout.margin_pt;
     let grid_top = layout.page_h - PDF_HEADER_SPACE + 10.0;
 
     let mut ops = String::with_capacity(4096 + grid.cells.len() * 140);
