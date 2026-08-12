@@ -204,7 +204,7 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
     let format = args
         .format
         .as_deref()
-        .ok_or("project-export requires --format <svg|html|png|pdf>")?;
+        .ok_or("project-export requires --format <svg|html|png|pdf|print-html>")?;
     let output = args
         .output
         .clone()

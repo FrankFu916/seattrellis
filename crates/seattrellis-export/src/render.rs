@@ -686,7 +686,10 @@ impl PdfLayout {
 /// non-ASCII label (e.g. a CJK name) falls back to a plain placeholder because
 /// encoding it would require embedding a CID font, which is not worth the size.
 pub fn render_pdf(grid: &SeatingGrid) -> String {
-    render_pdf_with(grid, PdfLayout::from_paper(PaperSize::A4, false, default_margin_pt()))
+    render_pdf_with(
+        grid,
+        PdfLayout::from_paper(PaperSize::A4, false, default_margin_pt()),
+    )
 }
 
 /// [`render_pdf`] with an explicit page geometry (orientation + scale).

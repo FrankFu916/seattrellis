@@ -6,4 +6,5 @@
 
 pub mod export;
 pub mod office;
+pub mod print_html;
 pub mod render;

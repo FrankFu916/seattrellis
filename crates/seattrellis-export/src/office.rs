@@ -280,7 +280,11 @@ fn docx_seat_table(grid: &SeatingGrid) -> String {
 /// Render the seating grid as a minimal DOCX document (title + meta + table).
 pub fn render_docx(grid: &SeatingGrid, landscape: bool) -> Result<Vec<u8>, String> {
     // A4 portrait in twips; landscape swaps width/height (plan §12.3).
-    let (doc_w, doc_h) = if landscape { ("16838", "11906") } else { ("11906", "16838") };
+    let (doc_w, doc_h) = if landscape {
+        ("16838", "11906")
+    } else {
+        ("11906", "16838")
+    };
     let document = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

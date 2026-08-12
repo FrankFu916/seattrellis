@@ -76,6 +76,7 @@ pub enum ExportFormat {
     Xlsx,
     Docx,
     Pptx,
+    PrintHtml,
 }
 
 impl ExportFormat {
@@ -84,6 +85,7 @@ impl ExportFormat {
         match raw.trim().to_ascii_lowercase().as_str() {
             "svg" => Ok(ExportFormat::Svg),
             "html" | "htm" => Ok(ExportFormat::Html),
+            "print-html" => Ok(ExportFormat::PrintHtml),
             "png" => Ok(ExportFormat::Png),
             "pdf" => Ok(ExportFormat::Pdf),
             "xlsx" | "excel" => Ok(ExportFormat::Xlsx),
@@ -100,6 +102,7 @@ impl ExportFormat {
         match self {
             ExportFormat::Svg => "image/svg+xml",
             ExportFormat::Html => "text/html; charset=utf-8",
+            ExportFormat::PrintHtml => "text/html; charset=utf-8",
             ExportFormat::Png => "image/png",
             ExportFormat::Pdf => "application/pdf",
             ExportFormat::Xlsx => {
@@ -119,6 +122,7 @@ impl ExportFormat {
         match self {
             ExportFormat::Svg => "svg",
             ExportFormat::Html => "html",
+            ExportFormat::PrintHtml => "print.html",
             ExportFormat::Png => "png",
             ExportFormat::Pdf => "pdf",
             ExportFormat::Xlsx => "xlsx",
@@ -196,10 +200,6 @@ fn default_template() -> String {
     "public".to_string()
 }
 
-fn default_orientation() -> String {
-    "portrait".to_string()
-}
-
 fn default_paper_size() -> String {
     "a4".to_string()
 }
@@ -229,8 +229,11 @@ pub struct ExportRequest {
     pub template: String,
     #[serde(default)]
     pub privacy: ExportPrivacyOptions,
-    #[serde(default = "default_orientation")]
-    pub orientation: String,
+    /// `portrait` | `landscape`. Absent = format default (print-html defaults
+    /// to landscape per the print-layout spec; other formats default to
+    /// portrait).
+    #[serde(default)]
+    pub orientation: Option<String>,
     #[serde(default = "default_page_scale")]
     pub page_scale: f64,
     /// `a4` | `a3` | `letter` (plan §12.3 unification; default a4).
@@ -277,7 +280,16 @@ pub fn format_of(request_json: &str) -> Result<ExportFormat, String> {
 pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
     let format = ExportFormat::parse(&request.format)?;
     let template = ExportTemplate::parse(&request.template)?;
-    let orientation = ExportOrientation::parse(&request.orientation)?;
+    let orientation = match request.orientation.as_deref() {
+        Some(raw) => ExportOrientation::parse(raw)?,
+        None => {
+            if matches!(format, ExportFormat::PrintHtml) {
+                ExportOrientation::Landscape
+            } else {
+                ExportOrientation::Portrait
+            }
+        }
+    };
     let paper = crate::render::PaperSize::parse(&request.paper_size)?;
     let page_scale = validate_page_scale(request.page_scale)?;
     let margin_mm = validate_margin_mm(request.margin_mm)?;
@@ -322,6 +334,22 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
         ExportFormat::Xlsx => crate::office::render_xlsx(&grid),
         ExportFormat::Docx => {
             crate::office::render_docx(&grid, orientation == ExportOrientation::Landscape)
+        }
+        ExportFormat::PrintHtml => {
+            let print_options = crate::print_html::PrintHtmlOptions {
+                landscape: orientation == ExportOrientation::Landscape,
+                paper,
+                margin_mm,
+                page_scale,
+                show_student_ids: request.show_student_ids,
+                locale: request.locale.clone(),
+                seed: Some(request.request.seed),
+                period_label: None,
+            };
+            Ok(
+                crate::print_html::render_print_html(&grid, &request.request, &print_options)
+                    .into_bytes(),
+            )
         }
         ExportFormat::Pptx => crate::office::render_pptx(&grid),
     }

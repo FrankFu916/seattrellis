@@ -3436,7 +3436,7 @@ mod tests {
     }
 
     #[test]
-    fn export_print_html_normalizes_to_html() {
+    fn export_print_html_renders_dedicated_layout() {
         let root = test_web_root();
         let editor_store = editing::new_draft_store();
         let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
@@ -3467,7 +3467,6 @@ mod tests {
             "format": "print-html",
             "template": "public",
             "privacy": {"hide_scores": false, "hide_notes": false, "hide_special_needs": false, "anonymize": false, "show_height": false, "show_vision": false},
-            "orientation": "portrait",
             "page_scale": 1.0,
             "locale": "en",
             "show_student_ids": false
@@ -3489,10 +3488,15 @@ mod tests {
             String::from_utf8_lossy(&export.body)
         );
         assert_eq!(export.content_type, Some("text/html; charset=utf-8"));
+        let body = String::from_utf8_lossy(&export.body);
+        // Dedicated print layout (print-layout-spec): landscape @page,
+        // platform annotation, and the reproducibility seed line.
         assert!(
-            export.body.starts_with(b"<!doctype html")
-                || export.body.windows(5).any(|w| w == b"<html")
+            body.contains("@page { size: 297mm 210mm"),
+            "landscape A4 default"
         );
+        assert!(body.contains("讲台 ↑"), "platform annotation");
+        assert!(body.contains("seed "), "reproducibility line");
     }
 
     #[test]

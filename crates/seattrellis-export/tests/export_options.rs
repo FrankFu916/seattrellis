@@ -69,8 +69,14 @@ fn pdf_layout_applies_paper_orientation_and_margin() {
     assert_eq!(a3_portrait.margin_pt, 57.0); // 20mm
 
     // margin clamp 5..25mm
-    assert_eq!(PdfLayout::from_paper(PaperSize::A4, false, 3.0).margin_pt, 14.0);
-    assert_eq!(PdfLayout::from_paper(PaperSize::A4, false, 40.0).margin_pt, 71.0);
+    assert_eq!(
+        PdfLayout::from_paper(PaperSize::A4, false, 3.0).margin_pt,
+        14.0
+    );
+    assert_eq!(
+        PdfLayout::from_paper(PaperSize::A4, false, 40.0).margin_pt,
+        71.0
+    );
 }
 
 #[test]
@@ -78,9 +84,13 @@ fn pdf_export_accepts_paper_size_and_margin_options() {
     // A3 landscape PDF must render without error and carry the A3 MediaBox.
     let bytes = export_plan(&base_request(serde_json::json!({
         "paper_size": "a3", "margin_mm": 15.0
-    }))).expect("a3 pdf exports");
+    })))
+    .expect("a3 pdf exports");
     let text = String::from_utf8_lossy(&bytes);
-    assert!(text.contains("/MediaBox [0 0 1191 842]"), "A3 landscape MediaBox");
+    assert!(
+        text.contains("/MediaBox [0 0 1191 842]"),
+        "A3 landscape MediaBox"
+    );
 }
 
 #[test]
@@ -101,22 +111,32 @@ fn pdf_export_rejects_non_positive_margin() {
 fn docx_landscape_swaps_page_dimensions() {
     let bytes = export_plan(&base_request(serde_json::json!({
         "format": "docx", "orientation": "landscape"
-    }))).expect("landscape docx exports");
+    })))
+    .expect("landscape docx exports");
     // OOXML zip: extract word/document.xml and check the pgSz swap.
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
     let mut doc = String::new();
     use std::io::Read;
-    archive.by_name("word/document.xml").unwrap().read_to_string(&mut doc).unwrap();
+    archive
+        .by_name("word/document.xml")
+        .unwrap()
+        .read_to_string(&mut doc)
+        .unwrap();
     assert!(
         doc.contains(r#"<w:pgSz w:w="16838" w:h="11906"/>"#),
         "landscape pgSz must swap width/height"
     );
     let portrait = export_plan(&base_request(serde_json::json!({
         "format": "docx", "orientation": "portrait"
-    }))).expect("portrait docx exports");
+    })))
+    .expect("portrait docx exports");
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&portrait)).unwrap();
     let mut doc = String::new();
-    archive.by_name("word/document.xml").unwrap().read_to_string(&mut doc).unwrap();
+    archive
+        .by_name("word/document.xml")
+        .unwrap()
+        .read_to_string(&mut doc)
+        .unwrap();
     assert!(
         doc.contains(r#"<w:pgSz w:w="11906" w:h="16838"/>"#),
         "portrait pgSz must keep A4 portrait"

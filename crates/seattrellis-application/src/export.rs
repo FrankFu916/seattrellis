@@ -51,11 +51,8 @@ pub fn export_draft(
 
     let mut export_json = value.clone();
     if let Some(object) = export_json.as_object_mut() {
-        // `print-html` renders the same native HTML sheet as `html`.
-        let format = object.get("format").and_then(Value::as_str).unwrap_or("");
-        if format.eq_ignore_ascii_case("print-html") {
-            object.insert("format".to_string(), json!("html"));
-        }
+        // `print-html` has its own dedicated layout (print-layout-spec.md);
+        // no normalization to `html` anymore (M5-A2).
         object.insert("request".to_string(), request_value);
         object.insert("response".to_string(), response_value);
     }
