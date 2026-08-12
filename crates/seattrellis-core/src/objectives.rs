@@ -619,8 +619,7 @@ fn relation_satisfied(
     };
     match relation {
         PairRelation::DeskMate => {
-            first.row == second.row
-                && (i64::from(first.col) - i64::from(second.col)).abs() == 1
+            first.row == second.row && (i64::from(first.col) - i64::from(second.col)).abs() == 1
         }
         PairRelation::AdjacentAny => {
             let edge = normalize_edge(&first.seat_id, &second.seat_id);
@@ -678,7 +677,7 @@ fn are_adjacent(first: &Seat, second: &Seat, config: &AdjacencyConfig) -> bool {
             // i32 difference would overflow the square before the cast.
             let row_col_distance = ((first.row as f64 - second.row as f64).powi(2)
                 + (first.col as f64 - second.col as f64).powi(2))
-                .sqrt();
+            .sqrt();
             row_col_distance <= max_distance
         };
     }

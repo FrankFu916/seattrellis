@@ -834,12 +834,19 @@ pub fn build_editor_state(draft: &EditorDraft) -> EditorState {
 /// these (typically behind an `Arc`) and shares it across connection threads.
 pub type EditorDraftStore = Mutex<HashMap<String, EditorDraft>>;
 
+/// Cap on concurrently stored editor drafts: a long-lived server must not
+/// accumulate one draft per generation forever. Draft ids are
+/// server-generated monotonic (`draft-<nanos><seq>`), so the smallest key is
+/// the oldest; the cap evicts it deterministically (FIFO, alpha.2/M7 item).
+pub const MAX_EDITOR_DRAFTS: usize = 64;
+
 /// Create an empty draft store.
 pub fn new_draft_store() -> EditorDraftStore {
     Mutex::new(HashMap::new())
 }
 
-/// Insert a draft into the store, rejecting a duplicate `draft_id`.
+/// Insert a draft into the store, rejecting a duplicate `draft_id`. At
+/// [`MAX_EDITOR_DRAFTS`] the oldest draft (smallest draft_id) is evicted.
 pub fn store_draft(store: &EditorDraftStore, draft: EditorDraft) -> Result<(), String> {
     let mut guard = store
         .lock()
@@ -851,6 +858,11 @@ pub fn store_draft(store: &EditorDraftStore, draft: EditorDraft) -> Result<(), S
         ));
     }
     guard.insert(draft.draft_id.clone(), draft);
+    if guard.len() > MAX_EDITOR_DRAFTS {
+        if let Some(oldest) = guard.keys().min().cloned() {
+            guard.remove(&oldest);
+        }
+    }
     Ok(())
 }
 
@@ -1870,6 +1882,45 @@ mod tests {
         )
         .unwrap_err()
         .contains("unknown editor draft"));
+    }
+
+    #[test]
+    fn draft_store_evicts_the_oldest_draft_at_the_cap() {
+        // alpha.2/M7 item: a long-lived server must not accumulate one
+        // draft per generation forever. Draft ids are monotonic
+        // (`draft-<nanos><seq>`), so the smallest id is the oldest.
+        let store = new_draft_store();
+        for index in 0..(MAX_EDITOR_DRAFTS + 8) {
+            let id = format!("draft-{index:06}");
+            create_draft(
+                &store,
+                &id,
+                Some(id.clone()),
+                &["s1", "s2", "s3"],
+                test_seats(),
+                &[("s1", "A1"), ("s2", "A2"), ("s3", "B1")],
+                None,
+            )
+            .expect("draft created");
+        }
+        let guard = store.lock().unwrap();
+        assert_eq!(guard.len(), MAX_EDITOR_DRAFTS, "store stays at the cap");
+        assert!(
+            !guard.contains_key("draft-000000"),
+            "oldest draft evicted first"
+        );
+        assert!(
+            !guard.contains_key("draft-000007"),
+            "the oldest 8 of 72 inserts are gone"
+        );
+        assert!(
+            guard.contains_key("draft-000008"),
+            "the cap counts from the oldest"
+        );
+        assert!(
+            guard.contains_key(&format!("draft-{:06}", MAX_EDITOR_DRAFTS + 7)),
+            "newest drafts survive"
+        );
     }
 
     #[test]

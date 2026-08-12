@@ -36,6 +36,14 @@ jobs:
       - name: Install CJK fonts (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      # The server build script embeds clients/web/dist (M6 decoupling), so
+      # the React workbench must exist before any crate that pulls in
+      # seattrellis-server can compile.
+      - name: Build the React workbench (server embeds clients/web/dist)
+        run: |
+          npm ci
+          npm run build
+        working-directory: clients/web
       # Test every crate: the previous per-crate list silently skipped
       # schema/domain/export/io/rules/application/server, which let an
       # MSRV compile break in seattrellis-schema ship undetected
@@ -136,6 +144,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Build the React workbench (server embeds clients/web/dist)
+        run: |
+          npm ci
+          npm run build
+        working-directory: clients/web
       - name: Build the CLI
         run: cargo build --release --locked -p seattrellis_cli
       - name: Build the App server

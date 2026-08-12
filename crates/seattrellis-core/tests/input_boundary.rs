@@ -68,7 +68,8 @@ fn extreme_coordinates_do_not_panic_scoring() {
         }}
     }"#;
     let assignment: Vec<[usize; 2]> = vec![[0, 0], [1, 1]];
-    let report = score_assignment_json(request, &assignment, "", None).expect("scoring must not panic");
+    let report =
+        score_assignment_json(request, &assignment, "", None).expect("scoring must not panic");
     let value: serde_json::Value = serde_json::from_str(&report).unwrap();
     assert!(value["total"].is_number());
 }
@@ -109,7 +110,10 @@ fn non_finite_student_score_is_rejected() {
         ]
     }"#;
     let error = validate_solve_request_json(wire).unwrap_err();
-    assert!(error.contains("number out of range"), "unexpected error: {error}");
+    assert!(
+        error.contains("number out of range"),
+        "unexpected error: {error}"
+    );
 }
 
 /// A non-finite `students[].height_cm` must be rejected at validation.
@@ -155,8 +159,13 @@ fn huge_finite_height_does_not_overflow_cost() {
     let response: seattrellis_core::CoreSolveResponse =
         serde_json::from_str(&response_json).expect("response is valid JSON");
     assert_eq!(response.status, SolveStatus::Solved);
-    let total_cost = response.total_cost.expect("feasible solve reports total_cost");
-    assert!(total_cost.is_finite(), "total_cost must be finite, got {total_cost}");
+    let total_cost = response
+        .total_cost
+        .expect("feasible solve reports total_cost");
+    assert!(
+        total_cost.is_finite(),
+        "total_cost must be finite, got {total_cost}"
+    );
 }
 
 /// The pair report computes row/col deltas over every historical pair; the
@@ -175,8 +184,7 @@ fn extreme_rows_do_not_panic_pair_report() {
             {"student_key": "S2", "seat_id": "seat_1"}
         ]}
     ]"#;
-    let report =
-        pair_report_json(request, snapshots, 10, 2).expect("pair report must not panic");
+    let report = pair_report_json(request, snapshots, 10, 2).expect("pair report must not panic");
     let value: serde_json::Value = serde_json::from_str(&report).unwrap();
     assert_eq!(value["history_count"], 1);
 }

@@ -28,6 +28,10 @@ Python 是 oracle（行为基准），Rust 是 v2 目标实现，React 仅是展
 ## 构建与测试
 
 ```bash
+# 前端必须先构建：server 的 build.rs 内嵌 clients/web/dist（M6 解耦），
+# 任何拉入 seattrellis-server 的 workspace 级构建（test/clippy/app）都会因缺失而 panic
+cd clients/web && npm ci && npm run build && cd ../..
+
 # 在根 workspace 执行（三平台 CI 用 --locked）
 cargo test --locked -p seattrellis_core
 cargo test --locked -p seattrellis_cli

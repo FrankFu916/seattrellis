@@ -339,7 +339,8 @@ pub fn score_assignment_json(
                 let height_position = (height - min_height) / (max_height - min_height);
                 // Row deltas in f64: the i32 subtraction of saturated extreme
                 // coordinates would overflow (debug panic) before the cast.
-                let row_position = (seat.row as f64 - min_row as f64) / (max_row as f64 - min_row as f64);
+                let row_position =
+                    (seat.row as f64 - min_row as f64) / (max_row as f64 - min_row as f64);
                 errors.push((height_position - row_position).abs());
             }
             if errors.is_empty() {

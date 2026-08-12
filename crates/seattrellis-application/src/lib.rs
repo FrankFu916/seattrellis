@@ -18,6 +18,31 @@ use serde_json::Value;
 /// renderable plan (request + current assignment) after edits.
 pub type SolveRequestStore = Mutex<HashMap<String, Value>>;
 
+/// Cap on stored solve requests (one per editor draft): mirrors
+/// `editing::MAX_EDITOR_DRAFTS` so the two registries evict in lockstep.
+/// Draft ids are server-generated monotonic, so the smallest key is the
+/// oldest (FIFO, alpha.2/M7 item).
+pub const MAX_SOLVE_REQUESTS: usize = 64;
+
+/// Insert a solve request with the FIFO cap: at [`MAX_SOLVE_REQUESTS`] the
+/// oldest entry (smallest draft id) is evicted, matching the editor store.
+pub fn store_solve_request(
+    store: &SolveRequestStore,
+    draft_id: String,
+    request: Value,
+) -> Result<(), &'static str> {
+    let mut guard = store
+        .lock()
+        .map_err(|_| "solve request store is poisoned")?;
+    guard.insert(draft_id, request);
+    if guard.len() > MAX_SOLVE_REQUESTS {
+        if let Some(oldest) = guard.keys().min().cloned() {
+            guard.remove(&oldest);
+        }
+    }
+    Ok(())
+}
+
 /// A domain error from the application layer. `status` is the HTTP status
 /// the transport should reply with; `code` is the stable machine-readable
 /// error code; `message` is the human-facing detail.
@@ -69,5 +94,30 @@ impl AppError {
             code: "invalid_solve_request",
             message: message.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn solve_request_store_evicts_oldest_at_the_cap() {
+        // alpha.2/M7 item: mirrors the editor store cap so the two
+        // registries evict in lockstep (smallest draft id = oldest).
+        let store = SolveRequestStore::default();
+        for index in 0..(MAX_SOLVE_REQUESTS + 4) {
+            let id = format!("draft-{index:06}");
+            store_solve_request(&store, id, json!({"index": index})).unwrap();
+        }
+        let guard = store.lock().unwrap();
+        assert_eq!(guard.len(), MAX_SOLVE_REQUESTS, "store stays at the cap");
+        assert!(!guard.contains_key("draft-000000"), "oldest evicted first");
+        assert!(
+            guard.contains_key(&format!("draft-{:06}", MAX_SOLVE_REQUESTS + 3)),
+            "newest survives"
+        );
     }
 }

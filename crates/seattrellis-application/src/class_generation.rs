@@ -10,7 +10,7 @@ use std::time::SystemTime;
 
 use serde_json::{json, Value};
 
-use crate::{AppError, SolveRequestStore};
+use crate::{store_solve_request, AppError, SolveRequestStore};
 use seattrellis_core::cost::{
     classify_seat_position, detect_neighbor_relation_types, student_pair_key,
 };
@@ -162,12 +162,8 @@ pub fn generate_class(
 
     // Remember the (core-shaped) request that produced this draft so export
     // can rebuild the full plan (request + current assignment) after edits.
-    match solve_requests.lock() {
-        Ok(mut guard) => {
-            guard.insert(draft_id.clone(), core_request);
-        }
-        Err(_) => return Err(AppError::internal("solve request store is poisoned")),
-    }
+    store_solve_request(solve_requests, draft_id.clone(), core_request)
+        .map_err(AppError::internal)?;
 
     Ok(GenerateClassOutcome {
         feasible: true,
@@ -948,12 +944,8 @@ fn generate_candidate_set(
             Ok(state) => state,
             Err(message) => return Err(AppError::internal(&message)),
         };
-        match solve_requests.lock() {
-            Ok(mut guard) => {
-                guard.insert(draft_id.clone(), core_request.clone());
-            }
-            Err(_) => return Err(AppError::internal("solve request store is poisoned")),
-        }
+        store_solve_request(solve_requests, draft_id.clone(), core_request.clone())
+            .map_err(AppError::internal)?;
         let total_score = candidate
             .get("plan_score")
             .and_then(|score| score.get("total"))

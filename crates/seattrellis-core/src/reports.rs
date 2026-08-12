@@ -367,8 +367,10 @@ pub fn pair_report_json(
                 }
                 // Deltas in i64: the i32 subtraction of saturated extreme
                 // coordinates would overflow (debug panic).
-                let row_delta = (i64::from(first_seat.row) - i64::from(second_seat.row)).unsigned_abs();
-                let col_delta = (i64::from(first_seat.col) - i64::from(second_seat.col)).unsigned_abs();
+                let row_delta =
+                    (i64::from(first_seat.row) - i64::from(second_seat.row)).unsigned_abs();
+                let col_delta =
+                    (i64::from(first_seat.col) - i64::from(second_seat.col)).unsigned_abs();
                 pair.records.push(json!({
                     "snapshot_index": snapshot_index,
                     "first_seat_id": first_seat_id,
