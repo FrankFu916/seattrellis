@@ -222,7 +222,13 @@ pub fn generate_rotation_plan_from_core(
     let pair_summary = pair_repeat_summary_from_history(&final_pair_history, snapshots.len());
 
     let plan = json!({
-        "schema_version": "0.2.2",
+        // Mirror the oracle artifact contract: Python writes
+        // ROTATION_PLAN_SCHEMA_VERSION = "1.0" (schema.py:14); the v1
+        // rotation-plan.schema.json declares the same default. The old
+        // "0.2.2" string was copied from the candidate-set contract and
+        // made Rust rotation plans invalid against the oracle schema
+        // (ledger §19.33).
+        "schema_version": "1.0",
         "kind": "rotation_plan",
         "name": plan_name,
         "periods": periods,

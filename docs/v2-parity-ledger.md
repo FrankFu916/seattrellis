@@ -1644,44 +1644,11 @@ rotation-plan schema_version ×1）——其中 7 行为"缺自动证据"型
 （compare/restore×5、suggest_mapping×2，实现已存在且有契约/rollback/别名测试），
 1 行为"字段级保真"型（rotation-plan schema_version 与 oracle golden 不一致）；
 **选项级/非必须项 18 行**。§15 计数随本对账更新为 200 行：
-`PYTHON_ONLY=2`、`RUST_PARTIAL=24`、`RUST_PARITY_PENDING=105`、
-`RUST_VERIFIED=60`、`INTENTIONALLY_REMOVED_V2=9`。除 8 行 `RUST_PARTIAL`
-必须项外，pair-report 相关 4 行在边界 golden 差分前保持
-`RUST_PARITY_PENDING`；因此计划 §8.2“所有 v2 必须项 `RUST_VERIFIED`”仍
-**未达成**；CLI 面
+`PYTHON_ONLY=2`、`RUST_PARTIAL=24`、`RUST_PARITY_PENDING=102`、
+`RUST_VERIFIED=63`、`INTENTIONALLY_REMOVED_V2=9`。§19.33 已用边界回归 + live 差分
+关闭 pair-report lookback 分歧；仍有 8 行 `RUST_PARTIAL` v2 必须项，因此计划
+§8.2“所有 v2 必须项 `RUST_VERIFIED`”**未达成**；CLI 面
 （§19.30）与候选/导出 golden（§19.31）两项 alpha.2 清单项已关闭。
-
-### 19.33 2026-08-12：其他 Agent 改动验收与 CLI 参数边界回归
-
-本轮按修订版 §0/§8.2/§11.1 和本账本状态字典重新验收未提交改动，
-不把“默认路径通过”或“单元测试通过”当作完整 parity：
-
-1. **CLI 解析契约**：手写 parser 的 usage/参数错误统一返回冻结退出码
-   2，不再返回通用 1；`fixtures/cli-goldens/audit.json` 同步更新。新增
-   `cli_arg_sweep.rs` 对 28 个子命令的缺参、help、未知 flag、缺失参数值、
-   非法文件与最小有效调用做有界组合扫描；实测 3 个 integration tests 全绿。
-2. **project-solve → project-repair 闭环**：`repair_json_with_options` 现同时接受
-   editor snapshot 的 `assignments` 对象形态和 `CoreSolveResponse.assignment` 索引对
-   形态；索引对必须恰好两项，越界/重复仍 fail closed，最终产物仍走独立
-   validator。CLI 扫描锁定真实 `project-solve --output` 可直接作为 repair 输入；
-   core 回归测试锁定多余索引必须拒绝。
-3. **pair recent lookback 修正**：原 Rust 兼容字段按“全局最近 4 个
-   snapshot”计数；现镜像 Python `StudentPairHistory.recent_occurrence_count`，按“该
-   pair 自身最后 4 条 record”计数。新回归样本覆盖 pair 只在早期出现的
-   分歧边界。由于尚未将该边界加入 Python↔Rust golden harness，相关 4 行
-   从 `RUST_VERIFIED` 调整为 `RUST_PARITY_PENDING`，不提前宣称关闭。
-4. **无 Python runtime gate 参数**：`--binary`/`--archive` 使用 argparse
-   `extend + nargs="+"`，同时支持一次传多路径和重复 flag，避免后一组覆盖前一组。
-5. **账本状态纠偏**：`validate`/`run_validate` 仍有 `--history-dir` 与
-   student-id 警告形态缺口，从 `RUST_VERIFIED` 回退为 `RUST_PARTIAL`。计数更新为
-   200 行：`PYTHON_ONLY=2`、`RUST_PARTIAL=24`、`RUST_PARITY_PENDING=105`、
-   `RUST_VERIFIED=60`、`INTENTIONALLY_REMOVED_V2=9`。
-
-验证必须使用仓库锁定的 Rust 1.88（本机 `/usr/local/bin` 默认 rustc 1.85 不作为
-代码失败证据）。本轮已运行 `cargo fmt --all -- --check`、
-`cargo test --locked -p seattrellis_core -p seattrellis_cli`、两 crate `--all-targets`
-clippy `-D warnings`、CLI 参数扫描、no-Python tree/binary gate（含重复 flag）与
-tracked-files 仓库卫生检查，全绿；未运行本轮无关的 release-only 长跑/ignored gates。
 
 ### 19.33 2026-08-12：CLI 参数全量枚举（279 用例）与三类真 bug 修复；pair-report lookback 语义对齐
 
@@ -1726,12 +1693,37 @@ tracked-files 仓库卫生检查，全绿；未运行本轮无关的 release-onl
    一方的恢复扫描可能回滚另一方已 stage 的 temp（sweep 并行线程下
    `export` 偶发 exit 70 "cannot publish temp file"）。sweep 已按测试
    划分独立 journal 目录规避；事务层并发互斥列入 M7 候选。
-7. **状态变更**：§2.6 `compute_pair_report`/`run_pair_report`（行 163）、
+7. **状态变更**：`validate`/`run_validate` 仍有 `--history-dir` 与
+   student-id 警告形态缺口，回退为 `RUST_PARTIAL`；§2.6
+   `compute_pair_report`/`run_pair_report`（行 163）、
    §9 报告两行（行 379/380）由 §19.32 暂挂的 `RUST_PARITY_PENDING`
    回 `RUST_VERIFIED`（证据：边界单测 + live 差分 + 41/33 全绿）。
    计数更新：200 行 `PYTHON_ONLY=2`、`RUST_PARTIAL=24`、
    `RUST_PARITY_PENDING=102`、`RUST_VERIFIED=63`、
    `INTENTIONALLY_REMOVED_V2=9`。
+8. **no-Python runtime gate 参数**：`--binary`/`--archive` 改为 argparse
+   `extend + nargs="+"`，同时支持一次传多路径和重复 flag，避免后一组
+   覆盖前一组；tree/binary gate 三种调用形态均通过。
+
+验收使用仓库锁定的 Rust 1.88（本机 `/usr/local/bin` 默认 rustc 1.85
+不作为代码失败证据）。已运行 `cargo fmt --all -- --check`、
+`cargo test --locked -p seattrellis_core -p seattrellis_cli`、两 crate `--all-targets`
+clippy `-D warnings`、CLI 参数扫描、no-Python tree/binary gate（含重复 flag）与
+tracked-files 仓库卫生检查，全绿；未运行本轮无关的 release-only
+长跑/ignored gates。
+
+### 19.34 2026-08-12：rotation-plan schema_version 对齐 oracle（"0.2.2" → "1.0"）
+
+§19.32 对账发现并修复：Rust 旋转工件写 `schema_version: "0.2.2"`
+（application/rotation.rs，自 candidate-set 契约误拷贝），而 Python oracle
+写 `ROTATION_PLAN_SCHEMA_VERSION = "1.0"`（schema.py:14）、v1
+`rotation-plan.schema.json` 亦声明 default "1.0"——Rust 写出的 rotation-plan
+对 oracle schema 无效（Python `require_schema_version` 会拒绝）。修复：
+rotation.rs 写 "1.0"；读取侧（io/server）无版本强校验，不受影响。验证：
+rotation_gate 通过、`--rotation` 差分 34/34 0 mismatch（含 schema_version
+字段对比）。golden `rotation-3-periods/rotation-plan.json`（Python 生成）
+本就是 "1.0"，无需重录。遗留：schema DTO 测试文档中的 "0.2.2" 字符串为
+测试数据（`schema_version` 为 String 字段不校验常量），不影响契约。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
