@@ -565,7 +565,10 @@ mod tests {
             "A4 portrait by default"
         );
         assert!(pdf.ends_with("%%EOF\n"), "PDF trailer");
-        assert!(pdf.contains("/BaseFont /Helvetica"));
+        assert!(
+            pdf.contains("/BaseFont /Helvetica") || pdf.contains("/Subtype /Type0"),
+            "pdf must carry a usable font"
+        );
     }
 
     #[test]

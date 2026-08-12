@@ -5,6 +5,7 @@
 //! code; the CLI's own renderer mirrors these functions.
 
 pub mod export;
+pub mod fonts;
 pub mod office;
 pub mod print_html;
 pub mod render;

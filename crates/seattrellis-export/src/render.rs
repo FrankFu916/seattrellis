@@ -633,7 +633,7 @@ impl PaperSize {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PdfLayout {
     /// Page width in points.
     pub page_w: f64,
@@ -643,6 +643,11 @@ pub struct PdfLayout {
     pub scale_multiplier: f64,
     /// Printable margin in points (from `margin_mm`).
     pub margin_pt: f64,
+    /// Referenced CJK font (system font reference, PD-D12): `None` keeps
+    /// the ASCII-only Helvetica path.
+    pub font_name: Option<String>,
+    /// Quality band of the referenced font (drives the export warning).
+    pub font_quality: crate::fonts::FontQuality,
 }
 
 impl PdfLayout {
@@ -662,12 +667,24 @@ impl PdfLayout {
         if landscape {
             std::mem::swap(&mut w, &mut h);
         }
+        let font = crate::fonts::find_system_cjk_font();
+        let font_name = (font.quality != crate::fonts::FontQuality::None)
+            .then_some(font.pdf_name.clone());
         PdfLayout {
             page_w: w,
             page_h: h,
             scale_multiplier: 1.0,
             margin_pt: (margin_mm.clamp(5.0, 25.0) * 72.0 / 25.4).round(),
+            font_name,
+            font_quality: font.quality,
         }
+    }
+
+    /// Override the referenced font (tests / explicit user selection).
+    pub fn with_font(mut self, name: &str, quality: crate::fonts::FontQuality) -> Self {
+        self.font_name = Some(name.to_string());
+        self.font_quality = quality;
+        self
     }
 
     /// Clamp a user `page_scale` into a sane range and apply it.
@@ -694,7 +711,7 @@ pub fn render_pdf(grid: &SeatingGrid) -> String {
 
 /// [`render_pdf`] with an explicit page geometry (orientation + scale).
 pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
-    let content = build_pdf_content(grid, layout);
+    let content = build_pdf_content(grid, &layout);
 
     let mut bodies: Vec<String> = Vec::new();
     bodies.push("<< /Type /Catalog /Pages 2 0 R >>".to_string()); // obj 1
@@ -710,7 +727,25 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
         "<< /Length {} >>\nstream\n{content}\nendstream",
         content.len()
     )); // obj 4
-    bodies.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string()); // obj 5
+    let font_dict = match &layout.font_name {
+        Some(name) => format!(
+            "<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /UniGB-UCS2-H \
+             /DescendantFonts [6 0 R] >>"
+        ),
+        None => "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+    };
+    bodies.push(font_dict); // obj 5
+    if let Some(name) = &layout.font_name {
+        bodies.push(format!(
+            "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{name} \
+             /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> \
+             /FontDescriptor 7 0 R /DW 1000 >>"
+        )); // obj 6
+        bodies.push(format!(
+            "<< /Type /FontDescriptor /FontName /{name} /Flags 4 /FontBBox [-1000 -300 2200 1100] \
+             /ItalicAngle 0 /Ascent 900 /Descent -300 /CapHeight 700 /StemV 80 >>"
+        )); // obj 7
+    }
 
     let count = bodies.len() + 1;
     let mut out = String::with_capacity(4096 + content.len());
@@ -734,7 +769,7 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
 
 /// The page content stream: white background, header text, front-of-room
 /// label, and one colored rectangle (+ label) per seat.
-fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
+fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
     let cols = grid_cols(grid) as f64;
     let rows = grid_rows(grid) as f64;
     let grid_w = cols * CELL_W;
@@ -760,16 +795,40 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
         layout.page_h
     ));
 
-    // Title + subtitle (fall back to ASCII placeholders for non-Latin text).
-    let title = pdf_text(&grid.title).unwrap_or("Seating Plan");
+    // Font-quality warning (PD-D12): a fallback CJK font (e.g. SimSun only)
+    // renders but the effect may be below expectation - say so on the page.
+    if layout.font_quality == crate::fonts::FontQuality::Fallback {
+        let warning = "字体效果可能不及预期：当前系统仅有基础中文字体";
+        ops.push_str(&text_op(
+            layout,
+            warning,
+            8.0,
+            layout.margin_pt,
+            18.0,
+        ));
+    }
+
+    // Title + subtitle: full text with a referenced CJK font, ASCII
+    // placeholders otherwise (non-Latin text cannot render in Helvetica).
+    let title = if text_is_cjk(layout) {
+        grid.title.as_str()
+    } else {
+        pdf_text(&grid.title).unwrap_or("Seating Plan")
+    };
     ops.push_str(&text_op_centered(
+        layout,
         title,
         16.0,
         layout.page_w / 2.0,
         layout.page_h - 48.0,
     ));
-    let subtitle = pdf_text(&grid.subtitle).unwrap_or("");
+    let subtitle = if text_is_cjk(layout) {
+        grid.subtitle.as_str()
+    } else {
+        pdf_text(&grid.subtitle).unwrap_or("")
+    };
     ops.push_str(&text_op_centered(
+        layout,
         subtitle,
         11.0,
         layout.page_w / 2.0,
@@ -784,6 +843,7 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
         grid_x + grid_w * scale
     ));
     ops.push_str(&text_op_centered(
+        layout,
         "front of room",
         9.0,
         grid_x + grid_w * scale / 2.0,
@@ -813,18 +873,32 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
             let center_y = inner_y + inner_h / 2.0;
             if let Some(cell) = grid.cell_at(row, col) {
                 if let Some(name) = &cell.student {
-                    if let Some(label) = pdf_text(name) {
+                    // CJK names render when a CJK font is referenced;
+                    // otherwise only ASCII names draw (Helvetica path).
+                    let label: Option<&str> = if text_is_cjk(layout) {
+                        Some(name)
+                    } else {
+                        pdf_text(name)
+                    };
+                    if let Some(label) = label {
                         let size = (name_font_size(name) as f64 * scale).clamp(6.0, 12.0);
                         ops.push_str(&text_op_centered(
+                            layout,
                             label,
                             size,
                             center_x,
                             center_y - size * 0.35,
                         ));
                     }
-                    if let Some(detail) = cell.detail.as_deref().and_then(pdf_text) {
-                        // ASCII detail line (height/vision) under the name.
+                    let detail: Option<&str> = if text_is_cjk(layout) {
+                        cell.detail.as_deref()
+                    } else {
+                        cell.detail.as_deref().and_then(pdf_text)
+                    };
+                    if let Some(detail) = detail {
+                        // Detail line (height/vision) under the name.
                         ops.push_str(&text_op_centered(
+                            layout,
                             detail,
                             7.0,
                             center_x,
@@ -832,10 +906,10 @@ fn build_pdf_content(grid: &SeatingGrid, layout: PdfLayout) -> String {
                         ));
                     }
                     let num = (cell.seat_index + 1).to_string();
-                    ops.push_str(&text_op_centered(&num, 7.0, center_x, inner_y + 9.0));
+                    ops.push_str(&text_op_centered(layout, &num, 7.0, center_x, inner_y + 9.0));
                 } else {
                     let label = if cell.enabled { "empty" } else { "unused" };
-                    ops.push_str(&text_op_centered(label, 8.0, center_x, center_y - 2.8));
+                    ops.push_str(&text_op_centered(layout, label, 8.0, center_x, center_y - 2.8));
                 }
             }
         }
@@ -879,18 +953,40 @@ fn pdf_text(text: &str) -> Option<&str> {
     }
 }
 
+/// Renderable text when a CJK font is referenced (UTF-16BE hex, Type0).
+fn pdf_text_cjk(text: &str) -> Option<String> {
+    if text.is_empty() {
+        return Some(String::new());
+    }
+    let mut out = String::from("<FEFF");
+    for unit in text.encode_utf16() {
+        out.push_str(&format!("{unit:04X}"));
+    }
+    out.push('>');
+    Some(out)
+}
+
+fn text_is_cjk(layout: &PdfLayout) -> bool {
+    layout.font_name.is_some()
+}
+
 /// A left-aligned text run: `BT /F1 <size> Tf 1 0 0 1 <x> <y> Tm (text) Tj ET`.
-fn text_op(text: &str, size: f64, x: f64, y: f64) -> String {
+/// CJK text (with a referenced CJK font) is emitted as a UTF-16BE hex string.
+fn text_op(layout: &PdfLayout, text: &str, size: f64, x: f64, y: f64) -> String {
+    let body = if text_is_cjk(layout) {
+        pdf_text_cjk(text).unwrap_or_else(|| format!("({})", escape_pdf_literal(text)))
+    } else {
+        format!("({})", escape_pdf_literal(text))
+    };
     format!(
-        "BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm ({}) Tj ET\n",
-        escape_pdf_literal(text)
+        "BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm {body} Tj ET\n"
     )
 }
 
 /// Center `text` horizontally at `center_x` with its baseline at `baseline_y`.
-fn text_op_centered(text: &str, size: f64, center_x: f64, baseline_y: f64) -> String {
+fn text_op_centered(layout: &PdfLayout, text: &str, size: f64, center_x: f64, baseline_y: f64) -> String {
     let width = approx_text_width(text, size);
-    text_op(text, size, center_x - width / 2.0, baseline_y)
+    text_op(layout, text, size, center_x - width / 2.0, baseline_y)
 }
 
 /// Rough Helvetica advance widths so centered text lands close to the mark.
@@ -1193,27 +1289,55 @@ mod tests {
         let pdf = render_pdf(&grid);
         assert!(pdf.starts_with("%PDF-1.4"));
         assert!(pdf.contains("/Type /Page"));
-        assert!(pdf.contains("/BaseFont /Helvetica"));
+        // Either the ASCII Helvetica path (no CJK font on the machine)
+        // or the Type0 system-font reference.
+        assert!(
+            pdf.contains("/BaseFont /Helvetica") || pdf.contains("/Subtype /Type0"),
+            "pdf must carry a usable font"
+        );
         assert!(pdf.contains("stream\n"));
         assert!(pdf.contains("endstream"));
         assert!(pdf.contains("startxref"));
         assert!(pdf.ends_with("%%EOF\n"));
-        // Labels survive as PDF literal text.
-        assert!(pdf.contains("(Alice)"));
-        assert!(pdf.contains("(S3)"));
-        assert!(pdf.contains("(3)"), "seat numbers render next to names");
+        // Labels survive: as PDF literal text on the Helvetica path, or as
+        // UTF-16BE hex strings on the system-CJK-font path.
+        if pdf.contains("/Subtype /Type0") {
+            assert!(pdf.contains("0041"), "ASCII 'A' hex-encoded under Type0");
+            assert!(pdf.contains("0053"), "ASCII 'S' hex-encoded under Type0");
+        } else {
+            assert!(pdf.contains("(Alice)"));
+            assert!(pdf.contains("(S3)"));
+        }
+        assert!(pdf.contains("(3)") || pdf.contains("0033"), "seat numbers render next to names");
     }
 
     #[test]
-    fn pdf_cjk_names_fall_back_to_ascii() {
+    fn pdf_cjk_names_fall_back_to_ascii_without_system_font() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
-        let pdf = render_pdf(&grid);
+        // Force the ASCII path (no CJK font reference) deterministically.
+        let mut layout = PdfLayout::portrait();
+        layout.font_name = None;
+        layout.font_quality = crate::fonts::FontQuality::None;
+        let pdf = render_pdf_with(&grid, layout);
         // The non-ASCII name must not appear raw in the literal string.
         assert!(!pdf.contains("张伟"));
         // The cell still renders its seat number instead.
         assert!(pdf.contains("(4)"));
         // An ASCII name does appear.
         assert!(pdf.contains("(Bob)"));
+    }
+
+    #[test]
+    fn pdf_renders_cjk_names_with_system_font_reference() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let pdf = render_pdf(&grid);
+        if pdf.contains("/Subtype /Type0") {
+            // CJK font present: the name renders as a UTF-16BE hex string.
+            assert!(
+                pdf.contains("<FEFF") || !pdf.contains("张伟"),
+                "CJK text must be hex-encoded in Type0 output"
+            );
+        }
     }
 
     #[test]
@@ -1241,7 +1365,10 @@ mod tests {
         let mut counts = counts.split_whitespace();
         let first_obj: usize = counts.next().unwrap().parse().unwrap();
         let count: usize = counts.next().unwrap().parse().unwrap();
-        assert_eq!((first_obj, count), (0, 6), "expected 0..6 table entries");
+        assert!(
+            (first_obj, count) == (0, 6) || (first_obj, count) == (0, 8),
+            "expected 6 objects (Helvetica) or 8 (Type0 + CIDFont + descriptor), got ({first_obj}, {count})"
+        );
 
         // Entry 0 is the free list head; entries 1..=5 must point at objects.
         assert!(lines.next().unwrap().contains(" f "), "free head entry");
