@@ -4833,3 +4833,42 @@ input:focus-visible,
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.56rem;
 }
+
+/* ---------- import preview row badges (B8 / D8) ---------- */
+
+.roster-preview-row[data-conflict="true"] {
+  background: color-mix(in srgb, var(--danger, #dc2626) 6%, transparent);
+}
+
+.roster-preview-row [role="cell"][data-empty="true"] {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.roster-row-badge {
+  min-width: 64px;
+}
+
+.roster-confirm-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-medium);
+  background: var(--surface-soft);
+}
+
+.preview-confirm-hint {
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 8px;
+}

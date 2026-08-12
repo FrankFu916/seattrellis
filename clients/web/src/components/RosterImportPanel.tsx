@@ -408,15 +408,39 @@ export function RosterImportPanel({
                 </span>
               ))}
             </div>
-            {draft.preview_rows.map((row) => (
-              <div key={row.row_number} role="row" className="roster-preview-row">
-                {row.cells.map((cell, idx) => (
-                  <span key={idx} role="cell">
-                    {cell === null ? "" : String(cell)}
+            {draft.preview_rows.map((row) => {
+              // D8: per-row conflict badge on the same screen as the mapping.
+              const conflicted = preview?.conflicts.some(
+                (conflict) =>
+                  conflict.incoming_index !== null &&
+                  conflict.incoming_index + 2 === row.row_number,
+              );
+              return (
+                <div
+                  key={row.row_number}
+                  role="row"
+                  className="roster-preview-row"
+                  data-conflict={conflicted ? "true" : undefined}
+                >
+                  {row.cells.map((cell, idx) => (
+                    <span
+                      key={idx}
+                      role="cell"
+                      data-empty={cell === null ? "true" : undefined}
+                    >
+                      {cell === null ? "" : String(cell)}
+                    </span>
+                  ))}
+                  <span role="cell" className="roster-row-badge">
+                    {conflicted ? (
+                      <span className="chip chip-red">
+                        {t("roster.conflictBadge")}
+                      </span>
+                    ) : null}
                   </span>
-                ))}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
 
           <fieldset className="mapping-fieldset">
