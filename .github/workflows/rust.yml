@@ -36,16 +36,14 @@ jobs:
       - name: Install CJK fonts (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
-      - name: Test the core
-        run: cargo test --locked -p seattrellis_core
-      - name: Test the CLI
-        run: cargo test --locked -p seattrellis_cli
-      - name: Test the desktop app server
-        run: cargo test --locked -p seattrellis_app
-      - name: Clippy (core + CLI)
-        run: cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
-      - name: Clippy (app)
-        run: cargo clippy --all-targets -p seattrellis_app -- -D warnings
+      # Test every crate: the previous per-crate list silently skipped
+      # schema/domain/export/io/rules/application/server, which let an
+      # MSRV compile break in seattrellis-schema ship undetected
+      # (schema audit 2026-08-12). The PyO3 shim stays excluded.
+      - name: Test the workspace (except the PyO3 shim)
+        run: cargo test --locked --workspace --exclude seattrellis_native
+      - name: Clippy (workspace, except the PyO3 shim)
+        run: cargo clippy --all-targets --workspace --exclude seattrellis_native -- -D warnings
 
   contract-drift:
     # M1-06: the OpenAPI document and the generated TypeScript client must
