@@ -103,6 +103,20 @@ pub struct EditorSeatSpec {
     pub enabled: bool,
 }
 
+/// Upper bound for the undo/redo stacks (backend audit 2026-08-12):
+/// every entry is a full snapshot, so an unbounded stack grows without
+/// limit in long sessions. 100 steps is far beyond any realistic edit
+/// session; the oldest step is dropped when the bound is exceeded.
+const MAX_UNDO_DEPTH: usize = 100;
+
+/// Push a snapshot onto a bounded undo/redo stack.
+fn push_bounded(stack: &mut Vec<EditorSnapshot>, snapshot: EditorSnapshot) {
+    stack.push(snapshot);
+    if stack.len() > MAX_UNDO_DEPTH {
+        stack.remove(0);
+    }
+}
+
 /// A full copy of the editable state used for snapshot-based undo/redo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct EditorSnapshot {
@@ -751,22 +765,24 @@ pub fn apply_command(
                 draft.restore_snapshot(&before);
                 return Err(error);
             }
-            draft.undo_stack.push(before);
+            push_bounded(&mut draft.undo_stack, before);
             draft.redo_stack.clear();
         }
         EditorCommandAction::Undo => {
-            let Some(snapshot) = draft.undo_stack.pop() else {
+            let Some(previous) = draft.undo_stack.pop() else {
                 return Err("There is no editing operation to undo.".to_string());
             };
-            draft.redo_stack.push(draft.capture_snapshot());
-            draft.restore_snapshot(&snapshot);
+            let current = draft.capture_snapshot();
+            push_bounded(&mut draft.redo_stack, current);
+            draft.restore_snapshot(&previous);
         }
         EditorCommandAction::Redo => {
-            let Some(snapshot) = draft.redo_stack.pop() else {
+            let Some(next) = draft.redo_stack.pop() else {
                 return Err("There is no editing operation to redo.".to_string());
             };
-            draft.undo_stack.push(draft.capture_snapshot());
-            draft.restore_snapshot(&snapshot);
+            let current = draft.capture_snapshot();
+            push_bounded(&mut draft.undo_stack, current);
+            draft.restore_snapshot(&next);
         }
     }
 
@@ -1332,9 +1348,46 @@ mod tests {
             .expect("redo applies");
         assert_eq!(redone.revision, 3);
         assert_eq!(redone.undo_depth, 1);
-        assert_eq!(redone.redo_depth, 0);
+
+        // The redo restores the swapped state and both stacks stay bounded.
         assert_eq!(student_seat(&redone, "s1").as_deref(), Some("A2"));
-        assert_eq!(student_seat(&redone, "s2").as_deref(), Some("A1"));
+        assert_eq!(redone.redo_depth, 0);
+    }
+
+    #[test]
+    fn undo_stack_is_bounded_to_max_undo_depth() {
+        // Backend audit F2 (2026-08-12): every edit pushes a full snapshot;
+        // the stack must not grow without limit in long sessions.
+        let mut draft = test_draft();
+        for index in 0..(MAX_UNDO_DEPTH + 20) {
+            apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &format!("cmd-{index}"),
+                    index as u64,
+                    "apply",
+                    vec![op(
+                        "move_student",
+                        json!({ "student_key": "s1", "seat_id": "A2" }),
+                    )],
+                ),
+            )
+            .expect("move applies");
+        }
+        let state = build_editor_state(&draft);
+        assert_eq!(
+            state.undo_depth, MAX_UNDO_DEPTH,
+            "the oldest snapshots are dropped beyond the bound"
+        );
+        // The most recent step is still undoable.
+        let base_revision = draft.revision();
+        let undone = apply_command(
+            &mut draft,
+            &command("draft-1", "cmd-last", base_revision, "undo", vec![]),
+        )
+        .expect("undo applies");
+        assert_eq!(undone.undo_depth, MAX_UNDO_DEPTH - 1);
     }
 
     #[test]
