@@ -1222,7 +1222,13 @@ fn relative_path(roots: &[PathBuf], root_index: usize, path: &Path) -> Result<St
         )
     })?;
     let text = path_as_utf8(relative, "transaction-relative path")?;
-    validate_relative_path(text, "transaction-relative path")?;
+    // The journal stores platform-neutral forward-slash paths: on Windows
+    // `strip_prefix` yields backslash separators, which the journal
+    // validator rejects (and would make the stored string machine-specific).
+    // `Path::join` accepts forward slashes on every platform, so reading
+    // the journal back is unaffected.
+    let text = text.replace('\\', "/");
+    validate_relative_path(&text, "transaction-relative path")?;
     Ok(text.to_string())
 }
 
