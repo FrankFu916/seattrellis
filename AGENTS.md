@@ -72,7 +72,10 @@ python scripts/rust_python_diff.py --fixtures  # Python oracle vs Rust CLI 七�
   `--time-limit 1800`（墙钟截止的 solve 不稳定，短预算会产出不可重放的 golden；
   verify 对截止命中的运行显式 SKIP）。
 - 导出 golden：**无任何格式字节稳定**（时间戳嵌入/zlib/zip mtime），只记录语义契约，
-  格式与隐私 parity 属修订版 §5.6/M2 未通过项。candidates golden 仅 n≤40；n=50/60/80 与 1/5/20 候选组合是修订版 §6.3/§6.6 M3 Exit Gate 阻断，不得推迟成 M4 任务。
+  格式与隐私 parity 属修订版 §5.6/M2 未通过项。candidates golden 已扩展至 n=50/60/80 的
+  1/5/20 组合（ledger §19.31：p50×{1,5,20}、p60×{1,5}、p80×{1} 提交字节稳定 golden；
+  p60×20/p80×5/p80×20 因确定性预算超出 CI 重放时限，由 live 差分 15 combos 与 Rust
+  candidates gate 测试覆盖）。
 - 账本最后记录的 diff 仍有 unknown rule/soft field 和 bad adjacency 差距；如代码已修复，必须重跑自动差分并在 ledger 登记 fixture 证据，不得用单元测试代替 `RUST_VERIFIED`。
 
 ## M1 实现盘点（修订版 §4，2026-08-09）
@@ -160,6 +163,40 @@ official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修�
   全生命周期（§5.5）、repair 空座锁 + saved locks、roster 别名镜像。
   §19.18 登记的四项未闭合项全部闭合。剩余边界：CLI 参数组合全量枚举、
   fuzz corpus 长期积累。
+
+## M5 进度（2026-08-12）
+
+- **阶段 A（导出/打印/字体/PNG/默认值/示例/registry）已完成**（ledger
+  §19.19）：导出选项统一、print-html 独立版式、PDF 系统字体引用（后经
+  §19.26 重做为光栅页）、PNG 2x 文字渲染、默认值矩阵、示例名单资产、
+  规则 registry 消费。
+- **阶段 B（批 1 融合形态 B1–B8）已完成**（ledger §19.20）：导航/画布/
+  规则/快速高级/候选/诊断/历史轮换/导入，浏览器 E2E 全绿。
+- **阶段 C（桌面与平台）已完成**（ledger §19.22）：D14 三入口文件选择
+  （Tauri dialog + 拖拽 + 可信根路径）、平台自适应（⌘/Ctrl、减动效）、
+  触控 Decision Gate（触控非 v2 final 必须项，降级可用）。
+- **阶段 D（alpha.1 收口）已完成**（ledger §19.28–19.29）：
+  - 全流程 NO_PYTHON_RUNTIME E2E 4/4（import→solve→edit→rotation
+    保存→重开→加载→导出默认值），修复 3 处真实 bug（座位点击 pointer
+    capture 回归、generate 视图滚动裁剪、rotation load 缺 period_editors）；
+  - dogfood 冻结（G-4，`docs/product-decisions/2026-08-12-dogfood-closure.md`）：
+    导出默认值（teacher/print-html/A4 横向/public 强制匿名）、打印字号
+    算法、示例名单一键使用（D10 补全）；
+  - §8.3 退出条件对照（`2026-08-12-alpha-exit-check.md`）：条件 2/3/4
+    达成，条件 1（无 RUST_PARTIAL 必须项）未达 → **alpha.2**；
+  - parity 升级：pair-report/schema list/export → RUST_VERIFIED（§19.18
+    golden 证据，§19.29）。
+- **审计轮（2026-08-12）**：后端（`docs/audit-2026-08-12-backend.md`，
+  M1-05/事务/路径全过，undo 栈加 100 步上限）、web
+  （`docs/audit-2026-08-12-web.md`，生成竞态/401 引导/pointer 泄漏/死代码
+  清理）、export（`docs/audit-2026-08-12-export.md`，print-html 网格从未
+  生效的阻断修复、坐标溢出护栏、匿名泄漏学号修复）、core/schema（进行中）。
+- **M6 前置（2026-08-12，c4ba074）**：桌面壳与服务器已解耦 Python 树——
+  frontendDist/resolve_web_root 指向 `clients/web/dist`（发布流程加 npm
+  build）；M6 删除面（src/seattrellis、native、e2e、pyproject、desktop.yml）
+  已确认 Rust 侧无依赖。
+- 发布前平台验收清单（Windows Office 中文渲染/真实打印机/真实班级数据/
+  桌面壳）：`docs/product-decisions/2026-08-12-platform-acceptance-checklist.md`。
 
 ### 2026-08-09 post-merge acceptance audit
 

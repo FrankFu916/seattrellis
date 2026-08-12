@@ -22,7 +22,8 @@ export type CatalogResponse = {
 
 export type HealthResponse = {
   status: "ok";
-  version?: string;
+  service: string;
+  api_version: string;
 };
 
 export type BootstrapData = {
@@ -484,10 +485,19 @@ export type CandidateSummary = {
   total_score: number;
 };
 
+/** The `goal` object the server echoes in every generate response. */
+export type GenerateClassGoal = {
+  goal_id: string;
+  title: string;
+  description: string;
+  preset_name: string | null;
+};
+
 export type GenerateClassSolvedResponse = {
   status: "Solved";
   feasible: true;
   class_name: string;
+  goal: GenerateClassGoal;
   recommended_candidate_id: string;
   candidates: CandidateSummary[];
   warnings: string[];
@@ -498,6 +508,7 @@ export type GenerateClassUnsolvedResponse = {
   status: NormalUnsolvedStatus;
   feasible: false;
   class_name: string;
+  goal: GenerateClassGoal;
   recommended_candidate_id: null;
   candidates: [];
   warnings: string[];

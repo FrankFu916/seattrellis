@@ -96,7 +96,10 @@ proptest! {
         // (3) envelope contract: the migration product is a valid v2
         // envelope (kind + schema_version + data), i.e. it validates against
         // the current schema and is canonical-stable (normalization check).
-        prop_assert_eq!(target.get("kind"), Some(&json!("student_roster")));
+        prop_assert_eq!(
+            target.get("kind").and_then(Value::as_str),
+            Some("student_roster")
+        );
         prop_assert!(target.get("schema_version").is_some());
         prop_assert!(target.get("data").is_some());
 
@@ -124,7 +127,10 @@ proptest! {
         let re_read: Value = serde_json::from_str(&serde_json::to_string(&target).unwrap()).unwrap();
         prop_assert_eq!(canonical_json(&target), canonical_json(&re_read));
 
-        prop_assert_eq!(target.get("kind"), Some(&json!("classroom_layout")));
+        prop_assert_eq!(
+            target.get("kind").and_then(Value::as_str),
+            Some("classroom_layout")
+        );
         prop_assert_eq!(
             target["data"]["seats"].as_array().map(|s| s.len()).unwrap_or(0),
             seat_count

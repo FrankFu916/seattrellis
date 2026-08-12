@@ -133,7 +133,7 @@ export function createSeatAssignments(
 }
 
 export const demoBootstrap: BootstrapData = {
-  health: { status: "ok" },
+  health: { status: "ok", service: "seattrellis-demo", api_version: "1" },
   catalogs: demoCatalogs,
   source: "demo",
 };
