@@ -1263,6 +1263,34 @@ slate/ivory/clay/cloud/olive/coral/sky/heather + 衬线标题/无衬线
    app.css 全部 `data-theme` 特定段（77 行）。
 5. 验证：146 vitest、typecheck、build 全绿；浏览器确认页头仅剩
    语言选择器；像素值待 G-4 dogfood 冻结。
+
+### 19.24 2026-08-12：导出功能实测修复（dogfood 反馈）
+
+产品负责人实测反馈：导出"几乎全部不可用"——文字不显示 / HTML 表格
+巨大占满屏幕且字小。逐格式实测（8 格式全部导出 + reader 检查）：
+
+1. **PDF 文字不显示（根因修复）**：手写 PDF 使用 `/Encoding
+   /UniGB-UCS2-H` + UTF-16BE，依赖查看器内置 CMap 文件；poppler
+   及多个查看器没有该 CMap，全部文字拒绝渲染（`No font in show`）。
+   改为 **`/Encoding /Identity-H` + `/CIDToGIDMap /Identity`**，文本
+   编码为**字形索引（GID）的 2 字节 hex**（fontdue 解析系统字体 cmap
+   查 GID，无 BOM）——Identity-H 是全部 PDF 查看器内置能力，不再有
+   CMap 依赖。验证：poppler 报错消失、sips/CoreGraphics 渲染有文字
+   墨迹（对比基线）；字体替换场景按 D12 决策接受（同平台查看器有
+   被引用字体）。新增契约测试（无 UniGB、有 Identity-H/CIDToGIDMap、
+   无 BOM）。
+2. **HTML 表格溢出 + 字小（修复）**：基础 html 原为固定 92px 单元格
+   + 12px 字（9px 详情），小屏/投影下溢出且不可读。改为
+   `table-layout: fixed` + `width:100%` + `max-width:1000px` 响应式
+   均分，字号升至 15px 姓名 / 11px 详情 / 22px 标题，640px 以下
+   再降档。
+3. **逐格式复查（非问题）**：SVG（51 个 text 元素含中文名）、PNG
+   （fontdue 光栅化墨迹正常；长姓名自动缩字属设计）、print-html
+   （字号算法正确：最长姓名→统一字号、24pt 上限、8pt 下限、截断
+   提示；mm 布局为打印资产，屏幕打开显示 mm 版式属正常）、
+   XLSX（inlineStr 含名）、DOCX（w:t 含名）、PPTX（a:t 含名）。
+4. 验证：export 51 测试（+2：Identity-H 契约）、server 86 测试全绿；
+   8 格式产物经 reader/渲染实测。
 ### 19.21 2026-08-12：UI 视觉打磨首轮（设计方向 §8.2 像素 token 制定）
 
 产品负责人决策（记录：`docs/product-decisions/2026-08-12-ui-visual-polish.md`）：

@@ -374,25 +374,26 @@ pub fn render_html(grid: &SeatingGrid) -> String {
     out.push_str(&format!("<title>{}</title>\n", escape_text(&grid.title)));
     out.push_str("<style>\n");
     out.push_str("  body { font-family: -apple-system, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK\", \"Hiragino Sans GB\", sans-serif; margin: 24px; color: #1c2733; }\n");
-    out.push_str("  h1 { font-size: 18px; margin: 0 0 4px; text-align: center; }\n");
+    out.push_str("  h1 { font-size: 22px; margin: 0 0 4px; text-align: center; }\n");
     out.push_str(
-        "  p.sub { font-size: 12px; color: #5a6b7f; margin: 0 0 12px; text-align: center; }\n",
+        "  p.sub { font-size: 14px; color: #5a6b7f; margin: 0 0 12px; text-align: center; }\n",
     );
     out.push_str(
-        "  p.front { font-size: 11px; color: #8a97a6; margin: 0 0 6px; text-align: center; }\n",
+        "  p.front { font-size: 12px; color: #8a97a6; margin: 0 0 6px; text-align: center; }\n",
     );
-    out.push_str(
-        "  table.seating { border-collapse: separate; border-spacing: 6px; margin: 0 auto; }\n",
-    );
-    out.push_str("  td { width: 92px; height: 54px; text-align: center; vertical-align: middle; border-radius: 7px; font-size: 12px; }\n");
+    // Fixed-layout table: cells share the printable width evenly and scale
+    // down on narrow windows instead of overflowing the screen.
+    out.push_str("  table.seating { border-collapse: separate; border-spacing: 6px; margin: 0 auto; width: 100%; max-width: 1000px; table-layout: fixed; }\n");
+    out.push_str("  td { height: 58px; text-align: center; vertical-align: middle; border-radius: 7px; font-size: 14px; overflow: hidden; }\n");
     out.push_str("  td.seat { background: #e8f0fe; border: 1px solid #4a7fd4; }\n");
-    out.push_str("  td.seat .name { font-weight: 600; }\n");
-    out.push_str("  td.seat .detail { display: block; font-size: 9px; color: #7b8ea8; }\n");
+    out.push_str("  td.seat .name { font-weight: 600; font-size: 15px; }\n");
+    out.push_str("  td.seat .detail { display: block; font-size: 11px; color: #7b8ea8; }\n");
     out.push_str(
-        "  td.seat .num { display: block; font-size: 9px; color: #7b8ea8; margin-top: 2px; }\n",
+        "  td.seat .num { display: block; font-size: 11px; color: #7b8ea8; margin-top: 2px; }\n",
     );
-    out.push_str("  td.empty { background: #f7f8f9; border: 1px dashed #cfd8e2; color: #9aa7b5; font-size: 10px; }\n");
+    out.push_str("  td.empty { background: #f7f8f9; border: 1px dashed #cfd8e2; color: #9aa7b5; font-size: 11px; }\n");
     out.push_str("  td.void { border: none; }\n");
+    out.push_str("  @media (max-width: 640px) { td { height: 48px; } td.seat .name { font-size: 13px; } td.seat .detail, td.seat .num { font-size: 10px; } }\n");
     out.push_str("</style>\n</head>\n<body>\n");
     out.push_str(&format!("<h1>{}</h1>\n", escape_text(&grid.title)));
     out.push_str(&format!(
@@ -795,7 +796,15 @@ pub fn render_pdf(grid: &SeatingGrid) -> String {
 
 /// [`render_pdf`] with an explicit page geometry (orientation + scale).
 pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
-    let content = build_pdf_content(grid, &layout);
+    // Identity-H + glyph-index text needs the actual font metrics/cmap.
+    // `None` here (no CJK font file on disk) keeps the ASCII Helvetica path
+    // instead of emitting unreadable glyph references.
+    let cjk_font = if layout.font_name.is_some() {
+        crate::fonts::load_cjk_font()
+    } else {
+        None
+    };
+    let content = build_pdf_content(grid, &layout, cjk_font.as_ref());
 
     let mut bodies: Vec<String> = Vec::new();
     bodies.push("<< /Type /Catalog /Pages 2 0 R >>".to_string()); // obj 1
@@ -813,7 +822,7 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
     )); // obj 4
     let font_dict = match &layout.font_name {
         Some(name) => format!(
-            "<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /UniGB-UCS2-H \
+            "<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /Identity-H \
              /DescendantFonts [6 0 R] >>"
         ),
         None => "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
@@ -823,7 +832,7 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
         bodies.push(format!(
             "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{name} \
              /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> \
-             /FontDescriptor 7 0 R /DW 1000 >>"
+             /CIDToGIDMap /Identity /FontDescriptor 7 0 R /DW 1000 >>"
         )); // obj 6
         bodies.push(format!(
             "<< /Type /FontDescriptor /FontName /{name} /Flags 4 /FontBBox [-1000 -300 2200 1100] \
@@ -853,7 +862,11 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
 
 /// The page content stream: white background, header text, front-of-room
 /// label, and one colored rectangle (+ label) per seat.
-fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
+fn build_pdf_content(
+    grid: &SeatingGrid,
+    layout: &PdfLayout,
+    font: Option<&fontdue::Font>,
+) -> String {
     let cols = grid_cols(grid) as f64;
     let rows = grid_rows(grid) as f64;
     let grid_w = cols * CELL_W;
@@ -883,7 +896,7 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
     // renders but the effect may be below expectation - say so on the page.
     if layout.font_quality == crate::fonts::FontQuality::Fallback {
         let warning = "字体效果可能不及预期：当前系统仅有基础中文字体";
-        ops.push_str(&text_op(layout, warning, 8.0, layout.margin_pt, 18.0));
+        ops.push_str(&text_op(layout, warning, 8.0, layout.margin_pt, 18.0, font));
     }
 
     // Title + subtitle: full text with a referenced CJK font, ASCII
@@ -894,11 +907,7 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
         pdf_text(&grid.title).unwrap_or("Seating Plan")
     };
     ops.push_str(&text_op_centered(
-        layout,
-        title,
-        16.0,
-        layout.page_w / 2.0,
-        layout.page_h - 48.0,
+        layout, title, 16.0, layout.page_w / 2.0, layout.page_h - 48.0, font
     ));
     let subtitle = if text_is_cjk(layout) {
         grid.subtitle.as_str()
@@ -906,11 +915,7 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
         pdf_text(&grid.subtitle).unwrap_or("")
     };
     ops.push_str(&text_op_centered(
-        layout,
-        subtitle,
-        11.0,
-        layout.page_w / 2.0,
-        layout.page_h - 66.0,
+        layout, subtitle, 11.0, layout.page_w / 2.0, layout.page_h - 66.0, font
     ));
 
     // Front-of-room divider line and label above the grid.
@@ -926,6 +931,7 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
         9.0,
         grid_x + grid_w * scale / 2.0,
         front_y - 7.0,
+        font,
     ));
 
     for row in grid.min_row..=grid.max_row {
@@ -961,11 +967,7 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
                     if let Some(label) = label {
                         let size = (name_font_size(name) as f64 * scale).clamp(6.0, 12.0);
                         ops.push_str(&text_op_centered(
-                            layout,
-                            label,
-                            size,
-                            center_x,
-                            center_y - size * 0.35,
+                            layout, label, size, center_x, center_y - size * 0.35, font
                         ));
                     }
                     let detail: Option<&str> = if text_is_cjk(layout) {
@@ -976,29 +978,17 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
                     if let Some(detail) = detail {
                         // Detail line (height/vision) under the name.
                         ops.push_str(&text_op_centered(
-                            layout,
-                            detail,
-                            7.0,
-                            center_x,
-                            center_y + 9.0 * scale,
+                            layout, detail, 7.0, center_x, center_y + 9.0 * scale, font
                         ));
                     }
                     let num = (cell.seat_index + 1).to_string();
                     ops.push_str(&text_op_centered(
-                        layout,
-                        &num,
-                        7.0,
-                        center_x,
-                        inner_y + 9.0,
+                        layout, &num, 7.0, center_x, inner_y + 9.0, font
                     ));
                 } else {
                     let label = if cell.enabled { "empty" } else { "unused" };
                     ops.push_str(&text_op_centered(
-                        layout,
-                        label,
-                        8.0,
-                        center_x,
-                        center_y - 2.8,
+                        layout, label, 8.0, center_x, center_y - 2.8, font
                     ));
                 }
             }
@@ -1043,14 +1033,17 @@ fn pdf_text(text: &str) -> Option<&str> {
     }
 }
 
-/// Renderable text when a CJK font is referenced (UTF-16BE hex, Type0).
-fn pdf_text_cjk(text: &str) -> Option<String> {
+/// Renderable text when a CJK font is referenced: glyph indices as
+/// 2-byte CIDs under `/Encoding /Identity-H` (CIDToGIDMap = Identity).
+/// Identity-H is built into every PDF viewer, so no CMap file (e.g.
+/// UniGB-UCS2-H, missing in poppler and several viewers) is required.
+fn pdf_text_cjk(text: &str, font: &fontdue::Font) -> Option<String> {
     if text.is_empty() {
         return Some(String::new());
     }
-    let mut out = String::from("<FEFF");
-    for unit in text.encode_utf16() {
-        out.push_str(&format!("{unit:04X}"));
+    let mut out = String::from("<");
+    for ch in text.chars() {
+        out.push_str(&format!("{:04X}", font.lookup_glyph_index(ch)));
     }
     out.push('>');
     Some(out)
@@ -1061,10 +1054,27 @@ fn text_is_cjk(layout: &PdfLayout) -> bool {
 }
 
 /// A left-aligned text run: `BT /F1 <size> Tf 1 0 0 1 <x> <y> Tm (text) Tj ET`.
-/// CJK text (with a referenced CJK font) is emitted as a UTF-16BE hex string.
-fn text_op(layout: &PdfLayout, text: &str, size: f64, x: f64, y: f64) -> String {
+/// With a referenced CJK font the string is glyph-index hex (Identity-H);
+/// without one the ASCII Helvetica literal path applies. Text that cannot be
+/// encoded at all is skipped (empty ops) rather than emitted as garbage.
+fn text_op(
+    layout: &PdfLayout,
+    text: &str,
+    size: f64,
+    x: f64,
+    y: f64,
+    font: Option<&fontdue::Font>,
+) -> String {
     let body = if text_is_cjk(layout) {
-        pdf_text_cjk(text).unwrap_or_else(|| format!("({})", escape_pdf_literal(text)))
+        match font {
+            Some(font) => pdf_text_cjk(text, font).unwrap_or_default(),
+            // The font name was discovered but its file is unreadable:
+            // keep the ASCII-only path instead of emitting bad glyph refs.
+            None => match pdf_text(text) {
+                Some(ascii) => format!("({})", escape_pdf_literal(ascii)),
+                None => return String::new(),
+            },
+        }
     } else {
         format!("({})", escape_pdf_literal(text))
     };
@@ -1078,9 +1088,10 @@ fn text_op_centered(
     size: f64,
     center_x: f64,
     baseline_y: f64,
+    font: Option<&fontdue::Font>,
 ) -> String {
     let width = approx_text_width(text, size);
-    text_op(layout, text, size, center_x - width / 2.0, baseline_y)
+    text_op(layout, text, size, center_x - width / 2.0, baseline_y, font)
 }
 
 /// Rough Helvetica advance widths so centered text lands close to the mark.
@@ -1394,18 +1405,30 @@ mod tests {
         assert!(pdf.contains("startxref"));
         assert!(pdf.ends_with("%%EOF\n"));
         // Labels survive: as PDF literal text on the Helvetica path, or as
-        // UTF-16BE hex strings on the system-CJK-font path.
+        // glyph-index hex strings on the Identity-H system-font path.
         if pdf.contains("/Subtype /Type0") {
-            assert!(pdf.contains("0041"), "ASCII 'A' hex-encoded under Type0");
-            assert!(pdf.contains("0053"), "ASCII 'S' hex-encoded under Type0");
+            assert!(
+                pdf.contains("/Encoding /Identity-H"),
+                "CJK path uses Identity-H (no CMap dependency)"
+            );
+            // Glyph indices are 4-hex-digit pairs in a <> string; the exact
+            // values depend on the discovered system font, so assert the form.
+            assert!(
+                pdf.contains("Tm <"),
+                "glyph-index strings follow the text matrix"
+            );
+            assert!(
+                pdf.contains("> Tj"),
+                "glyph-index strings close with Tj"
+            );
         } else {
             assert!(pdf.contains("(Alice)"));
             assert!(pdf.contains("(S3)"));
+            assert!(
+                pdf.contains("(3)") || pdf.contains("0033"),
+                "seat numbers render next to names"
+            );
         }
-        assert!(
-            pdf.contains("(3)") || pdf.contains("0033"),
-            "seat numbers render next to names"
-        );
     }
 
     #[test]

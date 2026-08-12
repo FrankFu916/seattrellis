@@ -572,6 +572,36 @@ mod tests {
     }
 
     #[test]
+    fn pdf_cjk_text_uses_identity_h_glyph_indices_not_cmap_dependent_encoding() {
+        // Regression: UniGB-UCS2-H relies on a CMap file that poppler and
+        // several viewers do not ship, so CJK pages rendered blank. The
+        // Identity-H + CIDToGIDMap=Identity scheme is built into every PDF
+        // viewer; strings are 2-byte glyph-index hex without a BOM.
+        let bytes = export_ok(&export_body("pdf", "teacher"));
+        let pdf = String::from_utf8(bytes).unwrap();
+        assert!(
+            !pdf.contains("UniGB"),
+            "must not reference the CMap-dependent encoding"
+        );
+        let cjk_path = pdf.contains("/Encoding /Identity-H");
+        let helvetica_path = pdf.contains("/BaseFont /Helvetica");
+        assert!(
+            cjk_path || helvetica_path,
+            "either the Identity-H CJK path or the ASCII Helvetica path"
+        );
+        if cjk_path {
+            assert!(
+                pdf.contains("/CIDToGIDMap /Identity"),
+                "glyph indices map 1:1 to the referenced font"
+            );
+            assert!(
+                !pdf.contains("<FEFF"),
+                "no UTF-16 BOM: the first 2 bytes are the first glyph index"
+            );
+        }
+    }
+
+    #[test]
     fn teacher_template_shows_names_public_hides_them() {
         let teacher = String::from_utf8(export_ok(&export_body("svg", "teacher"))).unwrap();
         assert!(
