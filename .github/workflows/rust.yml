@@ -33,6 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install CJK fonts (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - name: Test the core
         run: cargo test --locked -p seattrellis_core
       - name: Test the CLI

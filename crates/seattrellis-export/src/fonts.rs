@@ -49,40 +49,62 @@ impl SystemCjkFont {
 /// file (per-platform variants) to its PostScript name and quality band.
 const CANDIDATES: &[(&str, FontQuality, &[&str])] = &[
     // PingFang SC (macOS)
-    ("PingFangSC-Regular", FontQuality::Preferred, &[
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
-        "/Library/Fonts/PingFang.ttc",
-    ]),
+    (
+        "PingFangSC-Regular",
+        FontQuality::Preferred,
+        &[
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/Library/Fonts/PingFang.ttc",
+        ],
+    ),
     // Noto Sans CJK SC (Linux/Windows installs)
-    ("NotoSansCJKsc-Regular", FontQuality::Preferred, &[
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/local/share/fonts/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "C:\\Windows\\Fonts\\NotoSansCJK-Regular.ttc",
-    ]),
+    (
+        "NotoSansCJKsc-Regular",
+        FontQuality::Preferred,
+        &[
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/local/share/fonts/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "C:\\Windows\\Fonts\\NotoSansCJK-Regular.ttc",
+        ],
+    ),
     // Microsoft YaHei (Windows)
-    ("MicrosoftYaHei", FontQuality::Acceptable, &[
-        "C:\\Windows\\Fonts\\msyh.ttc",
-        "C:\\Windows\\Fonts\\msyh.ttf",
-    ]),
+    (
+        "MicrosoftYaHei",
+        FontQuality::Acceptable,
+        &[
+            "C:\\Windows\\Fonts\\msyh.ttc",
+            "C:\\Windows\\Fonts\\msyh.ttf",
+        ],
+    ),
     // SimSun (Windows legacy)
-    ("SimSun", FontQuality::Fallback, &[
-        "C:\\Windows\\Fonts\\simsun.ttc",
-        "C:\\Windows\\Fonts\\simsun.ttf",
-    ]),
+    (
+        "SimSun",
+        FontQuality::Fallback,
+        &[
+            "C:\\Windows\\Fonts\\simsun.ttc",
+            "C:\\Windows\\Fonts\\simsun.ttf",
+        ],
+    ),
 ];
 
 /// Home-directory CJK fonts (user-installed, lower priority).
 const USER_CANDIDATES: &[(&str, FontQuality, &[&str])] = &[
-    ("PingFangSC-Regular", FontQuality::Preferred, &[
-        "Library/Fonts/PingFang.ttc",
-    ]),
-    ("NotoSansCJKsc-Regular", FontQuality::Preferred, &[
-        ".fonts/NotoSansCJK-Regular.ttc",
-        ".local/share/fonts/NotoSansCJK-Regular.ttc",
-    ]),
+    (
+        "PingFangSC-Regular",
+        FontQuality::Preferred,
+        &["Library/Fonts/PingFang.ttc"],
+    ),
+    (
+        "NotoSansCJKsc-Regular",
+        FontQuality::Preferred,
+        &[
+            ".fonts/NotoSansCJK-Regular.ttc",
+            ".local/share/fonts/NotoSansCJK-Regular.ttc",
+        ],
+    ),
 ];
 
 fn exists(path: &Path) -> bool {
@@ -125,6 +147,16 @@ pub fn find_system_cjk_font() -> SystemCjkFont {
 
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
+}
+
+/// Load the discovered CJK font for rasterization (M5-A4 PNG text).
+/// Returns `None` when no CJK font file is available (the PNG renderer then
+/// falls back to textless output).
+pub fn load_cjk_font() -> Option<fontdue::Font> {
+    let font = find_system_cjk_font();
+    let file = font.file?;
+    let bytes = std::fs::read(&file).ok()?;
+    fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
 }
 
 #[cfg(test)]

@@ -495,6 +495,10 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
     let divider_y = (HEADER_H + 4.0) as u32;
     canvas.fill(0, divider_y, width, 1, DIVIDER);
 
+    // Student names inside the seat rectangles (M5-A4, PD-D13): rasterized
+    // with the discovered system CJK font; textless output when no font file
+    // exists (CI/containers without fonts degrade gracefully).
+    let font = crate::fonts::load_cjk_font();
     for row in grid.min_row..=grid.max_row {
         for col in grid.min_col..=grid.max_col {
             let (x, y) = cell_origin(grid, row, col);
@@ -506,6 +510,21 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
                 cell_colors(grid, row, col),
                 2,
             );
+            if let Some(cell) = grid.cell_at(row, col) {
+                if let Some(name) = &cell.student {
+                    if let Some(font) = &font {
+                        draw_name_on_canvas(
+                            &mut canvas,
+                            font,
+                            name,
+                            x + 4.0,
+                            y + 4.0,
+                            RECT_W,
+                            RECT_H,
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -526,6 +545,51 @@ pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
 }
 
 /// A small RGB raster with bounds-clipping fill helpers (kept private; the
+/// Rasterize `text` with `font` and draw it centered inside the seat
+/// rectangle `(x, y, w, h)`. The font size is chosen to fit the longest
+/// name into the rectangle width (≥2px side padding), capped at 14px.
+fn draw_name_on_canvas(
+    canvas: &mut Canvas<'_>,
+    font: &fontdue::Font,
+    text: &str,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) {
+    if text.is_empty() {
+        return;
+    }
+    let max_px = ((w - 4.0).max(2.0) / text.chars().count().max(1) as f64).min(14.0);
+    let px_size = max_px.clamp(6.0, 14.0).round() as f32;
+    // Total advance width to center the string.
+    let total_width: f64 = text
+        .chars()
+        .map(|ch| font.rasterize(ch, px_size).0.advance_width as f64)
+        .sum();
+    let mut cursor_x = x + (w - total_width) / 2.0;
+    let baseline = y + h * 0.68;
+    for ch in text.chars() {
+        let (metrics, bitmap) = font.rasterize(ch, px_size);
+        let draw_x = (cursor_x + metrics.xmin as f64).round() as u32;
+        let draw_y = (baseline - metrics.height as f64 + metrics.ymin as f64).round() as u32;
+        for row in 0..metrics.height {
+            for col in 0..metrics.width {
+                let alpha = bitmap[row * metrics.width + col];
+                if alpha > 0 {
+                    canvas.blend_pixel(
+                        draw_x + col as u32,
+                        draw_y + row as u32,
+                        (30, 34, 40),
+                        alpha,
+                    );
+                }
+            }
+        }
+        cursor_x += metrics.advance_width as f64;
+    }
+}
+
 /// `png` encoder owns the chunk/compression details).
 struct Canvas<'a> {
     data: &'a mut [u8],
@@ -539,6 +603,26 @@ impl Canvas<'_> {
             data,
             width,
             height,
+        }
+    }
+
+    /// Blend an anti-aliased glyph pixel over the canvas (alpha 0..=255).
+    fn blend_pixel(&mut self, x: u32, y: u32, color: (u8, u8, u8), alpha: u8) {
+        if x >= self.width || y >= self.height || alpha == 0 {
+            return;
+        }
+        let index = (y * self.width + x) as usize * 3;
+        if alpha == 255 {
+            self.data[index] = color.0;
+            self.data[index + 1] = color.1;
+            self.data[index + 2] = color.2;
+            return;
+        }
+        let a = alpha as u32;
+        let fg = [color.0 as u32, color.1 as u32, color.2 as u32];
+        for (offset, channel) in fg.into_iter().enumerate() {
+            let base = self.data[index + offset] as u32;
+            self.data[index + offset] = ((channel * a + base * (255 - a)) / 255) as u8;
         }
     }
 
@@ -668,8 +752,8 @@ impl PdfLayout {
             std::mem::swap(&mut w, &mut h);
         }
         let font = crate::fonts::find_system_cjk_font();
-        let font_name = (font.quality != crate::fonts::FontQuality::None)
-            .then_some(font.pdf_name.clone());
+        let font_name =
+            (font.quality != crate::fonts::FontQuality::None).then_some(font.pdf_name.clone());
         PdfLayout {
             page_w: w,
             page_h: h,
@@ -799,13 +883,7 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
     // renders but the effect may be below expectation - say so on the page.
     if layout.font_quality == crate::fonts::FontQuality::Fallback {
         let warning = "字体效果可能不及预期：当前系统仅有基础中文字体";
-        ops.push_str(&text_op(
-            layout,
-            warning,
-            8.0,
-            layout.margin_pt,
-            18.0,
-        ));
+        ops.push_str(&text_op(layout, warning, 8.0, layout.margin_pt, 18.0));
     }
 
     // Title + subtitle: full text with a referenced CJK font, ASCII
@@ -906,10 +984,22 @@ fn build_pdf_content(grid: &SeatingGrid, layout: &PdfLayout) -> String {
                         ));
                     }
                     let num = (cell.seat_index + 1).to_string();
-                    ops.push_str(&text_op_centered(layout, &num, 7.0, center_x, inner_y + 9.0));
+                    ops.push_str(&text_op_centered(
+                        layout,
+                        &num,
+                        7.0,
+                        center_x,
+                        inner_y + 9.0,
+                    ));
                 } else {
                     let label = if cell.enabled { "empty" } else { "unused" };
-                    ops.push_str(&text_op_centered(layout, label, 8.0, center_x, center_y - 2.8));
+                    ops.push_str(&text_op_centered(
+                        layout,
+                        label,
+                        8.0,
+                        center_x,
+                        center_y - 2.8,
+                    ));
                 }
             }
         }
@@ -978,13 +1068,17 @@ fn text_op(layout: &PdfLayout, text: &str, size: f64, x: f64, y: f64) -> String 
     } else {
         format!("({})", escape_pdf_literal(text))
     };
-    format!(
-        "BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm {body} Tj ET\n"
-    )
+    format!("BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm {body} Tj ET\n")
 }
 
 /// Center `text` horizontally at `center_x` with its baseline at `baseline_y`.
-fn text_op_centered(layout: &PdfLayout, text: &str, size: f64, center_x: f64, baseline_y: f64) -> String {
+fn text_op_centered(
+    layout: &PdfLayout,
+    text: &str,
+    size: f64,
+    center_x: f64,
+    baseline_y: f64,
+) -> String {
     let width = approx_text_width(text, size);
     text_op(layout, text, size, center_x - width / 2.0, baseline_y)
 }
@@ -1308,7 +1402,10 @@ mod tests {
             assert!(pdf.contains("(Alice)"));
             assert!(pdf.contains("(S3)"));
         }
-        assert!(pdf.contains("(3)") || pdf.contains("0033"), "seat numbers render next to names");
+        assert!(
+            pdf.contains("(3)") || pdf.contains("0033"),
+            "seat numbers render next to names"
+        );
     }
 
     #[test]
@@ -1399,5 +1496,48 @@ mod tests {
         let scaled = render_pdf_with(&grid, PdfLayout::portrait().with_scale(1.5));
         assert!(scaled.starts_with("%PDF-1.4"));
         assert!(scaled.ends_with("%%EOF\n"));
+    }
+
+    // M5-A4 gates: the PNG renderer draws student names with the system
+    // CJK font when a font file is available, and degrades to textless
+    // output otherwise (no panic on fontless machines).
+    
+
+    fn decode_png(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
+        let decoder = png::Decoder::new(bytes);
+        let mut reader = decoder.read_info().expect("png info");
+        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf).expect("png frame");
+        (info.width, info.height, buf)
+    }
+
+    #[test]
+    fn png_renders_names_when_font_available() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let bytes = render_png(&grid).expect("png renders");
+        let (width, height, data) = decode_png(&bytes);
+        let font = crate::fonts::load_cjk_font();
+        if font.is_none() {
+            // Fontless machines (CI before fonts are installed) skip the
+            // pixel assertion but must still produce a valid PNG.
+            assert!(width > 0 && height > 0);
+            return;
+        }
+        // First seat rectangle: center should contain dark text pixels
+        // (name color 30,34,40) rather than only the seat background.
+        let (x, y) = cell_origin(&grid, grid.min_row, grid.min_col);
+        let cx = (x + 4.0 + RECT_W / 2.0) as u32;
+        let cy = (y + 4.0 + RECT_H * 0.6) as u32;
+        let mut dark = 0;
+        for dy in 0..RECT_H as u32 {
+            for dx in 0..RECT_W as u32 {
+                let px = (cy + dy) * width + (cx + dx);
+                let idx = px as usize * 3;
+                if data[idx] < 90 && data[idx + 1] < 90 && data[idx + 2] < 110 {
+                    dark += 1;
+                }
+            }
+        }
+        assert!(dark > 0, "name pixels must be drawn inside the first seat");
     }
 }
