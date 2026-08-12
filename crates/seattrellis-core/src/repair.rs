@@ -75,7 +75,7 @@ pub(crate) fn parse_snapshot_assignments(
 /// objects — the same shape history reports consume), and the plain
 /// `CoreSolveResponse` that `solve --output` writes (`assignment` as
 /// `[student_index, seat_index]` pairs, resolved against the request). The
-/// CLI arg sweep (ledger §19.33) pinned the repair-of-solve-output flow.
+/// CLI arg sweep (ledger §19.33) pins the repair-of-solve-output flow.
 fn parse_repair_snapshot_assignments(
     snapshot: &Value,
     request: &CoreSolveRequest,
@@ -101,6 +101,11 @@ fn parse_repair_snapshot_assignments(
             let pair = pair.as_array().ok_or_else(|| {
                 format!("invalid {context}: assignment[{index}] must be a [student, seat] pair")
             })?;
+            if pair.len() != 2 {
+                return Err(format!(
+                    "invalid {context}: assignment[{index}] must contain exactly two indices"
+                ));
+            }
             let student_index = pair.first().and_then(Value::as_u64).ok_or_else(|| {
                 format!("invalid {context}: assignment[{index}].0 must be a student index")
             })? as usize;

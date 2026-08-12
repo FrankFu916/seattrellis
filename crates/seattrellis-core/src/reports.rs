@@ -272,8 +272,6 @@ pub fn pair_report_json(
         .map(|relation| ((*relation).to_string(), 0))
         .collect();
     let mut warnings: Vec<String> = Vec::new();
-    let recent_start = snapshots.len().saturating_sub(PAIR_REPORT_RECENT_LOOKBACK) + 1;
-
     for (snapshot_offset, snapshot) in snapshots.iter().enumerate() {
         let snapshot_index = snapshot_offset + 1;
         let parsed = parse_snapshot_assignments(
@@ -358,9 +356,6 @@ pub fn pair_report_json(
                         records: Vec::new(),
                     });
                 pair.total_occurrences += 1;
-                if snapshot_index >= recent_start {
-                    pair.recent_occurrences += 1;
-                }
                 for relation in &relations {
                     *pair.relation_counts.entry(relation.clone()).or_default() += 1;
                     *relation_totals.entry(relation.clone()).or_default() += 1;
@@ -385,6 +380,15 @@ pub fn pair_report_json(
                 }));
             }
         }
+    }
+
+    // Python's StudentPairHistory.recent_occurrence_count applies lookback to
+    // the pair's own records, not to the global snapshot window. A pair that
+    // occurred once long ago therefore still has one recent occurrence when
+    // it has fewer than four records in total. Keep the Rust compatibility
+    // field aligned with that frozen oracle behavior.
+    for pair in pairs.values_mut() {
+        pair.recent_occurrences = pair.records.len().min(PAIR_REPORT_RECENT_LOOKBACK) as u64;
     }
 
     let pair_values: Vec<Value> = pairs.values().map(pair_report_value).collect();

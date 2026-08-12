@@ -1917,6 +1917,24 @@ mod tests {
         // Desk-mate relations were counted.
         assert!(report["relation_totals"]["desk_mate"].as_u64().unwrap() >= 2);
     }
+
+    #[test]
+    fn repair_rejects_solve_response_pairs_with_extra_indices() {
+        let request = r#"{
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[0.0,0.0],[1.0,0.0]],
+            "edges": [[0,1]]
+        }"#;
+        let snapshot = r#"{
+            "status": "Solved",
+            "assignment": [[0,0,99],[1,1]]
+        }"#;
+        let error = repair_json(request, snapshot, &[], &[], &[])
+            .expect_err("malformed CoreSolveResponse pairs must be rejected");
+        assert!(error.contains("exactly two indices"), "{error}");
+    }
+
     #[test]
     fn repair_keeps_locked_student_seated() {
         let request = r#"{

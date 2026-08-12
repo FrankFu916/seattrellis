@@ -3,14 +3,16 @@
 load a Python runtime.
 
 Modes:
-  --binary <path>  scan one built binary (CLI / app / desktop shell) for
-                   Python runtime symbols (libpython, PyO3, the native
-                   shim, embedded interpreters) and v1 stack references.
+  --binary <path> [<path> ...]
+                   scan one or more built binaries (CLI / app / desktop
+                   shell) for Python runtime symbols (libpython, PyO3, the
+                   native shim, embedded interpreters) and v1 stack references.
   --tree           scan the production source tree (crates/, app/,
                    clients/web/dist) for Python references in build
                    manifests and vendored runtime files.
-  --archive <path> scan a distribution archive (zip/tar) for Python
-                   payload files.
+  --archive <path> [<path> ...]
+                   scan one or more distribution archives (zip/tar) for
+                   Python payload files.
 
 Exit 0 = clean, 1 = problems found. The alpha.2 tree legitimately keeps
 src/seattrellis/ and the PyO3 shim as oracle/compat; --tree only flags the
@@ -122,8 +124,12 @@ def scan_tree(root: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", nargs="+", default=[], metavar="PATH")
-    parser.add_argument("--archive", nargs="+", default=[], metavar="PATH")
+    parser.add_argument(
+        "--binary", action="extend", nargs="+", default=[], metavar="PATH"
+    )
+    parser.add_argument(
+        "--archive", action="extend", nargs="+", default=[], metavar="PATH"
+    )
     parser.add_argument("--tree", action="store_true")
     args = parser.parse_args()
 

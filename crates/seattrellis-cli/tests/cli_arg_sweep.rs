@@ -1722,12 +1722,9 @@ fn project_commands_sweep() {
                 ],
                 Kind::Valid,
             ),
-            // Registered gap: project-solve's own output (CoreSolveResponse
-            // with index-pair `assignment`) cannot feed the repair path,
-            // repair must accept project-solve's own output
+            // Project-repair must accept project-solve's own output
             // (CoreSolveResponse with index-pair `assignment`) as the
-            // snapshot — fixed in the §19.33 round (repair.rs dual-shape
-            // parsing).
+            // snapshot; ledger §19.33 pins this dual-shape boundary.
             Case::new(
                 "project-repair:solve-output-snapshot",
                 args![
