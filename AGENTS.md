@@ -202,6 +202,40 @@ official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修�
 - 发布前平台验收清单（Windows Office 中文渲染/真实打印机/真实班级数据/
   桌面壳）：`docs/product-decisions/2026-08-12-platform-acceptance-checklist.md`。
 
+## M5 alpha.2 收口（2026-08-12，ledger §19.30–§19.36）
+
+- **§8.3 Alpha 退出条件全部达成**（`docs/product-decisions/2026-08-12-alpha2-closure.md`）：
+  无 v2 必须项残留 `RUST_PARTIAL`（ledger 200 行 `RUST_VERIFIED=71`）；
+  Rust-only E2E 全绿；正式 schema 全 round-trip；Python 只剩 oracle 身份。
+- **CLI parity 缺口关闭**（§19.30）：33 命令 golden 33/33 0 mismatch；
+  doctor/validate(--preset/--history/--strict)/edit/repair(--ignore-saved-locks)/
+  history-report/project-* 镜像 Python 表面；presets.rs 14-preset 镜像。
+- **candidates golden 矩阵**（§19.31）：p50×{1,5,20}、p60×{1,5}、p80×{1}
+  字节稳定 golden（corpus v1.1.0）；exports 独立 reader 374 行 0 mismatch。
+- **CLI 参数全量枚举**（§19.33）：279 用例 sweep（`cli_arg_sweep.rs`）发现并
+  修复 3 类真 bug——用法错误退出码 1→2（冻结契约）、solve 输入错误分类
+  70→2、repair 拒绝 solve 输出（双形状解析）。
+- **pair-report lookback 语义**（§19.33）：`recent_occurrences` 按 pair 自身
+  records 计（Python `records[-lookback:]`），边界回归 + live 差分锁定。
+- **rotation-plan schema_version**（§19.34）："0.2.2"→"1.0"（oracle 冻结值），
+  gate 断言 + harness 强制比较。
+- **artifacts compare/restore**（§19.35）：21 项 server 契约测试全绿 +
+  **M1-05 workspace containment 修复**（artifact 必须位于项目 history/
+  outputs 内，canonicalize 后判含，镜像 Python）；登记分歧：`restored_at`
+  形状、candidate_set kind 保留、错误 envelope 与 React reader 不匹配
+  （M5 待产品）。
+- **roster-mapping 启发式差分**（§19.36）：10 case corpus（`fixtures/
+  roster-mapping/`）+ expected.json（oracle 记录），Rust 侧全等 + Python
+  守卫测试。
+- **M6 无 Python 门禁**（4911352）：`scripts/check_no_python_runtime.py`
+  + CI job 扫描 release 二进制 0 Python 符号；workbench 移除死 backend
+  控件（OR-Tools 文案清除）。
+- **CI 三平台矩阵修复**：Tauri 系统依赖（Linux）、journal 路径分隔符
+  （Windows）、sweep 跨平台用例 + unused_mut（Windows clippy）。
+- **进入 M6 门槛**：产品负责人确认 v1.x 最终 tag 与 v1.x-maintenance
+  分支建立时机（计划 §9.1），然后执行 Python retirement（删除面已确认
+  无 Rust 依赖，c4ba074）。
+
 ### 2026-08-09 post-merge acceptance audit
 
 - `0057a7b` 合并了 repair/reports/project/rotation/privacy 等实现路径；`320b68f` 只更改 ledger 状态，未增加 golden 等价证据。
