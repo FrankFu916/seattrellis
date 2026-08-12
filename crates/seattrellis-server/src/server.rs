@@ -380,9 +380,20 @@ fn generate_response(
                 );
             }
 
-            let (Some(draft_id), Some(editor)) = (outcome.draft_id, outcome.editor) else {
+            let Some(editor) = outcome.editor else {
                 return json_error(500, "solved result is missing its editable draft");
             };
+            let candidates: Vec<Value> = outcome
+                .candidates
+                .iter()
+                .map(|candidate| {
+                    json!({
+                        "candidate_id": candidate.draft_id,
+                        "recommended": candidate.recommended,
+                        "total_score": candidate.total_score,
+                    })
+                })
+                .collect();
             Response::json(
                 200,
                 json!({
@@ -396,12 +407,8 @@ fn generate_response(
                         "preset_name": null,
                     },
                     "warnings": [],
-                    "recommended_candidate_id": draft_id,
-                    "candidates": [{
-                        "candidate_id": draft_id,
-                        "recommended": true,
-                        "total_score": outcome.total_score.unwrap_or(0.0),
-                    }],
+                    "recommended_candidate_id": outcome.recommended_candidate_id,
+                    "candidates": candidates,
                     "editor": editor,
                 }),
             )
@@ -533,6 +540,9 @@ pub(crate) fn route(
         }
         ("GET", ["api", "v1", "editing", "drafts", draft_id]) => {
             editing_fetch_response(draft_id, editor_store)
+        }
+        ("GET", ["api", "v1", "editing", "drafts", draft_id, "audit"]) => {
+            draft_audit_response(draft_id, editor_store, solve_requests)
         }
         ("POST", ["api", "v1", "editing", "drafts", draft_id, "commands"]) => {
             editing_command_response(draft_id, &request.body, editor_store, solve_requests)
@@ -877,6 +887,24 @@ fn editing_fetch_response(draft_id: &str, editor_store: &EditorDraftStore) -> Re
     match editing::fetch_state(editor_store, draft_id) {
         Ok(state) => Response::json(200, serde_json::to_value(state).unwrap_or(json!({}))),
         Err(_) => json_error(404, "editor draft was not found"),
+    }
+}
+
+/// `GET /api/v1/editing/drafts/{id}/audit`: recompute the PlanScore
+/// seven-dimension breakdown and hard-constraint audit for the draft's
+/// current assignment (M5 B5/D5; shared with the diagnostics panel D6).
+fn draft_audit_response(
+    draft_id: &str,
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+) -> Response {
+    match seattrellis_application::draft_audit::audit_draft(
+        editor_store,
+        solve_requests,
+        draft_id,
+    ) {
+        Ok(report) => Response::json(200, report),
+        Err(error) => app_error_response(error),
     }
 }
 
@@ -2006,6 +2034,17 @@ mod tests {
         route(request, root, &editor_store, &solve_requests)
     }
 
+    /// Route with a caller-owned editor + solve-request store, so tests can
+    /// chain stateful requests (generate -> edit -> audit) like a client.
+    fn route_with_store(
+        request: &Request,
+        root: &Path,
+        editor_store: &EditorDraftStore,
+        solve_requests: &SolveRequestStore,
+    ) -> Response {
+        route(request, root, editor_store, solve_requests)
+    }
+
     fn request(method: &str, path: &str, body: &[u8]) -> Request {
         request_with_content_type(method, path, body, None)
     }
@@ -2323,6 +2362,117 @@ mod tests {
         assert_eq!(editor["seats"].as_array().map(Vec::len), Some(9));
         for student in editor["students"].as_array().unwrap() {
             assert!(student["seat_id"].is_string());
+        }
+    }
+
+    #[test]
+    fn draft_audit_reports_score_and_hard_summary_for_a_generated_draft() {
+        let root = test_web_root();
+        let editor_store = editing::new_draft_store();
+        let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
+        let problem = json!({
+            "api_version": 2,
+            "student_count": 5,
+            "seat_positions": [[1.0,1.0],[2.0,1.0],[3.0,1.0],[4.0,1.0],[5.0,1.0],[6.0,1.0],[7.0,1.0],[8.0,1.0],[9.0,1.0]]
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let generated = route_with_store(
+            &request("POST", "/api/v1/classes/generate", &body),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        let value = body_json(&generated);
+        let draft_id = value["recommended_candidate_id"].as_str().unwrap().to_string();
+
+        let audit = route_with_store(
+            &request("GET", &format!("/api/v1/editing/drafts/{draft_id}/audit"), b""),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(audit.status, 200, "body: {}", String::from_utf8_lossy(&audit.body));
+        let report = body_json(&audit);
+        assert_eq!(report["api_version"], "1");
+        assert_eq!(report["draft_id"], draft_id);
+        assert_eq!(report["feasible"], true);
+        assert!(report["score"]["total"].is_f64());
+        let breakdown = &report["score"]["breakdown"];
+        for key in [
+            "fair_rotation_score",
+            "avoid_recent_neighbors_score",
+            "score_balance_score",
+            "height_preference_score",
+            "vision_preference_score",
+            "diversity_score",
+            "stability_score",
+        ] {
+            assert!(breakdown[key].is_object(), "missing dimension {key}");
+        }
+        assert!(report["audit"]["hard_constraint_summary"].is_object());
+        assert!(report["audit"]["suggested_actions"].is_array());
+
+        // Unknown draft -> 404.
+        let missing = route_with_store(
+            &request("GET", "/api/v1/editing/drafts/nope/audit", b""),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(missing.status, 404);
+    }
+
+    #[test]
+    fn generate_returns_multiple_candidates_when_requested() {
+        let root = test_web_root();
+        let editor_store = editing::new_draft_store();
+        let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
+        let problem = json!({
+            "api_version": 2,
+            "student_count": 6,
+            "seat_positions": [[1.0,1.0],[2.0,1.0],[3.0,1.0],[4.0,1.0],[5.0,1.0],[6.0,1.0],[7.0,1.0],[8.0,1.0],[9.0,1.0],[10.0,1.0]],
+            "seed": 42,
+            "options": { "candidate_count": 5 }
+        });
+        let body = serde_json::to_vec(&problem).unwrap();
+        let response = route_with_store(
+            &request("POST", "/api/v1/classes/generate", &body),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(response.status, 200, "body: {}", String::from_utf8_lossy(&response.body));
+        let value = body_json(&response);
+        let candidates = value["candidates"].as_array().unwrap();
+        assert_eq!(candidates.len(), 5, "expected 5 candidates: {value}");
+        let ids: Vec<&str> = candidates
+            .iter()
+            .map(|candidate| candidate["candidate_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids.len(), 5);
+        let recommended = value["recommended_candidate_id"].as_str().unwrap();
+        assert!(ids.contains(&recommended));
+        assert_eq!(
+            candidates
+                .iter()
+                .filter(|candidate| candidate["recommended"] == true)
+                .count(),
+            1
+        );
+        // Every candidate is an editable, auditable draft.
+        for candidate_id in ids {
+            let audit = route_with_store(
+                &request("GET", &format!("/api/v1/editing/drafts/{candidate_id}/audit"), b""),
+                &root,
+                &editor_store,
+                &solve_requests,
+            );
+            assert_eq!(
+                audit.status,
+                200,
+                "candidate {candidate_id} is not auditable: {}",
+                String::from_utf8_lossy(&audit.body)
+            );
         }
     }
 

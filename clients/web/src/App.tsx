@@ -49,6 +49,7 @@ import {
 import { HistoryRotationPanel } from "./components/HistoryRotationPanel";
 import { RosterImportPanel } from "./components/RosterImportPanel";
 import { SaveAsClassDialog } from "./components/SaveAsClassDialog";
+import { CandidatesPanel, type CandidateMeta, type ReproInfo } from "./components/CandidatesPanel";
 import { SeatingCanvasEditor } from "./components/SeatingCanvasEditor";
 import { Sidebar } from "./components/Sidebar";
 import {
@@ -308,6 +309,7 @@ export function App() {
     DEFAULT_DETAILED_RULE_SETTINGS,
   );
   const [rotationPlan, setRotationPlan] = useState<RotationPlan | null>(null);
+  const [candidateMetas, setCandidateMetas] = useState<CandidateMeta[]>([]);
   const [rotationEditors, setRotationEditors] = useState<EditorState[]>([]);
   const [activeRotationPeriod, setActiveRotationPeriod] = useState(1);
   const [roomSettings, setRoomSettings] =
@@ -516,6 +518,7 @@ export function App() {
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
+    setCandidateMetas([]);
     setHistorySnapshots([]);
     setHistoryFileNames([]);
     setHistoryError(null);
@@ -1061,6 +1064,26 @@ export function App() {
       setRotationEditors(isRotation ? periodEditors : []);
       setActiveRotationPeriod(1);
       setRotationPlan(isRotation ? response.rotation_plan : null);
+      // Candidate comparison (D5): fetch every candidate's draft and keep
+      // its seat plan so the panel can diff and switch without re-solving.
+      const metas: CandidateMeta[] = [];
+      if ("candidates" in response && Array.isArray(response.candidates)) {
+        for (const candidate of response.candidates) {
+          try {
+            const state = await fetchEditorState(candidate.candidate_id);
+            const plan = editorToPlan(state);
+            metas.push({
+              draft_id: candidate.candidate_id,
+              total_score: candidate.total_score,
+              recommended: candidate.recommended,
+              assignments: plan.assignments,
+            });
+          } catch {
+            // A candidate draft may already be evicted; skip it.
+          }
+        }
+      }
+      setCandidateMetas(metas);
       setHistory([]);
       setSelectedSeatId(null);
       setIsDirty(false);
@@ -1148,6 +1171,7 @@ export function App() {
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
+    setCandidateMetas([]);
     switchView("room");
   }
 
@@ -1380,6 +1404,27 @@ export function App() {
                 onOpenRules={() => switchView("rules")}
               />
             )}
+
+            {view === "canvas" && candidateMetas.length > 1 ? (
+              <CandidatesPanel
+                candidates={candidateMetas}
+                repro={{
+                  seed: advancedSettings.seed.trim(),
+                  solver: advancedSettings.backend,
+                  timeLimitSeconds: advancedSettings.timeLimitSeconds,
+                  historyCount: historySnapshots.length,
+                }}
+                locale={locale}
+                t={t}
+                onChoose={(draftId) => {
+                  void fetchEditorState(draftId)
+                    .then(applyEditorState)
+                    .catch((error: unknown) =>
+                      setSaveError(friendlyError(error, t)),
+                    );
+                }}
+              />
+            ) : null}
 
             {view === "canvas" ? (
               <section className="canvas-card" aria-labelledby="canvas-card-title">

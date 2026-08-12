@@ -833,3 +833,54 @@ export type ProjectRotationLoadResponse = {
   editor: EditorState;
   period_editors: EditorState[];
 };
+
+// ---------------------------------------------------------------------------
+// Draft audit report (B5 / D5, D6)
+// ---------------------------------------------------------------------------
+
+export type AuditDimension = {
+  status: "available" | "not_available";
+  score?: number | null;
+  weight?: number | null;
+  details?: Record<string, unknown>;
+};
+
+export type HardConstraintSummary = {
+  all_satisfied: boolean;
+  checked_rule_count: number;
+  violation_count: number;
+  witnesses: unknown[];
+};
+
+export type SuggestedAction = {
+  message_key: string;
+  suggested_action: string;
+  args: Record<string, string | number>;
+};
+
+export type DraftAuditReport = {
+  api_version: string;
+  draft_id: string;
+  feasible: boolean;
+  score: {
+    total: number;
+    breakdown: {
+      fair_rotation_score: AuditDimension;
+      avoid_recent_neighbors_score: AuditDimension;
+      score_balance_score: AuditDimension;
+      height_preference_score: AuditDimension;
+      vision_preference_score: AuditDimension;
+      diversity_score: AuditDimension;
+      stability_score: AuditDimension;
+      rule_scores: Record<string, AuditDimension>;
+      hard_constraint_summary: HardConstraintSummary;
+    };
+  };
+  audit: {
+    hard_constraint_summary: HardConstraintSummary;
+    missing_data: Record<string, number>;
+    history: { snapshot_count: number; has_history: boolean };
+    suggested_actions: SuggestedAction[];
+    [key: string]: unknown;
+  };
+};

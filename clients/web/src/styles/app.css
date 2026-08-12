@@ -4368,3 +4368,224 @@ input:focus-visible,
   font-size: 0.7rem;
   line-height: 1.55;
 }
+
+/* ---------- candidates comparison (B5 / D5) ---------- */
+
+.candidates-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface);
+}
+
+.cand-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cand-spacer {
+  flex: 1;
+}
+
+.cand-detail {
+  padding: 8px 12px;
+  border-radius: var(--radius-small);
+  background: var(--surface-soft);
+}
+
+.repro-line {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+}
+
+.rec-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+  border-radius: var(--radius-medium);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+}
+
+.rec-badge {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--success);
+  color: #fff;
+  font-weight: 800;
+}
+
+.rec-title {
+  color: var(--text-strong);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.rec-body {
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.rec-hard {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.plain-diff {
+  padding: 2px 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.cand-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cand-plan {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cand-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cand-plan-head select {
+  min-width: 0;
+  flex: 1;
+}
+
+.mini-grid {
+  display: grid;
+  gap: 4px;
+  overflow: auto;
+  max-height: 320px;
+}
+
+.mini-cell {
+  display: grid;
+  gap: 1px;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-soft);
+  font-size: 0.66rem;
+  text-align: center;
+}
+
+.mini-cell small {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.55rem;
+}
+
+.mini-cell-empty {
+  border-style: dashed;
+  background: transparent;
+}
+
+.mini-cell-diff {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.mini-diff-tag {
+  color: var(--warning);
+  font-size: 0.55rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.cand-details {
+  display: grid;
+  gap: 8px;
+}
+
+.score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.score-table th,
+.score-table td {
+  padding: 6px 8px;
+  border-bottom: var(--line-width) solid var(--border);
+  text-align: left;
+}
+
+.score-table th {
+  color: var(--muted);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.score-table td small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.rule-details {
+  display: grid;
+  gap: 6px;
+}
+
+.rule-detail {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.rule-detail summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.rule-detail .num {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+}
+
+.rd-body {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 960px) {
+  .cand-compare {
+    grid-template-columns: 1fr;
+  }
+}

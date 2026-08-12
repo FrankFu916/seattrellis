@@ -196,7 +196,7 @@ pub(crate) fn export_response_value(
         .map_err(|error| AppError::internal(format!("could not encode export response: {error}")))
 }
 
-fn editor_solve_response(
+pub(crate) fn editor_solve_response(
     request_value: &Value,
     state: &editing::EditorState,
 ) -> Result<(CoreSolveRequest, CoreSolveResponse), AppError> {

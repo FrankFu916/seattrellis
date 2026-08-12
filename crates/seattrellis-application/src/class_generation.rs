@@ -17,6 +17,13 @@ use seattrellis_core::cost::{
 use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
 use seattrellis_domain::editing::{self, EditorDraftStore, EditorSeatSpec};
 
+/// One editable candidate plan inside a class-generation outcome.
+pub struct CandidateOutcome {
+    pub draft_id: String,
+    pub total_score: f64,
+    pub recommended: bool,
+}
+
 /// The result of a class-generation request: everything the transport layer
 /// needs to format one normal domain response. Solver outcomes such as
 /// `ProvenInfeasible`, `Timeout` and `Unknown` are not transport errors.
@@ -27,6 +34,9 @@ pub struct GenerateClassOutcome {
     pub goal_id: String,
     pub total_score: Option<f64>,
     pub draft_id: Option<String>,
+    /// Every candidate's editable draft (one entry for a single solve).
+    pub candidates: Vec<CandidateOutcome>,
+    pub recommended_candidate_id: Option<String>,
     pub editor: Option<Value>,
 }
 
@@ -78,8 +88,32 @@ pub fn generate_class(
             goal_id,
             total_score: None,
             draft_id: None,
+            candidates: Vec::new(),
+            recommended_candidate_id: None,
             editor: None,
         });
+    }
+
+    // Multi-candidate generation (M5 B5 / D5, plan §6.3): when the request
+    // asks for several candidates, produce a distinct-feasible set via the
+    // candidates engine (seeded repeated solve + exact-assignment exclusion)
+    // instead of a single plan. The single-candidate path below keeps the
+    // frozen seven-state semantics intact.
+    let candidate_count = raw_request
+        .pointer("/options/candidate_count")
+        .and_then(Value::as_u64)
+        .map(|count| count.clamp(1, 20) as usize)
+        .unwrap_or(1);
+
+    if candidate_count > 1 {
+        return generate_candidate_set(
+            &core_request,
+            candidate_count,
+            editor_store,
+            solve_requests,
+            class_name,
+            goal_id,
+        );
     }
 
     // Open an editable draft mirroring the recommended plan.
@@ -141,7 +175,13 @@ pub fn generate_class(
         class_name,
         goal_id,
         total_score: response.total_cost,
-        draft_id: Some(draft_id),
+        draft_id: Some(draft_id.clone()),
+        candidates: vec![CandidateOutcome {
+            draft_id: draft_id.clone(),
+            total_score: response.total_cost.unwrap_or(0.0),
+            recommended: true,
+        }],
+        recommended_candidate_id: Some(draft_id.clone()),
         editor: Some(
             serde_json::to_value(editor).map_err(|error| AppError::internal(error.to_string()))?,
         ),
@@ -778,4 +818,177 @@ pub(crate) fn new_draft_id() -> String {
         .unwrap_or(0);
     let seq = DRAFT_SEQ.fetch_add(1, Ordering::Relaxed);
     format!("draft-{nanos:x}{seq:x}")
+}
+
+
+/// Produce `candidate_count` distinct feasible plans (plan §6.3): each
+/// candidate becomes an editable draft; every draft remembers its originating
+/// request so export and audit can rebuild it after edits. The recommended
+/// candidate matches the engine's PlanScore recommendation (D5).
+fn generate_candidate_set(
+    core_request: &Value,
+    candidate_count: usize,
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+    class_name: String,
+    goal_id: String,
+) -> Result<GenerateClassOutcome, AppError> {
+    let request: CoreSolveRequest = match serde_json::from_value(core_request.clone()) {
+        Ok(request) => request,
+        Err(_) => {
+            return Err(AppError::bad_request(
+                "request body is not a valid solve problem",
+            ))
+        }
+    };
+    // The stored value is already the core-shaped request; serialize it as-is
+    // (CoreSolveRequest is Deserialize-only by contract).
+    let request_json = core_request.to_string();
+    let report_json = match seattrellis_core::generate_candidates_json(&request_json, candidate_count)
+    {
+        Ok(report) => report,
+        Err(message) if message.contains("did not produce any feasible plan") => {
+            // Heuristic exhaustion across the requested set is a normal
+            // domain result, never a transport error (M0-03).
+            return Ok(GenerateClassOutcome {
+                feasible: false,
+                status: seattrellis_core::SolveStatus::Unknown,
+                class_name,
+                goal_id,
+                total_score: None,
+                draft_id: None,
+                candidates: Vec::new(),
+                recommended_candidate_id: None,
+                editor: None,
+            });
+        }
+        Err(message) => {
+            return Err(AppError::unprocessable(
+                "invalid_class_draft",
+                format!("candidate generation failed: {message}"),
+            ))
+        }
+    };
+    let report: Value = match serde_json::from_str(&report_json) {
+        Ok(report) => report,
+        Err(error) => {
+            return Err(AppError::internal(format!(
+                "candidate report is malformed: {error}"
+            )))
+        }
+    };
+    let Some(candidates) = report.get("candidates").and_then(Value::as_array) else {
+        return Err(AppError::internal("candidate report has no candidates"));
+    };
+    let recommended_id = report
+        .get("recommended_candidate_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    let keys: Vec<String> = student_keys(&request);
+    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let seats = seat_specs(&request);
+    let seat_ids: Vec<String> = (0..request.seat_positions.len())
+        .map(|index| seat_id_for_index(&request, index))
+        .collect();
+    let display_names: HashMap<String, String> = request
+        .students
+        .iter()
+        .map(|student| {
+            (
+                student.key.clone(),
+                student
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| student.key.clone()),
+            )
+        })
+        .collect();
+
+    let mut outcomes: Vec<CandidateOutcome> = Vec::with_capacity(candidates.len());
+    let mut recommended_state: Option<Value> = None;
+    let mut recommended_draft: Option<String> = None;
+    for candidate in candidates {
+        let engine_id = candidate
+            .get("candidate_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let pairs: Vec<[usize; 2]> = candidate
+            .get("assignment")
+            .and_then(Value::as_array)
+            .map(|list| {
+                list.iter()
+                    .filter_map(|pair| pair.as_array())
+                    .filter_map(|pair| {
+                        Some([
+                            pair.first()?.as_u64()? as usize,
+                            pair.get(1)?.as_u64()? as usize,
+                        ])
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let assignment: Vec<(&str, &str)> = pairs
+            .iter()
+            .filter(|[student, seat]| *student < key_refs.len() && *seat < seat_ids.len())
+            .map(|[student, seat]| (key_refs[*student], seat_ids[*seat].as_str()))
+            .collect();
+
+        let draft_id = new_draft_id();
+        let state = match editing::create_draft(
+            editor_store,
+            draft_id.clone(),
+            Some(engine_id.clone()),
+            &key_refs,
+            seats.clone(),
+            &assignment,
+            Some(&display_names),
+        ) {
+            Ok(state) => state,
+            Err(message) => return Err(AppError::internal(&message)),
+        };
+        match solve_requests.lock() {
+            Ok(mut guard) => {
+                guard.insert(draft_id.clone(), core_request.clone());
+            }
+            Err(_) => return Err(AppError::internal("solve request store is poisoned")),
+        }
+        let total_score = candidate
+            .get("plan_score")
+            .and_then(|score| score.get("total"))
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let recommended = engine_id == recommended_id;
+        if recommended {
+            recommended_draft = Some(draft_id.clone());
+            recommended_state = Some(
+                serde_json::to_value(state)
+                    .map_err(|error| AppError::internal(error.to_string()))?,
+            );
+        }
+        outcomes.push(CandidateOutcome {
+            draft_id,
+            total_score,
+            recommended,
+        });
+    }
+    let Some(editor) = recommended_state else {
+        return Err(AppError::internal(
+            "candidate set has no recommended plan",
+        ));
+    };
+
+    Ok(GenerateClassOutcome {
+        feasible: true,
+        status: seattrellis_core::SolveStatus::Solved,
+        class_name,
+        goal_id,
+        total_score: None,
+        draft_id: None,
+        candidates: outcomes,
+        recommended_candidate_id: recommended_draft,
+        editor: Some(editor),
+    })
 }

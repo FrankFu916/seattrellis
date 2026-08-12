@@ -32,6 +32,7 @@ import type {
   RosterUpdatePreviewResponse,
   RuleTemplatesResponse,
   CompiledRule,
+  DraftAuditReport,
 } from "./types";
 
 const API_ROOT = "/api/v1";
@@ -610,6 +611,13 @@ export async function generateRotationPlan(
 
 export async function fetchEditorState(draftId: string): Promise<EditorState> {
   return fetchJson<EditorState>(`/editing/drafts/${draftId}`);
+}
+
+/** Recompute the score + hard-constraint audit for a draft (B5/D5, D6). */
+export async function fetchDraftAudit(
+  draftId: string,
+): Promise<DraftAuditReport> {
+  return getJson<DraftAuditReport>(`/editing/drafts/${draftId}/audit`);
 }
 
 export async function dispatchEditorCommand(

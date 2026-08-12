@@ -4,6 +4,7 @@
 //! the transport maps onto HTTP.
 
 pub mod class_generation;
+pub mod draft_audit;
 pub mod export;
 pub mod rotation;
 
