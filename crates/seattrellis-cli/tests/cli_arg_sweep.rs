@@ -420,6 +420,9 @@ fn top_level_arguments_sweep() {
         Case::new("top:unknown-command", args!["frobnicate"], Kind::Usage),
         Case::new("top:--bogus", args!["--bogus"], Kind::Usage),
     ];
+    // `failures` is only mutated by the cfg(unix) non-UTF-8 block below;
+    // on Windows the binding stays immutable (clippy -D warnings).
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut failures = sweep(cases);
     // Non-UTF-8 argv must be a graceful usage error, not a panic (unix).
     #[cfg(unix)]
