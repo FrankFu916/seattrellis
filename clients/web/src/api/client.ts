@@ -113,8 +113,11 @@ async function fetchJson<T>(
       headers,
       signal: controller.signal,
     });
-    if (response.status === 401 && sessionToken) {
-      // The local service restarted and its token rotated: re-bootstrap once.
+    if (response.status === 401) {
+      // The local service restarted and rotated its token — or the token was
+      // never obtained because the service was down when the page bootstrapped.
+      // Either way, re-bootstrap once and retry (refreshSessionToken also
+      // clears the cached bootstrap promise so a later 401 can retry again).
       sessionToken = await refreshSessionToken();
       if (sessionToken) {
         headers.set("Authorization", `Bearer ${sessionToken}`);
@@ -522,33 +525,6 @@ export async function readTrustedFile(relPath: string): Promise<File> {
     bytes[index] = binary.charCodeAt(index);
   }
   return new File([bytes], data.name);
-}
-
-export function hasDesktopBridge(): boolean {
-  return typeof window !== "undefined" && Boolean(window.pywebview?.api);
-}
-
-export async function openDesktopRosterFile(): Promise<DesktopRosterFile | null> {
-  const open = window.pywebview?.api?.open_roster_file;
-  return open ? open() : null;
-}
-
-export async function saveDesktopExport(
-  filename: string,
-  blob: Blob,
-): Promise<"saved" | "cancelled" | "unavailable"> {
-  const save = window.pywebview?.api?.save_export_file;
-  if (!save) {
-    return "unavailable";
-  }
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  const result = await save(filename, btoa(binary));
-  return result?.saved ? "saved" : "cancelled";
 }
 
 export async function fetchRosterDraft(

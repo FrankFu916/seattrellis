@@ -58,7 +58,6 @@ type WorkflowPanelProps = {
   preferences: CommonPreferenceId[];
   error: string | null;
   selectedSeat: SeatAssignment | undefined;
-  canUndo: boolean;
   isGenerating: boolean;
   rosterSlot?: ReactNode;
   /** Hide the panel footer; the context action bar drives the next step (D1). */
@@ -95,7 +94,6 @@ type WorkflowPanelProps = {
   onBack: () => void;
   onNext: () => void;
   onGenerate: () => void;
-  onUndo: () => void;
   onToggleLock: () => void;
   onPreview: () => void;
   /** Jump to the rules view (D4 quick panel "edit rules" entry). */
@@ -161,7 +159,6 @@ export function WorkflowPanel({
   preferences,
   error,
   selectedSeat,
-  canUndo,
   isGenerating,
   rosterSlot,
   hideActions = false,
@@ -192,7 +189,6 @@ export function WorkflowPanel({
   onBack,
   onNext,
   onGenerate,
-  onUndo,
   onToggleLock,
   onPreview,
   onOpenRules,

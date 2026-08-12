@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   EDITOR_PROTOCOL_VERSION,
@@ -79,7 +79,6 @@ import {
 import {
   getUnseatedStudents,
   reconcileStudentAssignments,
-  seatRemainingStudents,
   swapStudents,
   toggleSeatLock,
 } from "./domain/workflow";
@@ -353,6 +352,15 @@ export function App() {
   const [editorUndoDepth, setEditorUndoDepth] = useState(0);
   const [editorRedoDepth, setEditorRedoDepth] = useState(0);
   const t = useMemo(() => createTranslator(locale), [locale]);
+  /**
+   * Monotonic generation token: every workbench reset (context switch,
+   * roster import, room change, restore, ...) bumps it, which invalidates
+   * in-flight generate results so a stale response can never resurrect a
+   * plan for a class the teacher already left.
+   */
+  const generationTokenRef = useRef(0);
+  /** Same idea for async draft switches (period cards, candidate picks). */
+  const draftSwitchRef = useRef(0);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -554,6 +562,9 @@ export function App() {
 
   /** Restore the initial workbench draft (context switch, D1). */
   function resetWorkbench() {
+    // Invalidate any in-flight generate so its result cannot resurrect the
+    // previous class's plan after the context has been reset.
+    generationTokenRef.current += 1;
     setStudents(demoStudents);
     setRevision(0);
     setSelectedFileName(null);
@@ -571,7 +582,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
-      setEditorRedoDepth(0);
+    setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -602,6 +613,7 @@ export function App() {
     if (isDirty && !window.confirm(t("app.discardDraft"))) {
       return;
     }
+    generationTokenRef.current += 1;
     const { students: restoredStudents, assignments: restoredAssignments } =
       restoreSnapshotPlan(snapshot, assignments);
     if (restoredStudents.length === 0) {
@@ -636,6 +648,7 @@ export function App() {
     if (!room) {
       return;
     }
+    generationTokenRef.current += 1;
     setSelectedRoomId(roomId);
     setRoomSettings((current) => ({ ...current, enabled: false }));
     setAssignments(
@@ -651,19 +664,20 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
-      setEditorRedoDepth(0);
+    setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
   }
 
   function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
+    generationTokenRef.current += 1;
     setRoomSettings((current) => ({ ...current, ...changes }));
     setSelectedSeatId(null);
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
-      setEditorRedoDepth(0);
+    setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -1078,17 +1092,25 @@ export function App() {
       setActiveRotationPeriod(period);
       return;
     }
+    const token = ++draftSwitchRef.current;
     setSaveError(null);
     try {
       const editor = await fetchEditorState(target.draft_id);
+      if (token !== draftSwitchRef.current) {
+        return;
+      }
       applyEditorState(editor);
       setActiveRotationPeriod(period);
     } catch (err) {
+      if (token !== draftSwitchRef.current) {
+        return;
+      }
       setSaveError(friendlyError(err, t));
     }
   }
 
   function handleRotationLoad(result: ProjectRotationLoadResponse) {
+    generationTokenRef.current += 1;
     const editors = result.period_editors.length
       ? result.period_editors
       : [result.editor];
@@ -1103,6 +1125,9 @@ export function App() {
   }
 
   async function handleGenerate() {
+    // A stale result (context/roster changed mid-flight) must not overwrite
+    // the workbench: every state-resetting handler bumps this token.
+    const token = generationTokenRef.current;
     setIsGenerating(true);
     setSaveError(null);
     const className = selectedFileName
@@ -1132,6 +1157,9 @@ export function App() {
             }),
           )
         : await generateClass(buildGenerateClassRequest(requestArgs));
+      if (token !== generationTokenRef.current) {
+        return;
+      }
       if (!response.feasible) {
         // ProvenInfeasible/Timeout/Unknown/Cancelled are successful transport
         // responses with no editable assignment, not HTTP failures.
@@ -1144,6 +1172,9 @@ export function App() {
           ? response.period_editors
           : [response.editor];
       const editor = await fetchEditorState(periodEditors[0].draft_id);
+      if (token !== generationTokenRef.current) {
+        return;
+      }
       applyEditorState(editor);
       setRotationEditors(isRotation ? periodEditors : []);
       setActiveRotationPeriod(1);
@@ -1155,6 +1186,9 @@ export function App() {
         for (const candidate of response.candidates) {
           try {
             const state = await fetchEditorState(candidate.candidate_id);
+            if (token !== generationTokenRef.current) {
+              return;
+            }
             const plan = editorToPlan(state);
             metas.push({
               draft_id: candidate.candidate_id,
@@ -1167,6 +1201,9 @@ export function App() {
           }
         }
       }
+      if (token !== generationTokenRef.current) {
+        return;
+      }
       setCandidateMetas(metas);
       setHistory([]);
       setSelectedSeatId(null);
@@ -1176,6 +1213,9 @@ export function App() {
       window.localStorage.setItem(FIRST_RUN_KEY, "done");
       setView("canvas");
     } catch (err) {
+      if (token !== generationTokenRef.current) {
+        return;
+      }
       if (err instanceof InvalidAdvancedSettingError) {
         setSaveError(
           err.kind === "seed"
@@ -1193,7 +1233,11 @@ export function App() {
         setSaveError(friendlyError(err, t));
       }
     } finally {
-      setIsGenerating(false);
+      // Only the latest generation clears the busy flag; an older one that
+      // was superseded must leave the newer generation's flag alone.
+      if (token === generationTokenRef.current) {
+        setIsGenerating(false);
+      }
     }
   }
 
@@ -1225,7 +1269,9 @@ export function App() {
         document.body.appendChild(link);
         link.click();
         link.remove();
-        URL.revokeObjectURL(url);
+        // Revoking synchronously can abort the download in some engines
+        // (e.g. Firefox); release the blob on the next tick instead.
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
       setPreviewOpen(false);
       setIsDirty(false);
@@ -1238,6 +1284,7 @@ export function App() {
   }
 
   function handleRosterImported(importedStudents: Student[]) {
+    generationTokenRef.current += 1;
     setStudents(importedStudents);
     setRevision((prev) => prev + 1);
     setAssignments(
@@ -1251,7 +1298,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
-      setEditorRedoDepth(0);
+    setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -1261,6 +1308,7 @@ export function App() {
 
   /** D10: fill an empty roster with the built-in sample roster. */
   function handleUseSampleRoster() {
+    generationTokenRef.current += 1;
     setStudents(demoStudents);
     setRevision((prev) => prev + 1);
     setSelectedFileName(null);
@@ -1281,6 +1329,7 @@ export function App() {
   }
 
   function handleStudentsEdited(editedStudents: Student[]) {
+    generationTokenRef.current += 1;
     setStudents(editedStudents);
     setRevision((prev) => prev + 1);
     setAssignments((current) =>
@@ -1300,7 +1349,7 @@ export function App() {
     setEditorDraftId(null);
     setEditorRevision(0);
     setEditorUndoDepth(0);
-      setEditorRedoDepth(0);
+    setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
     setActiveRotationPeriod(1);
@@ -1441,9 +1490,6 @@ export function App() {
                 preferences={preferences}
                 error={view === "generate" ? saveError : null}
                 selectedSeat={selectedSeat}
-                canUndo={
-                  editorDraftId ? editorUndoDepth > 0 : history.length > 0
-                }
                 isGenerating={isGenerating}
                 hideActions
                 rosterSlot={
@@ -1514,7 +1560,6 @@ export function App() {
                 onBack={() => undefined}
                 onNext={() => undefined}
                 onGenerate={handleGenerate}
-                onUndo={handleUndo}
                 onToggleLock={handleToggleLock}
                 onPreview={() => setPreviewOpen(true)}
                 onOpenRules={() => switchView("rules")}
@@ -1533,11 +1578,18 @@ export function App() {
                 locale={locale}
                 t={t}
                 onChoose={(draftId) => {
+                  const token = ++draftSwitchRef.current;
                   void fetchEditorState(draftId)
-                    .then(applyEditorState)
-                    .catch((error: unknown) =>
-                      setSaveError(friendlyError(error, t)),
-                    );
+                    .then((editor) => {
+                      if (token === draftSwitchRef.current) {
+                        applyEditorState(editor);
+                      }
+                    })
+                    .catch((error: unknown) => {
+                      if (token === draftSwitchRef.current) {
+                        setSaveError(friendlyError(error, t));
+                      }
+                    });
                 }}
               />
             ) : null}

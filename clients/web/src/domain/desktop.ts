@@ -1,13 +1,13 @@
 /**
  * Desktop bridge (PD-D14: unified file selection).
  *
- * The workbench runs in three environments that differ in how files are
+ * The workbench runs in two environments that differ in how files are
  * picked:
  *  - Tauri desktop: native dialogs via `tauri-plugin-dialog` + two small
  *    shell commands (`read_user_file` / `write_user_file`);
  *  - Browser: `input[type=file]` + HTML5 drag-and-drop + the backend's
- *    trusted-root reader for typed paths;
- *  - Legacy pywebview shell (v1): removed from new UI; retired with M6.
+ *    trusted-root reader for typed paths.
+ * (The legacy pywebview shell bridge from v1 was retired with M6.)
  *
  * Security red line (PD-D14): typed paths are relative to the backend's
  * trusted root only — absolute paths, `..` traversal and drive prefixes

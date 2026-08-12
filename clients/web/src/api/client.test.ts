@@ -40,44 +40,44 @@ describe("desktop session handoff", () => {
   });
 });
 
-describe("native desktop file bridge", () => {
-  afterEach(() => {
-    delete window.pywebview;
+describe("session token re-bootstrap", () => {
+  beforeEach(() => {
     vi.resetModules();
+    window.history.replaceState({}, "", "/");
+    window.sessionStorage.clear();
   });
 
-  it("saves an export through pywebview when available", async () => {
-    const save = vi.fn().mockResolvedValue({ saved: true, name: "plan.html" });
-    window.pywebview = { api: { save_export_file: save } };
-
-    const { saveDesktopExport } = await import("./client");
-    const blob = {
-      arrayBuffer: async () => new TextEncoder().encode("hello").buffer,
-    } as Blob;
-    const saved = await saveDesktopExport("plan.html", blob);
-
-    expect(saved).toBe("saved");
-    expect(save).toHaveBeenCalledWith("plan.html", btoa("hello"));
-  });
-
-  it("falls back to browser downloads when no native bridge exists", async () => {
-    const { saveDesktopExport, hasDesktopBridge } = await import("./client");
-
-    expect(hasDesktopBridge()).toBe(false);
-    expect(await saveDesktopExport("plan.html", {} as Blob)).toBe("unavailable");
-  });
-
-  it("keeps a cancelled native save distinct from missing desktop support", async () => {
-    window.pywebview = {
-      api: {
-        save_export_file: vi.fn().mockResolvedValue({ saved: false, name: "plan.html" }),
+  it("re-bootstraps once after a 401 even when no token was known", async () => {
+    // The service was down during bootstrap (call 0), so the first API call
+    // (call 1) goes out unauthenticated and is rejected; a fresh session
+    // (call 2) is then bootstrapped and the call retried with it (call 3).
+    const responses = [
+      new Response(JSON.stringify({}), { status: 503 }),
+      new Response(JSON.stringify({}), { status: 401 }),
+      new Response(JSON.stringify({ session_token: "fresh-token" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ];
+    // Snapshot the Authorization header per call: fetchJson reuses and
+    // mutates the same Headers object when it retries, so reading the init
+    // afterwards would show the final state for every call.
+    const seen: Array<string | null> = [];
+    const fetchMock = vi.fn(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        seen.push(new Headers(init?.headers).get("Authorization"));
+        return Promise.resolve(responses.shift() ?? new Response(null, { status: 500 }));
       },
-    };
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
-    const { saveDesktopExport } = await import("./client");
-    const blob = {
-      arrayBuffer: async () => new TextEncoder().encode("hello").buffer,
-    } as Blob;
-    expect(await saveDesktopExport("plan.html", blob)).toBe("cancelled");
+    const { fetchEditorState } = await import("./client");
+    await expect(fetchEditorState("draft-1")).resolves.toBeDefined();
+
+    expect(seen).toEqual([null, null, null, "Bearer fresh-token"]);
   });
 });

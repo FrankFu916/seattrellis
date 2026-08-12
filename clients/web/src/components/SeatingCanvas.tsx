@@ -348,6 +348,26 @@ export function SeatingCanvas({
         return null;
       });
     }
+    // After a drag with pointer capture the browser synthesizes the click
+    // on the captured element (the stage), never on the seat, so nothing
+    // consumes the suppression flag. Clear it on the next tick so it cannot
+    // swallow a later genuine click or keyboard activation; a click that is
+    // dispatched synchronously (jsdom, no capture) still consumes it first.
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  }
+
+  /** The system cancelled the gesture (touch scroll, OS gesture, ...). */
+  function handlePointerCancel() {
+    suppressClickRef.current = false;
+    if (dragRef.current) {
+      dragRef.current = null;
+      setDrag(null);
+      setHoverTarget(null);
+    } else {
+      setRubberBand(null);
+    }
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {
@@ -399,6 +419,7 @@ export function SeatingCanvas({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         <div
           className="seating-holder"

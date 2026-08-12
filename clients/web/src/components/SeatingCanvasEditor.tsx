@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { SeatAssignment, Student } from "../api/types";
 import { nextCanvasZoom } from "../domain/canvasEdit";
@@ -54,6 +54,28 @@ export function SeatingCanvasEditor({
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
+  const zoomTargetRef = useRef<HTMLDivElement>(null);
+
+  // Ctrl+wheel zooms the canvas: on macOS the trackpad pinch maps to this
+  // exact event, so one handler covers the trackpad gesture (design §5) and
+  // Windows/Linux Ctrl+wheel alike. React attaches wheel listeners passively
+  // at the root, which would make preventDefault() a no-op (the page would
+  // zoom too); a native non-passive listener stops the page gesture.
+  useEffect(() => {
+    const target = zoomTargetRef.current;
+    if (!target) {
+      return undefined;
+    }
+    function handleWheel(event: WheelEvent) {
+      if (!event.ctrlKey) {
+        return;
+      }
+      event.preventDefault();
+      setZoom((current) => nextCanvasZoom(current, event.deltaY));
+    }
+    target.addEventListener("wheel", handleWheel, { passive: false });
+    return () => target.removeEventListener("wheel", handleWheel);
+  }, []);
 
   useEffect(() => {
     if (!focusMode) {
@@ -124,19 +146,7 @@ export function SeatingCanvasEditor({
         onUndo={onUndo}
         onRedo={onRedo}
       />
-      <div
-        className="canvas-zoom-target"
-        onWheel={(event) => {
-          // Ctrl+wheel zooms the canvas: on macOS the trackpad pinch maps
-          // to this exact event, so one handler covers the trackpad gesture
-          // (design §5) and Windows/Linux Ctrl+wheel alike.
-          if (!event.ctrlKey) {
-            return;
-          }
-          event.preventDefault();
-          setZoom((current) => nextCanvasZoom(current, event.deltaY));
-        }}
-      >
+      <div className="canvas-zoom-target" ref={zoomTargetRef}>
         {view === "canvas" ? (
           <SeatingCanvas
             assignments={assignments}

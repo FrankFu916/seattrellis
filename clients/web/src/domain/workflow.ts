@@ -11,17 +11,6 @@ export const workflowSteps = [
 
 export type WorkflowStep = (typeof workflowSteps)[number];
 
-export type Diagnostic = {
-  id: string;
-  tone: "good" | "notice" | "warning";
-  message:
-    | "diagnostic.ready"
-    | "diagnostic.unseated"
-    | "diagnostic.locked"
-    | "diagnostic.selection";
-  count?: number;
-};
-
 export function getUnseatedStudents(
   students: Student[],
   assignments: SeatAssignment[],
@@ -101,57 +90,4 @@ export function reconcileStudentAssignments(
     return student ? { ...seat, student } : { ...seat, student: undefined };
   });
   return seatRemainingStudents(reconciled, students);
-}
-
-export function deriveDiagnostics(
-  assignments: SeatAssignment[],
-  students: Student[],
-  selectedSeatId: string | null,
-): Diagnostic[] {
-  const unseatedCount = getUnseatedStudents(students, assignments).length;
-  const lockedCount = assignments.filter((seat) => seat.locked).length;
-  const diagnostics: Diagnostic[] = [
-    unseatedCount === 0
-      ? { id: "ready", tone: "good", message: "diagnostic.ready" }
-      : {
-          id: "unseated",
-          tone: "warning",
-          message: "diagnostic.unseated",
-          count: unseatedCount,
-        },
-  ];
-
-  if (lockedCount > 0) {
-    diagnostics.push({
-      id: "locked",
-      tone: "notice",
-      message: "diagnostic.locked",
-      count: lockedCount,
-    });
-  }
-
-  if (selectedSeatId) {
-    diagnostics.push({
-      id: "selection",
-      tone: "notice",
-      message: "diagnostic.selection",
-    });
-  }
-
-  return diagnostics;
-}
-
-export function getStepIndex(step: WorkflowStep): number {
-  return workflowSteps.indexOf(step);
-}
-
-export function getAdjacentStep(
-  step: WorkflowStep,
-  direction: -1 | 1,
-): WorkflowStep {
-  const nextIndex = Math.min(
-    workflowSteps.length - 1,
-    Math.max(0, getStepIndex(step) + direction),
-  );
-  return workflowSteps[nextIndex];
 }

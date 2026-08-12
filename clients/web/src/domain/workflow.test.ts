@@ -1,6 +1,5 @@
 import { createSeatAssignments, demoStudents } from "../api/demo";
 import {
-  deriveDiagnostics,
   getUnseatedStudents,
   reconcileStudentAssignments,
   seatRemainingStudents,
@@ -34,9 +33,6 @@ describe("seating adjustments", () => {
     const filled = seatRemainingStudents(original, students);
 
     expect(getUnseatedStudents(students, filled)).toHaveLength(0);
-    expect(deriveDiagnostics(filled, students, null)).toEqual([
-      { id: "ready", tone: "good", message: "diagnostic.ready" },
-    ]);
   });
 
   it("reconciles roster edits without resetting geometry or locked seats", () => {
