@@ -1,5 +1,5 @@
 {
   "stdout": "",
   "stderr": "error: unknown option '--snapshot'\nrun 'seattrellis_cli --help' for usage\n",
-  "exit": 1
+  "exit": 2
 }

@@ -5761,6 +5761,8 @@ mod tests {
     fn file_read_rejects_paths_outside_trusted_root_even_when_relative() {
         // A symlink inside the root pointing outside must not be readable:
         // the canonical containment check is the last line of defense.
+        // (Windows has no unix symlinks in this CI sandbox; the binding is
+        // only used inside the cfg(unix) block.)
         let (trusted, _) = test_trusted_root();
         let root = test_web_root();
         let outside = root.join("outside-target.txt");
@@ -5778,5 +5780,7 @@ mod tests {
             // where the target is unresolvable); never 200.
             assert_ne!(response.status, 200);
         }
+        #[cfg(windows)]
+        let _ = trusted;
     }
 }

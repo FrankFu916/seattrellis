@@ -161,7 +161,7 @@ impl SolveStatus {
 /// without a sound proof the honest status is `Unknown` (M1-03).
 pub fn classify_solve_error(message: &str) -> SolveStatus {
     let low = message.to_ascii_lowercase();
-    const INVALID_TOKENS: [&str; 12] = [
+    const INVALID_TOKENS: [&str; 18] = [
         "invalid",
         "unknown",
         "require",
@@ -174,6 +174,15 @@ pub fn classify_solve_error(message: &str) -> SolveStatus {
         "unrecognized",
         "unsupported",
         "conflicting",
+        // CLI/io surface messages: unreadable or malformed inputs are
+        // InvalidInput (exit 2), not internal failures (exit 70) — the
+        // CLI arg sweep (ledger §19.33) pinned these classes.
+        "cannot read",
+        "not valid json",
+        "is not a json",
+        "project file not found",
+        "no such file",
+        "could not read",
     ];
     if INVALID_TOKENS.iter().any(|token| low.contains(token)) {
         SolveStatus::InvalidInput

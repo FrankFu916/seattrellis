@@ -70,6 +70,57 @@ pub(crate) fn parse_snapshot_assignments(
         .collect()
 }
 
+/// Parse the snapshot the repair targets. Two shapes are accepted: the
+/// editor-style snapshot document (`assignments` as `{student_key, seat_id}`
+/// objects — the same shape history reports consume), and the plain
+/// `CoreSolveResponse` that `solve --output` writes (`assignment` as
+/// `[student_index, seat_index]` pairs, resolved against the request). The
+/// CLI arg sweep (ledger §19.33) pinned the repair-of-solve-output flow.
+fn parse_repair_snapshot_assignments(
+    snapshot: &Value,
+    request: &CoreSolveRequest,
+    context: &str,
+) -> Result<Vec<ParsedSnapshotAssignment>, String> {
+    let object = snapshot
+        .as_object()
+        .ok_or_else(|| format!("invalid {context}: expected a JSON object"))?;
+    if object.contains_key("assignments") {
+        return parse_snapshot_assignments(snapshot, context);
+    }
+    let assignment = object
+        .get("assignment")
+        .ok_or_else(|| format!("invalid {context}: missing assignments"))?
+        .as_array()
+        .ok_or_else(|| format!("invalid {context}: assignment must be an array"))?;
+    let students = effective_students(request);
+    let seat_ids = request_seat_ids(request);
+    assignment
+        .iter()
+        .enumerate()
+        .map(|(index, pair)| {
+            let pair = pair.as_array().ok_or_else(|| {
+                format!("invalid {context}: assignment[{index}] must be a [student, seat] pair")
+            })?;
+            let student_index = pair.first().and_then(Value::as_u64).ok_or_else(|| {
+                format!("invalid {context}: assignment[{index}].0 must be a student index")
+            })? as usize;
+            let seat_index = pair.get(1).and_then(Value::as_u64).ok_or_else(|| {
+                format!("invalid {context}: assignment[{index}].1 must be a seat index")
+            })? as usize;
+            let student = students.get(student_index).ok_or_else(|| {
+                format!("invalid {context}: assignment[{index}] student index out of range")
+            })?;
+            let seat_id = seat_ids.get(seat_index).ok_or_else(|| {
+                format!("invalid {context}: assignment[{index}] seat index out of range")
+            })?;
+            Ok(ParsedSnapshotAssignment {
+                student_key: student.key.clone(),
+                seat_id: seat_id.clone(),
+            })
+        })
+        .collect()
+}
+
 fn request_seat_ids(request: &CoreSolveRequest) -> Vec<String> {
     (0..request.seat_positions.len())
         .map(|index| {
@@ -117,7 +168,8 @@ pub fn repair_json_with_options(
     validate_solve_request(&request)?;
     let snapshot: Value = serde_json::from_str(snapshot_json)
         .map_err(|error| format!("invalid snapshot document: {error}"))?;
-    let snapshot_assignments = parse_snapshot_assignments(&snapshot, "repair snapshot")?;
+    let snapshot_assignments =
+        parse_repair_snapshot_assignments(&snapshot, &request, "repair snapshot")?;
 
     // Student keys -> indices from the request.
     let students = effective_students(&request);

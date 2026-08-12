@@ -122,8 +122,8 @@ def scan_tree(root: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", action="append", default=[], metavar="PATH")
-    parser.add_argument("--archive", action="append", default=[], metavar="PATH")
+    parser.add_argument("--binary", nargs="+", default=[], metavar="PATH")
+    parser.add_argument("--archive", nargs="+", default=[], metavar="PATH")
     parser.add_argument("--tree", action="store_true")
     args = parser.parse_args()
 
