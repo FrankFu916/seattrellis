@@ -1,11 +1,11 @@
 //! Embed the production React workbench into the native application.
 //!
 //! The development server still prefers `SEATTRELLIS_WEB_STATIC` and the
-//! checkout's `src/seattrellis/web_static` directory.  Release binaries need
-//! a second path, though: a user should be able to copy the executable away
-//! from the source tree and start it without installing Node or Python.  This
-//! small build script turns the frontend files into `include_bytes!` entries
-//! so the HTTP server can serve them directly from the binary.
+//! checkout's `clients/web/dist` directory.  Release binaries need a second
+//! path, though: a user should be able to copy the executable away from the
+//! source tree and start it without installing Node or Python.  This small
+//! build script turns the frontend files into `include_bytes!` entries so
+//! the HTTP server can serve them directly from the binary.
 
 use std::env;
 use std::fs;
@@ -15,7 +15,7 @@ fn main() {
     let manifest_dir = PathBuf::from(
         env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo"),
     );
-    let web_root = manifest_dir.join("../../src/seattrellis/web_static");
+    let web_root = manifest_dir.join("../../clients/web/dist");
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
 
     let mut files = Vec::new();
