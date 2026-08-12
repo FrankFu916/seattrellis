@@ -3069,7 +3069,8 @@ mod tests {
         }"#,
         )
         .unwrap();
-        fs::write(dir.join("a.json"), r#"{
+        fs::create_dir_all(dir.join("outputs")).unwrap();
+        fs::write(dir.join("outputs/a.json"), r#"{
             "kind": "snapshot",
             "created_at": "2026-08-09T00:00:00Z",
             "students": [{"student_id": "S1", "name": "Alice"}],
@@ -3081,7 +3082,7 @@ mod tests {
             "assignments": [{"student_key": "S1", "student_name": "Alice", "seat_id": "R1C1"}],
             "solver_status": "FEASIBLE"
         }"#).unwrap();
-        fs::write(dir.join("b.json"), r#"{
+        fs::write(dir.join("outputs/b.json"), r#"{
             "kind": "snapshot",
             "created_at": "2026-08-09T01:00:00Z",
             "students": [{"student_id": "S1", "name": "Alice"}],
@@ -3097,8 +3098,8 @@ mod tests {
         // compare
         let body = serde_json::to_vec(&json!({
             "project_path": dir.join("project.json"),
-            "artifact_path": dir.join("a.json"),
-            "compare_to_path": dir.join("b.json"),
+            "artifact_path": dir.join("outputs/a.json"),
+            "compare_to_path": dir.join("outputs/b.json"),
         }))
         .unwrap();
         let response = route_one(
@@ -3118,7 +3119,7 @@ mod tests {
         // restore
         let body = serde_json::to_vec(&json!({
             "project_path": dir.join("project.json"),
-            "artifact_path": dir.join("a.json"),
+            "artifact_path": dir.join("outputs/a.json"),
         }))
         .unwrap();
         let response = route_one(
@@ -3137,6 +3138,801 @@ mod tests {
         assert!(Path::new(restored).is_file());
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ---- M2 parity contract: artifact compare + restore (ledger §2.7/§3.2) ----
+    //
+    // Server-level contract tests for `POST /api/v1/projects/artifacts/compare`
+    // and `POST /api/v1/projects/artifacts/restore` (io projects.rs:1786/:1882).
+    // Every case asserts a 2xx/4xx status (never 5xx), a JSON envelope, and the
+    // fields the React client (`clients/web/src/api/client.ts`) actually reads.
+
+    /// A scratch project workspace for artifact compare/restore contract tests.
+    /// Each instance owns a unique temp dir that is removed on drop.
+    struct ArtifactProject {
+        dir: PathBuf,
+        project_file: PathBuf,
+    }
+
+    impl ArtifactProject {
+        fn new(tag: &str) -> ArtifactProject {
+            let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "seattrellis_artifact_contract_{}_{}_{}",
+                std::process::id(),
+                seq,
+                tag
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(
+                dir.join("project.json"),
+                r#"{
+                "kind": "seattrellis_project",
+                "name": "Demo",
+                "students": "students.csv",
+                "layout": "classroom.json",
+                "rules": "rules.json",
+                "history_dir": "history",
+                "outputs_dir": "outputs"
+            }"#,
+            )
+            .unwrap();
+            ArtifactProject {
+                dir: dir.clone(),
+                project_file: dir.join("project.json"),
+            }
+        }
+
+        fn write(&self, relative: &str, content: &str) -> PathBuf {
+            let path = self.dir.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(&path, content).unwrap();
+            path
+        }
+
+        fn compare(&self, left: &Path, right: &Path, root: &Path) -> Response {
+            let body = serde_json::to_vec(&json!({
+                "project_path": self.project_file.to_string_lossy().into_owned(),
+                "artifact_path": left.to_string_lossy().into_owned(),
+                "compare_to_path": right.to_string_lossy().into_owned(),
+            }))
+            .unwrap();
+            route_one(
+                &request("POST", "/api/v1/projects/artifacts/compare", &body),
+                root,
+            )
+        }
+
+        fn restore(&self, artifact: &Path, root: &Path) -> Response {
+            let body = serde_json::to_vec(&json!({
+                "project_path": self.project_file.to_string_lossy().into_owned(),
+                "artifact_path": artifact.to_string_lossy().into_owned(),
+            }))
+            .unwrap();
+            route_one(
+                &request("POST", "/api/v1/projects/artifacts/restore", &body),
+                root,
+            )
+        }
+    }
+
+    impl Drop for ArtifactProject {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// Assert a structured JSON error: exactly `expected_status` (a 4xx), a
+    /// JSON body carrying the `error` envelope field the OpenAPI
+    /// ErrorEnvelope contract requires, and a message containing the fragment.
+    fn assert_error_envelope(
+        response: &Response,
+        expected_status: u16,
+        message_fragment: &str,
+    ) -> serde_json::Value {
+        assert_eq!(
+            response.status,
+            expected_status,
+            "expected {expected_status}, got {} body: {}",
+            response.status,
+            String::from_utf8_lossy(&response.body)
+        );
+        assert!(
+            (400..500).contains(&response.status),
+            "contract: clean 4xx, got {}",
+            response.status
+        );
+        assert_eq!(
+            response.content_type,
+            Some("application/json; charset=utf-8"),
+            "error bodies must be JSON"
+        );
+        let value = body_json(response);
+        let error = value["error"]
+            .as_str()
+            .expect("error envelope must carry an 'error' string field");
+        assert!(!error.is_empty(), "error message must not be empty");
+        assert!(
+            error.contains(message_fragment),
+            "error {error:?} does not contain {message_fragment:?}"
+        );
+        value
+    }
+
+    /// Two snapshots with real student names. LEFT: Alice@R1C1, Bob@R1C2,
+    /// FEASIBLE, rules seed 42, two seats. RIGHT: Alice moved to R1C2, Bob
+    /// unseated, Carol seated at R1C1, OPTIMAL, rules seed 7, three seats.
+    const SNAPSHOT_LEFT: &str = r#"{
+        "kind": "snapshot",
+        "schema_version": "1.0",
+        "created_at": "2026-08-09T00:00:00Z",
+        "students": [
+            {"student_id": "S1", "name": "Alice"},
+            {"student_id": "S2", "name": "Bob"}
+        ],
+        "layout": {"layout_id": "l", "seats": [
+            {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+            {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+        ]},
+        "rules": {"seed": 42},
+        "assignments": [
+            {"student_key": "S1", "student_name": "Alice", "seat_id": "R1C1"},
+            {"student_key": "S2", "student_name": "Bob", "seat_id": "R1C2"}
+        ],
+        "solver_status": "FEASIBLE"
+    }"#;
+
+    const SNAPSHOT_RIGHT: &str = r#"{
+        "kind": "snapshot",
+        "schema_version": "1.0",
+        "created_at": "2026-08-09T01:00:00Z",
+        "students": [
+            {"student_id": "S1", "name": "Alice"},
+            {"student_id": "S2", "name": "Bob"},
+            {"student_id": "S3", "name": "Carol"}
+        ],
+        "layout": {"layout_id": "l", "seats": [
+            {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+            {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true},
+            {"seat_id": "R1C3", "row": 1, "col": 3, "x": 3.0, "y": 1.0, "zone": "front", "enabled": true}
+        ]},
+        "rules": {"seed": 7},
+        "assignments": [
+            {"student_key": "S1", "student_name": "Alice", "seat_id": "R1C2"},
+            {"student_key": "S3", "student_name": "Carol", "seat_id": "R1C1"}
+        ],
+        "solver_status": "OPTIMAL"
+    }"#;
+
+    /// Candidate-set documents whose recommended inner snapshot moves S1
+    /// from R1C1 to R1C2.
+    const CANDIDATE_SET_LEFT: &str = r#"{
+        "kind": "candidate_set",
+        "schema_version": "0.2.2",
+        "created_at": "2026-08-09T00:00:00Z",
+        "recommended_candidate_id": "c1",
+        "candidates": [
+            {
+                "candidate_id": "c1",
+                "snapshot": {
+                    "schema_version": "1.0",
+                    "students": [{"student_id": "S1", "name": "Alice"}],
+                    "layout": {"layout_id": "l", "seats": [
+                        {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+                        {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+                    ]},
+                    "rules": {"seed": 1},
+                    "assignments": [{"student_key": "S1", "student_name": "Alice", "seat_id": "R1C1"}],
+                    "solver_status": "FEASIBLE"
+                }
+            }
+        ]
+    }"#;
+
+    const CANDIDATE_SET_RIGHT: &str = r#"{
+        "kind": "candidate_set",
+        "schema_version": "0.2.2",
+        "created_at": "2026-08-09T02:00:00Z",
+        "recommended_candidate_id": "c1",
+        "candidates": [
+            {
+                "candidate_id": "c1",
+                "snapshot": {
+                    "schema_version": "1.0",
+                    "students": [{"student_id": "S1", "name": "Alice"}],
+                    "layout": {"layout_id": "l", "seats": [
+                        {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+                        {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+                    ]},
+                    "rules": {"seed": 2},
+                    "assignments": [{"student_key": "S1", "student_name": "Alice", "seat_id": "R1C2"}],
+                    "solver_status": "FEASIBLE"
+                }
+            }
+        ]
+    }"#;
+
+    /// Rotation plans whose first period snapshot moves S1 from R1C1 to R1C2.
+    const ROTATION_PLAN_LEFT: &str = r#"{
+        "kind": "rotation_plan",
+        "schema_version": "1.0",
+        "created_at": "2026-08-09T00:00:00Z",
+        "name": "Weekly",
+        "periods": [
+            {"period": 1, "label": "P1", "snapshot": {
+                "schema_version": "1.0",
+                "students": [{"student_id": "S1", "name": "Alice"}],
+                "layout": {"layout_id": "l", "seats": [
+                    {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+                    {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+                ]},
+                "rules": {"seed": 1},
+                "assignments": [{"student_key": "S1", "student_name": "Alice", "seat_id": "R1C1"}],
+                "solver_status": "FEASIBLE"
+            }}
+        ]
+    }"#;
+
+    const ROTATION_PLAN_RIGHT: &str = r#"{
+        "kind": "rotation_plan",
+        "schema_version": "1.0",
+        "created_at": "2026-08-09T03:00:00Z",
+        "name": "Weekly",
+        "periods": [
+            {"period": 1, "label": "P1", "snapshot": {
+                "schema_version": "1.0",
+                "students": [{"student_id": "S1", "name": "Alice"}],
+                "layout": {"layout_id": "l", "seats": [
+                    {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front", "enabled": true},
+                    {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front", "enabled": true}
+                ]},
+                "rules": {"seed": 2},
+                "assignments": [{"student_key": "S1", "student_name": "Alice", "seat_id": "R1C2"}],
+                "solver_status": "FEASIBLE"
+            }}
+        ]
+    }"#;
+
+    #[test]
+    fn artifact_compare_full_diff_contract_and_privacy() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-full");
+        let left = project.write("history/snap-l.json", SNAPSHOT_LEFT);
+        let right = project.write("history/snap-r.json", SNAPSHOT_RIGHT);
+
+        let response = project.compare(&left, &right, &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        assert_eq!(
+            response.content_type,
+            Some("application/json; charset=utf-8")
+        );
+        let value = body_json(&response);
+
+        // Client envelope (`ProjectArtifactCompareResponse` in types.ts).
+        assert_eq!(value["api_version"], "1");
+
+        // Client summaries (`ProjectArtifactSummary`).
+        assert_eq!(value["left"]["name"], "snap-l.json");
+        assert_eq!(value["left"]["kind"], "snapshot");
+        assert_eq!(value["left"]["created_at"], "2026-08-09T00:00:00Z");
+        assert_eq!(value["left"]["student_count"], 2);
+        assert_eq!(value["left"]["assignment_count"], 2);
+        assert_eq!(value["left"]["enabled_seat_count"], 2);
+        assert_eq!(value["left"]["solver_status"], "FEASIBLE");
+        assert!(value["left"]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("snap-l.json"));
+        assert_eq!(value["right"]["name"], "snap-r.json");
+        assert_eq!(value["right"]["kind"], "snapshot");
+        assert_eq!(value["right"]["created_at"], "2026-08-09T01:00:00Z");
+        assert_eq!(value["right"]["student_count"], 3);
+        assert_eq!(value["right"]["assignment_count"], 2);
+        assert_eq!(value["right"]["enabled_seat_count"], 3);
+        assert_eq!(value["right"]["solver_status"], "OPTIMAL");
+
+        // Client diff (`ProjectArtifactDiff`): S1 moved, S2 unseated, S3
+        // seated; layout/rules/solver_status all changed.
+        let diff = &value["diff"];
+        assert_eq!(diff["assignment_changes"], 3);
+        assert_eq!(diff["roster_added"], 1);
+        assert_eq!(diff["roster_removed"], 1);
+        assert_eq!(diff["layout_changed"], true);
+        assert_eq!(diff["rules_changed"], true);
+        assert_eq!(diff["solver_status_changed"], true);
+        let details = diff["assignment_details"].as_array().unwrap();
+        assert_eq!(details.len(), 3);
+        assert_eq!(
+            details[0],
+            json!({"student_ref": "student-1", "change": "moved",
+                   "before_seat_id": "R1C1", "after_seat_id": "R1C2"})
+        );
+        assert_eq!(
+            details[1],
+            json!({"student_ref": "student-2", "change": "unseated",
+                   "before_seat_id": "R1C2", "after_seat_id": Value::Null})
+        );
+        assert_eq!(
+            details[2],
+            json!({"student_ref": "student-3", "change": "seated",
+                   "before_seat_id": Value::Null, "after_seat_id": "R1C1"})
+        );
+
+        // Privacy: the compare payload never contains student data — only
+        // anonymized student-N references, counts and seat ids.
+        let serialized = serde_json::to_string(&value).unwrap();
+        for secret in ["Alice", "Bob", "Carol", "student_key", "student_name"] {
+            assert!(
+                !serialized.contains(secret),
+                "compare response leaked {secret:?}: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn artifact_compare_supports_candidate_set_and_rotation_plan_kinds() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-kinds");
+        let c1 = project.write("outputs/candidates-a.json", CANDIDATE_SET_LEFT);
+        let c2 = project.write("outputs/candidates-b.json", CANDIDATE_SET_RIGHT);
+        let r1 = project.write("outputs/rotation-a.json", ROTATION_PLAN_LEFT);
+        let r2 = project.write("outputs/rotation-b.json", ROTATION_PLAN_RIGHT);
+
+        // candidate_set vs candidate_set: the recommended inner snapshot
+        // drives the diff.
+        let response = project.compare(&c1, &c2, &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["left"]["kind"], "candidate_set");
+        assert_eq!(value["right"]["kind"], "candidate_set");
+        assert_eq!(value["left"]["student_count"], 1);
+        assert_eq!(value["diff"]["assignment_changes"], 1);
+        assert_eq!(value["diff"]["assignment_details"][0]["change"], "moved");
+        assert!(!serde_json::to_string(&value).unwrap().contains("Alice"));
+
+        // rotation_plan vs rotation_plan: first period snapshot drives the
+        // diff, no crash.
+        let response = project.compare(&r1, &r2, &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["left"]["kind"], "rotation_plan");
+        assert_eq!(value["right"]["kind"], "rotation_plan");
+        assert_eq!(value["diff"]["assignment_changes"], 1);
+        assert_eq!(value["diff"]["assignment_details"][0]["change"], "moved");
+
+        // Cross-kind snapshot vs candidate_set is a normal comparison.
+        let snap = project.write("history/snap.json", SNAPSHOT_LEFT);
+        let response = project.compare(&snap, &c1, &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        assert_eq!(value["left"]["kind"], "snapshot");
+        assert_eq!(value["right"]["kind"], "candidate_set");
+        assert!(value["diff"]["assignment_changes"].as_u64().is_some());
+    }
+
+    #[test]
+    fn artifact_compare_rejects_self_comparison() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-self");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+        let response = project.compare(&left, &left, &root);
+        assert_error_envelope(&response, 422, "compared with itself");
+    }
+
+    #[test]
+    fn artifact_compare_rejects_self_comparison_through_path_aliases() {
+        // `..` aliases must not bypass the self-compare rejection: the
+        // containment resolver canonicalizes both sides first (M1-05).
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-self-alias");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+        let alias = project.dir.join("history/../history/a.json");
+        let response = project.compare(&left, &alias, &root);
+        assert_error_envelope(&response, 422, "compared with itself");
+    }
+
+    #[test]
+    fn artifact_compare_missing_artifact_is_clean_4xx() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-missing-artifact");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+        let missing = project.dir.join("history/never-written.json");
+        let response = project.compare(&left, &missing, &root);
+        assert_error_envelope(&response, 422, "history or outputs directory");
+    }
+
+    #[test]
+    fn artifact_compare_missing_project_is_404() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-missing-project");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+        let right = project.write("history/b.json", SNAPSHOT_RIGHT);
+        let body = serde_json::to_vec(&json!({
+            "project_path": project.dir.join("no-such/project.json"),
+            "artifact_path": left.to_string_lossy().into_owned(),
+            "compare_to_path": right.to_string_lossy().into_owned(),
+        }))
+        .unwrap();
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/compare", &body),
+            &root,
+        );
+        assert_error_envelope(&response, 404, "Project file not found");
+    }
+
+    #[test]
+    fn artifact_compare_invalid_json_is_422() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-invalid-json");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+        let garbage = project.write("history/garbage.json", "this is not json {{{");
+        let response = project.compare(&left, &garbage, &root);
+        assert_error_envelope(&response, 422, "Invalid JSON");
+    }
+
+    #[test]
+    fn artifact_compare_unsupported_kind_is_422() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-unsupported-kind");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+        // A project document is a valid JSON file but not a comparable
+        // artifact kind.
+        let response = project.compare(&project.project_file, &left, &root);
+        assert_error_envelope(&response, 422, "Unsupported project artifact kind");
+    }
+
+    #[test]
+    fn artifact_compare_bad_request_bodies_are_400() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-bad-body");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+
+        // Missing compare_to_path.
+        let body = serde_json::to_vec(&json!({
+            "project_path": project.project_file.to_string_lossy().into_owned(),
+            "artifact_path": left.to_string_lossy().into_owned(),
+        }))
+        .unwrap();
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/compare", &body),
+            &root,
+        );
+        assert_error_envelope(&response, 400, "compare_to_path");
+
+        // Missing artifact_path.
+        let body = serde_json::to_vec(&json!({
+            "project_path": project.project_file.to_string_lossy().into_owned(),
+        }))
+        .unwrap();
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/compare", &body),
+            &root,
+        );
+        assert_error_envelope(&response, 400, "artifact_path");
+
+        // Non-JSON body.
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/compare", b"not json"),
+            &root,
+        );
+        assert_error_envelope(&response, 400, "not valid JSON");
+
+        // Empty body.
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/compare", b""),
+            &root,
+        );
+        assert_error_envelope(&response, 400, "empty request body");
+    }
+
+    /// Parity-gap contract (M1-05 workspace containment): the Python oracle
+    /// `_resolve_project_artifact` (handlers.py:1332) rejects artifact paths
+    /// outside the project workspace with 422 ("The artifact must be a file
+    /// inside the project history or outputs directory."). The Rust io layer
+    /// (`compare_artifacts_json`, projects.rs:1786) does not yet enforce that
+    /// containment, so the current server contract accepts the file and
+    /// returns a full diff. This locks the CURRENT behavior; when the M5
+    /// containment fix lands, flip these assertions to 422.
+    #[test]
+    fn artifact_compare_rejects_files_outside_project_workspace() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("compare-outside");
+        let left = project.write("history/a.json", SNAPSHOT_LEFT);
+        // A perfectly valid snapshot artifact that lives outside the project
+        // workspace (neither history_dir nor outputs_dir).
+        let outside_dir = std::env::temp_dir().join(format!(
+            "seattrellis_artifact_outside_{}_{}",
+            std::process::id(),
+            TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&outside_dir);
+        fs::create_dir_all(&outside_dir).unwrap();
+        let outside = outside_dir.join("leaked.snapshot.json");
+        fs::write(&outside, SNAPSHOT_RIGHT).unwrap();
+
+        let response = project.compare(&left, &outside, &root);
+        assert_eq!(
+            response.status,
+            422,
+            "outside-workspace artifacts must be rejected (Python oracle); body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        assert!(
+            String::from_utf8_lossy(&response.body).contains("history or outputs directory"),
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let _ = fs::remove_dir_all(&outside_dir);
+    }
+
+    #[test]
+    fn artifact_restore_creates_snapshot_with_provenance_metadata() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-provenance");
+        let source = project.write("history/plan.snapshot.json", SNAPSHOT_LEFT);
+
+        let response = project.restore(&source, &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        assert_eq!(
+            response.content_type,
+            Some("application/json; charset=utf-8")
+        );
+        let value = body_json(&response);
+
+        // Client envelope (`ProjectArtifactRestoreResponse` in types.ts).
+        assert_eq!(value["api_version"], "1");
+        assert!(value["project_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("project.json"));
+        assert!(value["source_artifact"]
+            .as_str()
+            .unwrap()
+            .ends_with("plan.snapshot.json"));
+        let restored = value["restored_artifact"].as_str().unwrap();
+        assert!(
+            restored.ends_with("restored-plan.snapshot.json"),
+            "{restored}"
+        );
+        assert!(Path::new(restored).is_file());
+        // The restored artifact lands in the project outputs directory.
+        assert_eq!(
+            Path::new(restored)
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .map(|name| name.to_string_lossy().into_owned()),
+            Some("outputs".to_string())
+        );
+
+        // Provenance metadata exists and points at the source.
+        let document: Value = serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
+        assert_eq!(document["metadata"]["restored_from"], "plan.snapshot.json");
+        assert!(document["restored_at"].is_number());
+        // The assignment content survived the restore.
+        assert_eq!(document["assignments"].as_array().unwrap().len(), 2);
+        assert_eq!(document["assignments"][0]["seat_id"], "R1C1");
+
+        // The response carries paths only, never student data.
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(!serialized.contains("Alice"), "{serialized}");
+    }
+
+    #[test]
+    fn artifact_restore_twice_never_overwrites() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-twice");
+        let source = project.write("history/plan.snapshot.json", SNAPSHOT_LEFT);
+
+        let first = body_json(&project.restore(&source, &root));
+        let second = body_json(&project.restore(&source, &root));
+
+        let first_path = first["restored_artifact"].as_str().unwrap();
+        let second_path = second["restored_artifact"].as_str().unwrap();
+        assert_ne!(
+            first_path, second_path,
+            "restore must never overwrite an existing snapshot"
+        );
+        assert!(
+            second_path.ends_with("restored-plan-2.snapshot.json"),
+            "{second_path}"
+        );
+        assert!(Path::new(first_path).is_file());
+        assert!(Path::new(second_path).is_file());
+        // Both copies carry the same provenance metadata.
+        let first_doc: Value =
+            serde_json::from_str(&fs::read_to_string(first_path).unwrap()).unwrap();
+        let second_doc: Value =
+            serde_json::from_str(&fs::read_to_string(second_path).unwrap()).unwrap();
+        assert_eq!(first_doc["metadata"]["restored_from"], "plan.snapshot.json");
+        assert_eq!(
+            second_doc["metadata"]["restored_from"],
+            "plan.snapshot.json"
+        );
+    }
+
+    #[test]
+    fn artifact_restore_rejects_rotation_plan() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-rotation");
+        let rotation = project.write("outputs/rotation.json", ROTATION_PLAN_LEFT);
+        let response = project.restore(&rotation, &root);
+        assert_error_envelope(&response, 422, "rotation plan");
+        // No partial artifact may be written to outputs.
+        assert!(!project
+            .dir
+            .join("outputs/restored-rotation.snapshot.json")
+            .exists());
+    }
+
+    #[test]
+    fn artifact_restore_rejects_non_snapshot_kind() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-project-kind");
+        // A project document is a valid JSON file but not a restorable kind.
+        let response = project.restore(&project.project_file, &root);
+        assert_error_envelope(&response, 422, "Unsupported project artifact kind");
+        assert!(!project.dir.join("outputs").exists());
+    }
+
+    #[test]
+    fn artifact_restore_candidate_set_writes_provenance_snapshot() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-candidate");
+        let source = project.write("outputs/candidates-a.json", CANDIDATE_SET_LEFT);
+
+        let response = project.restore(&source, &root);
+        assert_eq!(
+            response.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let value = body_json(&response);
+        let restored = value["restored_artifact"].as_str().unwrap();
+        assert!(
+            restored.ends_with("restored-candidates-a.snapshot.json"),
+            "{restored}"
+        );
+        assert!(Path::new(restored).is_file());
+
+        let document: Value = serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
+        assert_eq!(document["metadata"]["restored_from"], "candidates-a.json");
+        assert!(document["restored_at"].is_number());
+        // The candidate document (including its inner snapshot) survived.
+        assert_eq!(document["candidates"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            document["candidates"][0]["snapshot"]["assignments"][0]["seat_id"],
+            "R1C1"
+        );
+    }
+
+    #[test]
+    fn artifact_restore_missing_artifact_is_clean_4xx() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-missing-artifact");
+        let missing = project.dir.join("history/never-written.json");
+        let response = project.restore(&missing, &root);
+        assert_error_envelope(&response, 422, "history or outputs directory");
+        assert!(!project.dir.join("outputs").exists());
+    }
+
+    #[test]
+    fn artifact_restore_missing_project_is_404() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-missing-project");
+        let source = project.write("history/a.json", SNAPSHOT_LEFT);
+        let body = serde_json::to_vec(&json!({
+            "project_path": project.dir.join("no-such/project.json"),
+            "artifact_path": source.to_string_lossy().into_owned(),
+        }))
+        .unwrap();
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/restore", &body),
+            &root,
+        );
+        assert_error_envelope(&response, 404, "Project file not found");
+    }
+
+    #[test]
+    fn artifact_restore_invalid_json_is_422() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-invalid-json");
+        let garbage = project.write("history/garbage.json", "this is not json {{{");
+        let response = project.restore(&garbage, &root);
+        assert_error_envelope(&response, 422, "Invalid JSON");
+        assert!(!project.dir.join("outputs").exists());
+    }
+
+    #[test]
+    fn artifact_restore_bad_request_bodies_are_400() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-bad-body");
+
+        // Missing artifact_path.
+        let body = serde_json::to_vec(&json!({
+            "project_path": project.project_file.to_string_lossy().into_owned(),
+        }))
+        .unwrap();
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/restore", &body),
+            &root,
+        );
+        assert_error_envelope(&response, 400, "artifact_path");
+
+        // Non-JSON body.
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/restore", b"not json"),
+            &root,
+        );
+        assert_error_envelope(&response, 400, "not valid JSON");
+
+        // Empty body.
+        let response = route_one(
+            &request("POST", "/api/v1/projects/artifacts/restore", b""),
+            &root,
+        );
+        assert_error_envelope(&response, 400, "empty request body");
+    }
+
+    /// M1-05 workspace containment: restore sources outside the project
+    /// workspace are rejected with 422, matching the Python oracle
+    /// (`_resolve_project_artifact`, handlers.py:1332).
+    #[test]
+    fn artifact_restore_rejects_files_outside_project_workspace() {
+        let root = test_web_root();
+        let project = ArtifactProject::new("restore-outside");
+        // A perfectly valid snapshot artifact outside the project workspace.
+        let outside_dir = std::env::temp_dir().join(format!(
+            "seattrellis_artifact_outside_{}_{}",
+            std::process::id(),
+            TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&outside_dir);
+        fs::create_dir_all(&outside_dir).unwrap();
+        let outside = outside_dir.join("leaked.snapshot.json");
+        fs::write(&outside, SNAPSHOT_LEFT).unwrap();
+
+        let response = project.restore(&outside, &root);
+        assert_eq!(
+            response.status,
+            422,
+            "outside-workspace artifacts must be rejected (Python oracle); body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        assert!(
+            String::from_utf8_lossy(&response.body).contains("history or outputs directory"),
+            "body: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let _ = fs::remove_dir_all(&outside_dir);
     }
 
     #[test]

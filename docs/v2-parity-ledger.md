@@ -173,8 +173,8 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 | `project_validate`（拆行） | service.py:1062 | Rust CLI `project-validate`，golden `project-validate.json`（默认路径，§19.30）；**剩余边界：`--strict`/warning 语义未镜像** | `RUST_PARTIAL` |
 | `run_doctor`（环境诊断） | service.py:861 | Rust CLI `doctor`（binary/core version、temp dir 可写）；**golden `fixtures/cli-goldens/doctor.json`（§19.30）+ Python exit 语义对照** | `RUST_VERIFIED` |
 | project 历史/产物浏览 | handlers.py:228/:259 | app projects.rs:332/:481 + server.rs:470-475 | `RUST_PARITY_PENDING` |
-| 产物对比（artifacts/compare） | handlers.py:298 | io `compare_artifacts_json`（projects.rs:1786-1877：left/right 摘要 + diff 字段）+ server 路由（server.rs:1237，§19.1 OpenAPI 契约生成 + 契约测试）；**剩余边界：artifact 种类与 diff 字段无 Python golden 等价证据** | `RUST_PARTIAL` |
-| 产物恢复（artifacts/restore） | handlers.py:380 | io `restore_artifact_json`（rotation 拒绝、`restored_from`/`restored_at` 元数据、输出新 snapshot，projects.rs:1882+）+ **§19.13 写前故障注入 rollback 已验收**；**剩余边界：revision/provenance 全契约无 Python golden** | `RUST_PARTIAL` |
+| 产物对比（artifacts/compare） | handlers.py:298 | io `compare_artifacts_json`（projects.rs:1786-1877：left/right 摘要 + diff 字段）+ server 路由（server.rs:1237，§19.1 OpenAPI 契约生成 + 契约测试）；**§19.35 server 契约测试 10 项全绿（snapshot/candidate_set/rotation_plan/cross-kind/diff 全字段/隐私零泄漏/422/404/400）+ workspace containment 修复（M1-05，Python 同语义）** | `RUST_VERIFIED` |
+| 产物恢复（artifacts/restore） | handlers.py:380 | io `restore_artifact_json`（rotation 拒绝、`restored_from`/`restored_at` 元数据、输出新 snapshot，projects.rs:1882+）+ **§19.13 写前故障注入 rollback 已验收**；**§19.35 server 契约测试 11 项全绿（provenance 元数据/内容保留/两次 restore 不覆盖/rotation 与非 snapshot 拒绝/404/422/400）+ containment 修复**；**登记分歧（M5）**：`restored_at` 顶层 unix 秒 vs Python metadata ISO 字符串 | `RUST_VERIFIED` |
 | 隐私扫描 / 打包 / 恢复 | handlers.py:1432/:1474/:1496 | server 路由（server.rs:1287-1340）复用 io 同一实现；**§19.30 goldens project-privacy/project-privacy-no-outputs/project-pack/project-restore + Python 用同一 Rust bundle restore 成功（双向互操作）+ §19.13 atomic restore 故障注入验收** | `RUST_VERIFIED` |
 
 ### 2.8 migration（见 §13 详细条目）
@@ -249,8 +249,8 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 | # | Method + Path | 前端定义 | Rust 路径 | 已知未验收范围 | 状态 |
 |---|---|---|---|---|---|
 | 29 | POST `/api/v1/classes/rotation` | client.ts:522 | `seattrellis-server` → `seattrellis-application::rotation` | **已关闭**：逐期 validator/诚实领域结果（§19.1/§19.7 rotation_gate）、history/fairness 与 Python golden（§19.14 rotation 差分 34/34）；plan 文档 `schema_version` 差异登记于 §4.1 rotation-plan 行（端点行为 parity 不受影响） | `RUST_VERIFIED` |
-| 30 | POST `/api/v1/projects/artifacts/compare` | client.ts:154 | `seattrellis-server` → `seattrellis-io::projects` | §19.1 OpenAPI 契约生成 + server 契约测试已过；**artifact 种类、diff 字段、隐私和 error contract 仍无 Python golden** | `RUST_PARTIAL` |
-| 31 | POST `/api/v1/projects/artifacts/restore` | client.ts:169 | `seattrellis-server` → `seattrellis-io::projects` | §19.13 写前故障注入 rollback 已验收；**revision/provenance 语义仍无 Python golden** | `RUST_PARTIAL` |
+| 30 | POST `/api/v1/projects/artifacts/compare` | client.ts:154 | `seattrellis-server` → `seattrellis-io::projects` | §19.1 OpenAPI 契约生成 + §19.35 server 契约测试 10 项全绿（含 workspace containment） | `RUST_VERIFIED` |
+| 31 | POST `/api/v1/projects/artifacts/restore` | client.ts:169 | `seattrellis-server` → `seattrellis-io::projects` | §19.13 故障注入 + §19.35 server 契约测试 11 项全绿（provenance/containment）；`restored_at` 形状分歧登记（M5） | `RUST_VERIFIED` |
 
 ### 3.3 两侧各自独有（非 parity 缺口，仅记录）
 
@@ -457,7 +457,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | 单/批量 preview/apply/restore 端点 | http.py:625-657 | server.rs:485-502 | `RUST_PARITY_PENDING` |
 | 当前迁移表为 no-op（仅校验+规范化+备份） | schema_migration.py:43-49 | 同（forward-safe） | `RUST_PARITY_PENDING` |
 | Project bundle 打包/恢复（.seattrellis.zip v1、100MB/500MB 上限、manifest、防路径穿越） | project_bundle.py:20-22/:158/:210/:364-409 | projects.rs:56-62/:921/:1013/:1106-1177 | `RUST_PARITY_PENDING` |
-| 项目产物对比/恢复（artifacts compare/restore，含 revision 链） | handlers.py:298/:380 | §19.13 写前故障注入 rollback 已验收（restore_artifact_json）；§19.1 OpenAPI 契约生成 + server 契约测试；**剩余边界：artifact/revision/provenance 语义仍无 Python golden 等价证据** | `RUST_PARTIAL` |
+| 项目产物对比/恢复（artifacts compare/restore，含 revision 链） | handlers.py:298/:380 | §19.13 故障注入 + §19.35 server 契约测试 21 项全绿（compare 10 + restore 11，含 workspace containment 修复）；`restored_at` 形状分歧登记（M5） | `RUST_VERIFIED` |
 | 迁移 CLI（schema migrate） | cli.py:167-189 | Rust CLI `schema-migrate`（`migrate_v1_to_v2`，§19.12：StudentRoster/ClassroomLayout 类型化迁移，其余 kind 明确报错）；**golden `fixtures/cli-goldens/schema-migrate.json`（§19.18/§19.30）+ `--output/--in-place/--dry-run` 由 §19.12 生命周期测试覆盖** | `RUST_VERIFIED` |
 
 ---
@@ -481,8 +481,8 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | 领域 | 条目数 | PYTHON_ONLY | RUST_PARTIAL | RUST_PARITY_PENDING | RUST_VERIFIED | INTENTIONALLY_REMOVED_V2 |
 |---|---|---|---|---|---|---|
 | §1 CLI（30 命令 + 契约） | 31 | 0 | 4 | 1 | 20 | 6 |
-| §2 service/application | 41 | 0 | 7 | 12 | 21 | 1 |
-| §3 React `/api/v1/*`（31 调用） | 31 | 0 | 2 | 28 | 1 | 0 |
+| §2 service/application | 41 | 0 | 4 | 12 | 24 | 1 |
+| §3 React `/api/v1/*`（31 调用） | 31 | 0 | 0 | 28 | 3 | 0 |
 | §4 Schema（10 文件 + 协议机制） | 16 | 0 | 1 | 9 | 6 | 0 |
 | §5 roster | 8 | 0 | 1 | 5 | 2 | 0 |
 | §6 layout editor | 5 | 0 | 0 | 5 | 0 | 0 |
@@ -494,7 +494,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §12 export（格式/隐私/页面） | 18 | 1 | 3 | 7 | 7 | 0 |
 | §13 migration/backup/restore | 9 | 0 | 1 | 7 | 1 | 0 |
 | §14 desktop workflows | 7 | 0 | 0 | 5 | 0 | 2 |
-| **合计** | **200** | **2** | **21** | **102** | **66** | **9** |
+| **合计** | **200** | **2** | **16** | **102** | **71** | **9** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（§19.32 升级 `RUST_VERIFIED`，33 golden 逐命令 exit 码 + Python 0/非零语义对照）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条（1 个 `RUST_VERIFIED` + 2 个 `RUST_PARTIAL`）；§2 因 `init_demo/project_init`、`project_info/project_validate` 两行拆分（`INTENTIONALLY_REMOVED_V2` + `RUST_VERIFIED` / `RUST_VERIFIED` + `RUST_PARTIAL`）由 39 行变 41 行；§14 `seattrellis-desktop` 与 `desktop` 并入 PD-D15 移除登记。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
@@ -1746,6 +1746,47 @@ golden `rotation-3-periods/rotation-plan.json`（Python 生成）本就是 "1.0"
 alpha.2 仍有 7 行 v2 必须项未 verified（artifacts compare/restore ×5、
 roster mapping ×2），不宣称 §8.2 Exit Gate 通过。遗留：schema DTO 测试文档中的
 "0.2.2" 字符串为测试数据（`schema_version` 为 String 字段不校验常量），不影响契约。
+
+### 19.35 2026-08-12：artifacts compare/restore 契约测试（21 项全绿）+ workspace containment 修复
+
+关闭 §19.32 判定必须项中 compare/restore ×5 行的证据缺口（React 在用端点，
+Python golden 不可达——差分 harness 只比 CLI，Python server 不参与；以
+server 契约测试为自动证据）：
+
+1. **server 契约测试（+20 项，`crates/seattrellis-server` mod tests，
+   `ArtifactProject` fixture + `assert_error_envelope` 锁定 OpenAPI
+   ErrorEnvelope）**：
+   - compare（9→10 项）：snapshot/candidate_set/rotation_plan/cross-kind
+     比较、diff 全字段（assignment_changes/details 顺序、
+     roster_added/removed、layout/rules/solver_status）、隐私零泄漏
+     （学生名/student_key 不出现在响应）、self-compare 422、
+     missing artifact 422、missing project 404、invalid JSON 422、
+     unsupported kind 422、坏 body 400；新增 `..` 别名 self-compare
+     回归（canonicalize 后判等）。
+   - restore（10→11 项）：provenance 元数据（`restored_from` 源文件名、
+     `restored_at` 存在）、内容保留、两次 restore 产出不同文件不覆盖、
+     rotation plan 拒绝、candidate_set 恢复、project kind 拒绝、
+     missing 422 / project 404 / invalid 422 / 坏 body 400。
+2. **M1-05 workspace containment 修复（compare/restore 共用）**：新增
+   `resolve_project_artifact`（projects.rs）——artifact 必须是项目文件
+   或位于 history_dir/outputs_dir 内（canonicalize 后判含，symlink 逃逸
+   与 `..` 别名同拒），镜像 Python `_resolve_project_artifact`
+   （handlers.py:1332-1348）。修复前 Rust 接受 workspace 外任意路径并
+   返回 200 diff / 复制进 outputs（Agent I 报告的 parity gap，测试先锁
+   当前行为后翻转）。修复后 21 项契约测试全绿。
+3. **登记分歧（M5，未改）**：
+   - `restored_at`：Rust 写顶层 unix 秒，Python 写 `metadata` 内
+     ISO-8601 字符串；恢复 candidate_set 时 Rust 保留原 kind（原始文档
+     + 元数据），Python 写全新 SeatingSnapshot。React 当前不读
+     `restored_at`/kind（client.ts 只取 restored_artifact 路径），
+     属跨工具语义，登记待产品确认。
+   - 错误 envelope：`project_result_response` 只发 `{"error": msg}`，
+     React `safeErrorDetail` 读 `code`/`message` 失败后回退通用文案——
+     UI 不显示真实错误（UX 缺陷，登记）。
+4. **状态变更**：§2.7 产物对比/恢复 2 行、§3.2 行 30/31、§2.7 附录
+   compare/restore 行 = 5 行 `RUST_PARTIAL` → `RUST_VERIFIED`。计数：
+   200 行 `PYTHON_ONLY=2`、`RUST_PARTIAL=16`、`RUST_PARITY_PENDING=102`、
+   `RUST_VERIFIED=71`、`INTENTIONALLY_REMOVED_V2=9`。
 
 ### 19.36 2026-08-12：roster-mapping 启发式差分 corpus（10 case 全等）
 

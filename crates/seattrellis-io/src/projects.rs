@@ -1780,6 +1780,41 @@ fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
     })
 }
 
+/// Resolve an artifact path only when it stays inside the project
+/// workspace — the Python oracle contract (`_resolve_project_artifact`,
+/// handlers.py:1332-1348): the project file itself, or a file inside the
+/// history / outputs directories. Canonicalized, so symlink escapes and
+/// `..` aliases are rejected (M1-05 containment, ledger §19.35).
+fn resolve_project_artifact(paths: &ResolvedProject, requested: &Path) -> Result<PathBuf, String> {
+    let candidate = requested.canonicalize().map_err(|error| {
+        format!(
+            "The artifact must be a file inside the project history or outputs directory. \
+             ({error})"
+        )
+    })?;
+    if candidate == paths.project_file {
+        return Ok(candidate);
+    }
+    let allowed: Vec<&Path> = [
+        paths.history_dir.as_deref(),
+        Some(paths.outputs_dir.as_path()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let inside = candidate.is_file()
+        && allowed
+            .iter()
+            .any(|directory| candidate.starts_with(directory));
+    if !inside {
+        return Err(
+            "The artifact must be a file inside the project history or outputs directory."
+                .to_string(),
+        );
+    }
+    Ok(candidate)
+}
+
 /// Compare two project artifacts (ledger A.2): summaries plus an
 /// assignment/roster/layout/rules diff. Never returns student data — only
 /// anonymized `student-N` references and seat ids.
@@ -1788,14 +1823,14 @@ pub fn compare_artifacts_json(
     artifact_path: &str,
     compare_to_path: &str,
 ) -> Result<String, String> {
-    let _ = resolve_project(Path::new(project_path), false)?;
-    let left_path = Path::new(artifact_path);
-    let right_path = Path::new(compare_to_path);
+    let (_, paths) = resolve_project(Path::new(project_path), false)?;
+    let left_path = resolve_project_artifact(&paths, Path::new(artifact_path))?;
+    let right_path = resolve_project_artifact(&paths, Path::new(compare_to_path))?;
     if left_path == right_path {
         return Err("An artifact cannot be compared with itself.".to_string());
     }
-    let left = artifact_snapshot_view(left_path)?;
-    let right = artifact_snapshot_view(right_path)?;
+    let left = artifact_snapshot_view(&left_path)?;
+    let right = artifact_snapshot_view(&right_path)?;
 
     let summary = |view: &ArtifactSnapshotView, path: &Path| {
         json!({
@@ -1868,8 +1903,8 @@ pub fn compare_artifacts_json(
 
     let response = json!({
         "api_version": "1",
-        "left": summary(&left, left_path),
-        "right": summary(&right, right_path),
+        "left": summary(&left, &left_path),
+        "right": summary(&right, &right_path),
         "diff": diff,
     });
     serde_json::to_string(&response)
@@ -1881,8 +1916,8 @@ pub fn compare_artifacts_json(
 /// mirroring Python.
 pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<String, String> {
     let (_, paths) = resolve_project(Path::new(project_path), false)?;
-    let source_path = Path::new(artifact_path);
-    let view = artifact_snapshot_view(source_path)?;
+    let source_path = resolve_project_artifact(&paths, Path::new(artifact_path))?;
+    let view = artifact_snapshot_view(&source_path)?;
     if view.kind == "rotation_plan" {
         return Err(
             "Select a snapshot or candidate set inside a rotation plan before restoring it."
@@ -1893,7 +1928,7 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
         .map_err(|e| format!("Could not create outputs directory: {e}"))?;
 
     // Rebuild the snapshot document with restoration metadata.
-    let bytes = read_file_capped(source_path, MAX_BUNDLE_FILE_BYTES)?;
+    let bytes = read_file_capped(&source_path, MAX_BUNDLE_FILE_BYTES)?;
     let mut document: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid JSON in {}: {e}", source_path.display()))?;
     let source_name = source_path
@@ -2976,13 +3011,14 @@ mod tests {
         }"#,
         )
         .unwrap();
-        fs::write(root.join("a.json"), SNAPSHOT_A).unwrap();
-        fs::write(root.join("b.json"), SNAPSHOT_B).unwrap();
+        fs::create_dir_all(root.join("outputs")).unwrap();
+        fs::write(root.join("outputs/a.json"), SNAPSHOT_A).unwrap();
+        fs::write(root.join("outputs/b.json"), SNAPSHOT_B).unwrap();
 
         let result = compare_artifacts_json(
             root.join("project.json").to_str().unwrap(),
-            root.join("a.json").to_str().unwrap(),
-            root.join("b.json").to_str().unwrap(),
+            root.join("outputs/a.json").to_str().unwrap(),
+            root.join("outputs/b.json").to_str().unwrap(),
         )
         .unwrap();
         let value: Value = serde_json::from_str(&result).unwrap();
@@ -3016,15 +3052,17 @@ mod tests {
             "kind": "seattrellis_project",
             "students": "students.csv",
             "layout": "classroom.json",
-            "rules": "rules.json"
+            "rules": "rules.json",
+            "outputs_dir": "outputs"
         }"#,
         )
         .unwrap();
-        fs::write(root.join("a.json"), SNAPSHOT_A).unwrap();
+        fs::create_dir_all(root.join("outputs")).unwrap();
+        fs::write(root.join("outputs/a.json"), SNAPSHOT_A).unwrap();
         let err = compare_artifacts_json(
             root.join("project.json").to_str().unwrap(),
-            root.join("a.json").to_str().unwrap(),
-            root.join("a.json").to_str().unwrap(),
+            root.join("outputs/a.json").to_str().unwrap(),
+            root.join("outputs/a.json").to_str().unwrap(),
         )
         .unwrap_err();
         assert!(err.contains("compared with itself"), "{err}");
@@ -3045,11 +3083,12 @@ mod tests {
         }"#,
         )
         .unwrap();
-        fs::write(root.join("plan.snapshot.json"), SNAPSHOT_A).unwrap();
+        fs::create_dir_all(root.join("outputs")).unwrap();
+        fs::write(root.join("outputs/plan.snapshot.json"), SNAPSHOT_A).unwrap();
 
         let result = restore_artifact_json(
             root.join("project.json").to_str().unwrap(),
-            root.join("plan.snapshot.json").to_str().unwrap(),
+            root.join("outputs/plan.snapshot.json").to_str().unwrap(),
         )
         .unwrap();
         let value: Value = serde_json::from_str(&result).unwrap();
@@ -3081,8 +3120,9 @@ mod tests {
         }"#,
         )
         .unwrap();
+        fs::create_dir_all(root.join("outputs")).unwrap();
         fs::write(
-            root.join("rot.json"),
+            root.join("outputs/rot.json"),
             r#"{
             "kind": "rotation_plan",
             "periods": [{"period": 1, "label": "P1", "snapshot": {"assignments": []}}]
@@ -3091,21 +3131,21 @@ mod tests {
         .unwrap();
         let err = restore_artifact_json(
             root.join("project.json").to_str().unwrap(),
-            root.join("rot.json").to_str().unwrap(),
+            root.join("outputs/rot.json").to_str().unwrap(),
         )
         .unwrap_err();
         assert!(err.contains("rotation plan"), "{err}");
 
         // Restoring the same snapshot twice yields two distinct files.
-        fs::write(root.join("plan.snapshot.json"), SNAPSHOT_A).unwrap();
+        fs::write(root.join("outputs/plan.snapshot.json"), SNAPSHOT_A).unwrap();
         let first = restore_artifact_json(
             root.join("project.json").to_str().unwrap(),
-            root.join("plan.snapshot.json").to_str().unwrap(),
+            root.join("outputs/plan.snapshot.json").to_str().unwrap(),
         )
         .unwrap();
         let second = restore_artifact_json(
             root.join("project.json").to_str().unwrap(),
-            root.join("plan.snapshot.json").to_str().unwrap(),
+            root.join("outputs/plan.snapshot.json").to_str().unwrap(),
         )
         .unwrap();
         let first_path: Value = serde_json::from_str(&first).unwrap();
