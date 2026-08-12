@@ -273,7 +273,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | `ruleset.schema.json`（470 行） | `schema_version: int = 1`；hard/soft/groups + 15+ 规则 definitions | `models/rules.py`；`RULESET_SCHEMA_VERSION` schema.py:15 | core `models.rs` `RuleSet`/`SoftRules`/各规则 struct 全量镜像（models.rs:253-508） | `RUST_PARITY_PENDING` |
 | `seating-snapshot.schema.json`（890 行） | `schema_version: "1.0"`；students/layout/rules/assignments/solver_status/objective_value/metrics | `models/snapshot.py:21` | `dto::snapshot::SeatingSnapshotArtifact` 全字段镜像（deny_unknown_fields，含 schema_version/created_at/seed/metadata）；**candidate-set oracle golden 内嵌 snapshot 全量解析 0 失败（candidate_dto_fixtures.rs，§19.18）**；core models.rs 仍为求解子集（求解专用，非 schema 缺口） | `RUST_VERIFIED` |
 | `candidate-set.schema.json`（1138 行） | `schema_version: "0.2.2"`；candidates/recommended_candidate_id/warnings + PlanScore | `models/candidate.py:115` | typed DTO `dto::candidate_set`（deny_unknown_fields）；**oracle golden 全量解析 0 失败（candidate_dto_fixtures.rs，§19.18）** | `RUST_VERIFIED` |
-| `rotation-plan.schema.json`（983 行） | `schema_version: "1.0"`；periods/name/fairness_summary/pair_repeat_summary | `models/rotation.py:36` | 完整写入路径已实现（application/rotation.rs:221-239 生成全量 plan 文档 + io `rotation_save_json` 持久化 + project-rotate golden，§19.12/§19.30）；**保真缺口：Rust plan 文档 `schema_version` 写 "0.2.2"，oracle golden（fixtures/parity/goldens/rotation-3-periods/rotation-plan.json）为 "1.0"，未对齐**；无类型化 rotation-plan DTO/完整校验 | `RUST_PARTIAL` |
+| `rotation-plan.schema.json`（983 行） | `schema_version: "1.0"`；periods/name/fairness_summary/pair_repeat_summary | `models/rotation.py:36` | 完整写入与持久化路径已实现；§19.34 将 Rust plan `schema_version` 从错误的 "0.2.2" 修正为 oracle 冻结值 "1.0"，差分 harness 新增 kind/version 强制比较，rotation 34/34、0 mismatch，非 ignored 契约测试锁定产物值 | `RUST_VERIFIED` |
 | `editor-command.schema.json`（436 行） | `protocol_version: "1.0"`；command_id/draft_id/base_revision/action/operations（9 种） | `editing_protocol.py:152-231` | editing.rs 全量端口（`EDITOR_PROTOCOL_VERSION` editing.rs:41） | `RUST_PARITY_PENDING` |
 | `editor-state.schema.json`（207 行） | `protocol_version: "1.0"`；draft_id/revision/candidate_id/undo_depth/redo_depth/students/seats/hard_constraints | `editing_protocol.py:257-267` | editing.rs `EditorState`（:616-627） | `RUST_PARITY_PENDING` |
 | `student.schema.json`（116 行） | 无版本字段；student_id/name/gender/height_cm/score/vision/notes/tags/needs/attributes | `models/student.py` | `dto::student_roster::RosterStudent` 全 10 字段镜像（deny_unknown_fields）；**oracle golden 内嵌 students（含 gender/notes/attributes）全量解析 0 失败（candidate_dto_fixtures.rs，§19.18）**；core `models.rs` `Student` 无 gender 为求解子集有意设计（schema 层已镜像；§8 注：gender 双侧均无规则/目标） | `RUST_VERIFIED` |
@@ -483,7 +483,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §1 CLI（30 命令 + 契约） | 31 | 0 | 4 | 1 | 20 | 6 |
 | §2 service/application | 41 | 0 | 8 | 12 | 20 | 1 |
 | §3 React `/api/v1/*`（31 调用） | 31 | 0 | 2 | 28 | 1 | 0 |
-| §4 Schema（10 文件 + 协议机制） | 16 | 0 | 2 | 9 | 5 | 0 |
+| §4 Schema（10 文件 + 协议机制） | 16 | 0 | 1 | 9 | 6 | 0 |
 | §5 roster | 8 | 0 | 3 | 5 | 0 | 0 |
 | §6 layout editor | 5 | 0 | 0 | 5 | 0 | 0 |
 | §7 hard rules | 5 | 0 | 0 | 5 | 0 | 0 |
@@ -494,7 +494,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | §12 export（格式/隐私/页面） | 18 | 1 | 3 | 7 | 7 | 0 |
 | §13 migration/backup/restore | 9 | 0 | 1 | 7 | 1 | 0 |
 | §14 desktop workflows | 7 | 0 | 0 | 5 | 0 | 2 |
-| **合计** | **200** | **2** | **24** | **102** | **63** | **9** |
+| **合计** | **200** | **2** | **23** | **102** | **64** | **9** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（§19.32 升级 `RUST_VERIFIED`，33 golden 逐命令 exit 码 + Python 0/非零语义对照）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条（1 个 `RUST_VERIFIED` + 2 个 `RUST_PARTIAL`）；§2 因 `init_demo/project_init`、`project_info/project_validate` 两行拆分（`INTENTIONALLY_REMOVED_V2` + `RUST_VERIFIED` / `RUST_VERIFIED` + `RUST_PARTIAL`）由 39 行变 41 行；§14 `seattrellis-desktop` 与 `desktop` 并入 PD-D15 移除登记。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
@@ -1548,15 +1548,33 @@ objectives/reports/scoring/input_boundary 未格式化内容阻塞，未触碰�
    candidates gate 测试（§19.20）覆盖——预算与覆盖策略写死在脚本注释，
    不虚报为 golden 已提交。
 3. **导出独立 reader 全量验证（374 行 0 mismatch）**：`--exports` 对 34
-   个合法 fixture case × 7 格式 × teacher/public 隐私两态 = 374 行，
+   个合法 fixture case × 11 行 = 374 行（XLSX/DOCX/PPTX/PNG/PDF teacher
+   模板 5 行 + public 模板隐私 5 行 + print-html 结构 reader 1 行），
    XLSX/DOCX/PPTX 由 openpyxl/python-docx/python-pptx 重开校验语义
    （行号连续、两 sheet、标题+座位表格、形状可编辑）、PNG/PDF 由
    Pillow/pypdf 校验（A4-ish 边界 + Image XObject 存在，§19.26 光栅页）、
-   **print-html 由独立结构 reader 校验**（`_verify_print_html_export`：
-   页骨架、`.grid-row` 座位网格行、姓名齐全、页脚/结构标注存在、public
-   态无明细泄漏）——`print-html`/PDF 两行 §5.6 由此获得"独立 reader"证据。
-   复跑：`.venv/bin/python scripts/rust_python_diff.py --exports`（系统
-   python3 缺 pptx 等 reader 包会假 mismatch，必须用 venv 解释器）。
+   **print-html 由独立结构 reader 校验**（`_verify_print_html_export` 经
+   CLI project 流程导出，`_verify_print_html` 用标准库 html.parser 断言：
+   页骨架、`.grid-row` 座位网格行数、姓名齐全（容忍截断）、窗/门/过道
+   结构标注、页脚 seed 溯源、无 height/vision 明细泄漏）——`print-html`/
+   PDF 两行 §5.6 由此获得"独立 reader"证据。**print-html public 匿名渲染
+   无 CLI 路径**（`export` 命令格式面不含 print-html；`project-export`
+   固定 teacher/orientation=portrait/show_student_ids=true），public 匿名
+   由 render_export 共享网格层（格式分发前 anonymize_grid，§19.27）对 5
+   格式验证覆盖，登记为 CLI 侧待办（另一 agent 域），不虚报为 print-html
+   public 已验。复跑：`.venv/bin/python scripts/rust_python_diff.py
+   --exports`（系统 python3 缺 pptx 等 reader 包会假 mismatch，必须用
+   venv 解释器）。
+4. **复跑确认（2026-08-12，本条目工作机）**：① 全量
+   `gen_parity_fixtures.py verify` EXIT 0——41 case 的 inputs+goldens 逐
+   字节复现，0 DIFF / 0 MISSING / 0 SKIP（含新提交的 p50/p60/p80
+   candidates golden 与 p80 snapshot 副本）；②
+   `rust_python_diff.py --candidates` 15/15 combos（20/40/50/60/80 ×
+   1/5/20）0 mismatch——含 n=50/60/80 的全部 1/5/20 组合（状态类 +
+   生成数量两侧一致）；③ `--exports` 374 行 0 mismatch；④ 反向有效性：
+   用 §19.26 之前的旧 release 二进制重跑 `--exports` 出现 36 项
+   PDF/print-html 假 mismatch（"PDF page carries no image content"），
+   以当前源码重建后 0——证明 reader 实际检出内容差异而非恒真。
 
 ### 19.32 2026-08-12：ledger 全表对账（§8.3 alpha.2 退出条件前置）
 
@@ -1619,7 +1637,6 @@ objectives/reports/scoring/input_boundary 未格式化内容阻塞，未触碰�
 | §3.2 #31 `POST /api/v1/projects/artifacts/restore` | 同 §2.7 restore | **必须项** |
 | §13 项目产物对比/恢复（artifacts compare/restore） | 同上（合并行） | **必须项** |
 | §2.10 `suggest_roster_mapping` / §5 自动推断列映射（2 行） | `suggest_mapping`/`looks_like_identifier`/`looks_like_person_name` 实现存在（roster.rs:452/:675/:689），表头别名 roster_alias_mirror 锁死（§19.18）；**启发式判定结果无 Python 差分**；B8 导入映射为 v2 核心路径 | **必须项**（补代表性差分语料） |
-| §4.1 `rotation-plan.schema.json` | 完整写入已实现（application/rotation.rs:221-239）；**保真缺口：plan 文档 schema_version 写 "0.2.2"，oracle golden 为 "1.0"**；无类型化 DTO | **必须项**（字段级保真，按 oracle golden 对齐，成本低） |
 | §1.1/§2.3 `validate`/`run_validate`（2 行） | `--history-dir` 未镜像；缺 student_id 警告在当前 CoreSolveRequest 形态不可表示 | 选项级/契约形态差距；有已知缺口故不得 verified（§19.33） |
 | §1.1/§2.1/§2.3 `project-validate`/`project-solve`/`project-export`（4 行） | 默认路径已 golden（§19.30）；`--strict`/`--candidates`/`--report`/`--candidate` 选项面未镜像（parse_project_command main.rs:729-786） | 选项级（§19.30 已登记"选项级差距，golden 已覆盖默认路径"） |
 | §2.3 `list_teacher_goals`/`get_teacher_goal`/`resolve_teacher_goal` | 4 goal vs Python 15 preset（goal_rules.rs:14-19）；goal JSON 不含 hard/groups（goal_rules.rs:6-9 有意省略）；§19.15 capability 对账为 Rust 侧自洽 | 选项级/非必须项（v2 规则编辑走 D3 句式模板 + 规则 JSON，presets 已移除 PD-D15） |
@@ -1636,17 +1653,15 @@ objectives/reports/scoring/input_boundary 未格式化内容阻塞，未触碰�
 B5 候选面板 UI（/audit 端点 + plan_score，§19.20）承担，可打印报告为 v1 专属、无移除
 决策 → **选项级/非必须项**（不阻断 alpha；如需 v2 保留可打印报告，属新功能设计）。
 
-**结论**：升级 18 行 `RUST_VERIFIED`、6 行 `RUST_PARITY_PENDING`、2 行
+**结论（已被 §19.33/§19.34 后续证据更新）**：升级 18 行 `RUST_VERIFIED`、6 行 `RUST_PARITY_PENDING`、2 行
 `INTENTIONALLY_REMOVED_V2`（§18 登记扩展 1 行），拆分行 +2（§2 由 39 → 41 行）。
-剩余 **26 行**（24 `RUST_PARTIAL` + 2 `PYTHON_ONLY`）中，**v2 必须项 8 行**
-（artifacts compare/restore ×5、suggest_roster_mapping 启发式 ×2、
-rotation-plan schema_version ×1）——其中 7 行为"缺自动证据"型
-（compare/restore×5、suggest_mapping×2，实现已存在且有契约/rollback/别名测试），
-1 行为"字段级保真"型（rotation-plan schema_version 与 oracle golden 不一致）；
+剩余 **25 行**（23 `RUST_PARTIAL` + 2 `PYTHON_ONLY`）中，**v2 必须项 7 行**
+（artifacts compare/restore ×5、suggest_roster_mapping 启发式 ×2），均为“缺自动等价
+证据”型；rotation-plan schema_version 字段保真已于 §19.34 关闭；
 **选项级/非必须项 18 行**。§15 计数随本对账更新为 200 行：
-`PYTHON_ONLY=2`、`RUST_PARTIAL=24`、`RUST_PARITY_PENDING=102`、
-`RUST_VERIFIED=63`、`INTENTIONALLY_REMOVED_V2=9`。§19.33 已用边界回归 + live 差分
-关闭 pair-report lookback 分歧；仍有 8 行 `RUST_PARTIAL` v2 必须项，因此计划
+`PYTHON_ONLY=2`、`RUST_PARTIAL=23`、`RUST_PARITY_PENDING=102`、
+`RUST_VERIFIED=64`、`INTENTIONALLY_REMOVED_V2=9`。§19.33 关闭 pair-report lookback，
+§19.34 关闭 rotation-plan schema_version；仍有 7 行 `RUST_PARTIAL` v2 必须项，因此计划
 §8.2“所有 v2 必须项 `RUST_VERIFIED`”**未达成**；CLI 面
 （§19.30）与候选/导出 golden（§19.31）两项 alpha.2 清单项已关闭。
 
@@ -1720,10 +1735,17 @@ tracked-files 仓库卫生检查，全绿；未运行本轮无关的 release-onl
 `rotation-plan.schema.json` 亦声明 default "1.0"——Rust 写出的 rotation-plan
 对 oracle schema 无效（Python `require_schema_version` 会拒绝）。修复：
 rotation.rs 写 "1.0"；读取侧（io/server）无版本强校验，不受影响。验证：
-rotation_gate 通过、`--rotation` 差分 34/34 0 mismatch（含 schema_version
-字段对比）。golden `rotation-3-periods/rotation-plan.json`（Python 生成）
-本就是 "1.0"，无需重录。遗留：schema DTO 测试文档中的 "0.2.2" 字符串为
-测试数据（`schema_version` 为 String 字段不校验常量），不影响契约。
+rotation_gate 非 ignored 测试同时锁定 `kind="rotation_plan"` 和版本；
+`scripts/rust_python_diff.py` 的 rotation comparator 新增 durable artifact
+`kind`/`schema_version` 强制对比，`--rotation` 复跑 **34/34、0 mismatch**。
+golden `rotation-3-periods/rotation-plan.json`（Python 生成）本就是 "1.0"，无需重录。
+
+§4.1 `rotation-plan.schema.json` 由 `RUST_PARTIAL` 升为 `RUST_VERIFIED`；
+§15 可复算计数更新为 200 行：`PYTHON_ONLY=2`、`RUST_PARTIAL=23`、
+`RUST_PARITY_PENDING=102`、`RUST_VERIFIED=64`、`INTENTIONALLY_REMOVED_V2=9`。
+alpha.2 仍有 7 行 v2 必须项未 verified（artifacts compare/restore ×5、
+roster mapping ×2），不宣称 §8.2 Exit Gate 通过。遗留：schema DTO 测试文档中的
+"0.2.2" 字符串为测试数据（`schema_version` 为 String 字段不校验常量），不影响契约。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 

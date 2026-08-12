@@ -79,6 +79,12 @@ fn period_editors_carry_one_draft_per_period_with_roster_names() {
     let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
     let outcome = run(&workbench_request(4, 2, 42), &editor_store, &solve_requests);
     assert!(outcome.feasible);
+    let plan = outcome.plan.as_ref().expect("feasible plan document");
+    assert_eq!(plan["kind"], "rotation_plan");
+    assert_eq!(
+        plan["schema_version"], "1.0",
+        "rotation artifacts must match the frozen oracle schema version"
+    );
 
     let period_editors = outcome
         .period_editors

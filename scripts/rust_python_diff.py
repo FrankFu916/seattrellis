@@ -829,6 +829,13 @@ def compare_rotation_plans(
     (`full_occupancy`); layouts with empty seats are compared on the
     semantic core (periods, completeness, status, structure) instead."""
     mismatches = 0
+    # Durable artifact identity/version are frozen parity fields, not merely
+    # metadata. This catches the former Rust "0.2.2" value against the
+    # oracle rotation-plan schema version "1.0".
+    if python.get("kind") != rust.get("kind"):
+        mismatches += 1
+    if python.get("schema_version") != rust.get("schema_version"):
+        mismatches += 1
     py_periods = python.get("periods", [])
     ru_periods = rust.get("periods", [])
     if len(py_periods) != len(ru_periods):
@@ -1986,5 +1993,4 @@ def run_cli_golden_class(record: bool, tmp: Path) -> list[tuple[str, str, str, s
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 
