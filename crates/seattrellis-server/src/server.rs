@@ -3467,6 +3467,7 @@ mod tests {
             "format": "print-html",
             "template": "public",
             "privacy": {"hide_scores": false, "hide_notes": false, "hide_special_needs": false, "anonymize": false, "show_height": false, "show_vision": false},
+            "orientation": "landscape",
             "page_scale": 1.0,
             "locale": "en",
             "show_student_ids": false

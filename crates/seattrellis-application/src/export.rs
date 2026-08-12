@@ -53,6 +53,61 @@ pub fn export_draft(
     if let Some(object) = export_json.as_object_mut() {
         // `print-html` has its own dedicated layout (print-layout-spec.md);
         // no normalization to `html` anymore (M5-A2).
+        // Remembered export defaults fill in options the request did not
+        // specify explicitly (PD-D9 "last used" semantics, M5-A5). The
+        // memory file lives in the user config dir; malformed memory is
+        // ignored and built-in defaults apply.
+        if let Some(memory) = seattrellis_io::export_defaults::ExportDefaults::load_global() {
+            let mut patch = serde_json::Map::new();
+            for (key, value) in [
+                ("template", memory.template.as_str()),
+                ("paper_size", memory.paper_size.as_str()),
+                ("locale", memory.locale.as_str()),
+            ] {
+                if !object.contains_key(key) {
+                    patch.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+                }
+            }
+            if !object.contains_key("orientation") {
+                if let Some(orientation) = &memory.orientation {
+                    patch.insert(
+                        "orientation".to_string(),
+                        serde_json::Value::String(orientation.clone()),
+                    );
+                }
+            }
+            for (key, value) in [
+                ("hide_scores", memory.hide_scores),
+                ("hide_notes", memory.hide_notes),
+                ("hide_special_needs", memory.hide_special_needs),
+                ("anonymize", memory.anonymize),
+                ("show_height", memory.show_height),
+                ("show_vision", memory.show_vision),
+                ("show_student_ids", memory.show_student_ids),
+            ] {
+                if !object.contains_key("privacy") {
+                    let privacy = patch
+                        .entry("privacy".to_string())
+                        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+                        .as_object_mut()
+                        .expect("privacy entry is an object");
+                    privacy.insert(key.to_string(), serde_json::Value::Bool(value));
+                }
+            }
+            for key in ["page_scale", "margin_mm"] {
+                if !object.contains_key(key) {
+                    let value = if key == "page_scale" {
+                        memory.page_scale
+                    } else {
+                        memory.margin_mm
+                    };
+                    patch.insert(key.to_string(), serde_json::json!(value));
+                }
+            }
+            for (key, value) in patch {
+                object.insert(key, value);
+            }
+        }
         object.insert("request".to_string(), request_value);
         object.insert("response".to_string(), response_value);
     }
@@ -66,6 +121,9 @@ pub fn export_draft(
         Ok(bytes) => bytes,
         Err(message) => return Err(AppError::bad_request(&message)),
     };
+
+    // Remember the effective parameters for the next quick export.
+    let _ = remember_defaults(&export_json);
 
     let filename = format!("seat-plan.{}", format.extension());
     Ok(ExportOutcome {
@@ -206,6 +264,59 @@ fn editor_solve_response(
         total_cost: None,
     };
     Ok((request, response))
+}
+
+/// Persist the effective export parameters as the "last used" memory
+/// (PD-D9). Best-effort: a failure to write the memory file never fails the
+/// export itself.
+fn remember_defaults(export_json: &Value) -> Result<(), String> {
+    let object = export_json.as_object().ok_or("export json is not an object")?;
+    let privacy = object
+        .get("privacy")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let get_bool = |key: &str| privacy.get(key).and_then(Value::as_bool).unwrap_or(false);
+    let memory = seattrellis_io::export_defaults::ExportDefaults {
+        template: object
+            .get("template")
+            .and_then(Value::as_str)
+            .unwrap_or("teacher")
+            .to_string(),
+        hide_scores: get_bool("hide_scores"),
+        hide_notes: get_bool("hide_notes"),
+        hide_special_needs: get_bool("hide_special_needs"),
+        anonymize: get_bool("anonymize"),
+        show_height: get_bool("show_height"),
+        show_vision: get_bool("show_vision"),
+        orientation: object
+            .get("orientation")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        paper_size: object
+            .get("paper_size")
+            .and_then(Value::as_str)
+            .unwrap_or("a4")
+            .to_string(),
+        page_scale: object
+            .get("page_scale")
+            .and_then(Value::as_f64)
+            .unwrap_or(1.0),
+        margin_mm: object
+            .get("margin_mm")
+            .and_then(Value::as_f64)
+            .unwrap_or(12.0),
+        locale: object
+            .get("locale")
+            .and_then(Value::as_str)
+            .unwrap_or("zh")
+            .to_string(),
+        show_student_ids: object
+            .get("show_student_ids")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    };
+    memory.save_global()
 }
 
 #[cfg(test)]

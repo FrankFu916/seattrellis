@@ -6,6 +6,7 @@
 
 pub mod migration;
 pub mod projects;
+pub mod export_defaults;
 pub mod roster;
 pub mod rotation;
 pub mod transaction;
