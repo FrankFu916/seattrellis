@@ -28,14 +28,16 @@ ignore = [
     "RUSTSEC-2025-0081",
     "RUSTSEC-2025-0098",
     "RUSTSEC-2025-0100",
+    # ttf-parser is unmaintained (no safe upgrade) and is a transitive
+    # dependency of fontdue, the chosen M5-A4 rasterizer for PNG text. The
+    # alternative (skrifa) would swap the font stack for a maintenance
+    # benefit with no security issue; re-evaluate at M7.
+    "RUSTSEC-2026-0192",
 ]
 
 [bans]
 multiple-versions = "warn"
-skip = [
-    # schemars 1.x pins an older serde_inline; both are transitive and used.
-    { name = "serde_inline", version = "0.1" },
-]
+skip = []
 
 [licenses]
 version = 2

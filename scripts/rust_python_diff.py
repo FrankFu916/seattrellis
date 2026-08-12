@@ -1108,9 +1108,10 @@ def _verify_png(path: Path, response: dict[str, object]) -> None:
 
 
 def _verify_pdf(path: Path, response: dict[str, object]) -> None:
-    """PDF must open with an independent reader, carry extractable text on
-    every page (ASCII names; CJK names fall back to seat numbers by
-    design), and stay inside A4-ish bounds."""
+    """PDF must open with an independent reader and stay inside A4-ish
+    bounds. Since §19.26 the page is rasterized into an Image XObject
+    (names are pixels, not searchable text - recorded as a boundary), so
+    the semantic check is the presence of a page-sized image resource."""
     from pypdf import PdfReader
 
     reader = PdfReader(path)
@@ -1121,9 +1122,10 @@ def _verify_pdf(path: Path, response: dict[str, object]) -> None:
         height = float(page.mediabox.height)
         if width > 900 or height > 1300:
             raise AssertionError(f"PDF page exceeds A4-ish bounds: {width}x{height}")
-        text = page.extract_text() or ""
-        if len(text.strip()) < 3:
-            raise AssertionError("PDF page carries no extractable text")
+        resources = page.get("/Resources")
+        xobjects = resources.get("/XObject") if resources else None
+        if not xobjects or not xobjects.get_object():
+            raise AssertionError("PDF page carries no image content")
 
 
 def _verify_pptx(path: Path, response: dict[str, object]) -> None:

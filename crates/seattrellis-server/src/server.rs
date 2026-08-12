@@ -1771,8 +1771,8 @@ fn rotation_load_drafts(
         }
         period_editors.push(editor_value);
     }
-    let editor = first_editor
-        .ok_or_else(|| "rotation plan has no validated periods".to_string())?;
+    let editor =
+        first_editor.ok_or_else(|| "rotation plan has no validated periods".to_string())?;
 
     serde_json::to_string(&json!({
         "api_version": "1",
