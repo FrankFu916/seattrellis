@@ -29,11 +29,11 @@
         "root": "fixtures/artifact-parity",
         "tree_sha256": "eb777e369b9962fcc23ec82431f675ece6870028eec4ed381c0b73e3f85777a7"
       },
-      "oracle_guard": "tests/test_artifact_parity.py",
+      "oracle_guard": "scripts/oracle-guards/test_artifact_parity.py",
       "producer": "src/seattrellis/api/handlers.py::project_artifact_compare/project_artifact_restore",
       "recording_source": {
         "corpus_commit": null,
-        "note": "Recorded from the final Python oracle working tree before v1.9.0 freeze; corpus_commit remains null until the reviewed freeze commit is created.",
+        "note": "Recorded from the final Python oracle working tree before v1.9.0 freeze; corpus_commit remains null until the reviewed freeze commit is created. Oracle guard relocated to scripts/oracle-guards/ after M6 (v2 tree is Python-free); guards run against the frozen v1.9.0 oracle.",
         "python_version": "3.12.13",
         "seattrellis_version": "1.9.0",
         "status": "working_tree_recorded"
@@ -294,11 +294,11 @@
         "root": "fixtures/roster-mapping",
         "tree_sha256": "5dd7ececb925af20209405f417b400f652ee6f1ba72211d5cfeab8361dc33fa9"
       },
-      "oracle_guard": "tests/test_roster_mapping_parity.py",
+      "oracle_guard": "scripts/oracle-guards/test_roster_mapping_parity.py",
       "producer": "seattrellis.application.roster_mapping.suggest_roster_mapping",
       "recording_source": {
         "corpus_commit": "8af82d97f55a2ec32c02904fb9fe5a0866bf6a01",
-        "note": "The recording commit is exact; the historical interpreter version was not persisted.",
+        "note": "The recording commit is exact; the historical interpreter version was not persisted. Oracle guard relocated to scripts/oracle-guards/ after M6 (v2 tree is Python-free); guards run against the frozen v1.9.0 oracle.",
         "python_version": null,
         "seattrellis_version": "1.9.0",
         "status": "commit_recorded"
