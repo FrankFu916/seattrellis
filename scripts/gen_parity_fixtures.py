@@ -7,6 +7,8 @@ Usage:
     python scripts/gen_parity_fixtures.py goldens [--cases id1,id2]
     python scripts/gen_parity_fixtures.py all
     python scripts/gen_parity_fixtures.py verify [--cases id1,id2]
+    python scripts/gen_parity_fixtures.py manifest-check
+    python scripts/gen_parity_fixtures.py provenance
 
 Golden contract (per plan 3.2): heuristic solutions are NOT required to match
 seat-for-seat between Python and Rust; semantics, legality, scoring definitions
@@ -31,6 +33,12 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures" / "parity"
 INPUTS = FIXTURES / "inputs"
 GOLDENS = FIXTURES / "goldens"
+GOLDEN_PROVENANCE = ROOT / "fixtures" / "GOLDEN_PROVENANCE.json"
+
+# Finder/Explorer metadata is neither fixture evidence nor reproducible.  The
+# manifest and symmetric tree comparison both exclude it, while every actual
+# corpus document (including history snapshots) remains mandatory.
+IGNORED_CORPUS_NAMES = frozenset({".DS_Store", "Thumbs.db"})
 
 SOLVER_BACKEND = "fallback"
 # Deterministic budget: large enough that the fallback never hits the
@@ -860,22 +868,93 @@ def _deadline_bound(path: Path) -> bool:
     return bool(metrics.get("stopped_by_time_limit"))
 
 
-def compare_tree(committed: Path, fresh: Path, label: str) -> bool:
-    """Byte-compare every file under `committed` with its regenerated twin.
+def _ignored_corpus_path(relative: Path) -> bool:
+    return any(part in IGNORED_CORPUS_NAMES for part in relative.parts)
 
-    Fresh snapshots whose solve hit the wall-clock deadline are skipped with
-    a visible warning: they are nondeterministic by construction, not drift.
+
+def corpus_files(root: Path) -> dict[str, Path]:
+    """Return the reproducible file set under ``root``, keyed by POSIX path.
+
+    OS metadata is deliberately outside the corpus contract. Everything else
+    is evidence and therefore participates in set, byte, and hash checks.
     """
-    ok = True
-    for path in sorted(committed.rglob("*")):
+    files: dict[str, Path] = {}
+    if not root.is_dir():
+        return files
+    for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        rel = path.relative_to(committed)
-        twin = fresh / rel
-        if not twin.exists():
-            print(f"    MISSING regen ({label}): {rel}")
-            ok = False
+        relative = path.relative_to(root)
+        if _ignored_corpus_path(relative):
             continue
+        files[relative.as_posix()] = path
+    return files
+
+
+def repository_visible_files(root: Path) -> set[str] | None:
+    """Return tracked + trackable-untracked files below ``root``.
+
+    Including trackable untracked files lets this check pass before a commit is
+    assembled, while still rejecting files hidden by ``.gitignore``. In a
+    clean checkout this is exactly the tracked set. ``None`` means the source
+    tree is not a Git checkout (for example, an unpacked source archive).
+    """
+    try:
+        prefix = root.relative_to(ROOT)
+    except ValueError:
+        return None
+    proc = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            prefix.as_posix(),
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    visible: set[str] = set()
+    for raw in proc.stdout.splitlines():
+        candidate = Path(raw)
+        try:
+            relative = candidate.relative_to(prefix)
+        except ValueError:
+            continue
+        if not _ignored_corpus_path(relative):
+            visible.add(relative.as_posix())
+    return visible
+
+
+def compare_tree(committed: Path, fresh: Path, label: str) -> bool:
+    """Symmetrically byte-compare committed and regenerated file trees.
+
+    Both missing regenerated files *and extra regenerated files* fail. The old
+    one-way walk missed ignored history snapshots: a clean checkout lacked
+    them, regeneration created them, and verification still returned success.
+    Fresh snapshots whose solve hits a wall-clock deadline remain a documented
+    byte-comparison skip, but their paths must still exist on both sides.
+    """
+    ok = True
+    committed_files = corpus_files(committed)
+    fresh_files = corpus_files(fresh)
+    committed_names = set(committed_files)
+    fresh_names = set(fresh_files)
+    for relative in sorted(committed_names - fresh_names):
+        print(f"    MISSING regen ({label}): {relative}")
+        ok = False
+    for relative in sorted(fresh_names - committed_names):
+        print(f"    EXTRA regen ({label}): {relative}")
+        ok = False
+    for relative in sorted(committed_names & fresh_names):
+        path = committed_files[relative]
+        twin = fresh_files[relative]
+        rel = Path(relative)
         if rel.name.endswith(".snapshot.json") or rel.name == "snapshot.json":
             if _deadline_bound(twin):
                 print(f"    SKIP ({label}): {rel} (solve hit the wall-clock "
@@ -922,34 +1001,368 @@ def verify_goldens(cases: list[dict]) -> bool:
 def tree_hashes(root: Path) -> dict[str, dict[str, int | str]]:
     """Relative path -> {sha256, bytes} for every file under `root`."""
     out: dict[str, dict[str, int | str]] = {}
-    for path in sorted(root.rglob("*")):
-        if path.is_file():
-            rel = path.relative_to(root).as_posix()
-            out[rel] = {
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                "bytes": path.stat().st_size,
-            }
+    for rel, path in corpus_files(root).items():
+        out[rel] = {
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "bytes": path.stat().st_size,
+        }
     return out
+
+
+def inventory_digest(files: dict[str, dict[str, int | str]]) -> str:
+    """Stable digest over file names, byte sizes, and content hashes."""
+    digest = hashlib.sha256()
+    for relative, metadata in sorted(files.items()):
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(metadata["bytes"]).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(str(metadata["sha256"]).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _compare_hash_inventory(
+    label: str,
+    root: Path,
+    expected: object,
+) -> bool:
+    if not isinstance(expected, dict):
+        print(f"[manifest] {label} hashes are missing or not an object")
+        return False
+    actual = tree_hashes(root)
+    ok = True
+    expected_names = set(expected)
+    actual_names = set(actual)
+    for relative in sorted(expected_names - actual_names):
+        print(f"[manifest] MISSING worktree ({label}): {relative}")
+        ok = False
+    for relative in sorted(actual_names - expected_names):
+        print(f"[manifest] EXTRA worktree ({label}): {relative}")
+        ok = False
+    for relative in sorted(expected_names & actual_names):
+        if expected[relative] != actual[relative]:
+            print(f"[manifest] HASH/size mismatch ({label}): {relative}")
+            ok = False
+
+    visible = repository_visible_files(root)
+    if visible is not None:
+        for relative in sorted(actual_names - visible):
+            print(f"[manifest] IGNORED/untrackable ({label}): {relative}")
+            ok = False
+        for relative in sorted(visible - actual_names):
+            print(f"[manifest] TRACKED/visible but missing ({label}): {relative}")
+            ok = False
+    return ok
+
+
+def verify_parity_manifest() -> bool:
+    """Verify parity MANIFEST metadata, file sets, sizes, and SHA-256 values."""
+    manifest_path = FIXTURES / "MANIFEST.json"
+    try:
+        manifest = read_json(manifest_path)
+    except (OSError, ValueError) as error:
+        print(f"[manifest] cannot read {manifest_path}: {error}")
+        return False
+    ok = True
+    if manifest.get("manifest_schema_version") != "1.0":
+        print("[manifest] manifest_schema_version must be 1.0")
+        ok = False
+    if manifest.get("data_classification") != "synthetic_only":
+        print("[manifest] data_classification must be synthetic_only")
+        ok = False
+    if manifest.get("seattrellis_version") in (None, "", "unknown"):
+        print("[manifest] seattrellis_version must identify the recorded oracle")
+        ok = False
+
+    manifest_cases = manifest.get("cases")
+    if not isinstance(manifest_cases, dict):
+        print("[manifest] cases must be an object")
+        manifest_cases = {}
+        ok = False
+    defined_cases = {case["id"] for case in CASES}
+    recorded_cases = set(manifest_cases)
+    if recorded_cases != defined_cases:
+        for case_id in sorted(defined_cases - recorded_cases):
+            print(f"[manifest] MISSING recorded case: {case_id}")
+        for case_id in sorted(recorded_cases - defined_cases):
+            print(f"[manifest] EXTRA recorded case: {case_id}")
+        ok = False
+    if manifest.get("case_count") != len(recorded_cases):
+        print(
+            "[manifest] case_count does not equal the recorded case set: "
+            f"{manifest.get('case_count')!r} != {len(recorded_cases)}"
+        )
+        ok = False
+
+    for label, root in (("inputs", INPUTS), ("goldens", GOLDENS)):
+        case_dirs = {path.name for path in root.iterdir() if path.is_dir()}
+        if case_dirs != recorded_cases:
+            for case_id in sorted(recorded_cases - case_dirs):
+                print(f"[manifest] MISSING {label} case directory: {case_id}")
+            for case_id in sorted(case_dirs - recorded_cases):
+                print(f"[manifest] EXTRA {label} case directory: {case_id}")
+            ok = False
+
+    ok = _compare_hash_inventory("inputs", INPUTS, manifest.get("input_hashes")) and ok
+    ok = _compare_hash_inventory("goldens", GOLDENS, manifest.get("golden_hashes")) and ok
+    return ok
+
+
+def detect_seattrellis_version() -> str:
+    """Read the oracle CLI version without depending on Doctor formatting."""
+    version = subprocess.run(
+        [cli_bin(), "--version"],
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+    )
+    words = (version.stdout + " " + version.stderr).strip().split()
+    if version.returncode == 0 and len(words) >= 2 and words[0].lower() == "seattrellis":
+        return words[1]
+    doctor = subprocess.run(
+        [cli_bin(), "doctor"], capture_output=True, text=True, cwd=str(ROOT)
+    )
+    for line in doctor.stdout.splitlines() + doctor.stderr.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("version:"):
+            candidate = stripped.partition(":")[2].strip()
+            if candidate:
+                return candidate
+    return "unknown"
+
+
+def _tree_descriptor(root: Path) -> dict[str, object]:
+    files = tree_hashes(root)
+    return {
+        "root": root.relative_to(ROOT).as_posix(),
+        "file_count": len(files),
+        "tree_sha256": inventory_digest(files),
+        "files": files,
+    }
+
+
+def _default_golden_provenance() -> dict[str, object]:
+    return {
+        "kind": "seattrellis_golden_provenance",
+        "schema_version": "1.0",
+        "milestone": "M6_beta_1_pre_retirement",
+        "data_classification": "synthetic_only",
+        "final_v1_reference": {
+            "status": "pending",
+            "planned_tag": "v1.9.0",
+            "resolved_tag": None,
+            "resolved_commit": None,
+            "planned_maintenance_branch": "v1.x-maintenance",
+            "required_before_python_retirement": True,
+        },
+        "corpora": {
+            "parity": {
+                "contract": "Python oracle inputs and semantic golden artifacts",
+                "manifest_path": "fixtures/parity/MANIFEST.json",
+                "generator": "scripts/gen_parity_fixtures.py",
+                "verify_command": "python scripts/gen_parity_fixtures.py verify",
+                "last_corpus_update_commit": "d2e1aed16d1e86361b9af8d1846d367b14b54add",
+            },
+            "cli_goldens": {
+                "contract": "Rust CLI normalized stdout/stderr and exit code; Python participates only as success/failure exit semantics where registered",
+                "producer": "scripts/rust_python_diff.py",
+                "record_command": ".venv/bin/python scripts/rust_python_diff.py --cli-golden-record",
+                "verify_command": ".venv/bin/python scripts/rust_python_diff.py --cli-golden",
+                "normalization": [
+                    "temporary paths",
+                    "created_at and modified_at timestamps",
+                    "canonical JSON key order",
+                ],
+                "recording_source": {
+                    "status": "partially_recorded",
+                    "full_33_case_commit": "d636db8bd2e33d31222df7a304ff2b81ca2f9d62",
+                    "last_material_update_commit": "a85316965c72728d09af3d078ce4eae96da9f184",
+                    "python_version": None,
+                    "seattrellis_version": "1.8.4",
+                    "note": "Historical recording did not persist the Python interpreter version; file hashes are authoritative.",
+                },
+            },
+            "roster_mapping": {
+                "contract": "Python suggest_roster_mapping assignments and ordered issues for ten synthetic CSV cases",
+                "producer": "seattrellis.application.roster_mapping.suggest_roster_mapping",
+                "oracle_guard": "tests/test_roster_mapping_parity.py",
+                "rust_guard": "crates/seattrellis-io/tests/roster_mapping_parity.rs",
+                "recording_source": {
+                    "status": "commit_recorded",
+                    "corpus_commit": "8af82d97f55a2ec32c02904fb9fe5a0866bf6a01",
+                    "python_version": None,
+                    "seattrellis_version": "1.8.4",
+                    "note": "The recording commit is exact; the historical interpreter version was not persisted.",
+                },
+            },
+            "artifact_parity": {
+                "status": "pending",
+                "contract": "Python/Rust artifact compare and restore semantic parity corpus",
+                "producer": "pending",
+                "oracle_guard": "pending",
+                "rust_guard": "pending",
+                "recording_source": {
+                    "status": "pending",
+                    "corpus_commit": None,
+                    "python_version": None,
+                    "seattrellis_version": "1.8.4",
+                    "note": "Reserved for the M6 compare/restore shared oracle corpus; no evidence is claimed until files and guards land.",
+                },
+            },
+        },
+    }
+
+
+def build_golden_provenance(existing: object = None) -> dict[str, object]:
+    provenance = _default_golden_provenance()
+    if isinstance(existing, dict) and isinstance(existing.get("final_v1_reference"), dict):
+        provenance["final_v1_reference"] = existing["final_v1_reference"]
+
+    parity_manifest_path = FIXTURES / "MANIFEST.json"
+    parity_manifest = read_json(parity_manifest_path)
+    corpora = provenance["corpora"]
+    assert isinstance(corpora, dict)
+    if isinstance(existing, dict) and isinstance(existing.get("corpora"), dict):
+        existing_corpora = existing["corpora"]
+        for corpus_name in ("cli_goldens", "roster_mapping", "artifact_parity"):
+            recorded = existing_corpora.get(corpus_name)
+            target = corpora.get(corpus_name)
+            if not isinstance(recorded, dict) or not isinstance(target, dict):
+                continue
+            # Evidence metadata is curated and must survive an inventory
+            # refresh. Only inventory and derived status are recomputed.
+            for key in (
+                "contract",
+                "producer",
+                "record_command",
+                "verify_command",
+                "normalization",
+                "oracle_guard",
+                "rust_guard",
+                "recording_source",
+            ):
+                if key in recorded:
+                    target[key] = recorded[key]
+    parity = corpora["parity"]
+    assert isinstance(parity, dict)
+    parity.update(
+        {
+            "manifest_sha256": hashlib.sha256(parity_manifest_path.read_bytes()).hexdigest(),
+            "source_commit": parity_manifest.get("source_commit"),
+            "generated_at": parity_manifest.get("generated_at"),
+            "python_version": parity_manifest.get("python_version"),
+            "seattrellis_version": parity_manifest.get("seattrellis_version"),
+            "solver_backend": parity_manifest.get("solver_backend"),
+            "pip_extras": parity_manifest.get("pip_extras"),
+            "inputs": {
+                "file_count": len(parity_manifest.get("input_hashes", {})),
+                "tree_sha256": inventory_digest(parity_manifest.get("input_hashes", {})),
+            },
+            "goldens": {
+                "file_count": len(parity_manifest.get("golden_hashes", {})),
+                "tree_sha256": inventory_digest(parity_manifest.get("golden_hashes", {})),
+            },
+        }
+    )
+    cli = corpora["cli_goldens"]
+    roster = corpora["roster_mapping"]
+    artifact = corpora["artifact_parity"]
+    assert isinstance(cli, dict) and isinstance(roster, dict) and isinstance(artifact, dict)
+    cli["inventory"] = _tree_descriptor(ROOT / "fixtures" / "cli-goldens")
+    roster["inventory"] = _tree_descriptor(ROOT / "fixtures" / "roster-mapping")
+    artifact["inventory"] = _tree_descriptor(ROOT / "fixtures" / "artifact-parity")
+    artifact["status"] = "recorded" if artifact["inventory"]["file_count"] else "pending"
+    return provenance
+
+
+def write_golden_provenance() -> None:
+    existing: object = None
+    if GOLDEN_PROVENANCE.is_file():
+        existing = read_json(GOLDEN_PROVENANCE)
+    write_json(GOLDEN_PROVENANCE, build_golden_provenance(existing))
+
+
+def verify_golden_provenance() -> bool:
+    try:
+        expected = read_json(GOLDEN_PROVENANCE)
+    except (OSError, ValueError) as error:
+        print(f"[provenance] cannot read {GOLDEN_PROVENANCE}: {error}")
+        return False
+    try:
+        actual = build_golden_provenance(expected)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"[provenance] cannot recompute provenance: {error}")
+        return False
+    ok = expected == actual
+    if not ok:
+        print(
+            "[provenance] inventory drift; run "
+            "`python scripts/gen_parity_fixtures.py provenance` after reviewing the change"
+        )
+
+    final_v1 = expected.get("final_v1_reference") if isinstance(expected, dict) else None
+    if not isinstance(final_v1, dict):
+        print("[provenance] final_v1_reference must be an object")
+        return False
+    status = final_v1.get("status")
+    if status == "pending":
+        if final_v1.get("resolved_tag") is not None or final_v1.get("resolved_commit") is not None:
+            print("[provenance] pending final_v1_reference cannot claim a resolved tag/commit")
+            ok = False
+    elif status == "resolved":
+        commit = final_v1.get("resolved_commit")
+        if not final_v1.get("resolved_tag") or not isinstance(commit, str) or len(commit) != 40:
+            print("[provenance] resolved final_v1_reference requires tag and 40-hex commit")
+            ok = False
+    else:
+        print("[provenance] final_v1_reference status must be pending or resolved")
+        ok = False
+
+    corpora = expected.get("corpora") if isinstance(expected, dict) else None
+    artifact = corpora.get("artifact_parity") if isinstance(corpora, dict) else None
+    if not isinstance(artifact, dict):
+        print("[provenance] corpora.artifact_parity reservation is required")
+        return False
+    inventory = artifact.get("inventory")
+    file_count = inventory.get("file_count") if isinstance(inventory, dict) else None
+    if isinstance(file_count, int) and file_count > 0:
+        recording = artifact.get("recording_source")
+        pending_fields = [
+            key
+            for key in ("producer", "oracle_guard", "rust_guard")
+            if artifact.get(key) in (None, "", "pending")
+        ]
+        if artifact.get("status") != "recorded" or pending_fields:
+            print(
+                "[provenance] artifact_parity files require recorded status and "
+                f"resolved metadata; pending: {', '.join(pending_fields)}"
+            )
+            ok = False
+        if not isinstance(recording, dict) or recording.get("status") == "pending":
+            print("[provenance] artifact_parity recording_source is still pending")
+            ok = False
+    elif file_count != 0 or artifact.get("status") != "pending":
+        print("[provenance] empty artifact_parity reservation must remain pending")
+        ok = False
+    return ok
 
 
 def write_manifest() -> None:
     git = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=str(ROOT))
     commit = git.stdout.strip() if git.returncode == 0 else "unknown"
-    ver = subprocess.run([cli_bin(), "doctor"], capture_output=True, text=True, cwd=str(ROOT))
-    version = "unknown"
-    for line in ver.stdout.splitlines() + ver.stderr.splitlines():
-        if line.startswith("SeatTrellis"):
-            version = line.split()[1]
-            break
     manifest = {
+        "manifest_schema_version": "1.0",
         "corpus_name": "seattrellis-v2-parity",
         "corpus_version": "1.1.0",
         "source_commit": commit,
-        "seattrellis_version": version,
+        "seattrellis_version": detect_seattrellis_version(),
         "python_version": sys.version.split()[0],
         "generator": "scripts/gen_parity_fixtures.py",
         "solver_backend": SOLVER_BACKEND,
         "pip_extras": "image,excel,pdf,docx,pptx",
+        "data_classification": "synthetic_only",
+        "ignored_metadata_files": sorted(IGNORED_CORPUS_NAMES),
         "golden_contract": (
             "Heuristic solutions are not required to match seat-for-seat between "
             "Python and Rust; semantics, legality, scoring definitions and quality "
@@ -993,12 +1406,27 @@ def main(argv: list[str]) -> int:
         print("no cases matched")
         return 2
     command = args[0] if args else "all"
+    if command == "manifest-check":
+        ok = verify_parity_manifest()
+        ok = verify_golden_provenance() and ok
+        if ok:
+            print("manifest/provenance: OK")
+        return 0 if ok else 1
+    if command == "provenance":
+        write_golden_provenance()
+        ok = verify_parity_manifest()
+        ok = verify_golden_provenance() and ok
+        if ok:
+            print(f"provenance updated: {GOLDEN_PROVENANCE.relative_to(ROOT)}")
+        return 0 if ok else 1
     if command == "inputs":
         gen_inputs(cases)
     elif command == "goldens":
         gen_goldens(cases)
     elif command == "verify":
-        ok = verify_goldens(cases)
+        ok = verify_parity_manifest()
+        ok = verify_golden_provenance() and ok
+        ok = verify_goldens(cases) and ok
         return 0 if ok else 1
     elif command == "all":
         gen_inputs(cases)
@@ -1007,6 +1435,7 @@ def main(argv: list[str]) -> int:
         print(f"unknown command: {command}")
         return 2
     write_manifest()
+    write_golden_provenance()
     print(f"done: {len(cases)} case(s)")
     return 0
 

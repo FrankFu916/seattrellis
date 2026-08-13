@@ -757,14 +757,11 @@
   },
   "corpus_name": "seattrellis-v2-parity",
   "corpus_version": "1.1.0",
+  "data_classification": "synthetic_only",
   "generated_at": "2026-08-12T14:58:08Z",
   "generator": "scripts/gen_parity_fixtures.py",
   "golden_contract": "Heuristic solutions are not required to match seat-for-seat between Python and Rust; semantics, legality, scoring definitions and quality thresholds must match. Timestamp fields are stripped for stability.",
   "golden_hashes": {
-    ".DS_Store": {
-      "bytes": 8196,
-      "sha256": "de4544e3958ef938baa7dc848291500bbfc8cf3eac1585973f730ad9a8d6254d"
-    },
     "data-missing/candidates.json": {
       "bytes": 91375,
       "sha256": "0f75b1b1d03b83343622941dbb65bdf5d6307d3a35e0b2ac7bd0d9d46f23c401"
@@ -1542,11 +1539,11 @@
       "sha256": "97c652c7629dea9d1de020324509a701c1a67fb12418a774416cdf6516074ba6"
     }
   },
+  "ignored_metadata_files": [
+    ".DS_Store",
+    "Thumbs.db"
+  ],
   "input_hashes": {
-    ".DS_Store": {
-      "bytes": 14340,
-      "sha256": "3c455b3667913a7e602cd1d43e92f96ec7232e333835fc0c9e4b02b3456212e2"
-    },
     "data-missing/classroom.json": {
       "bytes": 7494,
       "sha256": "5cd8c6315e9ca1420b812f90fdbce790bc01d794eb803bb3a9817db9d3775010"
@@ -2140,6 +2137,7 @@
       "sha256": "f35e39a2423a569e497af50bd011df04518dda4bba6cc6410b193b8ca9143c9a"
     }
   },
+  "manifest_schema_version": "1.0",
   "normalized_keys": [
     "created_at",
     "wall_clock_seconds",
@@ -2147,7 +2145,7 @@
   ],
   "pip_extras": "image,excel,pdf,docx,pptx",
   "python_version": "3.12.13",
-  "seattrellis_version": "unknown",
+  "seattrellis_version": "1.8.4",
   "solver_backend": "fallback",
   "source_commit": "4911352853b41ab5a0517bb68c4f43fccd33530f"
 }

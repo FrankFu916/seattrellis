@@ -131,6 +131,11 @@ def main() -> int:
         "--archive", action="extend", nargs="+", default=[], metavar="PATH"
     )
     parser.add_argument("--tree", action="store_true")
+    parser.add_argument(
+        "--expect-retired",
+        action="store_true",
+        help="M6 gate: fail while the Python oracle tree still exists",
+    )
     args = parser.parse_args()
 
     problems: list[str] = []
@@ -145,12 +150,32 @@ def main() -> int:
     if args.tree:
         problems.extend(scan_tree(Path.cwd()))
 
+    # Oracle-tree presence (pre-M6 expected, post-M6 a violation). The
+    # gate must never silently report "clean" while the Python tree
+    # exists — that would be a false negative.
+    root = Path.cwd()
+    oracle_paths = [
+        root / "src" / "seattrellis",
+        root / "native",
+        root / "pyproject.toml",
+    ]
+    present = [path for path in oracle_paths if path.exists()]
+    if args.expect_retired and present:
+        for path in present:
+            problems.append(f"oracle tree still present (M6 retirement pending): {path}")
+    elif present:
+        print(
+            "note: Python oracle tree present ("
+            + ", ".join(str(path.relative_to(root)) for path in present)
+            + "); expected until M6 retirement, not counted as a failure"
+        )
+
     if problems:
         print("Python runtime references found:")
         for problem in sorted(set(problems)):
             print(f"  - {problem}")
         return 1
-    print("clean: no Python runtime references")
+    print("clean: no Python runtime references in the v2 production artifacts")
     return 0
 
 

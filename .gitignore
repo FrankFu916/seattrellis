@@ -19,6 +19,9 @@ exports/
 snapshots/
 *.snapshot.json
 !examples/history/*.snapshot.json
+# The parity history corpus is synthetic release evidence, not a user output.
+# It must be committed so a clean checkout can replay history-dependent cases.
+!fixtures/parity/inputs/*/history/*.snapshot.json
 data/
 private/
 real_students/

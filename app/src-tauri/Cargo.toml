@@ -18,11 +18,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# The loopback backend core (serves web_static + native solve).
+# The loopback backend core (serves the embedded React dist + native solve).
 seattrellis-server = { path = "../../crates/seattrellis-server" }
 
 [features]
 # This feature is used for production builds (`cargo tauri build`) when no dev
 # server is running; keep it so the bundler can produce a standalone .app.
 custom-protocol = ["tauri/custom-protocol"]
-

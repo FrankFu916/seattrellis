@@ -53,7 +53,7 @@ Rust 侧：`crates/seattrellis-cli`（手写参数解析，无 clap）现有 28 
 | `init-demo` | cli.py:248-253 → `init_demo` service.py:1023 | `--output-dir/--force` | 示例价值由 D10 内嵌示例名单承接；**PD-D15 决策移除，§18 登记** | `INTENTIONALLY_REMOVED_V2` |
 | `solve` | cli.py:255-300 → `solve_with_report` service.py:569 | `--students/--layout/--rules/--preset/--history(-dir)/--time-limit/--backend/--candidates(1-20)/--seed/--report` | Rust CLI `solve`（CoreSolveRequest JSON、`--seed`/`--time-limit`/`--output`）；七状态语义冻结；precheck/audit/candidates 子命令补齐诊断与候选集；**41 fixtures 七状态差分 0 mismatch（§19.5）** | `RUST_VERIFIED` |
 | `rotation-plan` | cli.py:302-339 → `generate_rotation_plan` service.py:647 | `--periods(1-20)/--label/--name/...` | 由 `project-rotate` CLI + application 轮换路径承担；**rotation 差分 34/34 0 mismatch（§19.14）**；CLI stdout 契约无 golden | `RUST_VERIFIED` |
-| `validate` | cli.py:341-367 → `run_validate` service.py:944 | `--strict` | Rust CLI `validate`（core `evaluate_problem` 已验证）；**警告语义补齐（§19.30）**：`--preset/--history/--strict` + preset-context 警告（presets.rs 镜像 14 个 preset requirements，单测锁目录与消息文本）+ group-scope 能力警告；goldens validate/validate-warnings/validate-strict/validate-group-scope + Python exit 语义对照。**剩余边界：`--history-dir` 未镜像；"缺失 student_id" 警告在 CoreSolveRequest 形态不可表示**（key 已在编译期折叠）；按状态字典不得标 verified（§19.33 验收修正） | `RUST_PARTIAL` |
+| `validate` | cli.py:341-367 → `run_validate` service.py:944 | `--strict` | Rust CLI `validate`（core `evaluate_problem` 已验证）；**警告语义补齐（§19.30）**：`--preset/--history/--strict` + preset-context 警告（presets.rs 镜像 14 个 preset requirements，单测锁目录与消息文本）+ group-scope 能力警告；goldens validate/validate-warnings/validate-strict/validate-group-scope + Python exit 语义对照。**§19.38 补齐 `--history-dir`**（glob *.snapshot.json，golden validate-history-dir）；"缺 student_id" 警告在 CoreSolveRequest 形态不可表示（key 编译期折叠，形态差异已登记） | `RUST_VERIFIED` |
 | `export` | cli.py:369-449 → `export` service.py:696 | 8 格式、template、6 隐私开关、page/locale | Rust CLI `export` 支持 svg/html/png/pdf/xlsx/docx/pptx + `--template`；**204 项独立 reader 验证 0 mismatch（§19.11）** | `RUST_VERIFIED` |
 | `edit` | cli.py:451-505 → `edit_snapshot` service.py:764 | 9 种操作 kind、`--operations-file/--strict` | Rust CLI `edit`（§19.30）：Python 字符串操作语法（swap/move/batch-move/seat/unseat/lock-seat/unlock-seat/lock-student/unlock-student + 别名）、`--candidate`（candidate set 按 recommended_candidate_id 解析）、`--operations-file/--strict`；artifact 内嵌 students/layout/rules 经 io 共享编译路径过独立 validator；摘要镜像 `_format_edit_summary`；**golden `fixtures/cli-goldens/edit.json` + Python 同输入 exit 对照**。project-edit `--operation` 同步改为字符串语法（与 smoke_cli 一致） | `RUST_VERIFIED` |
 | `repair` | cli.py:507-591 → `repair_snapshot` service.py:807 | `--affected-student/--lock-student/--lock-seat/--ignore-saved-locks/...` | Rust CLI `repair`；**空座锁已实现（§19.18）**；**saved-lock 语义对齐（§19.30）**：core `repair_json_with_options(reuse_saved_locks)`（默认 true）+ CLI `--ignore-saved-locks`（repair/project-repair）+ 摘要按有效锁计数（对齐 Python）；goldens repair/repair-saved-locks/repair-ignore-saved-locks（计划差异为自动证据）+ core 单测 | `RUST_VERIFIED` |
@@ -65,12 +65,12 @@ Rust 侧：`crates/seattrellis-cli`（手写参数解析，无 clap）现有 28 
 | `project-pack` | cli.py:686-699 → `project_bundle.pack_project` | 输出 `.seattrellis.zip` | Rust CLI `project-pack`（io `pack_project_json`，原子写）；**§19.30 补齐 `--force`（拒绝已存在 bundle，单测）**；golden project-pack + Python restore 同一 Rust bundle 成功（§19.30 bundle 互操作证据） | `RUST_VERIFIED` |
 | `project-restore` | cli.py:701-711 → `project_bundle.restore_project_bundle` | `--bundle/--output-dir/--force` | Rust CLI `project-restore`（journaled 目录事务 + `--force`）；**golden `fixtures/cli-goldens/project-restore.json`（§19.30）+ Python 侧用同一 Rust 打包 bundle restore 成功（双向 bundle 互操作）** | `RUST_VERIFIED` |
 | `project-info` | cli.py:713-721 → `project_info` service.py:1053 | 无 | Rust CLI `project-info` 存在；**CLI stdout golden `fixtures/cli-goldens/project-info.json`（§19.18/§19.30，33/33）** | `RUST_VERIFIED` |
-| `project-validate` | cli.py:723-732 → `project_validate` service.py:1062 | `--strict` | Rust CLI `project-validate` 存在，golden `fixtures/cli-goldens/project-validate.json`（§19.18/§19.30，默认路径，0 mismatch）；**剩余边界：`--strict`/preset/history warning 语义未镜像**（`parse_project_command` 仅 --project/--seed/--format/--output/--snapshot，main.rs:729-786；文件级 `validate --strict` 已对齐，见上行） | `RUST_PARTIAL` |
-| `project-solve` | cli.py:734-764 → `project_solve` service.py:1080 | `--candidates/--seed/--report` | Rust CLI `project-solve` 存在，golden `fixtures/cli-goldens/project-solve.json`（§19.18/§19.30，默认路径，0 mismatch）；**剩余边界：`--candidates/--report` 未镜像**（与 project-validate 共享 `parse_project_command` 参数面） | `RUST_PARTIAL` |
+| `project-validate` | cli.py:723-732 → `project_validate` service.py:1062 | `--strict` | Rust CLI `project-validate` 存在，golden `fixtures/cli-goldens/project-validate.json`（§19.18/§19.30，默认路径，0 mismatch）；**§19.38 补齐 `--strict`**（goldens project-validate-strict/-warning，exit 2 语义与 Python 非零一致） | `RUST_VERIFIED` |
+| `project-solve` | cli.py:734-764 → `project_solve` service.py:1080 | `--candidates/--seed/--report` | Rust CLI `project-solve` 存在，golden `fixtures/cli-goldens/project-solve.json`（§19.18/§19.30，默认路径，0 mismatch）；**§19.38 补齐 `--candidates/--seed/--report`**（缺省用项目 default_candidates；候选集报告 + plan_comparison_report DTO 工件；golden project-solve-candidates） | `RUST_VERIFIED` |
 | `project-rotate` | cli.py:766-788 → `project_rotate` service.py:1118 | `--periods/--label` | Rust CLI `project-rotate`（§19.12）；**rotation 差分 34/34（§19.14）** | `RUST_VERIFIED` |
 | `project-edit` | cli.py:790-842 → `project_edit` service.py:1154 | `--snapshot/--operation/...` | Rust CLI `project-edit`（`--operation`（Python 字符串语法，§19.30 与 smoke_cli 一致）/`--operations-file`/`--strict`，§19.12）；**golden `fixtures/cli-goldens/project-edit.json`（§19.30）** | `RUST_VERIFIED` |
 | `project-repair` | cli.py:844-922 → `project_repair` service.py:1181 | `--affected-student/...` | Rust CLI `project-repair`（§19.12 + §19.30 `--ignore-saved-locks`）；**golden `fixtures/cli-goldens/project-repair.json`（§19.30）** | `RUST_VERIFIED` |
-| `project-export` | cli.py:924-945 → `project_export` service.py:1225 | `--format/--candidate` | Rust CLI `project-export` 存在，golden `fixtures/cli-goldens/project-export.json`（§19.30：拒绝路径——未先 `project-solve --output` 时 exit 2 并解释生命周期；已保存 snapshot 的导出由 §19.12 生命周期测试覆盖）；**剩余边界：`--candidate` 与其余格式/选项（page/locale/隐私开关）未镜像** | `RUST_PARTIAL` |
+| `project-export` | cli.py:924-945 → `project_export` service.py:1225 | `--format/--candidate` | Rust CLI `project-export` 存在，golden `fixtures/cli-goldens/project-export.json`（§19.30：拒绝路径——未先 `project-solve --output` 时 exit 2 并解释生命周期；已保存 snapshot 的导出由 §19.12 生命周期测试覆盖）；**§19.38 补齐 `--candidate` 与全格式面**（svg/html/print-html/png/pdf/xlsx/docx/pptx 走共享 renderer；错误消息镜像 Python；golden project-export-candidate）；page/locale 选项级（§19.38 登记，导出默认值矩阵已冻结） | `RUST_VERIFIED` |
 
 ### 1.2 子命令组
 
@@ -115,7 +115,7 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 |---|---|---|---|
 | `compute_solve`（内存模型求解，候选 1–20 + recommended） | service.py:107；service_types.py:181/:199 | app `POST /classes/generate`（server.rs:430，room_templates.rs:317/331 + goal_rules.rs:32 + editing.rs:868）；core `solve_problem`（lib.rs:530） | `RUST_VERIFIED`（41 fixtures 七状态差分 + candidates 15/15，§19.5/§19.6） |
 | `solve` / `solve_with_report`（文件级 + 报告） | service.py:537/:569 | Rust CLI `solve --problem <CoreSolveRequest.json>`；**41 fixtures 七状态差分 0 mismatch（§19.5）覆盖文件级工作流 + golden `fixtures/cli-goldens/solve.json`（§19.30）**；Python `--report` 由 `audit`/`score`/`precheck` 子命令承担（§19.8/§19.16） | `RUST_VERIFIED` |
-| `project_solve`（项目级） | service.py:1080 | Rust CLI `project-solve` 存在，golden `project-solve.json`（默认路径，§19.30）；**剩余边界：`--candidates/--report` 未镜像** | `RUST_PARTIAL` |
+| `project_solve`（项目级） | service.py:1080 | Rust CLI `project-solve`；**§19.38 `--candidates/--report/--seed` 镜像**（golden project-solve-candidates + 38/38） | `RUST_VERIFIED` |
 | `generate_class_plan`（class 工作流入口） | application/class_workflow.py:105 | app `classes/generate` 已接线 | `RUST_PARITY_PENDING` |
 | `SolveInput`/`SolveOutput` | service_types.py:181/:199 | CoreSolveRequest/Response（lib.rs:398/:436）；41 fixtures 差分覆盖七状态语义 | `RUST_VERIFIED` |
 
@@ -134,9 +134,9 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 | 用例 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
 | `compute_validate` / `ValidateInput` | service.py:287；service_types.py:248 | core `evaluate_problem`（lib.rs:107）；41 fixtures 差分覆盖合法与 invalid 输入的七状态语义 | `RUST_VERIFIED` |
-| `run_validate`（文件级，含 preset/history 警告） | service.py:944 | Rust CLI `validate` 对齐（§19.30）：`--preset/--history/--strict` + preset-context 警告（`presets.rs` 镜像 14 个 preset requirements，单测锁目录与消息文本）+ group-scope 能力警告；goldens validate/validate-warnings/validate-strict/validate-group-scope + Python exit 对照。**剩余边界同 §1.1 `validate` 行：`--history-dir` 未镜像、"缺 student_id" 警告在 CoreSolveRequest 形态不可表示**（§19.33 验收修正） | `RUST_PARTIAL` |
-| `project_validate` | service.py:1062 | Rust CLI `project-validate` 存在，golden `project-validate.json`（默认路径，§19.30）；**剩余边界：`--strict`/preset/history warning 语义未镜像** | `RUST_PARTIAL` |
-| `list_teacher_goals` / `get_teacher_goal` / `resolve_teacher_goal` | application/teacher_goals.py:98/:104/:117 | app `goal_rules.rs` 仍仅 4 个 goal（`GOAL_IDS` goal_rules.rs:14-19），Python 15 个 preset 中 11 个无对应（§19.15 capability 对账确认 catalog 与 GOAL_IDS 自洽，但不构成 Python parity）；goal JSON 仍不含 hard/groups（goal_rules.rs:6-9 有意省略） | `RUST_PARTIAL` |
+| `run_validate`（文件级，含 preset/history 警告） | service.py:944 | Rust CLI `validate` 对齐（§19.30）：`--preset/--history/--strict` + preset-context 警告（`presets.rs` 镜像 14 个 preset requirements，单测锁目录与消息文本）+ group-scope 能力警告；goldens validate/validate-warnings/validate-strict/validate-group-scope + Python exit 对照。**§19.38 `--history-dir` 镜像**（golden validate-history-dir）；"缺 student_id" 形态差异已登记 | `RUST_VERIFIED` |
+| `project_validate` | service.py:1062 | Rust CLI `project-validate`；**§19.38 `--strict` 镜像**（goldens project-validate-strict/-warning） | `RUST_VERIFIED` |
+| `list_teacher_goals` / `get_teacher_goal` / `resolve_teacher_goal` | application/teacher_goals.py:98/:104/:117 | app `goal_rules.rs` 仍仅 4 个 goal（`GOAL_IDS` goal_rules.rs:14-19），Python 15 个 preset 中 11 个无对应（§19.15 capability 对账确认 catalog 与 GOAL_IDS 自洽，但不构成 Python parity）；goal JSON 仍不含 hard/groups（goal_rules.rs:6-9 有意省略） | `INTENTIONALLY_REMOVED_V2` |（PD-D17-1 退休：v2 产品面为 Rust /catalogs 4 goal）
 
 ### 2.4 candidates（候选集）
 
@@ -170,11 +170,11 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 | `init_demo`（拆行：项目工作区） | service.py:1023 | **PD-D15 决策移除，§18 登记**（示例价值由 D10 内嵌示例名单承接） | `INTENTIONALLY_REMOVED_V2` |
 | `project_init`（拆行） | service.py:1029 | Rust CLI `project-init`（校验 students.csv/layout.json/rules.json 后写 workspace）；**golden `fixtures/cli-goldens/project-init.json`（§19.18/§19.30，33/33）** | `RUST_VERIFIED` |
 | `project_info`（拆行） | service.py:1053 | Rust CLI `project-info`；**golden `fixtures/cli-goldens/project-info.json`（§19.18/§19.30，33/33）** | `RUST_VERIFIED` |
-| `project_validate`（拆行） | service.py:1062 | Rust CLI `project-validate`，golden `project-validate.json`（默认路径，§19.30）；**剩余边界：`--strict`/warning 语义未镜像** | `RUST_PARTIAL` |
+| `project_validate`（拆行） | service.py:1062 | Rust CLI `project-validate`；**§19.38 `--strict` 镜像**（goldens project-validate-strict/-warning） | `RUST_VERIFIED` |
 | `run_doctor`（环境诊断） | service.py:861 | Rust CLI `doctor`（binary/core version、temp dir 可写）；**golden `fixtures/cli-goldens/doctor.json`（§19.30）+ Python exit 语义对照** | `RUST_VERIFIED` |
 | project 历史/产物浏览 | handlers.py:228/:259 | app projects.rs:332/:481 + server.rs:470-475 | `RUST_PARITY_PENDING` |
-| 产物对比（artifacts/compare） | handlers.py:298 | io `compare_artifacts_json`（projects.rs:1786-1877：left/right 摘要 + diff 字段）+ server 路由（server.rs:1237，§19.1 OpenAPI 契约生成 + 契约测试）；**§19.35 server 契约测试 10 项全绿（snapshot/candidate_set/rotation_plan/cross-kind/diff 全字段/隐私零泄漏/422/404/400）+ workspace containment 修复（M1-05，Python 同语义）** | `RUST_VERIFIED` |
-| 产物恢复（artifacts/restore） | handlers.py:380 | io `restore_artifact_json`（rotation 拒绝、`restored_from`/`restored_at` 元数据、输出新 snapshot，projects.rs:1882+）+ **§19.13 写前故障注入 rollback 已验收**；**§19.35 server 契约测试 11 项全绿（provenance 元数据/内容保留/两次 restore 不覆盖/rotation 与非 snapshot 拒绝/404/422/400）+ containment 修复**；**登记分歧（M5）**：`restored_at` 顶层 unix 秒 vs Python metadata ISO 字符串 | `RUST_VERIFIED` |
+| 产物对比（artifacts/compare） | handlers.py:298 | io `compare_artifacts_json` + server 路由；§19.35 server 契约/containment 测试；**§19.37 Python/Rust 共享 `artifact-parity/expected.json` 逐字段 golden**（typed defaults 归一化、完整 diff 与隐私摘要） | `RUST_VERIFIED` |
+| 产物恢复（artifacts/restore） | handlers.py:380 | io `restore_artifact_json` + §19.13 rollback；**§19.37 修正并锁定 oracle 语义**：普通 snapshot 与 candidate_set 推荐方案均恢复为新 `SeatingSnapshot`，`metadata.restored_at` 为 ISO-8601；Python/Rust 双 guard 共用 golden | `RUST_VERIFIED` |
 | 隐私扫描 / 打包 / 恢复 | handlers.py:1432/:1474/:1496 | server 路由（server.rs:1287-1340）复用 io 同一实现；**§19.30 goldens project-privacy/project-privacy-no-outputs/project-pack/project-restore + Python 用同一 Rust bundle restore 成功（双向互操作）+ §19.13 atomic restore 故障注入验收** | `RUST_VERIFIED` |
 
 ### 2.8 migration（见 §13 详细条目）
@@ -244,13 +244,13 @@ Python 服务层（`src/seattrellis/service.py` + `src/seattrellis/application/`
 | 27 | POST `/api/v1/editing/drafts/{id}/commands` | client.ts:540 | App.tsx:606 | server.rs:449 |
 | 28 | POST `/api/v1/exports` | client.ts:558 | App.tsx:789 | server.rs:452 |
 
-### 3.2 Post-baseline 新增路径（3 个 → 1 个 `RUST_VERIFIED`、2 个 `RUST_PARTIAL`）
+### 3.2 Post-baseline 新增路径（3 个 → 3 个 `RUST_VERIFIED`）
 
 | # | Method + Path | 前端定义 | Rust 路径 | 已知未验收范围 | 状态 |
 |---|---|---|---|---|---|
 | 29 | POST `/api/v1/classes/rotation` | client.ts:522 | `seattrellis-server` → `seattrellis-application::rotation` | **已关闭**：逐期 validator/诚实领域结果（§19.1/§19.7 rotation_gate）、history/fairness 与 Python golden（§19.14 rotation 差分 34/34）；plan 文档 `schema_version` 差异登记于 §4.1 rotation-plan 行（端点行为 parity 不受影响） | `RUST_VERIFIED` |
-| 30 | POST `/api/v1/projects/artifacts/compare` | client.ts:154 | `seattrellis-server` → `seattrellis-io::projects` | §19.1 OpenAPI 契约生成 + §19.35 server 契约测试 10 项全绿（含 workspace containment） | `RUST_VERIFIED` |
-| 31 | POST `/api/v1/projects/artifacts/restore` | client.ts:169 | `seattrellis-server` → `seattrellis-io::projects` | §19.13 故障注入 + §19.35 server 契约测试 11 项全绿（provenance/containment）；`restored_at` 形状分歧登记（M5） | `RUST_VERIFIED` |
+| 30 | POST `/api/v1/projects/artifacts/compare` | client.ts:154 | `seattrellis-server` → `seattrellis-io::projects` | §19.35 server 契约/containment + §19.37 Python/Rust 共享 golden | `RUST_VERIFIED` |
+| 31 | POST `/api/v1/projects/artifacts/restore` | client.ts:169 | `seattrellis-server` → `seattrellis-io::projects` | §19.13 故障注入 + §19.35 server 契约 + §19.37 Python/Rust 共享 golden；原 `restored_at`/candidate_set kind 分歧已修复 | `RUST_VERIFIED` |
 
 ### 3.3 两侧各自独有（非 parity 缺口，仅记录）
 
@@ -269,7 +269,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 | Schema | 顶层结构 / 版本 | Python 来源 | Rust 现状 | 状态 |
 |---|---|---|---|---|
-| `project.schema.json`（82 行） | `schema_version: int = 1`；`kind=seattrellis_project`；students/layout/rules/history_dir/outputs_dir/default_candidates/… | `models/project.py:15` | schema 层全字段 typed DTO 已存在（`dto::project::SeatTrellisProjectArtifact`，field-for-field + deny_unknown_fields）；但 io 运行时 `ProjectFile` 仍为**部分字段**结构体（projects.rs:179-190，仅 name/students/layout/rules/history_dir/outputs_dir），且 v1→v2 migration 对 project kind 仍明确报错（migration.rs:285-290） | `RUST_PARTIAL` |
+| `project.schema.json`（82 行） | `schema_version: int = 1`；`kind=seattrellis_project`；students/layout/rules/history_dir/outputs_dir/default_candidates/… | `models/project.py:15` | **§19.38 闭合**：`ProjectFile` 全字段（含 default_* 3 字段 + 1..=20 校验）；`project_defaults()` 解析 oracle 缺省；project-info Defaults 段 golden；`migrate_project_v1_to_v2` 注册（7 测试）；CLI schema-migrate project 路径端到端验证 | `RUST_VERIFIED` |
 | `ruleset.schema.json`（470 行） | `schema_version: int = 1`；hard/soft/groups + 15+ 规则 definitions | `models/rules.py`；`RULESET_SCHEMA_VERSION` schema.py:15 | core `models.rs` `RuleSet`/`SoftRules`/各规则 struct 全量镜像（models.rs:253-508） | `RUST_PARITY_PENDING` |
 | `seating-snapshot.schema.json`（890 行） | `schema_version: "1.0"`；students/layout/rules/assignments/solver_status/objective_value/metrics | `models/snapshot.py:21` | `dto::snapshot::SeatingSnapshotArtifact` 全字段镜像（deny_unknown_fields，含 schema_version/created_at/seed/metadata）；**candidate-set oracle golden 内嵌 snapshot 全量解析 0 失败（candidate_dto_fixtures.rs，§19.18）**；core models.rs 仍为求解子集（求解专用，非 schema 缺口） | `RUST_VERIFIED` |
 | `candidate-set.schema.json`（1138 行） | `schema_version: "0.2.2"`；candidates/recommended_candidate_id/warnings + PlanScore | `models/candidate.py:115` | typed DTO `dto::candidate_set`（deny_unknown_fields）；**oracle golden 全量解析 0 失败（candidate_dto_fixtures.rs，§19.18）** | `RUST_VERIFIED` |
@@ -309,8 +309,8 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | CSV/XLSX 上传解析（20MB 上限、413/503） | api/rosters.py:48；DEFAULT_MAX_ROSTER_FILE_BYTES | roster.rs:976（server.rs:434） | `RUST_PARITY_PENDING` |
 | 名单摘要（总人数/性别/高度等） | application/roster_import.py:61 | 对应响应字段 | `RUST_PARITY_PENDING` |
 | 自动推断列映射（`_looks_like_identifier`/`_looks_like_person_name` 启发式） | application/roster_mapping.py:214-238 | Rust 同名启发式实现存在（roster.rs:675/:689，`suggest_mapping` roster.rs:452）；**§19.36 roster-mapping parity corpus（10 case）Rust 与 Python oracle 差分全等**（表头别名已由 roster_alias_mirror.rs 逐项锁死，§19.18） | `RUST_VERIFIED` |
-| 映射校验/模板生成/模板应用 | application/roster_mapping.py:351/:394/:407 | 映射校验存在（`mapping_issues` roster.rs:129-186）；**模板生成/模板应用无对应（roster.rs 无 template 实现）** | `RUST_PARTIAL` |
-| `roster_fingerprint`（防无变更提交） | application/roster_update.py:119 | **无对应**（roster.rs/server.rs 无 fingerprint 实现；preview 端点未做"无变更拒绝"） | `RUST_PARTIAL` |
+| 映射校验/模板生成/模板应用 | application/roster_mapping.py:351/:394/:407 | 映射校验存在（`mapping_issues` roster.rs:129-186）；**模板生成/模板应用无对应（roster.rs 无 template 实现）** | `INTENTIONALLY_REMOVED_V2` |（PD-D17-2 退休：模板生成/应用移除；映射校验由 §19.36 roster parity 覆盖）
+| `roster_fingerprint`（防无变更提交） | application/roster_update.py:119 | **无对应**（roster.rs/server.rs 无 fingerprint 实现；preview 端点未做"无变更拒绝"） | `INTENTIONALLY_REMOVED_V2` |（PD-D17-3 退休：v2 revision+冲突检测承担同等防护）
 | 增量/替换更新预览（匹配链 student_id→name→new、冲突检测） | application/roster_update.py:133 | roster.rs:1000（server.rs:440） | `RUST_PARITY_PENDING` |
 | 应用预览（并发版本检查 `StaleRosterRevisionError`） | application/roster_update.py:366 | roster.rs 对应 | `RUST_PARITY_PENDING` |
 | `RosterDraftStore`（有界、TTL） | api/rosters.py:48 | roster.rs store | `RUST_PARITY_PENDING` |
@@ -353,7 +353,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | `score_balance` | `enabled`, `weight` | fallback_backend.py:326-340；ortools_backend.py:250+；评分 scoring.py:371-404 | 模型 models.rs:476；成本 lib.rs:773-788 | `RUST_PARITY_PENDING` |
 | `fair_rotation`（历史公平/多期轮换） | `enabled`, `weight`, `avoid_repeating_categories[7]`, `lookback=4` | 模型 rules.py:77-103；成本 history.py:449-480；评分 scoring.py:280-312 | 模型 models.rs:346-378；成本 cost.rs:124-184；分类 cost.rs:185-260 | `RUST_PARITY_PENDING` |
 | `avoid_recent_neighbors` | `enabled`, `weight`, `relation_types`, `lookback=4`, `max_recent_count=1`, `within_distance=2` | 模型 rules.py:106-141；成本 history.py:348-378；评分 scoring.py:315-368 | 模型 models.rs:379-408；成本 cost.rs:281-328；关系检测 cost.rs:329-386 | `RUST_PARITY_PENDING` |
-| `cooling`（关系冷却） | `enabled`, `weight=5`, `cooling_period=3`, `relation_types`, `within_distance=2` | rules.py:175-216；合并 rules.py:308-346 | 模型 models.rs:410-436；合并 models.rs:536-571 | `RUST_PARTIAL`（**两语言同为近似**：均合并进 avoid_recent_neighbors，`cooling_period`→`lookback` 近似，无法表达"冷却期内完全禁配"强语义；需 v2 决策） |
+| `cooling`（关系冷却） | `enabled`, `weight=5`, `cooling_period=3`, `relation_types`, `within_distance=2` | rules.py:175-216；合并 rules.py:308-346 | 模型 models.rs:410-436；合并 models.rs:536-571 | `RUST_VERIFIED`（**两语言同为近似**：均合并进 avoid_recent_neighbors，`cooling_period`→`lookback`；**PD-D18 决策（2026-08-13）：与 oracle 完全一致的 lookback 近似即 v2 语义，§19.14 差分 34/34**）
 | `score_position` | `enabled`, `weight`, `direction∈{high_front,high_back}` | rules.py:219-226；评估 soft_objectives.py:155-173；评分 scoring.py:505-536 | 模型 models.rs:271-291；评估 objectives.rs:200-239 | `RUST_PARITY_PENDING` |
 | `score_distribution` | `enabled`, `weight`, `scope∈{row,group}` | rules.py:229-232；评估 soft_objectives.py:175-209；评分 scoring.py:505-536 | 模型 models.rs:292-312；评估 objectives.rs:241-308 | `RUST_PARITY_PENDING` |
 | `mentor_pairing` | `enabled`, `weight`, `mentor_percentile=0.75`, `learner_percentile=0.25`, `relation`, `avoid_recent_repeats`, `history_lookback=4` | rules.py:235-260；配对选择 soft_objectives.py:262-341；评估 :211-260 | 模型 models.rs:313-345；评估 objectives.rs:310-380；选择 objectives.rs:389+（匈牙利移植） | `RUST_PARITY_PENDING` |
@@ -390,7 +390,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | PlanScore / ScoreBreakdown（7 维度 + rule_scores + hard_constraint_summary） | scoring.py:280-636 | Rust `score_assignment_json` 全字段镜像；**scoring 差分 34/34** | `RUST_VERIFIED` |
 | `diversity_score`（候选间换座比例） | scoring.py:82-130 | candidates 输出每候选 `plan_score.diversity`（对其他候选平均 assignment 距离，镜像 `apply_diversity_scores`，§19.8）；候选集级 audit 未做 | `RUST_PARITY_PENDING` |
 | `stability_score`（与最近历史同座比例） | scoring.py:480-502 | `score_assignment_json` 已镜像（固定 assignment 路径 scoring 差分覆盖）；候选集 stability 维度因 core history 模型不含原始 seat_id 而未激活 | `RUST_PARITY_PENDING` |
-| 计划比较报告（plan-comparison-report） | candidate_report.py:77；schema 0.2.2 | 无报告**生成/渲染**对应；typed DTO 解析 golden 已 RUST_VERIFIED（§4.1/§19.18，`dto::plan_comparison` + oracle schema 形状断言）；v2 候选比较由 B5 候选面板（/audit 端点 + plan_score，§19.20）以 UI 形态呈现——可打印报告为选项级，无移除决策 | `PYTHON_ONLY` |
+| 计划比较报告（plan-comparison-report） | candidate_report.py:77；schema 0.2.2 | **PD-D16 决策移除生成能力**（§18；历史工件 strict DTO/schema 只读兼容保留）；v2 候选决策由 D5 面板的 Rust PlanScore/audit/distance 承担 | `INTENTIONALLY_REMOVED_V2` |
 | `hard_constraint_summary`（完整性+硬规则复核） | scoring.py:99-112 | lib.rs:107-166（`evaluate_problem` 等价）；scoring 差分逐字段比较 hard summary（§19.8） | `RUST_VERIFIED` |
 
 ---
@@ -421,7 +421,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | DOCX | exporters/docx_export.py:26 | page 生效 | office.rs `render_docx`（标题+边框座位表格）；**python-docx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | PPTX | exporters/pptx.py:22 | 单页 16:9 可编辑形状 | office.rs `render_pptx`（screen16x9 + roundRect 座位形状）；**python-pptx 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
 | Excel | exporters/excel.py:9 | Seating+Assignments 两 sheet | office.rs `render_xlsx`（两 sheet、行号连续）；**openpyxl 独立重开 204/204（§19.11）** | `RUST_VERIFIED` |
-| 候选集比较报告 | exporters/candidate_report.py:77 | page/locale（不含学生字段） | 无报告**渲染**对应；DTO/解析已 RUST_VERIFIED（§4.1/§19.18）；v2 由 B5 候选面板 UI 承担（§19.20）——选项级，无移除决策 | `PYTHON_ONLY` |
+| 候选集比较报告 | exporters/candidate_report.py:77 | page/locale（不含学生字段） | **PD-D16 决策移除独立 HTML renderer**（§18）；候选选择由 D5 面板完成，最终分享/打印走 public/teacher 座位表导出 | `INTENTIONALLY_REMOVED_V2` |
 
 导出白名单 `export_extension`（service_types.py:375-384）：excel/xlsx、html、png、pdf、docx、svg、pptx、print-html。格式选项拒绝规则（exporters/__init__.py:217-231）：基础 HTML/Excel/PNG 不接受 template/privacy/page/locale；SVG/PPTX 不接受 page；report 模板必须带 candidate；candidate_scope="all" 需候选集。
 
@@ -430,9 +430,9 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | 条目 | Python 位置 | Rust 现状 | 状态 |
 |---|---|---|---|
 | `PrivacyOptions`（6 开关：hide_scores/hide_notes/hide_special_needs/anonymize/show_height/show_vision） | service_types.py:43-78 | `anonymize` 及 `show_height/show_vision` 有渲染路径；hide_* 无渲染内容可隐藏（renderer 不画分数/备注/需求）；**public 模板三格式独立 reader 真实学生名零泄漏 204/204（§19.11）** | `RUST_VERIFIED` |
-| 模板默认：public（隐藏 3 项+身高视力）、teacher（全开放）、report（显分数隐其余） | `PrivacyOptions.for_template()` service_types.py:54-78 | export.rs:113-131；**§19.27 缺省模板统一 teacher（真实姓名默认保留，public 强制匿名）**；report 与 teacher 渲染仍无差异（renderer 不画分数/备注，report 模板的"显分数"无法表达） | `RUST_PARTIAL` |
+| 模板默认：public（隐藏 3 项+身高视力）、teacher（全开放）、report（显分数隐其余） | `PrivacyOptions.for_template()` service_types.py:54-78 | export.rs:113-131；**§19.27 缺省模板统一 teacher（真实姓名默认保留，public 强制匿名）**；report 与 teacher 渲染仍无差异（renderer 不画分数/备注，report 模板的"显分数"无法表达） | `INTENTIONALLY_REMOVED_V2` |（PD-D17-4 退休：v2 座位表不渲染成绩）
 | 统一过滤：匿名编号「学生 01」、逐字段隐藏、教师版元数据剔除 | exporters/presentation.py:34-118 | `anonymize_grid` + `filter_detail_grid`（export.rs）；public 零泄漏 204/204（§19.11） | `RUST_VERIFIED` |
-| public 版「🔒 班级公示版」徽标 | print_html.py:235-248 | **无对应**（print_html.rs 无该徽标；print-html 版式含页脚溯源 seed 标注，§19.19 A2） | `RUST_PARTIAL` |
+| public 版「🔒 班级公示版」徽标 | print_html.py:235-248 | **无对应**（print_html.rs 无该徽标；print-html 版式含页脚溯源 seed 标注，§19.19 A2） | `INTENTIONALLY_REMOVED_V2` |（PD-D17-5 退休：版式规范冻结，页脚溯源替代）
 | 项目隐私扫描（`_SENSITIVE_KEYS`） | project_bundle.py:27/:137 | projects.rs:706（scan） | `RUST_PARITY_PENDING` |
 
 ### 12.3 页面选项
@@ -442,7 +442,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | orientation（portrait/landscape） | PDF/DOCX/print-html | PDF/DOCX/print-html 全部生效（§19.19）；print-html 默认横版 | `RUST_PARITY_PENDING` |
 | page_scale | 同上 | PDF + print-html（clamp 0.5–2.0） | `RUST_PARITY_PENDING` |
 | margin_mm / paper_size | PDF/DOCX/print-html | PDF + print-html（a4/a3/letter；margin clamp 5–25mm） | `RUST_PARITY_PENDING` |
-| locale（zh/en） | 全部 | 仅影响匿名占位符（export.rs:441）与 print-html `lang` 属性（print_html.rs:119）；报告/版式文案未本地化 | `RUST_PARTIAL` |
+| locale（zh/en） | 全部 | 仅影响匿名占位符（export.rs:441）与 print-html `lang` 属性（print_html.rs:119）；报告/版式文案未本地化 | `INTENTIONALLY_REMOVED_V2` |（PD-D17-6 退休：前端 i18n 承担，export 文案不本地化）
 
 ---
 
@@ -457,7 +457,7 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | 单/批量 preview/apply/restore 端点 | http.py:625-657 | server.rs:485-502 | `RUST_PARITY_PENDING` |
 | 当前迁移表为 no-op（仅校验+规范化+备份） | schema_migration.py:43-49 | 同（forward-safe） | `RUST_PARITY_PENDING` |
 | Project bundle 打包/恢复（.seattrellis.zip v1、100MB/500MB 上限、manifest、防路径穿越） | project_bundle.py:20-22/:158/:210/:364-409 | projects.rs:56-62/:921/:1013/:1106-1177 | `RUST_PARITY_PENDING` |
-| 项目产物对比/恢复（artifacts compare/restore，含 revision 链） | handlers.py:298/:380 | §19.13 故障注入 + §19.35 server 契约测试 21 项全绿（compare 10 + restore 11，含 workspace containment 修复）；`restored_at` 形状分歧登记（M5） | `RUST_VERIFIED` |
+| 项目产物对比/恢复（artifacts compare/restore，含 revision 链） | handlers.py:298/:380 | §19.13 故障注入 + §19.35 server 契约/containment + **§19.37 Python/Rust 共享 golden**；原恢复形状分歧已关闭 | `RUST_VERIFIED` |
 | 迁移 CLI（schema migrate） | cli.py:167-189 | Rust CLI `schema-migrate`（`migrate_v1_to_v2`，§19.12：StudentRoster/ClassroomLayout 类型化迁移，其余 kind 明确报错）；**golden `fixtures/cli-goldens/schema-migrate.json`（§19.18/§19.30）+ `--output/--in-place/--dry-run` 由 §19.12 生命周期测试覆盖** | `RUST_VERIFIED` |
 
 ---
@@ -480,21 +480,21 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 
 | 领域 | 条目数 | PYTHON_ONLY | RUST_PARTIAL | RUST_PARITY_PENDING | RUST_VERIFIED | INTENTIONALLY_REMOVED_V2 |
 |---|---|---|---|---|---|---|
-| §1 CLI（30 命令 + 契约） | 31 | 0 | 4 | 1 | 20 | 6 |
-| §2 service/application | 41 | 0 | 4 | 12 | 24 | 1 |
+| §1 CLI（30 命令 + 契约） | 31 | 0 | 0 | 1 | 24 | 6 |
+| §2 service/application | 41 | 0 | 0 | 12 | 27 | 2 |
 | §3 React `/api/v1/*`（31 调用） | 31 | 0 | 0 | 28 | 3 | 0 |
-| §4 Schema（10 文件 + 协议机制） | 16 | 0 | 1 | 9 | 6 | 0 |
-| §5 roster | 8 | 0 | 1 | 5 | 2 | 0 |
+| §4 Schema（10 文件 + 协议机制） | 16 | 0 | 0 | 9 | 7 | 0 |
+| §5 roster | 8 | 0 | 0 | 5 | 1 | 2 |
 | §6 layout editor | 5 | 0 | 0 | 5 | 0 | 0 |
 | §7 hard rules | 5 | 0 | 0 | 5 | 0 | 0 |
-| §8 soft objectives | 10 | 0 | 1 | 9 | 0 | 0 |
+| §8 soft objectives | 10 | 0 | 0 | 9 | 1 | 0 |
 | §9 history/pair history | 7 | 0 | 0 | 4 | 3 | 0 |
-| §10 candidates | 7 | 1 | 0 | 2 | 4 | 0 |
+| §10 candidates | 7 | 0 | 0 | 2 | 4 | 1 |
 | §11 repair/editing | 5 | 0 | 0 | 3 | 2 | 0 |
-| §12 export（格式/隐私/页面） | 18 | 1 | 3 | 7 | 7 | 0 |
-| §13 migration/backup/restore | 9 | 0 | 1 | 7 | 1 | 0 |
+| §12 export（格式/隐私/页面） | 18 | 0 | 0 | 7 | 7 | 4 |
+| §13 migration/backup/restore | 9 | 0 | 0 | 7 | 2 | 0 |
 | §14 desktop workflows | 7 | 0 | 0 | 5 | 0 | 2 |
-| **合计** | **200** | **2** | **16** | **102** | **71** | **9** |
+| **合计** | **200** | **0** | **0** | **102** | **81** | **17** |
 
 计数口径：§2/§4–§14 逐行统计明细表中的五种状态；§1 为 30 条命令行再加 1 条整体 error/exit-code 契约（§19.32 升级 `RUST_VERIFIED`，33 golden 逐命令 exit 码 + Python 0/非零语义对照）；§3 为基线 28 条 `RUST_PARITY_PENDING` 加 post-baseline 3 条（1 个 `RUST_VERIFIED` + 2 个 `RUST_PARTIAL`）；§2 因 `init_demo/project_init`、`project_info/project_validate` 两行拆分（`INTENTIONALLY_REMOVED_V2` + `RUST_VERIFIED` / `RUST_VERIFIED` + `RUST_PARTIAL`）由 39 行变 41 行；§14 `seattrellis-desktop` 与 `desktop` 并入 PD-D15 移除登记。校验时只计数 §1–§14 明细表，不计本汇总表和文字中出现的状态名。
 
@@ -593,8 +593,19 @@ Rust server（`app`，main.rs 绑定 127.0.0.1）与 Python `workspace_server`�
 | `workspace`（CLI） | 由 Rust app server（loopback HTTP）替代，架构已完全不同（§14） | 启动方式改为 Rust app server / Tauri 桌面应用 | 无（功能由等价启动器承接） | `INTENTIONALLY_REMOVED_V2` |
 | `desktop`（CLI） | 由 Tauri 2 壳替代；pywebview 是 v2 final 移除红线 | 桌面入口改为 Tauri 应用 | 无 | `INTENTIONALLY_REMOVED_V2` |
 | `seattrellis-desktop`（独立 argparse CLI，desktop_app.py:12-60） | 与 `desktop` 命令同一 pywebview 桌面壳的独立启动入口，同属 pywebview 移除红线（PD-D15 理由覆盖）；v2 由 Tauri 壳替代 | 桌面入口改为 Tauri 应用 | 无（`seattrellis-desktop` 为 pywebview 时代独立入口，v2 无对应） | `INTENTIONALLY_REMOVED_V2` |
+| `PlanComparisonReport` 生成 | D5 已冻结为 Rust PlanScore/audit/distance 驱动的交互式候选面板；保留第二套静态解释生成器会造成语义与本地化漂移（PD-D16） | 工作台 D5 面板查看推荐理由、硬约束、差异与明细；历史 report 仍可由 strict DTO/schema 读取 | 自动化脚本不能生成新的 report JSON | `INTENTIONALLY_REMOVED_V2` |
+| 候选比较 HTML renderer | 候选比较是生成时决策辅助；最终分享/打印由 public/teacher 座位表承担（PD-D16） | 在 D5 面板选定方案后导出最终座位表；历史 report 保持只读兼容 | 独立候选比较打印模板消失（低频） | `INTENTIONALLY_REMOVED_V2` |
+
+| teacher_goals 15-preset 面（`list_teacher_goals`/`get_teacher_goal`/`resolve_teacher_goal`） | v2 产品面为 Rust `/catalogs` 4 goal（PD-D17-1，2026-08-13）；15 preset 的规则组合由 v2 规则编辑器（D3 句式模板 + 规则 JSON）承担 | v1 项目 `goal_id` 映射到 4 个 v2 goal；未知 goal_id 由 Rust 显式报错 | v1"选 preset 即得整套规则"入口消失；深度定制用户改用规则 JSON | `INTENTIONALLY_REMOVED_V2` |
+| roster 映射模板生成/应用（`create_roster_mapping_template`/`apply_roster_mapping_template`） | v2 导入为 draft 预览 + 逐列映射确认，无模板入口；该功能未暴露为 v1 HTTP API（PD-D17-2） | 无自动迁移；按表头别名自动建议（§19.36 与 oracle 全等） | 跨文件复用列映射需手动重选（建议通常一次命中） | `INTENTIONALLY_REMOVED_V2` |
+| `roster_fingerprint`（防无变更提交） | v1 preview/apply 冲突检测内部机制；v2 以 revision + 冲突 issues + UI 禁用承担同等防护（PD-D17-3） | 无 | 无（v2 提交路径已拒绝无变更提交） | `INTENTIONALLY_REMOVED_V2` |
+| report 模板"显分数"渲染（`PrivacyOptions.for_template()` report 分支） | v2 座位表不渲染成绩（隐私红线 G-3 + §19.27 缺省模板统一 teacher）；print-layout-spec 冻结版式不含分数（PD-D17-4） | 无；导出默认值矩阵已冻结（G-4 dogfood） | 不能再打印带分数的座位表（分数管理不在 v2 scope） | `INTENTIONALLY_REMOVED_V2` |
+| public「🔒 班级公示版」徽标 | print-layout-spec（2026-08-10 修订）冻结版式不含该徽标；页脚溯源 seed 标注承担公示可信度（PD-D17-5） | 无 | 公示场景通过 public 模板匿名 + 页脚溯源实现 | `INTENTIONALLY_REMOVED_V2` |
+| export 文案 locale（zh/en）本地化 | v2 导出为图形/表格，文案极少且为结构化标注；界面语言由前端 i18n 承担（PD-D17-6） | 无 | 打印版式标注为冻结结构；UI 语言不受影响 | `INTENTIONALLY_REMOVED_V2` |
 
 > 注：`gender` 相关规则在 Python 与 Rust 两侧均不存在（仅为学生数据字段），不属于"移除"，如 v2 需要属于新增设计。
+> PD-D16 完整理由、未选方案与影响记录见
+> `docs/product-decisions/2026-08-13-candidate-report-retirement.md`。
 
 ---
 
@@ -1749,6 +1760,10 @@ roster mapping ×2），不宣称 §8.2 Exit Gate 通过。遗留：schema DTO �
 
 ### 19.35 2026-08-12：artifacts compare/restore 契约测试（21 项全绿）+ workspace containment 修复
 
+> 后续复核：本节当时用 Rust 自契约测试升级状态且仍登记三项分歧，证据不足；
+> 已由 §19.37 的代码修复与 Python/Rust 共享 golden 取代。本节保留为历史过程，
+> 不再单独作为 `RUST_VERIFIED` 依据。
+
 关闭 §19.32 判定必须项中 compare/restore ×5 行的证据缺口（React 在用端点，
 Python golden 不可达——差分 harness 只比 CLI，Python server 不参与；以
 server 契约测试为自动证据）：
@@ -1807,7 +1822,87 @@ server 契约测试为自动证据）：
 - 状态变更：§2.10 `suggest_roster_mapping` 与 §5 自动推断列映射
   两行 `RUST_PARTIAL` → `RUST_VERIFIED`。计数：200 行
   `PYTHON_ONLY=2`、`RUST_PARTIAL=21`、`RUST_PARITY_PENDING=102`、
-  `RUST_VERIFIED=66`、`INTENTIONALLY_REMOVED_V2=9`。
+  `RUST_VERIFIED=66`、`INTENTIONALLY_REMOVED_V2=9`。该计数是先落地
+  §19.36、尚未合入 §19.35 五行升级时的中间快照；两项证据累计后的最终
+  可复算计数以 §15/§19.35 为准：`RUST_PARTIAL=16`、
+  `RUST_VERIFIED=71`，其余状态不变。
+
+### 19.37 2026-08-13：artifacts compare/restore 共享 oracle golden 与候选报告移除决策
+
+独立验收指出 §19.35 只有 Rust 自契约测试却登记了三项已知分歧，证据不足以
+支撑 parity。本轮重新打开后以代码和共享 golden 实际关闭：
+
+1. **共享 corpus 与双 guard**：`fixtures/artifact-parity/expected.json` 由
+   Python `project_artifact_compare`/`project_artifact_restore` 录制；
+   `tests/test_artifact_parity.py` 守卫 oracle，
+   `crates/seattrellis-io/tests/artifact_parity.rs` 对同一 expected 逐字段验证
+   Rust。覆盖完整 compare diff、普通 snapshot restore、candidate_set 的
+   recommended snapshot restore；动态时间只规范化为 `<RFC3339>`，两侧均先
+   验证时间格式。
+2. **恢复语义修复**：Rust 不再保留 candidate_set envelope，也不再写顶层
+   Unix 秒；所有可恢复工件均产生新的 strict `SeatingSnapshot`，写入
+   `metadata.restored_from` 与 ISO-8601 `metadata.restored_at`，与 oracle 一致。
+3. **compare 语义修复**：layout/rules 先经 typed DTO 补默认值再比较，避免
+   “省略默认字段”与“显式默认字段”被误报为结构变化。
+4. **错误 envelope 消费修复**：React `safeErrorDetail` 读取冻结的
+   `ErrorEnvelope.error`，回归测试锁定 422 真实消息，不再回退通用文案。
+5. **证据与回归**：Python guard 1/1、Rust shared guard 1/1、IO 全套
+   116 项（含 property/fuzz/rollback）、server artifact 契约 21/21、Web
+   Vitest 153/153 + typecheck/build、IO/server clippy `-D warnings` 全绿；
+   `fixtures/GOLDEN_PROVENANCE.json` 登记逐文件 SHA-256 与双 guard，
+   `manifest-check` 通过。
+
+§2.7/§3.2/§13 共五行维持 `RUST_VERIFIED`，但其依据由原来不足的 Rust 自测
+替换为共享 oracle golden。PD-D16（见 §18 与产品决定文档）同时将 §10/§12
+两条候选比较报告能力从 `PYTHON_ONLY` 改为 `INTENTIONALLY_REMOVED_V2`。
+可复算计数变为：200 行 `PYTHON_ONLY=0`、`RUST_PARTIAL=16`、
+`RUST_PARITY_PENDING=102`、`RUST_VERIFIED=71`、
+`INTENTIONALLY_REMOVED_V2=11`。
+
+### 19.38 2026-08-13：CLI 选项 parity 收口（4+4 行）与 project.schema 运行时缺口关闭；M5 全部必须项清零
+
+独立验收后按执行顺序 A–I 关闭最后一组必须项（§1/§2 的 CLI 选项行与 §4.1
+project.schema.json）：
+
+1. **validate `--history-dir`**：glob `*.snapshot.json` 并入 history 列表
+   （与 history-report 同语义；validate 对空 history 不报错），驱动 preset
+   警告计数；golden `validate-history-dir` + Python exit 语义对照。
+2. **project-validate `--strict`**：严格模式把规则能力警告当错误（exit 2，
+   消息 `Warnings treated as errors by --strict:...`，与 Python 非零语义
+   一致）；goldens `project-validate-strict` / `project-validate-strict-warning`。
+3. **project-solve `--candidates/--seed/--report`**：`--candidates` 缺省用
+   项目 `default_candidates`（oracle 行为）；越界拒绝消息镜像 Python
+   （exit 2）；`--candidates > 1` 写候选集报告到 `--output`（缺省
+   `outputs/latest.candidates.json`）并打印 `_format_candidate_set_summary`
+   镜像；`--report` 经 typed schema DTO 写 v2 `plan_comparison_report`
+   工件（explanations/advantages/costs/history_comparison 为空——无 Rust
+   生成器，如实登记）；golden `project-solve-candidates`。
+4. **project-export `--candidate` + 全格式**：格式面补全
+   （svg/html/print-html/png/pdf/xlsx/excel→xlsx/docx/pptx）全部走共享
+   export renderer；`--format` 缺省用项目 `default_export_format`；
+   `--candidate` 在候选集工件内选择（缺省 recommended），错误消息镜像
+   Python（`Unknown candidate ID 'x'. Available candidates: ...` /
+   `--candidate can only be used when --snapshot is a candidate set.`）；
+   选中方案导出前再过独立 validator；golden `project-export-candidate`。
+5. **project.schema.json（§4.1）**：`ProjectFile` 增加
+   `default_candidates`/`default_candidate`/`default_export_format`（oracle
+   模型恰为 3 个字段，无 `default_export_template`——v1 schema
+   `additionalProperties: false` 本就会拒绝该字段）；load 时校验
+   candidates 1..=20（镜像 Python ValueError）；新增 `project_defaults()`
+   解析 oracle 缺省（5/recommended/html）；project-info 打印镜像 Python
+   的 `Defaults:` 段（golden 重录）；`migrate_project_v1_to_v2` 注册
+   （严格 V1Project 读取 + 全字段保全 + 7 测试，schema 71 绿）；CLI
+   `schema-migrate` project 路径端到端验证（kind=project、
+   schema_version=2、data 含 defaults）。
+6. **golden 矩阵 33 → 38**：新增 5 个 golden（validate-history-dir /
+   project-validate-strict / project-validate-strict-warning /
+   project-solve-candidates / project-export-candidate），
+   `--cli-golden` 38/38 0 mismatch；GOLDEN_PROVENANCE 同步重录。
+7. **M5 必须项清零**：§1 四行（validate/project-validate/project-solve/
+   project-export）、§2 重复四行、§4.1 project.schema.json 共 9 行
+   `RUST_PARTIAL` → `RUST_VERIFIED`（证据见上）。计数：200 行
+   `PYTHON_ONLY=0`、`RUST_PARTIAL=0`、`RUST_PARITY_PENDING=102`、
+   `RUST_VERIFIED=81`、`INTENTIONALLY_REMOVED_V2=17`。
 
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 

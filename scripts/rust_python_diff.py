@@ -1685,6 +1685,12 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="cli-golden-") as tmpdir:
             rows.extend(run_cli_golden_class(record=args.cli_golden_record, tmp=Path(tmpdir)))
         if args.cli_golden_record:
+            # Keep the M6 retirement provenance inventory synchronized with
+            # the byte contract just recorded. The import is local so normal
+            # differential runs do not load the corpus generator.
+            from gen_parity_fixtures import write_golden_provenance
+
+            write_golden_provenance()
             return report(rows, allow_documented=args.allow_documented_gaps)
     if not rows:
         sizes = [int(item) for item in args.sizes.split(",")]
@@ -1845,6 +1851,48 @@ def _cli_case_commands(tmp: Path) -> list[dict]:
     plan_file = project_dir / "outputs" / "plan.json"
     project_dir.joinpath("outputs").mkdir(exist_ok=True)
     bundle_zip = tmp / "bundle.zip"
+    # History directory for the validate --history-dir preset case.
+    hist_dir = tmp / "hist-dir"
+    hist_dir.mkdir(exist_ok=True)
+    shutil.copy2(hist, hist_dir / "week1.snapshot.json")
+    # A second workspace whose rules trigger the score_distribution
+    # group-scope capability warning: project-validate --strict must fail.
+    warn_dir = tmp / "proj-warn"
+    warn_dir.mkdir(exist_ok=True)
+    for src_name, dst_name in [
+        ("students.csv", "students.csv"),
+        ("classroom.json", "layout.json"),
+    ]:
+        shutil.copy2(fixture / src_name, warn_dir / dst_name)
+    warn_dir.joinpath("rules.json").write_text(
+        json.dumps(
+            {
+                "seed": 42,
+                "soft": {
+                    "score_distribution": {"enabled": True, "weight": 18, "scope": "group"}
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    # Same project document project-init writes for the main workspace.
+    warn_dir.joinpath("seattrellis.project.json").write_text(
+        json.dumps(
+            {
+                "kind": "seattrellis_project",
+                "schema_version": 1,
+                "name": "warn",
+                "students": "students.csv",
+                "layout": "layout.json",
+                "rules": "rules.json",
+                "outputs_dir": "outputs",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    warn_project_file = warn_dir / "seattrellis.project.json"
     return [
         {"name": "project-init", "rust": ["project-init", "--dir", str(project_dir)]},
         {"name": "project-list", "rust": ["project-list", "--root", str(project_dir)]},
@@ -1860,7 +1908,20 @@ def _cli_case_commands(tmp: Path) -> list[dict]:
                                             "--snapshot", str(tmp / "proj-edited.json"),
                                             "--output", str(tmp / "proj-repaired.json")]},
         {"name": "project-export", "rust": ["project-export", "--project", str(project_file),
+                                            "--snapshot", str(plan_file),
                                             "--format", "svg", "--output", str(project_dir / "out.svg")]},
+        {"name": "project-solve-candidates",
+         "rust": ["project-solve", "--project", str(project_file),
+                  "--candidates", "3", "--output", str(project_dir / "outputs" / "candidates.json"),
+                  "--report", str(project_dir / "outputs" / "report.json")],
+         "python": ["project-solve", "--project", str(project_file),
+                    "--candidates", "3", "--output", str(project_dir / "outputs" / "candidates-py.json"),
+                    "--report", str(project_dir / "outputs" / "report-py.json")]},
+        {"name": "project-export-candidate",
+         "rust": ["project-export", "--project", str(project_file),
+                  "--snapshot", str(project_dir / "outputs" / "candidates.json"),
+                  "--candidate", "candidate_01", "--format", "svg",
+                  "--output", str(project_dir / "candidate.svg")]},
         {"name": "project-rotate", "rust": ["project-rotate", "--project", str(project_file),
                                             "--periods", "2"]},
         {"name": "project-privacy", "rust": ["project-privacy", "--project", str(project_file)]},
@@ -1874,6 +1935,12 @@ def _cli_case_commands(tmp: Path) -> list[dict]:
                   "--output-dir", str(tmp / "restored")],
          "python": ["project-restore", "--bundle", str(bundle_zip),
                     "--output-dir", str(tmp / "restored-py")]},
+        {"name": "project-validate-strict",
+         "rust": ["project-validate", "--project", str(project_file), "--strict"],
+         "python": ["project-validate", "--project", str(project_file), "--strict"]},
+        {"name": "project-validate-strict-warning",
+         "rust": ["project-validate", "--project", str(warn_project_file), "--strict"],
+         "python": ["project-validate", "--project", str(warn_project_file), "--strict"]},
         {"name": "help", "rust": ["--help"]},
         {"name": "version", "rust": ["--version"]},
         {"name": "doctor", "rust": ["doctor"], "python": ["doctor"]},
@@ -1899,6 +1966,12 @@ def _cli_case_commands(tmp: Path) -> list[dict]:
          "python": ["validate", "--students", str(fixture / "students.csv"),
                     "--layout", str(fixture / "classroom.json"),
                     "--rules", str(fixture / "rules.json")]},
+        {"name": "validate-history-dir",
+         "rust": ["validate", "--problem", str(warnings_problem), "--preset", "daily",
+                  "--history-dir", str(hist_dir)],
+         "python": ["validate", "--students", str(fixture / "students.csv"),
+                    "--layout", str(fixture / "classroom.json"), "--preset", "daily",
+                    "--history-dir", str(hist_dir)]},
         {"name": "precheck", "rust": ["precheck", "--problem", str(solve_problem)]},
         {"name": "audit", "rust": ["audit", "--problem", str(solve_problem),
                                    "--snapshot", str(snapshot)]},
@@ -1993,4 +2066,3 @@ def run_cli_golden_class(record: bool, tmp: Path) -> list[tuple[str, str, str, s
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
