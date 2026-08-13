@@ -7,13 +7,23 @@ Project 文件是轻量的本地 JSON 配置文件，用于保存排座工作流
 ## 命令
 
 ```bash
-seattrellis project-init   # 创建 project 文件
-seattrellis project-info   # 查看配置和路径状态
-seattrellis project-validate  # 校验输入文件
-seattrellis project-solve     # 求解
-seattrellis project-edit      # 人工微调
-seattrellis project-export    # 导出
+seattrellis_cli project-init    # 在已有 students/layout/rules 的目录创建 project 文件
+seattrellis_cli project-list    # 列出根目录下的最近项目
+seattrellis_cli project-info    # 查看配置和路径状态
+seattrellis_cli project-validate  # 校验输入文件
+seattrellis_cli project-solve     # 求解（--candidates <n>、--report <file>）
+seattrellis_cli project-rotate    # 生成未来多个排座时段（--periods 1-20，默认 4）
+seattrellis_cli project-edit      # 人工微调（复用 edit 语义）
+seattrellis_cli project-repair    # 保留锚点重新求解（复用 repair 语义）
+seattrellis_cli project-export    # 导出已保存方案（不会重新求解）
+seattrellis_cli project-privacy   # 扫描敏感字段
+seattrellis_cli project-pack      # 备份为 .seattrellis.zip
+seattrellis_cli project-restore   # 从 bundle 恢复
 ```
+
+`project-init --dir <directory>` 在已经包含 `students.csv` / `layout.json` /
+`rules.json` 的目录中创建 `seattrellis.project.json`；`project-list` 默认扫描
+当前目录并列出最近 20 个项目（`--root` / `--limit` 可调整）。
 
 ## Project 文件结构
 

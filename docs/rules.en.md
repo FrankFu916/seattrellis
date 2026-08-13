@@ -41,7 +41,8 @@ Current validation checks:
 Preflight command:
 
 ```bash
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis_cli validate --problem problem.json
+seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
 ```
 
 If the solver cannot find a feasible plan, the CLI prints the student count, enabled-seat count, hard-rule count, and possible causes such as fixed seats, dense cannot-adjacent rules, minimum distances, or disabled seats.
@@ -91,7 +92,11 @@ are not guaranteed to match. Snapshots record this as `metrics.stopped_by_time_l
 
 ## Scenario Presets
 
-Presets are a convenience layer over the existing `RuleSet`, not a new rule format. Built-in presets are:
+Presets are standard `RuleSet` base configurations, not a new rule format. In
+v2 you apply a scenario by putting the preset's rules JSON into the problem's
+`rules` field (or referencing it from a project); `validate --preset <name>`
+checks which of the scenario's preferred data the problem is missing and warns.
+Built-in presets are:
 
 | Preset | Focus |
 | --- | --- |
@@ -105,14 +110,14 @@ Presets are a convenience layer over the existing `RuleSet`, not a new rule form
 | `vision-friendly` | Front seats for students with vision or front-seat needs |
 
 ```bash
-seattrellis presets list
-seattrellis presets show daily
-seattrellis presets export daily --output outputs/daily.rules.json
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
+seattrellis_cli validate --problem problem.json --preset daily --history-dir examples/history
 ```
 
-Use `--preset` alone or layer it with `--rules`. SeatTrellis first generates the preset's complete standard rules, then recursively applies fields explicitly present in the user JSON. For example, this overlay keeps the other `daily` soft rules while disabling randomization and adding a fixed seat:
+Preset overlays happen in the workbench/server path: SeatTrellis first generates
+the preset's complete standard rules, then recursively applies fields
+explicitly present in the user JSON (the merged `RuleSet` can be previewed and
+downloaded before solving). For example, this overlay keeps the other `daily`
+soft rules while disabling randomization and adding a fixed seat:
 
 ```json
 {
@@ -125,15 +130,14 @@ Use `--preset` alone or layer it with `--rules`. SeatTrellis first generates the
 }
 ```
 
-```bash
-seattrellis solve \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
-  --preset daily \
-  --rules my-overrides.json
-```
-
-Presets never invent or relax hard rules. User hard rules continue through the existing preflight, fallback solver, OR-Tools solver, and candidate verification paths. Missing history, score, height, or vision/front-seat markers produces a warning, gracefully disables only the unsupported preference, and leaves its score dimension as `not_available`. `validate --strict` treats these warnings as failures.
+The CLI does not merge presets: the problem JSON or project it receives must
+carry the final effective `RuleSet`, and `--preset` only drives the
+data-missing checks. Presets never invent or relax hard rules; hard rules
+continue through preflight, the solver, and candidate verification. Missing
+history, score, height, or vision/front-seat markers produces a warning,
+gracefully disables only the unsupported preference, and leaves its score
+dimension as `not_available`. `validate --strict` treats these warnings as
+failures.
 
 ## fair_rotation
 
@@ -150,7 +154,10 @@ Fields:
 
 Supported categories are `front`, `back`, `middle`, `side`, `corner`, `near_window`, `near_door`, `near_platform`, and `near_ac`. The default repeated categories are `front`, `back`, `side`, `corner`, `near_window`, `near_door`, and `near_ac`.
 
-Both the fallback solver and the OR-Tools solver translate fair rotation into a per student-seat heuristic cost: recent repeated categories add cost, and students with fewer long-term counts receive a small compensation. The method is category-count based and does not guarantee absolute fairness.
+The solver translates fair rotation into a per student-seat heuristic cost:
+recent repeated categories add cost, and students with fewer long-term counts
+receive a small compensation. The method is category-count based and does not
+guarantee absolute fairness.
 
 ## avoid_recent_neighbors
 
@@ -197,7 +204,9 @@ Relationship types:
 
 Pair history is interpreted against the current student list and current layout; SeatTrellis does not fill irregular layouts into a complete matrix. Missing current students are skipped with a warning. Unknown historical seats are skipped for affected pairs with a warning. If a historical snapshot references an `enabled=false` seat, the seat is still unavailable for new solving, but historical relationships are counted from row/column coordinates when possible and a warning is recorded.
 
-Both the fallback solver and the OR-Tools solver support this rule. The current implementation is heuristic scoring: it tends to reduce repeated desk-mate and neighbor relationships, but it does not guarantee global optimality.
+The solver supports this rule. The current implementation is heuristic scoring:
+it tends to reduce repeated desk-mate and neighbor relationships, but it does
+not guarantee global optimality.
 
 ## cooling
 
@@ -229,25 +238,30 @@ into one stricter history window and relation set, with weights added.
 | `relation_types` | Relationship types such as `desk_mate` or `adjacent_any` |
 | `within_distance` | Chebyshev threshold used by the `within_distance` relation |
 
-Fallback and OR-Tools use the same pair-history cost. Finished-plan scoring,
+The solver uses the same pair-history cost. Finished-plan scoring,
 candidate comparisons, and fairness summaries reuse that rule, so the objective
 does not disappear between solving and reporting.
 
 ## Multiple Candidates And Scoring
 
-Multi-candidate mode does not add or relax rules. `solve --candidates N` applies the normal hard constraints and soft costs, then continues solving with different seeds and a constraint that excludes each previously generated complete assignment. Hard constraints remain absolute. Candidate generation and recommendation are heuristic and do not guarantee enumeration of every feasible plan or a global optimum.
+Multi-candidate mode does not add or relax rules. `candidates --count N`
+applies the normal hard constraints and soft costs, then continues solving with
+different seeds and a constraint that excludes each previously generated
+complete assignment. Hard constraints remain absolute. Candidate generation
+and recommendation are heuristic and do not guarantee enumeration of every
+feasible plan or a global optimum.
 
 ```bash
-seattrellis solve \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
-  --rules examples/rules_multi_candidate.json \
-  --history-dir examples/history \
-  --candidates 5 \
-  --seed 42 \
-  --output outputs/candidates.json \
-  --report outputs/plan-report.json
+seattrellis_cli candidates \
+  --problem problem.json \
+  --count 5 \
+  > outputs/candidates.json
 ```
+
+(The seed comes from the problem JSON; `--latest-snapshot` supplies the recent
+history for each candidate's stability dimension. The project workflow uses
+`project-solve --candidates N --report outputs/plan-report.json` to write a
+plan-comparison report.)
 
 Available dimensions use a 0–100 scale, where higher is better for that dimension. The total includes only dimensions with `status: "available"` and weights them with the corresponding soft-rule weight. `diversity_score` uses `randomize.weight`; `stability_score` uses a fixed comparison weight of 1. A plan that fails hard-constraint verification is never included in a candidate set.
 

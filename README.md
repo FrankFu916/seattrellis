@@ -50,7 +50,7 @@ pip install seattrellis==1.9.0
 ```bash
 seattrellis_cli validate --problem problem.json
 seattrellis_cli solve --problem problem.json --output plan.json
-seattrellis_cli export --problem problem.json --snapshot plan.json --format png --output plan.png
+seattrellis_cli export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
 完整场景见 [快速开始指南](docs/quickstart.zh.md)，格式参考见 [输入格式](docs/input-format.zh.md)，命令参考见 [CLI 参考](docs/cli.md)。

@@ -1,145 +1,85 @@
-# Rust-first migration
+# Rust migration (completed)
 
-SeatTrellis now uses Rust as the primary path for a compact, offline desktop
-application. The decision is driven by distribution size and startup time: a
-release build should be usable without a Python, Node.js, Streamlit, or
-OR-Tools installation and should remain in the 5–20 MB desktop range.
+SeatTrellis v2 is the Rust-only line. The migration from the v1 Python product
+is complete: the product now ships as a native Rust CLI, a loopback App server
+with the React workbench, and a Tauri 2 desktop shell. There is no Python,
+Node.js, Streamlit, OR-Tools, or PyO3 runtime in the v2 tree or in any v2
+release artifact.
 
-This is a migration, not a claim that every Python command has already been
-reimplemented. The Python package remains the compatibility and library path
-while the native contracts are completed and compared against it.
-
-## Version policy
-
-Python remains the stable `v1.x` compatibility line while the native crates
-and Tauri shell are being completed. Native preview versions and desktop
-preview tags may use their own `0.x` or preview numbering; they are not
-intended to imply Python feature parity. Rust becomes the default runtime only
-with a future `v2.0.0` release after the parity, performance, installation,
-and offline-use gates below are green.
+The v1 Python line is frozen at **1.9.0** (`v1.x-maintenance` branch). It
+exists only as a legacy package (`pip install seattrellis==1.9.0`) and as the
+behavioral oracle for the Python↔Rust differential suite; it receives no new
+features.
 
 ## Target architecture
 
 ```text
-React/TypeScript workbench
+React/TypeScript workbench (clients/web)
           │
-Rust loopback App / Tauri shell
+Rust loopback App server (seattrellis_app) / Tauri 2 shell (app/src-tauri)
           │
-seattrellis_core (versioned JSON DTOs)
+seattrellis_core (versioned JSON DTOs, hard-rule validation, scoring,
+                 heuristic solve, candidates, audit, reports)
           │
-Rust validation, scoring, heuristic solve, and render/export
-
-Python CLI / Streamlit / PyO3 extension
-          │
-Existing Python service and OR-Tools backend
+seattrellis-export renderers (svg/html/print-html/png/pdf/xlsx/docx/pptx)
 ```
 
-The React build is shared by browser and desktop. The Rust App embeds the
-production files into the binary, while `SEATTRELLIS_WEB_STATIC` remains a
-development override. A copied release binary therefore does not depend on
-the source checkout or a runtime frontend installation.
+The React build is shared by the browser workbench and the desktop shell. The
+App server embeds the production frontend files into the binary, while
+`SEATTRELLIS_WEB_STATIC` remains a development override. A copied release
+binary therefore does not depend on the source checkout or a runtime frontend
+installation.
 
-The former Python onedir/pywebview package remains available for compatibility
-diagnostics, but its `internal/` Python libraries are deliberately not part of
-the Rust desktop distribution. Its GitHub workflow is manual-only; published
-desktop previews use the Tauri workflow below.
+## Delivered
 
-## Delivered so far
+- `crates/seattrellis-core`: versioned JSON problem/response contracts
+  (`CoreSolveRequest` / `CoreSolveResponse`), the frozen seven-status solver
+  vocabulary, hard-rule validation, graph distances, cost scoring, candidate
+  generation, audit and reports;
+- `crates/seattrellis-cli`: the `seattrellis_cli` binary with 28 subcommands —
+  `doctor`, `validate`, `precheck`, `audit`, `score`, `candidates`,
+  `history-report`, `pair-report`, `repair`, `edit`, the `project-*` lifecycle,
+  the `schema-*` tooling, `solve`, and `export`;
+- `app/`: the loopback Rust server for roster import, generation, editing,
+  export, layouts, projects, migration, rotation, and group registers, with
+  the React workbench embedded;
+- `app/src-tauri/`: the Tauri 2 shell that starts the App server and opens a
+  native window;
+- Rust CI for core, CLI, App, and the Tauri shell on Linux, Windows, and
+  macOS, with MSRV 1.88 checking and release binary builds.
 
-- `crates/seattrellis-core`: versioned JSON problem/response contracts,
-  hard-rule validation, graph distances, cost scoring, and a deterministic
-  cost-ranked heuristic solver;
-- `crates/seattrellis-cli`: dependency-light single-file `solve` and `export`
-  commands for SVG, HTML, PNG, and PDF;
-- `app/`: loopback Rust server for roster import, generation, editing,
-  export, layouts, projects, migration, rotation, and group registers;
-- `app/build.rs`: compile-time embedding of the React workbench (source maps
-  are left out of the binary because they are not loaded at runtime);
-- `app/src-tauri/`: Tauri 2 shell that starts the Rust App and opens a native
-  window;
-- Rust CI for core, CLI, and App tests on Linux, Windows, and macOS, with core
-  MSRV 1.83 checking.
+## Version policy
 
-The current local measurements are approximately 1.6 MiB for the CLI, 2.7 MiB
-for the embedded App server, and 9 MiB for the Tauri shell on macOS. These are
-engineering measurements, not yet signed release artifacts.
+v2 is the current MAJOR line; crate versions live in `Cargo.toml` (currently
+`2.0.0-rc.1`). v1 tags (`v1.*`) belong to the frozen legacy line and do not
+receive Rust binaries. v1-era files (CSV rosters, layout/rules JSON, snapshots,
+candidate sets, projects) are migrated to v2 automatically, with backups
+created before each migration.
 
-## Known compatibility boundaries
+## Solver status and exit codes
 
-The following gaps must stay visible in release notes and documentation:
-
-1. The Rust CLI is not yet a drop-in replacement for the Python CLI. It now
-   exposes native input validation, but history reports, project commands,
-   schema migration commands, and full candidate-set reporting are still
-   pending.
-2. The Rust solver is a heuristic implementation. It satisfies the native
-   hard-rule contract and covers the currently ported objectives, but it is not
-   an exact replacement for the Python OR-Tools CP-SAT backend.
-3. Python/Rust differential coverage must include all supported rule fields,
-   not only the current core fixtures. A passing Rust unit suite alone is not
-   sufficient evidence of behavioral parity.
-4. Tauri installers, signing/notarization, and clean-machine installation tests
-   are still release work. The repository now has a reproducible
-   `.github/workflows/tauri.yml` path for unsigned `.app`/`.dmg`, `.msi`/NSIS,
-   and compact `.deb` bundles. It attaches only to an existing release: run it
-   manually with a release tag, or publish a `desktop-v*` release. Preview tags
-   are intentionally separate from the Python `v1.x` releases.
-
-## Migration stages
-
-### Stage 1: freeze contracts
-
-- Keep the versioned JSON DTOs and editing command protocol as the boundary
-  between UI and runtime.
-- Add a capability response so the React workbench can hide commands a backend
-  does not support instead of failing after submission.
-- Keep Python project, snapshot, and rules files readable by the native path.
-
-### Stage 2: complete the native application surface
-
-- Add native `validate`, history/pair reports, project operations, schema
-  migration, and candidate comparison to the CLI or a shared native command
-  layer.
-- Move file selection, privacy checks, and export configuration into the Rust
-  App service rather than duplicating them in the UI.
-- Add a short-lived local session token or an equivalent origin-bound guard for
-  the loopback API before shipping installers.
-
-### Stage 3: prove solver quality
-
-- Run fixed 40/50/60-student datasets through Python fallback, OR-Tools, and
-  Rust with the same hard constraints and seeds.
-- Compare feasibility, hard-rule violations, objective values, candidate
-  diversity, peak memory, and wall-clock time.
-- Keep Python OR-Tools available as a compatibility backend until Rust meets
-  the agreed quality and performance gates.
-
-### Stage 4: publish the compact desktop
-
-- Build reproducible CLI, App, and Tauri artifacts for the three supported
-  desktop platforms.
-- Attach checksums, installation instructions, and measured cold-start/size
-  data to a release.
-- Complete signing, notarization, clean-machine E2E, uninstall checks, and
-  offline behavior checks.
-
-### Stage 5: decide the Python deprecation window
-
-Only after the native parity matrix is green should a future major version
-change the default runtime. Python 1.x files and APIs remain supported during
-the migration; C/C++ is not part of the mainline architecture.
+The solver reports one of `Solved / ProvenInfeasible / Timeout / Unknown /
+InvalidInput / Cancelled / InternalError`. Heuristic exhaustion is `Unknown` —
+never a fake `ProvenInfeasible` — and a valid incumbent reports `Solved` even
+when a timeout fired. The CLI exit table is frozen: 0 / 2 / 3 / 4 / 5 / 70 /
+130.
 
 ## Local verification
 
 ```bash
-cargo test --locked \
-  -p seattrellis_core -p seattrellis_cli
+cd clients/web && npm ci && npm run build && cd ../..   # embed the workbench
+
+cargo test --locked -p seattrellis_core
+cargo test --locked -p seattrellis_cli
 cargo test --locked -p seattrellis_app
+cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
 cargo clippy --all-targets -p seattrellis_app -- -D warnings
-cargo build --release --locked -p seattrellis_app
+cargo build --locked -p seattrellis_desktop               # Tauri shell
 ```
 
 To verify the standalone path, run the release binary from a directory that
-does not contain `src/seattrellis/web_static`; the startup log should say it is
-serving from `<embedded>/src/seattrellis/web_static` and `/api/v1/health` should
-return a successful response.
+does not contain a workbench build; the startup log should say it is serving
+the embedded assets and `/api/v1/health` should return a successful response.
+
+See [development.md](development.md) for the oracle differential commands that
+compare the Rust implementation against the frozen v1.9.0 oracle.

@@ -1,7 +1,8 @@
 # 编辑器协议
 
-编辑器协议是 Streamlit、未来 React/SVG 编辑器和桌面端之间的传输边界。领域规则仍由
-Python service 和 `EditingSession` 执行；前端只提交命令并渲染服务端返回的最小状态。
+编辑器协议是 React 工作台、loopback 服务（`seattrellis_app`）和桌面端之间的传输
+边界。领域规则只由 Rust（`seattrellis-domain::editing`）执行；前端只提交命令并
+渲染服务端返回的最小状态。CLI 的 `edit` / `repair` 命令复用同一套编辑语义。
 
 当前协议版本为 `"1.0"`，包含两个公开文档：
 
@@ -102,7 +103,7 @@ redo 命令只把 revision 增加 1，即使 apply 内含多个 operation。撤�
 ## 校验边界
 
 JSON Schema 可验证字段类型、必填项、operation 结构和基础数量限制。以下跨字段或
-领域约束仍以服务端 Pydantic 模型和 `EditingSession` 为准：
+领域约束仍以服务端 Rust 模型和编辑状态机为准：
 
 - apply 必须含 operation，undo/redo 不得含 operation；
 - 展开后的操作总数不得超过 100；

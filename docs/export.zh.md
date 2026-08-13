@@ -2,80 +2,90 @@
 
 ## 支持的格式
 
-| 格式 | 命令 | 所需 Extra | 说明 |
-|------|------|------------|------|
-| HTML | `--format html` | 无需 extras | 核心导出，始终可用 |
-| Excel | `--format excel` | `excel` | `.xlsx` 格式 |
-| PNG | `--format png` | `image` | 座位图图片 |
-| PDF | `--format pdf` | `pdf` | WeasyPrint 生成的打印文件 |
-| Word | `--format docx` | `docx` | 可继续编辑的 `.docx` |
-| 打印 HTML | `--format print-html` | 无需 extras | A4 打印友好模板 |
-| SVG | `--format svg` | 无需 extras | 16:9 矢量座位图，便于继续编辑 |
-| PPTX | `--format pptx` | `pptx` | 单页 16:9 可编辑幻灯片 |
+v2 的所有导出格式都由本地 Rust 渲染器生成，不需要任何可选安装包：
+
+| 格式 | 说明 |
+|------|------|
+| HTML | 核心导出，始终可用 |
+| 打印 HTML | `print-html`，A4 打印友好模板（通过 `project-export` 使用） |
+| SVG | 自包含矢量座位图，便于继续编辑 |
+| PNG | 座位图图片 |
+| PDF | 打印文件，系统字体智能引用 |
+| XLSX | 表格文件 |
+| DOCX | 可继续编辑的 Word 文档 |
+| PPTX | 单页 16:9 可编辑幻灯片 |
 
 ## 使用
 
 ```bash
-# 导出普通 snapshot
-seattrellis export --snapshot outputs/latest.snapshot.json --format html
+# 渲染 solve --output 保存的方案
+seattrellis_cli export \
+  --problem problem.json \
+  --solution plan.json \
+  --format png \
+  --output outputs/plan.png
 
-# 导出 candidate set 中的推荐方案
-seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html
-
-# 导出指定候选方案
-seattrellis export --snapshot outputs/candidates.json --candidate candidate_03 --format html
-
-# 导出完整候选集比较报告
-seattrellis export \
-  --snapshot outputs/candidates.json \
-  --candidate-scope all \
+# 教师内部版（默认）或公示版
+seattrellis_cli export \
+  --problem problem.json \
+  --solution plan.json \
   --format html \
-  --output outputs/candidate-comparison.html
+  --template public \
+  --output outputs/plan.html
 ```
 
-## 画布导出（SVG / PPTX）
+`export` 的 `--solution` 必须是 `solve --output` 写出的结果 JSON；导出前会用独立
+validator 复核方案，绝不会导出无效方案。
 
-SVG 和 PPTX 使用固定的 16:9 画布，输出与打印 HTML、PDF、Word 相同的
-`public` / `teacher` / `report` 模板和隐私控制，不额外依赖系统字体或
-WeasyPrint。SVG 是自包含矢量图（不含脚本或外部引用），PPTX 是单页
-16:9 幻灯片，形状均为原生可编辑对象。
+### 导出候选集（project 工作流）
+
+`project-export` 渲染 `project-solve --output` 保存的方案，**不会重新求解**。
+输入 candidate set 时默认导出 recommended candidate，也可以用 `--candidate`
+指定：
 
 ```bash
-# 导出推荐方案的 SVG 矢量图
-seattrellis export --snapshot outputs/candidates.json --candidate recommended --format svg --output outputs/recommended.svg
+seattrellis_cli project-solve \
+  --project my-class/seattrellis.project.json \
+  --candidates 3 \
+  --output outputs/candidates.json
 
-# 导出教师内部版 PPTX
-seattrellis export --snapshot outputs/candidates.json --candidate recommended --format pptx --template teacher --output outputs/recommended.pptx
+seattrellis_cli project-export \
+  --project my-class/seattrellis.project.json \
+  --snapshot outputs/candidates.json \
+  --candidate candidate_02 \
+  --format print-html \
+  --output outputs/candidate-02.html
 ```
 
-画布格式不接受 A4 页面方向、缩放或页边距参数；`--orientation` 等页面选项
-只对打印 HTML、PDF 和 Word 生效。
+`project-export` 支持 `svg|html|print-html|png|pdf|xlsx|docx|pptx`，默认使用
+project 的 `default_export_format`。
 
 ## 模板与隐私
 
-打印 HTML、PDF、Word、SVG 和 PPTX 的内部导出 API 支持三种模板：
+导出 API 支持三种模板（`POST /api/v1/exports`）：`public`（班级公示版，只展示
+座位与姓名）、`teacher`（教师内部版，可包含学生字段、规则和 warnings）、
+`report`（解释报告版，包含候选评分和 hard constraint 摘要）。CLI 的
+`--template` 接受 `public` 与 `teacher`。
 
-- `public`：班级公示版，只展示座位与姓名；
-- `teacher`：教师内部版，可包含学生字段、规则和 warnings；
-- `report`：解释报告版，包含候选评分和 hard constraint 摘要。
+CLI 导出一律经过隐私过滤层：默认隐藏成绩、备注、特殊需求、身高和视力字段；
+`--template public` 额外匿名化姓名。`public` 模板的安全默认字段不能放宽——CLI
+参数只能进一步隐藏信息，绝不会暴露敏感字段。
 
-程序接口统一使用 `ExportRequest`、`PrivacyOptions` 和 `PageOptions`。
-旧的 `PrintPrivacyOptions` 名称作为兼容别名保留。`public` 默认隐藏成绩、
-备注、特殊需求、身高和视力；`teacher` 默认显示教师内部字段；`report` 默认
-显示评分但隐藏学生备注和健康相关字段。
+## 画布导出（SVG / PPTX）
 
-打印 HTML、PDF 和 Word 已支持 A4 横向/纵向、5–30 mm 页边距和
-0.5–2.0 缩放。CLI 和 Web 均可选择模板、隐私字段、方向、缩放与中英文内容，
-原有命令行和 Python 调用保持兼容。
+SVG 和 PPTX 使用固定的 16:9 画布，输出与打印 HTML、PDF、Word 相同的模板和
+隐私控制。SVG 是自包含矢量图（不含脚本或外部引用），PPTX 是单页 16:9 幻灯片，
+形状均为原生可编辑对象。画布格式不接受 A4 页面方向、缩放或页边距参数。
 
-完整候选集比较报告使用 `--candidate-scope all` 导出，目前支持 `html` 和
-`print-html`。报告包含推荐方案、总分、各评分维度、hard constraint 状态、
-优势、代价和历史对比摘要。它只呈现方案级聚合指标，不读取或展示姓名、学号、
-学生成绩、备注、特殊需求、身高或视力；模板和字段开关不会扩大这类报告的内容。
+## PDF 字体
 
-PDF 依赖系统中文字体与 WeasyPrint 运行库，具体见 [字体策略](font-strategy.zh.md)。异形或超大教室可能需要使用浏览器打印功能手动调整缩放。
+PDF 渲染器不嵌入字体，也不依赖 WeasyPrint 或 Pango：它按固定的质量优先级链
+（PingFang SC → Noto Sans CJK SC → Microsoft YaHei → SimSun → 其他 CJK 字体）
+在常见平台字体目录中查找系统 CJK 字体，并在 PDF 中按名字引用，由查看器替换。
+字体质量低于"推荐"档时会给出导出 warning。具体见[字体策略](font-strategy.zh.md)。
 
 ## 相关文档
 
 - [快速开始](quickstart.zh.md)
 - [Web 端使用指南](web.zh.md)
+- [字体策略](font-strategy.zh.md)

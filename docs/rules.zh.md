@@ -41,7 +41,8 @@ hard 规则必须满足，否则求解失败。
 预检命令：
 
 ```bash
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis_cli validate --problem problem.json
+seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
 ```
 
 如果求解器没有找到可行解，CLI 会输出学生人数、可用座位数、hard 规则数量，并提示可能需要检查固定座位、禁止相邻、最小距离和 disabled 座位。
@@ -90,7 +91,10 @@ soft 规则是偏好，不保证一定满足。每条规则包含 `enabled` 和�
 
 ## 场景 preset
 
-preset 是现有 `RuleSet` 的便利层，不是新的规则格式。当前内置：
+preset 是标准 `RuleSet` 基础配置，不是新的规则格式。v2 中把对应 preset 的规则
+JSON 内联到 problem 的 `rules` 字段（或由 project 引用）即应用该场景；
+`validate --preset <name>` 会检查问题缺少哪些该场景的首选数据并给出 warning。
+当前内置场景：
 
 | Preset | 重点 |
 | --- | --- |
@@ -104,14 +108,13 @@ preset 是现有 `RuleSet` 的便利层，不是新的规则格式。当前内�
 | `vision-friendly` | 优先有视力/靠前需求的学生 |
 
 ```bash
-seattrellis presets list
-seattrellis presets show daily
-seattrellis presets export daily --output outputs/daily.rules.json
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
+seattrellis_cli validate --problem problem.json --preset daily --history-dir examples/history
 ```
 
-`--preset` 可以单独使用，也可以与 `--rules` 叠加。叠加时先生成 preset 的完整标准 rules，再递归应用用户 JSON 中明确提供的字段。例如下面的文件会保留 `daily` 的其他 soft rules，但关闭随机扰动并添加固定座位：
+preset 与用户 rules 的叠加发生在工作台/服务端：先生成 preset 的完整标准 rules，
+再递归应用用户 JSON 中明确提供的字段（合并后的完整 `RuleSet` 可在求解前预览并
+下载）。例如下面的 overlay 会保留 `daily` 的其他 soft rules，但关闭随机扰动并
+添加固定座位：
 
 ```json
 {
@@ -124,15 +127,11 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 }
 ```
 
-```bash
-seattrellis solve \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
-  --preset daily \
-  --rules my-overrides.json
-```
-
-preset 不会生成或放宽 hard rules；用户 hard rules 继续由原有预检、fallback solver、OR-Tools solver 和候选复核执行。缺少历史、成绩、身高或视力/靠前标记时，CLI 会给出 warning，相关 soft rule 保持可解释地降级，对应评分显示 `not_available`。`validate --strict` 会把这些 warning 当作失败。
+CLI 不合并 preset：它接收的 problem JSON 或 project 中应包含最终生效的完整
+`RuleSet`，`--preset` 只用于数据缺失检查。preset 不会生成或放宽 hard rules；
+hard rules 继续由预检、求解器和候选复核执行。缺少历史、成绩、身高或视力/靠前
+标记时，`validate` 会给出 warning，相关 soft rule 保持可解释地降级，对应评分
+显示 `not_available`。`validate --strict` 会把这些 warning 当作失败。
 
 ## fair_rotation
 
@@ -149,7 +148,9 @@ preset 不会生成或放宽 hard rules；用户 hard rules 继续由原有预�
 
 当前支持的类别包括 `front`、`back`、`middle`、`side`、`corner`、`near_window`、`near_door`、`near_platform`、`near_ac`。默认避免重复 `front`、`back`、`side`、`corner`、`near_window`、`near_door`、`near_ac`。
 
-fallback solver 和 OR-Tools solver 都会把 fair rotation 转换为单个“学生-座位”的启发式 cost：近期多次坐过同类位置会增加 cost，长期次数较少的学生会得到轻微补偿。该方法基于座位类别和历史次数，不保证绝对公平。
+求解器会把 fair rotation 转换为单个"学生-座位"的启发式 cost：近期多次坐过同类
+位置会增加 cost，长期次数较少的学生会得到轻微补偿。该方法基于座位类别和历史
+次数，不保证绝对公平。
 
 ## avoid_recent_neighbors
 
@@ -196,7 +197,7 @@ fallback solver 和 OR-Tools solver 都会把 fair rotation 转换为单个“�
 
 关系历史按当前学生名单和当前 layout 解释，不假设座位形成完整矩阵。历史 snapshot 中缺少当前学生会跳过并记录 warning；引用当前 layout 中不存在的座位会跳过相关 pair 并记录 warning；引用 `enabled=false` 座位时，新排座不会使用该座位，但历史关系会尽量按 row/col 坐标统计并记录 warning。
 
-fallback solver 和 OR-Tools solver 都支持该规则。当前实现是启发式评分：它会倾向避免近期重复同桌/相邻，但不保证绝对最优。
+求解器支持该规则。当前实现是启发式评分：它会倾向避免近期重复同桌/相邻，但不保证绝对最优。
 
 ## cooling
 
@@ -226,24 +227,26 @@ fallback solver 和 OR-Tools solver 都支持该规则。当前实现是启发�
 | `relation_types` | `desk_mate`、`adjacent_any` 等关系类型 |
 | `within_distance` | `within_distance` 关系使用的 Chebyshev 距离阈值 |
 
-fallback 和 OR-Tools 会使用相同的 pair history 成本；结果评分、候选比较和公平性
+求解器使用相同的 pair history 成本；结果评分、候选比较和公平性
 摘要也会复用同一规则，因此不会出现“求解时生效、报告时消失”的情况。
 
 ## 多方案生成与评分
 
-多方案模式不会新增或放宽规则。`solve --candidates N` 会先按正常流程应用全部 hard constraints 和 soft costs，再通过不同 seed 与“禁止完整重复上一候选 assignment”的约束继续求解。hard constraints 始终绝对优先；候选生成与推荐排序都是启发式，不保证找到全部可行方案或全局最优方案。
+多方案模式不会新增或放宽规则。`candidates --count N` 会先按正常流程应用全部
+hard constraints 和 soft costs，再通过不同 seed 与"禁止完整重复上一候选
+assignment"的约束继续求解。hard constraints 始终绝对优先；候选生成与推荐排序
+都是启发式，不保证找到全部可行方案或全局最优方案。
 
 ```bash
-seattrellis solve \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
-  --rules examples/rules_multi_candidate.json \
-  --history-dir examples/history \
-  --candidates 5 \
-  --seed 42 \
-  --output outputs/candidates.json \
-  --report outputs/plan-report.json
+seattrellis_cli candidates \
+  --problem problem.json \
+  --count 5 \
+  > outputs/candidates.json
 ```
+
+（seed 来自 problem JSON；`--latest-snapshot` 可为每个候选的 stability 维度提供
+最近历史。project 工作流使用 `project-solve --candidates N --report
+outputs/plan-report.json` 生成方案比较报告。）
 
 评分维度均为 0–100，高分表示更符合该维度。总分只使用 `status: "available"` 的维度，并按对应 soft-rule weight 加权；`diversity_score` 使用 `randomize.weight`，`stability_score` 使用固定比较权重 1。hard constraint 校验失败的方案不会进入 candidate set。
 

@@ -1,5 +1,12 @@
 # v1.4 performance baseline
 
+> Historical record. This baseline was measured on the v1.4 Python line
+> (2026-07-26, `1.4.0rc1`). The v2 Rust line's solver quality and performance
+> are governed by the automated gates in [benchmarks.md](benchmarks.md):
+> the committed `solver-baseline.json` regression gate, the OR-Tools regret
+> gate, and the fixed-corpus oracle differential. This page is kept as the
+> original measurement record only.
+
 This baseline was recorded on 2026-07-26 from the `1.4.0rc1` source tree with
 Python 3.12 and OR-Tools 9.15 on an Apple Silicon development machine. The
 dataset is `synthetic-classroom` / `synthetic-v1`; all records are fictional.
@@ -55,6 +62,10 @@ every result artifact to finish independently.
 - Prioritize candidate generation for the 60-student dense fallback case in a
   future native heuristic spike; hard-rule consistency remains the release
   gate before speed or diversity.
+
+(The Rust line has since completed that experiment: v2 ships a single native
+solver with no Python or OR-Tools runtime, evaluated by the automated gates
+listed at the top of this page.)
 
 Reproduction commands and report field definitions are in
 [`benchmarks.md`](benchmarks.md). Timing changes should be compared on the same

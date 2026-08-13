@@ -1,60 +1,70 @@
 # 架构
 
-SeatTrellis 按职责分为两条共享契约的运行时路径：Python 兼容路径和 Rust-first
-桌面路径。两者不在 UI 中复制规则，而是通过版本化 JSON 和编辑命令协议对齐。
+SeatTrellis v2 是纯 Rust 工程。领域逻辑按分层 crate 组织，React 只是展示层；
+规则编译、合法性、编辑状态机、migration、隐私和求解状态只由 Rust 决定，前端
+不得复制领域规则。
 
-Python 兼容路径按职责分为四层：
+## 分层结构
 
-1. **Models / I/O**：Pydantic 数据模型、CSV/Excel/JSON 读取与校验；
-2. **Solver / Scoring**：fallback 与可选 OR-Tools 求解、历史统计和候选评分；
-3. **Service**：稳定的输入输出 dataclass 和工作流编排；
-4. **Adapters**：CLI、Streamlit Web 与 exporters。
+| crate | 职责 |
+|---|---|
+| `seattrellis-schema` | 版本化 JSON 契约与产物注册表 |
+| `seattrellis-rules` | 规则 DSL / registry（goal rules、preset 场景） |
+| `seattrellis-domain` | 编辑状态机、layout 草稿、轮换与分组领域模型 |
+| `seattrellis-application` | 用例编排（生成、导出请求、草稿审计） |
+| `seattrellis-io` | roster CSV/Excel 导入、migration、rotation、roster 草稿 |
+| `seattrellis-export` | 八种格式渲染器（svg/html/print-html/png/pdf/xlsx/docx/pptx） |
+| `seattrellis-server` | loopback HTTP 传输层（axum），嵌入 React 工作台资源 |
+| `seattrellis-core` | 求解器宿主：hard search、local search、candidates、audit、evaluator、validator |
+| `seattrellis-cli` | 28 个子命令的 CLI 适配器 |
 
-CLI 和 Web 必须调用 service 层，不能复制规则合并、校验、求解或候选选择逻辑。Optional extras 使用延迟导入，保证最小安装无需加载重依赖。
+`app/` 是薄 facade（`seattrellis_app`），复用 `seattrellis-server` 启动本地
+服务；`app/src-tauri/` 是 Tauri 2 壳，只负责窗口生命周期，不承载第二套排座规则。
 
-Web 适配器进一步拆分为：`web/workflow.py` 提供不依赖 Streamlit 的文件和服务
-适配；`web/editor_protocol.py` 连接版本化前端协议与编辑草稿；`web/components.py`
-生成纯数据或 HTML；`web/interactive_panels.py` 只负责人工编辑、撤销/重做和局部
-修复等有状态控件。`web/app.py` 负责页面导航、输入材料化和结果编排。状态型面板
-通过显式回调获取 history 和错误展示能力，不反向导入页面模块。
-
-交互座位图不直接修改 assignments。座位点击在
-`web/interactive_panels.py` 中转换为 `move_student`、`swap_students` 或
-`lock_seat`/`unlock_seat`，然后沿用 `WebEditingDraft` 的重放、撤销和持久化路径。
-未来 SVG/React 画布应发送相同领域命令，不能建立第二套编辑状态机。
-
-跨界面编辑使用版本化的 `EditorCommandEnvelope` 和 `EditorStateEnvelope`。
-`WebEditingDraft` 为每份草稿分配独立 `draft_id` 和单调递增 revision；命令还带有
-唯一 `command_id`。服务端会在写入前拒绝错误草稿、重复命令和旧 revision，并把
-同一命令中的多项操作作为一个原子撤销批次。状态协议只包含姓名、学生/座位关联、
-锁和约束诊断，不携带成绩、备注、特殊需求、身高或视力。传输模型位于
-`seattrellis.editing_protocol`，Web 草稿适配位于
-`seattrellis.web.editor_protocol`。具体格式见
-[编辑器协议](editor-protocol.md)。
-
-v1.4 开始，solver backend 共享 `CompiledProblem` 边界：输入模型先被解析成稳定的
-学生/座位索引、启用座位、邻接边、hard rules 和候选排除关系，再交给独立的
-fallback、OR-Tools 或实验 native backend 模块。`cp_sat.py` 仅保留为兼容入口和
-调度层。这样可以先稳定领域语义，再逐步把验证、评分和启发式计算迁入 Rust。
-
-## Rust-first desktop path
-
-Rust 桌面路径复用同一套 React/TypeScript 工作台，但由 `app/` 的 loopback
-服务器提供本地 API：
+## 运行时形态
 
 ```text
-React workbench → Rust App HTTP service → seattrellis_core → validation/solve/render
-                                      ↘ local project and export I/O
+React 工作台（clients/web）
+          │
+seattrellis_app（loopback HTTP，127.0.0.1:8765）/ Tauri 2 壳
+          │
+seattrellis-server → seattrellis-application → seattrellis-core（求解/校验/审计）
+          │
+本地 project 与 export I/O（seattrellis-io / seattrellis-export）
 ```
 
-`seattrellis_core` 和 App 使用版本化、粗粒度 JSON DTO；前端不会逐座位调用
-底层求解器。App 构建时把 `src/seattrellis/web_static` 嵌入二进制，开发时仍可用
-`SEATTRELLIS_WEB_STATIC` 覆盖资源目录。Tauri 只负责窗口生命周期和原生桌面集成，
-不再承载第二套排座规则。
+`seattrellis_core` 与 App 使用版本化、粗粒度的 JSON DTO（`CoreSolveRequest` /
+`CoreSolveResponse`）；前端不会逐座位调用底层求解器。App 构建时把 React 工作台
+的生产资源嵌入二进制，开发时可用 `SEATTRELLIS_WEB_STATIC` 覆盖资源目录。
 
-Rust 求解器当前是成本排序启发式实现，不等同于 Python OR-Tools CP-SAT；在
-40/50/60 人基准、规则差分和候选质量验收完成前，Python OR-Tools 仍是兼容后端。
-详细迁移阶段和发布门槛见 [Rust-first migration](rust-migration.md)。
+## 跨界面编辑协议
 
-所有文件操作默认发生在本机。桌面端复用 application/service 契约，而不是在 UI
-中重新实现业务规则。
+跨界面编辑使用版本化的 `EditorCommandEnvelope` 和 `EditorStateEnvelope`
+（`protocol_version: "1.0"`，实现在 `seattrellis-domain::editing`）。每份草稿
+有独立 `draft_id` 和单调递增 revision；命令还带有唯一 `command_id`。服务端会
+在写入前拒绝错误草稿、重复命令和旧 revision，并把同一命令中的多项操作作为
+一个原子撤销批次。状态协议只包含姓名、学生/座位关联、锁和约束诊断，不携带
+成绩、备注、特殊需求、身高或视力。具体格式见[编辑器协议](editor-protocol.md)。
+
+## 求解器
+
+- hard 约束（fixed seats、must/cannot adjacency、min distance、groups）先做
+  静态冲突校验，再进入候选域构建与匹配搜索；
+- 求解状态词汇表冻结为 `Solved / ProvenInfeasible / Timeout / Unknown /
+  InvalidInput / Cancelled / InternalError`；启发式耗尽只能是 `Unknown`，
+  绝不伪装成 `ProvenInfeasible`，有合法 incumbent 时即使超时也是 `Solved`；
+- 所有 solve/edit/repair/rotation/export 产物必须经独立 validator 复核，
+  禁止硬编码 `feasible=true`。
+
+## HTTP 与安全边界
+
+`/api/*` 全部要求 `Authorization: Bearer <token>`（`/api/v1/session` 引导端点
+除外）；Host 必须为 loopback 名 + 绑定端口（防 DNS rebinding）；Origin 存在时
+必须同源（防 CSRF）；响应含 CSP / X-Frame-Options: DENY / Referrer-Policy:
+no-referrer。token 由 Server 启动时生成（256-bit），Tauri 用
+initialization_script 注入 `window.__SEATTRELLIS_SESSION__`，浏览器工作台经
+`GET /api/v1/session` 引导获取。body 限制、并发上限和优雅停机在
+`seattrellis-server` 中统一实施，新写路径不得绕过。
+
+所有文件操作默认发生在本机，不包含遥测或云同步。v1（Python）行冻结在
+1.9.0（`v1.x-maintenance` 分支），只作为行为基准的 oracle，不在 v2 树中。

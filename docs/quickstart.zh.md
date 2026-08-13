@@ -1,301 +1,225 @@
 # 快速开始
 
-本文档提供 SeatTrellis 的详细安装与命令行使用指南。如果你只想快速了解项目概况，请阅读[文档首页](index.md)。
+本文档提供 SeatTrellis v2（纯 Rust 版本）的安装与命令行使用指南。如果你只想快速了解项目概况，请阅读[文档首页](index.md)。
 
 ## 安装
 
-### 最小安装
+SeatTrellis v2 是一个纯 Rust 本地工具，不需要 Python、Node.js 或其他运行时。
+
+### 桌面应用（推荐）
+
+从 [Releases](https://github.com/FrankFu916/seattrellis/releases) 页面下载对应平台的安装包：
+
+- **Windows**：MSI 或 NSIS 安装包（x64）
+- **macOS**：DMG 或 app 压缩包（Apple Silicon）
+- **Linux**：DEB 包
+
+安装前请用 `SHA256SUMS` 校验每个下载文件。
+
+### 命令行工具
 
 ```bash
-python -m pip install -e .
-seattrellis --help
+cargo install seattrellis_cli
+# 或使用 Releases 页面提供的预编译二进制
 ```
 
-最小安装支持 CLI help、CSV 输入、JSON layout/rules/snapshot/candidate set、内置规则 preset、本地 project workspace、seeded fallback solver、多方案生成与评分，以及不依赖重库的 HTML 导出。
+安装后运行 `seattrellis_cli --help` 查看全部命令，`seattrellis_cli doctor` 可以检查环境（二进制版本、core API 版本、临时目录是否可写）。
 
-### 常用本地安装
+### 网页工作台
+
+`seattrellis_app` 会启动一个只绑定本机回环地址（`127.0.0.1:8765`）的本地服务，并在浏览器中打开 React 工作台：
 
 ```bash
-python -m pip install -e ".[excel,image]"
+cargo run -p seattrellis_app -- --open-browser
+# 或从 Releases 的预编译二进制运行
+seattrellis_app --open-browser
 ```
 
-适合 CSV/Excel 输入，以及 Excel、PNG、HTML 输出。
+桌面应用（Tauri 壳）内部就是启动同一个服务并在原生窗口中加载工作台。
 
-### 完整开发安装
+### v1 Python 版本（遗留）
+
+v1（Python）版本冻结在 **1.9.0**，在 `v1.x-maintenance` 分支上维护。旧版包的安装方式是：
 
 ```bash
-python -m pip install -e ".[all,dev]"
-pytest
+pip install seattrellis==1.9.0
 ```
 
-`all` extra 包含 OR-Tools、Excel、PNG 和 Streamlit 相关依赖；`dev` extra
-包含测试和构建工具，`e2e` extra 用于真实浏览器验收。
+新用户请使用 v2 的桌面应用或 Rust CLI；v1 只作为遗留兼容包存在，不再开发新功能。
 
-### React 网页工作台（推荐）
+## 最快上手（CLI）
 
-```bash
-python -m pip install -e ".[web,excel,image]"
-seattrellis workspace
-```
-
-`workspace` 会启动本地 API 并打开 React 工作台。它适合普通教师完成名单导入、
-教室选择、排座、人工调整、撤销/重做和导出。普通流程就能设置自定义排数、列数、
-走廊、不可用座位，以及多人同时适用的偏好和相邻/固定座位要求。生成页的复杂参数
-默认隐藏；需要控制候选数量、seed、时间限制、backend、历史 snapshot、完整 rules JSON
-或异形 layout JSON 时，再展开“高级设置”。规则和 layout 文件都可以导入、检查并下载，
-不会因为改用 React 而失去旧版文件工作流。
-
-### Streamlit 网页端（兼容与高级配置）
-
-```bash
-python -m pip install -e ".[web,excel,image]"
-streamlit run src/seattrellis/web/app.py --server.address 127.0.0.1
-```
-
-Streamlit 页面保留旧版文件级工作流，适合需要直接编辑 preset、rules overlay、历史
-目录、候选数量、seed、时间限制或详细导出隐私选项的场景。React 和 Streamlit 共享
-同一套 Python API；旧的 JSON、Project 文件和 CLI 命令仍然有效。上传 Excel 或下载
-PNG/Excel 时请同时安装 `excel` 和 `image` extras。
-
-### 桌面开发原型
-
-```bash
-python -m pip install -e ".[desktop]"
-seattrellis desktop
-```
-
-桌面壳复用 React 工作台和本地 API。制作 onedir 开发包时安装 `desktop-build` extra
-并运行 `python scripts/build_desktop.py`；当前发布压缩包尚未提供签名安装器。
-
-## 演示数据
-
-```bash
-seattrellis init-demo
-```
-
-`init-demo` 默认不会覆盖已有示例文件；需要覆盖时使用 `--force`。最小安装会生成 CSV/JSON demo；安装 `excel` extra 后也会生成 `examples/students.xlsx`。
-
-旧命令名 `seatplanner` 仍作为兼容别名保留，新文档统一使用 `seattrellis`。
-
-## 内置场景 Preset
-
-```bash
-seattrellis presets list
-seattrellis presets show daily
-seattrellis presets export daily --output outputs/daily.rules.json
-```
-
-`presets list` 列出八种内置场景：`random`、`exam`、`daily`、`fair-rotation`、`neighbor-aware`、`balanced`、`height-aware`、`vision-friendly`。
-
-`solve` / `validate` 可以只使用 `--preset`，也可以同时传入 `--rules`：preset 作为基础，用户 JSON 中明确提供的字段递归覆盖 preset，hard rules 仍通过原有校验和求解路径绝对优先。缺少 history、score、height 或 vision 数据时会给出 warning，并只降级相关 soft rule / score 维度。
-
-## 排座
-
-### 单方案求解
-
-```bash
-# 使用 preset
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history --output outputs/daily.snapshot.json
-
-# 使用规则文件
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --output outputs/latest.snapshot.json
-
-# 带历史记录（公平轮换）
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
-
-# 带关系回避
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
-```
-
-### 多方案生成与评分
-
-```bash
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_multi_candidate.json --history-dir examples/history --candidates 5 --output outputs/candidates.json --report outputs/plan-report.json
-```
-
-`--candidates 1` 保持旧行为并写出普通 snapshot。`--candidates N` 会用同一组输入、确定性 seed 序列和"排除已生成完整 assignment"的约束重复求解，写出 `kind: "candidate_set"` JSON。多方案生成是启发式流程，但每个候选仍必须通过全部 hard constraints；如果可行空间中没有足够多的不同方案，结果会保留已找到的方案并给出 warning。
-
-### 可选 OR-Tools 求解器
-
-```bash
-python -m pip install -e ".[solver]"
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --backend ortools
-```
-
-`--backend ortools` 会显式尝试导入 OR-Tools。若未安装 `solver` extra，CLI 会提示安装命令并以非零退出码结束。旧的 `SEATTRELLIS_USE_ORTOOLS=1` 仍然兼容。
-
-## 验证
-
-```bash
-# 使用 preset
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --preset daily --history-dir examples/history
-
-# 使用规则文件
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
-```
-
-`validate` 只检查输入文件和明显的规则冲突，不生成座位表；`solve` 会在校验通过后再生成 snapshot。错误信息会尽量指出文件、字段、行号和 hard-rule 冲突。使用 `--strict` 时，warning 也会让命令以非零退出码结束。
-
-## 历史分析
-
-```bash
-# 座位公平性报告
-seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-
-# 同桌/邻座关系报告
-seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-```
-
-`history-report` 会基于当前学生名单、当前 layout 和历史 snapshot 输出每名学生的前排、后排、边侧、角落、靠窗、靠门、靠讲台、靠空调次数；加 `--output outputs/history-report.json` 可导出 JSON 报告。
-
-`pair-report` 会输出两两学生的历史同桌、横向、纵向、斜向、任意相邻和指定距离内次数；加 `--top 10` 可限制高频学生对展示数量，加 `--output outputs/pair-report.json` 可导出 JSON。
-
-## 导出
-
-```bash
-# HTML 导出（无需 extras）
-seattrellis export --snapshot outputs/latest.snapshot.json --format html
-
-# 导出 recommended candidate
-seattrellis export --snapshot outputs/candidates.json --candidate recommended --format html --output outputs/recommended.html
-```
-
-安装 `excel` 和 `image` extras 后：
-
-```bash
-seattrellis export --snapshot outputs/latest.snapshot.json --format excel
-seattrellis export --snapshot outputs/latest.snapshot.json --format png
-```
-
-导出文件会写入 `outputs/`。该目录已被 `.gitignore` 忽略。
-
-## 手动微调
-
-求解后可以用 `edit` 对 snapshot 做命令式微调，再把新草稿导出：
-
-```bash
-seattrellis edit \
-  --snapshot outputs/neighbor-aware.snapshot.json \
-  --operation swap:STU001:STU002 \
-  --output outputs/neighbor-aware-edited.snapshot.json
-
-seattrellis export \
-  --snapshot outputs/neighbor-aware-edited.snapshot.json \
-  --format html \
-  --output outputs/neighbor-aware-edited.html
-```
-
-多次 `--operation` 会按顺序执行。默认会保存草稿并显示 hard constraint 诊断；
-加 `--strict` 后，若调整违反 hard constraints 则不会写出文件。
-如果输入的是 candidate set，`edit` 默认选择 recommended candidate，也可以用
-`--candidate candidate_02` 指定候选。
-
-批量换位可作为一条原子操作执行并一次撤销：
-
-```bash
-seattrellis edit \
-  --snapshot outputs/neighbor-aware.snapshot.json \
-  --operation "batch-move:STU001=R1C2,STU002=R1C1" \
-  --output outputs/batch-edited.snapshot.json
-```
-
-目标座位已有学生时，该学生必须也在同一批次内；任何冲突都会使整个批次失败。
-
-若要保存或重放一组调整，可把操作写进 JSON 文件，再通过 `--operations-file` 读取。
-文件为操作数组，或包含 `operations` 数组的对象；文件操作会先于命令行中的
-`--operation` 执行：
+v2 CLI 围绕一份"问题文件"（`CoreSolveRequest` JSON）工作，它把学生、座位、规则和求解参数放在同一个文件里。以 `problem.json` 为例：
 
 ```json
 {
-  "operations": [
-    {
-      "kind": "swap_students",
-      "payload": {
-        "first_student": "STU001",
-        "second_student": "STU002"
-      }
-    }
-  ]
+  "api_version": 2,
+  "student_count": 4,
+  "seat_positions": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]],
+  "edges": [[0, 1], [2, 3], [0, 2], [1, 3]],
+  "fixed_seats": [[0, 0]],
+  "seed": 42,
+  "students": [
+    {"key": "STU001", "display_name": "Alice"},
+    {"key": "STU002", "display_name": "Bob"},
+    {"key": "STU003", "display_name": "Carol"},
+    {"key": "STU004", "display_name": "Dave"}
+  ],
+  "rules": {"seed": 42, "soft": {"randomize": {"enabled": true, "weight": 1}}}
 }
 ```
 
+三条核心命令：
+
 ```bash
-seattrellis edit \
-  --snapshot outputs/neighbor-aware.snapshot.json \
-  --operations-file adjustments.json \
-  --output outputs/neighbor-aware-edited.snapshot.json
+# 只校验问题文件，不运行求解
+seattrellis_cli validate --problem problem.json
+
+# 求解并把完整结果写入 plan.json
+seattrellis_cli solve --problem problem.json --output plan.json
+
+# 把已保存的方案渲染为 PNG
+seattrellis_cli export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
-如果老师已锁定部分座位，需要仅调整一小部分学生，可运行 `repair`。指定
-`--affected-student` 后，其他已入座学生会保留原位：
+`export` 支持 `svg`、`html`、`print-html`（仅 project-export）、`png`、`pdf`、`xlsx`、`docx`、`pptx` 格式。`solve` 的退出码是 v2 冻结表：`0` 成功、`2` 输入无效、`3` 确认不可行、`4` 超时、`5` 未知、`70` 内部错误、`130` 用户取消。
+
+## 示例数据
+
+仓库的 `examples/` 目录包含虚构数据：`students.csv`、`classroom.json`、`rules.json`、`rules_multi_candidate.json`、`rules_neighbor_avoidance.json`、`history/` 和 `project.seattrellis.json`。v2 CLI 没有 `init-demo` 命令，示例文件直接从仓库获取。
+
+## 内置场景 Preset
+
+`validate` 的 `--preset` 选项会按场景检查问题缺少哪些首选数据（history、score、height、vision），并给出 warning。内置场景包括 `random`、`exam`、`daily`、`fair-rotation`、`neighbor-aware`、`balanced`、`peer-mixing`、`score-high-front`、`score-high-back`、`row-score-balanced`、`group-score-balanced`、`mentor-pairing`、`height-aware`、`vision-friendly`：
 
 ```bash
-seattrellis repair \
-  --snapshot outputs/neighbor-aware-edited.snapshot.json \
-  --affected-student STU001 \
-  --affected-student STU002 \
+seattrellis_cli validate --problem problem.json --preset daily --history-dir examples/history
+```
+
+`--strict` 会把 warning 当作失败。预设是规则 JSON 的便利层，完整的规则说明见[规则说明](rules.zh.md)。
+
+## 求解
+
+```bash
+# 固定 seed，结果可复现
+seattrellis_cli solve --problem problem.json --seed 42 --output outputs/latest.snapshot.json
+
+# 带墙钟预算；预算耗尽时报 Timeout（退出码 4），有合法方案时仍为 Solved
+seattrellis_cli solve --problem problem.json --time-limit 3 --output outputs/latest.snapshot.json
+```
+
+## 验证与检查
+
+```bash
+# 校验问题文件（学生/座位/规则引用、固定座位与相邻规则冲突等）
+seattrellis_cli validate --problem problem.json
+
+# 预检：候选座位域与不可行原因
+seattrellis_cli precheck --problem problem.json
+
+# 审计已求解的方案：hard 规则状态 + soft 评分明细
+seattrellis_cli audit --problem problem.json --solution plan.json
+
+# 对固定 assignment 打分（PlanScore 明细）
+seattrellis_cli score --problem problem.json --assignment '[[0,0],[1,1],[2,2],[3,3]]'
+```
+
+## 多方案生成
+
+```bash
+seattrellis_cli candidates --problem problem.json --count 5 > outputs/candidates.json
+```
+
+`candidates` 生成最多 N 个满足全部 hard 约束的不同方案（1–20，默认 5），每个候选带独立 snapshot、总分和评分明细；推荐方案是加权总分最高的 hard-valid 候选。
+
+## 历史分析
+
+`history-report` 汇总每名学生的前排、后排、边侧、角落、靠窗、靠门、靠讲台、靠空调历史次数；`pair-report` 汇总两两学生的同桌、横向、纵向、斜向、任意相邻和指定距离内次数：
+
+```bash
+seattrellis_cli history-report --problem problem.json --history-dir examples/history --output outputs/history-report.json
+seattrellis_cli pair-report --problem problem.json --history-dir examples/history --top 10
+```
+
+历史 snapshot 来自 `examples/history/` 等目录中的 `*.snapshot.json` 文件。历史缺失不会导致求解失败，只会让 `fair_rotation` 等评分维度显示为 `not_available`。
+
+## 人工调整与局部修复
+
+`edit` 对已保存的 snapshot 或候选集执行命令式微调：
+
+```bash
+seattrellis_cli edit \
+  --snapshot outputs/latest.snapshot.json \
+  --operation swap:STU001:STU002 \
+  --operation lock-seat:R1C1 \
+  --output outputs/edited.snapshot.json
+```
+
+支持的 operation：`swap:STU001:STU002`、`move:STU003:R2C2`、`batch-move:STU001=R1C2,STU002=R1C1`、`seat:STU003:R2C2`、`unseat:STU004`、`lock-student:STU001`、`unlock-student:STU001`、`lock-seat:R1C1`、`unlock-seat:R1C1`。默认即使违反 hard 约束也会写出草稿并显示诊断；加 `--strict` 后违反 hard 约束则命令失败且不写文件。多组操作也可写进 JSON 文件，用 `--operations-file` 读取并重放。
+
+`repair` 在保留锁定座位的前提下对部分学生重新求解：
+
+```bash
+seattrellis_cli repair \
+  --problem problem.json \
+  --snapshot outputs/edited.snapshot.json \
+  --lock-student STU001 \
   --lock-seat R4C3 \
-  --backend fallback \
-  --output outputs/neighbor-aware-repaired.snapshot.json
+  --affected STU002 \
+  --output outputs/repaired.snapshot.json
 ```
 
-`repair` 默认继承编辑草稿保存的 `metadata.lock_state`。`--ignore-saved-locks`
-可忽略它；不传 `--affected-student` 则会重新安排所有未锁定学生。
+`--affected` 限制重排范围；`--lock-student` / `--lock-seat` 保留当前座位；默认继承 snapshot 中保存的锁定状态，可用 `--ignore-saved-locks` 忽略。
 
 ## Project 工作流
 
-```bash
-# 创建 project 文件
-seattrellis project-init --project examples/project.seattrellis.json --name "Demo Class" --students students.csv --layout classroom.json --rules rules_multi_candidate.json --history-dir history --outputs-dir outputs --candidates 5 --force
+Project 文件用相对路径和默认配置把学生名单、layout、规则和历史目录组织成一个本地工作区。它适合 v1 风格的文件式工作流，也便于长期保存：
 
-# 查看配置
-seattrellis project-info --project examples/project.seattrellis.json
+```bash
+# 在已有 students.csv / layout.json / rules.json 的目录中创建 project 文件
+seattrellis_cli project-init --dir my-class
+
+# 查看配置和路径状态
+seattrellis_cli project-info --project my-class/seattrellis.project.json
 
 # 校验
-seattrellis project-validate --project examples/project.seattrellis.json
+seattrellis_cli project-validate --project my-class/seattrellis.project.json
 
-# 求解
-seattrellis project-solve --project examples/project.seattrellis.json --candidates 3 --output outputs/project.candidates.json --report outputs/project-plan-report.json
+# 求解并把保存的方案写入输出
+seattrellis_cli project-solve --project my-class/seattrellis.project.json --candidates 3 --output outputs/project.plan.json
 
-# 微调
-seattrellis project-edit --project examples/project.seattrellis.json --snapshot outputs/project.candidates.json --candidate recommended --operation swap:STU001:STU002 --output outputs/project-edited.snapshot.json
+# 导出已保存的方案（不会重新求解）
+seattrellis_cli project-export --project my-class/seattrellis.project.json --snapshot outputs/project.plan.json --format html --output outputs/project.html
 
-# 锁定后重排（也可省略 --snapshot，使用最新 artifact）
-seattrellis project-repair --project examples/project.seattrellis.json --snapshot outputs/project-edited.snapshot.json --affected-student STU001 --affected-student STU002 --backend fallback --output outputs/project-repaired.snapshot.json
+# 轮换：生成未来多个时段
+seattrellis_cli project-rotate --project my-class/seattrellis.project.json --periods 4
 
-# 导出
-seattrellis project-export --project examples/project.seattrellis.json --snapshot outputs/project-repaired.snapshot.json --format html --output outputs/project-repaired.html
+# 备份与恢复
+seattrellis_cli project-pack --project my-class/seattrellis.project.json --output my-class.seattrellis.zip
+seattrellis_cli project-restore --bundle my-class.seattrellis.zip --output-dir restored/
+
+# 隐私扫描
+seattrellis_cli project-privacy --project my-class/seattrellis.project.json
 ```
 
-`project-init` 创建轻量的本地项目文件；`project-info` 检查配置和路径状态；
-`project-validate`、`project-solve`、`project-edit`、`project-repair`、`project-export`
-分别复用现有校验、求解、人工调整、局部修复和导出逻辑。project 文件只保存相对路径和默认配置，不嵌入学生名单
-或座位数据；其中的相对路径始终相对于 project 文件所在目录解析。
+`project-edit` / `project-repair` 复用与 `edit` / `repair` 相同的语义。详细说明见 [Project 工作流详解](project.zh.md)。
 
-## 多方案评分维度
+## Schema 工具
 
-candidate set 中每个方案包含 snapshot、seed、solver backend、总分、hard-constraint 摘要和评分 breakdown。当前可解释维度包括：
-
-- `fair_rotation_score`：启用公平轮换且有历史时可用；
-- `avoid_recent_neighbors_score`：启用关系回避且有 pair history 时可用；
-- `score_balance_score`、`height_preference_score`、`vision_preference_score`：对应规则启用且输入字段足够时可用；
-- `diversity_score`：候选之间 assignment 差异；
-- `stability_score`：相对最近历史 snapshot 保持原座位的比例；
-- `hard_constraint_summary`：固定座位、相邻/禁止相邻、最小距离和 assignment 完整性检查。
-
-缺少历史、规则未启用或字段不足时，相关维度明确标记为 `not_available`，不会虚构分数。总分是可用维度按规则权重计算的 0–100 加权平均；推荐方案是在满足 hard constraints 的候选中总分最高者，同分时按 `candidate_id` 稳定排序。评分用于比较和解释，不代表全局最优。
-
-普通 snapshot 与 candidate set 是两种不同格式，旧 snapshot 仍可读取。`export` 收到 candidate set 时默认导出 recommended candidate，也可以用 `--candidate candidate_03` 指定。若要导出完整候选集比较报告，使用：
+v2 产物（snapshot、candidate set、project、rotation plan 等）都带 `schema_version`。查看注册表、导出 JSON Schema、迁移旧版本文件：
 
 ```bash
-seattrellis export --snapshot outputs/candidates.json --candidate-scope all --format html --output outputs/candidate-comparison.html
+seattrellis_cli schema-list
+seattrellis_cli schema-export --kind seatingsnapshot --output seating-snapshot.v2.schema.json
+seattrellis_cli schema-migrate --input v1-project.json --output v2-project.json
+seattrellis_cli schema-migrate --input v1-rules.json --in-place   # 先自动创建 .bak 备份
 ```
 
-候选比较报告只包含方案级聚合指标，不展示姓名、学号、学生成绩、备注、特殊需求、
-身高或视力；选择不同模板或字段开关也不会扩大这类报告的内容。
+v1 时代的文件（学生名单 CSV、layout/rules JSON、snapshot、candidate set、project）会由 v2 的迁移路径自动处理；project 和产物迁移前会自动备份。
 
 ## 继续阅读
 
+- [CLI 命令参考](cli.md)
 - [输入格式说明](input-format.zh.md)
 - [规则说明](rules.zh.md)
 - [Web 端使用指南](web.zh.md)

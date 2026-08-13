@@ -1,11 +1,11 @@
 # 同桌与邻座历史
 
-`pair-report` 汇总任意两名学生在历史中的同桌、横向、纵向、斜向、任意相邻和指定距离内出现次数。
+`pair-report` 汇总任意两名学生在历史中的同桌、横向、纵向、斜向、任意相邻和
+指定距离内出现次数。
 
 ```bash
-seattrellis pair-report \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
+seattrellis_cli pair-report \
+  --problem problem.json \
   --history-dir examples/history \
   --top 10
 ```

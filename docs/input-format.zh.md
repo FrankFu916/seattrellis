@@ -2,12 +2,17 @@
 
 SeatTrellis 使用学生名单、教室布局和规则文件，也可以用一个本地 project 文件保存这些文件的相对路径和常用默认值。示例文件都在 `examples/`，只包含虚构数据。
 
+v2 中这些文件通过 project 工作流（`project-*` 命令、工作台的班级项目面板）消费；
+独立 CLI 命令则把学生、座位和规则内联到一份 problem JSON（`CoreSolveRequest`）
+中求解，见[快速开始](quickstart.zh.md)。v1 时代的文件格式继续可读并自动迁移。
+
 ## 学生名单
 
-基础安装支持 CSV。安装 `excel` extra 后支持 Excel `.xlsx` / `.xlsm`：
+CSV 和 Excel `.xlsx` / `.xlsm` 都由本地 Rust 导入器原生支持，无需安装任何 extra：
 
 ```bash
-python -m pip install -e ".[excel]"
+seattrellis_cli project-init --dir my-class   # 在已有 students.csv 的目录创建 project
+seattrellis_cli project-validate --project my-class/seattrellis.project.json
 ```
 
 旧版 `.xls` 请先另存为 `.xlsx` 或 CSV。
@@ -37,13 +42,14 @@ python -m pip install -e ".[excel]"
 - 未识别列会保存在学生的 `attributes` 中。
 - 没有 `student_id` 的学生会使用 `name` 作为稳定内部 ID，并在 `validate` 中给出 warning。
 
-可以先运行轻量预检：
+可以先运行轻量预检（通过 project 工作流，或把数据内联进 problem JSON 后运行
+`seattrellis_cli validate --problem`）：
 
 ```bash
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
 ```
 
-`validate` 只检查输入和明显冲突，不生成座位表。加 `--strict` 时，warning 也会导致命令失败。
+`project-validate` 只检查输入和明显冲突，不生成座位表。加 `--strict` 时，warning 也会导致命令失败。
 
 ## 教室布局 JSON
 
@@ -106,23 +112,24 @@ project 文件是本地文件型工作流的配置入口，推荐命名为 `seat
 `students`、`layout`、`rules` 必填；`history_dir` 可省略；其余字段有默认值。所有路径必须是相对路径，并相对于 project 文件所在目录解析，而不是相对于安装目录。`project-solve` 会在需要时创建 `outputs_dir`，但不会自动创建或伪造学生、layout、rules、history 输入。
 
 ```bash
-seattrellis project-info --project examples/project.seattrellis.json
-seattrellis project-validate --project examples/project.seattrellis.json
-seattrellis project-solve --project examples/project.seattrellis.json
-seattrellis project-export --project examples/project.seattrellis.json
+seattrellis_cli project-info --project examples/project.seattrellis.json
+seattrellis_cli project-validate --project examples/project.seattrellis.json
+seattrellis_cli project-solve --project examples/project.seattrellis.json
+seattrellis_cli project-export --project examples/project.seattrellis.json
 ```
 
 project 文件只保存路径和默认配置，不保存学生名单、成绩、备注、座位偏好或 snapshot 内容。真实输入和输出仍应放在 `.gitignore` 覆盖的私有目录中；不要因为 project 文件本身可分享，就误把它引用的真实数据一并提交。
 
 ## 历史 snapshot
 
-`solve --history`、`solve --history-dir`、`history-report` 和 `pair-report` 读取 SeatTrellis JSON snapshot。历史分析只依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
+`history-report`、`pair-report` 和 `validate --history` / `--history-dir` 读取
+SeatTrellis JSON snapshot（v1 时代的 snapshot 由迁移路径自动处理）。历史分析只
+依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
 
 ```bash
-seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
+seattrellis_cli history-report --problem problem.json --history-dir examples/history
+seattrellis_cli pair-report --problem problem.json --history-dir examples/history
+seattrellis_cli validate --problem problem.json --history-dir examples/history --preset daily
 ```
 
 历史 snapshot 会用当前学生名单和当前 layout 解释：
@@ -140,40 +147,22 @@ seattrellis solve --students examples/students.csv --layout examples/classroom.j
 
 ## Candidate set JSON
 
-当 `--candidates` 大于 1 时，输出不再是普通 snapshot，而是独立的 candidate set：
+v2 的多方案生成使用 `candidates` 命令，输出 `api_version: 2` 的候选报告（每个
+候选带 `candidate_id`、assignment、plan score 明细和 hard-constraint 摘要），
+推荐方案是加权总分最高的 hard-valid 候选：
 
-```json
-{
-  "schema_version": "0.2.2",
-  "kind": "candidate_set",
-  "metadata": {
-    "project": "SeatTrellis",
-    "candidate_count": 3,
-    "base_seed": 42
-  },
-  "candidates": [
-    {
-      "candidate_id": "candidate_01",
-      "snapshot": {},
-      "score": {
-        "total": 88.5,
-        "breakdown": {}
-      },
-      "hard_constraints_satisfied": true,
-      "warnings": [],
-      "metadata": {}
-    }
-  ],
-  "recommended_candidate_id": "candidate_01",
-  "warnings": []
-}
+```bash
+seattrellis_cli candidates --problem problem.json --count 5 > outputs/candidates.json
 ```
 
-candidate set 通过 `kind: "candidate_set"` 与普通 snapshot 区分。每个 `snapshot` 仍使用原有 `schema_version: "1.0"`，因此单方案和历史读取保持向后兼容。
+v1 时代的 candidate set（`kind: "candidate_set"`，`schema_version: "0.2.2"`，
+每个候选内嵌完整 snapshot）继续可读；project 工作流（`project-export
+--candidate <id>`）对这类产物按 `candidate_id` 选择方案后导出，默认使用
+`recommended_candidate_id`。如果 ID 不存在，CLI 会列出可用 ID 并返回友好错误。
 
-`export --snapshot outputs/candidates.json` 默认选择 `recommended_candidate_id`；也可以使用 `--candidate candidate_02`。`--candidate recommended` 是显式默认选择。如果 ID 不存在，CLI 会列出可用 ID 并返回友好错误。
-
-`--report` 写出的 `kind: "plan_comparison_report"` 是比较报告，不是可导出的座位 snapshot。真实 candidate set、比较报告和导出文件都应放在已忽略的 `outputs/` 等私有目录，不要提交到公开仓库。
+`project-solve --report` 写出的 `kind: "plan_comparison_report"` 是比较报告，
+不是可导出的座位 snapshot。真实 candidate set、比较报告和导出文件都应放在已
+忽略的 `outputs/` 等私有目录，不要提交到公开仓库。
 
 ## 座位位置类别
 
@@ -189,6 +178,7 @@ candidate set 通过 `kind: "candidate_set"` 与普通 snapshot 区分。每个 
 
 ## 规则 JSON
 
-规则可以来自 `--rules` JSON、`--preset`，或二者叠加。preset export 写出的文件就是普通 `RuleSet` JSON，不包含额外顶层字段，因此可被旧的 rules 加载流程继续读取。使用 preset 求解时，普通 snapshot schema 和 candidate-set schema 都不变；所选 preset 名称和是否叠加用户 rules 只记录在 `metadata.preset` 中。
-
-规则与 preset 说明见 [rules.zh.md](rules.zh.md)。
+规则 JSON（`RuleSet`）内联在 problem JSON 的 `rules` 字段中，或由 project 的
+`rules` 路径引用。v2 的 `validate --preset <name>` 只做场景数据缺失检查
+（history/score/height/vision warning），不合并 preset 规则。完整规则与预设
+说明见 [rules.zh.md](rules.zh.md)。

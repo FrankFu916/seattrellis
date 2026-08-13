@@ -2,12 +2,20 @@
 
 SeatTrellis reads a student list, a classroom layout, and a rules file. A local project file can store their relative paths and common defaults. Files in `examples/` are fictional only.
 
+In v2 these files are consumed through the project workflow (`project-*`
+commands, the workbench's project panel); the standalone CLI instead embeds
+students, seats, and rules in one problem JSON (`CoreSolveRequest`) — see the
+[quick start](quickstart.en.md). v1-era file formats remain readable and are
+migrated automatically.
+
 ## Student List
 
-The minimal install supports CSV. Install the `excel` extra for Excel `.xlsx` / `.xlsm` support:
+CSV and Excel `.xlsx` / `.xlsm` are both handled by the local Rust importer —
+no optional installs are needed:
 
 ```bash
-python -m pip install -e ".[excel]"
+seattrellis_cli project-init --dir my-class   # create a project in a directory with students.csv
+seattrellis_cli project-validate --project my-class/seattrellis.project.json
 ```
 
 Save legacy `.xls` files as `.xlsx` or CSV first.
@@ -37,13 +45,14 @@ The importer validates:
 - unknown columns are preserved in `attributes`.
 - students without `student_id` use `name` as their stable internal ID and produce a `validate` warning.
 
-Run a lightweight preflight before solving:
+Run a lightweight preflight before solving (through the project workflow, or
+inline the data in a problem JSON and run `seattrellis_cli validate --problem`):
 
 ```bash
-seattrellis validate --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json
+seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
 ```
 
-`validate` checks inputs and obvious conflicts only; it does not generate a seating plan. With `--strict`, warnings also fail the command.
+`project-validate` checks inputs and obvious conflicts only; it does not generate a seating plan. With `--strict`, warnings also fail the command.
 
 ## Classroom Layout JSON
 
@@ -106,23 +115,25 @@ A project file is the configuration entry point for a local file-based workflow.
 `students`, `layout`, and `rules` are required. `history_dir` may be omitted, and the remaining fields have defaults. Every path must be relative and is resolved from the directory containing the project file, not from the package installation directory. `project-solve` creates `outputs_dir` when needed, but it never creates or invents student, layout, rules, or history inputs.
 
 ```bash
-seattrellis project-info --project examples/project.seattrellis.json
-seattrellis project-validate --project examples/project.seattrellis.json
-seattrellis project-solve --project examples/project.seattrellis.json
-seattrellis project-export --project examples/project.seattrellis.json
+seattrellis_cli project-info --project examples/project.seattrellis.json
+seattrellis_cli project-validate --project examples/project.seattrellis.json
+seattrellis_cli project-solve --project examples/project.seattrellis.json
+seattrellis_cli project-export --project examples/project.seattrellis.json
 ```
 
 The project file stores paths and defaults only. It does not contain student lists, grades, notes, seating preferences, or snapshot contents. Keep real inputs and outputs under private ignored directories; a shareable project file does not make the private data it references safe to commit.
 
 ## Historical Snapshots
 
-`solve --history`, `solve --history-dir`, `history-report`, and `pair-report` read SeatTrellis JSON snapshots. Historical analysis depends only on JSON snapshots. It does not require Excel, PNG, Streamlit, SQLite, or any database.
+`history-report`, `pair-report`, and `validate --history` / `--history-dir` read
+SeatTrellis JSON snapshots (v1-era snapshots are migrated automatically).
+Historical analysis depends only on JSON snapshots. It does not require Excel,
+PNG, Streamlit, SQLite, or any database.
 
 ```bash
-seattrellis history-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-seattrellis pair-report --students examples/students.csv --layout examples/classroom.json --history-dir examples/history
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules.json --history-dir examples/history --output outputs/fair.snapshot.json
-seattrellis solve --students examples/students.csv --layout examples/classroom.json --rules examples/rules_neighbor_avoidance.json --history-dir examples/history --output outputs/neighbor-aware.snapshot.json
+seattrellis_cli history-report --problem problem.json --history-dir examples/history
+seattrellis_cli pair-report --problem problem.json --history-dir examples/history
+seattrellis_cli validate --problem problem.json --history-dir examples/history --preset daily
 ```
 
 Historical snapshots are interpreted against the current student list and current layout:
@@ -140,40 +151,25 @@ Historical snapshots are interpreted against the current student list and curren
 
 ## Candidate Set JSON
 
-When `--candidates` is greater than 1, the output is a separate candidate set rather than an ordinary snapshot:
+v2 multi-candidate generation uses the `candidates` command and writes an
+`api_version: 2` candidate report: each candidate carries a `candidate_id`, an
+assignment, a plan-score breakdown, and a hard-constraint summary; the
+recommended plan is the highest-scoring hard-valid candidate:
 
-```json
-{
-  "schema_version": "0.2.2",
-  "kind": "candidate_set",
-  "metadata": {
-    "project": "SeatTrellis",
-    "candidate_count": 3,
-    "base_seed": 42
-  },
-  "candidates": [
-    {
-      "candidate_id": "candidate_01",
-      "snapshot": {},
-      "score": {
-        "total": 88.5,
-        "breakdown": {}
-      },
-      "hard_constraints_satisfied": true,
-      "warnings": [],
-      "metadata": {}
-    }
-  ],
-  "recommended_candidate_id": "candidate_01",
-  "warnings": []
-}
+```bash
+seattrellis_cli candidates --problem problem.json --count 5 > outputs/candidates.json
 ```
 
-`kind: "candidate_set"` distinguishes this artifact from an ordinary snapshot. Every nested `snapshot` still uses the existing `schema_version: "1.0"`, preserving single-plan and history compatibility.
+v1-era candidate sets (`kind: "candidate_set"`, `schema_version: "0.2.2"`, each
+candidate embedding a full snapshot) remain readable. The project workflow
+(`project-export --candidate <id>`) selects a plan from such an artifact by
+`candidate_id` and exports it, defaulting to `recommended_candidate_id`.
+Unknown IDs produce a friendly error listing available candidates.
 
-`export --snapshot outputs/candidates.json` selects `recommended_candidate_id` by default. Use `--candidate candidate_02` for a specific plan; `--candidate recommended` explicitly requests the default. Unknown IDs produce a friendly error listing available candidates.
-
-The `kind: "plan_comparison_report"` file written by `--report` is a comparison report, not an exportable seating snapshot. Keep real candidate sets, reports, and exports under ignored private paths such as `outputs/`; do not commit them to a public repository.
+The `kind: "plan_comparison_report"` file written by `project-solve --report`
+is a comparison report, not an exportable seating snapshot. Keep real candidate
+sets, reports, and exports under ignored private paths such as `outputs/`; do
+not commit them to a public repository.
 
 ## Seat Position Categories
 
@@ -189,6 +185,9 @@ Position categories power `history-report` and `fair_rotation`. Current rules:
 
 ## Rules JSON
 
-Rules may come from a `--rules` JSON file, `--preset`, or both. A preset export is an ordinary `RuleSet` JSON document with no extra top-level fields, so it remains compatible with the existing rules-loading path. Preset solving does not change the ordinary snapshot or candidate-set schemas; the selected preset name and whether a user-rules overlay was applied are recorded only under `metadata.preset`.
+The rules JSON (`RuleSet`) is embedded in the problem JSON's `rules` field or
+referenced by the project's `rules` path. In v2, `validate --preset <name>`
+performs scenario data-missing checks (history/score/height/vision warnings)
+only; it does not merge preset rules.
 
 See [rules.en.md](rules.en.md) for rules and preset behavior.

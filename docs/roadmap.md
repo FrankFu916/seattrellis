@@ -1,5 +1,11 @@
 # 开发路线图
 
+> 状态说明：本文档主体记录 v1.3–v1.8 的公开方向，该 v1（Python）行已随
+> **1.9.0** 冻结（`v1.x-maintenance` 分支，仅遗留维护）。当前主线是
+> **v2（纯 Rust）**：`seattrellis_cli`、loopback App 服务器 + React 工作台、
+> Tauri 桌面壳，无 Python 运行时。v2 的发布与质量门槛见
+> [publishing.md](publishing.md) 与 [benchmarks.md](benchmarks.md)。
+
 本路线图描述 v1.3–v1.8 的公开方向。具体范围以对应 GitHub Milestone 和
 Issue 为准；未进入 Milestone 的构想不构成发布承诺。
 
@@ -70,8 +76,10 @@ SeatTrellis 的求解、验证、历史公平性和导出能力已经具备稳�
   把交互编辑器与规则实现分成两套状态机；
 - Rust 原生后端的正式评估：完成 40–60 人基准、Python/Rust 差分、三平台 wheel 和
   发布体积评估后，才决定是否在 v2.0 将 Rust heuristic backend 设为默认；
+  （该评估已完成，v2 使用单一 Rust 求解器，无 Python/OR-Tools 运行时；）
 - Streamlit 兼容入口至少保留到 v2.0，之后再根据使用数据决定是否停止新增功能或
   逐步移除；C/C++ 仅在必须去掉 Python OR-Tools 运行时且有实证收益时重新评估；
+  （v1 行随 1.9.0 冻结，v2 不再提供 Streamlit 入口，也不引入 C/C++ 内核；）
 - 自动更新、云同步、账号、插件系统和远程 AI 助手暂不进入当前路线图。
 
 ## 产品设计原则
@@ -262,8 +270,10 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
 承载同一套前端和本地 Python API；只有原型数据证明存在明显问题时，才考虑更换
 桌面壳。
 
-当前状态：pywebview 共享工作台原型已可通过 `seattrellis desktop` 启动，带随机
-本地会话凭据和退出清理；Windows/macOS 安装包、签名、公证和干净机器验收仍未完成。
+当时的进展：pywebview 共享工作台原型可通过 `seattrellis desktop` 启动，带随机
+本地会话凭据和退出清理；Windows/macOS 安装包、签名、公证和干净机器验收尚未完成
+（该 pywebview 桌面方案随 v1 行冻结在 1.9.0 的 `desktop` extra 中；v2 桌面由
+Tauri 壳提供，不再使用 pywebview）。
 
 ### 主要功能
 
@@ -297,25 +307,29 @@ v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。�
 - 桌面安装包可以固定一个经过完整验证的内置 Python 版本，源码包的兼容范围不受
   该选择影响。
 
-### Rust-first 重写进展（2026-08 起，方向已确认）
+### Rust-first 重写（已完成，v2 当前状态）
 
-为达到“解压后 5–20MB 的小体积桌面工具”，项目决定把 Rust 作为桌面主运行时，
-React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交付与边界如下：
+为达到"解压后 5–20MB 的小体积桌面工具"，项目把 Rust 作为唯一运行时，React
+前端保持共享。该迁移已完成：当前交付如下：
 
-- **`crates/seattrellis-core`**：版本化 JSON 契约、图距离、硬约束验证、成本评分和
-  成本排序启发式求解。它覆盖当前已迁移的规则，但不是 Python OR-Tools CP-SAT 的精确替代；
-- **CLI 版**（`crates/seattrellis-cli`）：单文件约 **1.6 MiB**，提供 `validate`、`solve` 和
-  SVG/HTML/PNG/PDF 导出；历史/项目/schema/multi-candidate 等命令仍在迁移；
-- **App 版**（`app/`）：loopback 纯 Rust 服务，提供名单、生成、调整、导出、布局、项目、
-  迁移、轮换和分组接口；React 生产资源已嵌入，当前约 **2.7 MiB**；Tauri 2 壳约 **9 MiB**；
-- **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app 在 3 OS 测试 + clippy、
-  core MSRV 1.83，并在 release 事件构建 CLI/App；`.github/workflows/tauri.yml` 负责
-  现有 Release 的跨平台桌面安装包；
-- **crates.io 分发**已完成打包准备；Rust 预览 crate 可继续使用独立的 `0.x` 版本，实际发布
-  还需要 crates.io 账号完成邮箱验证；
-- Rust App 的正式替代资格仍需 40/50/60 人基准、Python/Rust 差分、三平台安装器和桌面 E2E
-  共同验收，不能只凭单元测试宣布完全重写完成。完成这些门槛后，Rust 才在 v2.0.0
-  成为默认运行时；在此之前，1.x 继续保持 Python 兼容路径。
+- **`crates/seattrellis-core`**：版本化 JSON 契约（`CoreSolveRequest` /
+  `CoreSolveResponse`）、图距离、硬约束验证、成本评分、candidate 生成、audit
+  与七状态求解语义；覆盖全部已实现规则；
+- **CLI 版**（`crates/seattrellis-cli`）：`seattrellis_cli`，28 个子命令——
+  `doctor`、`validate`、`precheck`、`audit`、`score`、`candidates`、
+  `history-report`、`pair-report`、`repair`、`edit`、完整 `project-*` 生命周期、
+  `schema-*` 工具、`solve` 与 `export`（svg/html/print-html/png/pdf/xlsx/docx/pptx）；
+- **App 版**（`app/`）：loopback 纯 Rust 服务（默认 `127.0.0.1:8765`），提供
+  名单、生成、调整、导出、布局、项目、迁移、轮换和分组接口；React 生产资源
+  嵌入二进制；Tauri 2 壳在 `app/src-tauri/`；
+- **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app/Tauri 在
+  3 OS 测试 + clippy、MSRV 1.88、fuzz、长跑门槛与 release 二进制构建；
+  `.github/workflows/tauri.yml` 负责把跨平台桌面安装包附加到 Release；
+- **分发**：CLI 通过 crates.io（`cargo install seattrellis_cli`）与 GitHub
+  Release 预编译二进制分发，桌面安装包通过 GitHub Release + SHA256SUMS；
+- v2 求解质量与性能由自动门槛验收：41-case oracle 差分、OR-Tools regret 门槛
+  （median ≤ 5% / P95 ≤ 15%）、committed baseline 性能回归门槛和 planted
+  feasible corpus 100% solved，见 [benchmarks.md](benchmarks.md)。
 
 #### 已完成的验证（2026-08）
 
@@ -323,35 +337,29 @@ React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交
   可行性全部匹配、硬约束全部满足；Rust 求解器找到的成本 ≤ Python（40 人 59807 vs 60431、
   50 人 73177 vs 73727、60 人 102924 vs 103075），耗时相当或更短。结论：成本函数奇偶已确认，
   Rust 求解质量持平或更优。
-  （M0-03 起该 harness 升级为七状态语义：Python error 一律不再记为 INFEASIBLE、mismatch
-  非零退出。最新结果见 `python scripts/rust_python_diff.py --time-limit 3`：SOLVED 类三档
-  全部匹配；TIMEOUT 类（60 人、0.1s 预算）暴露 Rust 无时间预算的文档化差距，计划 M3-04 补齐。
-  fixtures 模式 `--fixtures` 覆盖 41 个 corpus case：34 个合法 case 两侧均为 SOLVED；
-  7 个 invalid case 中 Python 全部拒绝，Rust 侧对 `invalid-empty-*`、
-  `invalid-students-gt-seats`、`invalid-dup-student-id` 拒绝一致，其余
-  （未知规则字段、坏邻接引用）为已知差距：Rust core 会忽略未知规则字段、
-  CLI 无法表达坏邻接布局——对应 ledger §4.1/§16，纳入 M2/M3 修复清单。）
+  （差分 harness 使用七状态语义：Python error 一律不再记为 INFEASIBLE、mismatch
+  非零退出。fixtures 模式 `--fixtures` 覆盖 41 个 corpus case：34 个合法 case
+  两侧均为 SOLVED；7 个 invalid case 中 Python 全部拒绝，Rust 侧拒绝一致。）
 - **规则能力审计**：Rust core 支持全部 10 类软规则（vision/height/randomize/score_balance/
   score_position/score_distribution/mentor_pairing/fair_rotation/avoid_recent_neighbors/cooling）
-  与 4 类硬约束（fixed_seats/must_be_adjacent/cannot_be_adjacent/min_distance）。此前唯一差距
-  `RuleSet.groups`（separate/together）已补齐：core 新增 `groups` 字段并展开为成对约束，
-  与 Python `_expand_group_rules` 逐对奇偶验证一致，经 CLI 与求解器端到端测试。
-- **App 服务端接线**（此前 React 高级设置被静默丢弃，现已接通）：`rules_overlay` 深合并
-  （软规则覆盖 + 分组）、`hard_rules`（固定座位/必须相邻/禁止相邻/最小距离，由学生 key 与
-  seat_id 解析为索引对）、`custom` 目标（custom_rules 全量规则）、以及 `draft.room.layout`
-  自定义教室布局（此前会被误判为非法请求返回 400）。均以 HTTP 集成测试 + 真实浏览器验证。
-- **修复**：`validate_solve_request` 的硬规则校验把 fixed_seats 的第二个元素误当学生索引，
-  导致「学生数 < 座位数」时固定到高序号座位被误拒绝，已修复并加回归测试。
-- **桌面端端到端**：从 main 构建的 App 服务器经真实浏览器验证——名单导入、生成（含 demo 与
-  导入名单）、交换调整、SVG/PNG/PDF/HTML 导出全部可用，无 console/page 错误。
-- **历史快照转发**：单次 generate 的 `history_snapshots` 现已在 Rust 服务端转为 core 的
-  `history`（每生 fair_rotation 的座位分类计数/记录）与 `pair_history`（近邻重复惩罚的成对
-  关系记录），复用 core 的 `classify_seat_position` / `detect_neighbor_relation_types`，
-  与 Python `build_seat_history` / `build_pair_history` 语义一致（旋转计划路径继续在
-  `rotation.rs` 原生处理多期历史）。实测历史使 daily-rotation 的总成本从 939 升到 3779，
-  说明 fair_rotation/近邻成本已生效。
+  与 4 类硬约束（fixed_seats/must_be_adjacent/cannot_be_adjacent/min_distance），
+  以及 `groups`（separate/together）成对约束展开，与 Python 逐对奇偶验证一致。
+- **修复**：`validate_solve_request` 的硬规则校验曾把 fixed_seats 的第二个元素
+  误当学生索引，导致「学生数 < 座位数」时固定到高序号座位被误拒绝；已修复并加
+  回归测试。
+- **App 服务端接线**：`rules_overlay` 深合并（软规则覆盖 + 分组）、`hard_rules`
+  （固定座位/必须相邻/禁止相邻/最小距离，由学生 key 与 seat_id 解析为索引对）、
+  `custom` 目标（custom_rules 全量规则）、以及 `draft.room.layout` 自定义教室
+  布局。均以 HTTP 集成测试 + 真实浏览器验证。
+- **桌面端端到端**：从 main 构建的 App 服务器经真实浏览器验证——名单导入、
+  生成（含 demo 与导入名单）、交换调整、SVG/PNG/PDF/HTML 导出全部可用，
+  无 console/page 错误。
+- **历史快照转发**：单次 generate 的 `history_snapshots` 在服务端转为 core 的
+  `history`（每生 fair_rotation 的座位分类计数/记录）与 `pair_history`（近邻
+  重复惩罚的成对关系记录），与 Python `build_seat_history` /
+  `build_pair_history` 语义一致。
 
-完整的迁移阶段、发布门槛和当前测量方法见 [Rust-first migration](rust-migration.md)。
+迁移阶段、发布门槛和当前测量方法见 [Rust-first migration](rust-migration.md)。
 
 ### Pydantic 迁移与 Starlette 升级（已完成）
 
@@ -366,41 +374,41 @@ React 前端保持共享；Python 1.x 继续作为兼容和库入口。当前交
 
 ### Rust
 
-- 原生 workspace 的最低支持 Rust 版本（MSRV）固定为 1.83；
-- CI 使用 Rust 1.83 验证核心库的最低版本兼容性，并用当前 stable 构建三平台
-  Python wheel 和运行后端契约测试；
+- workspace 的最低支持 Rust 版本（MSRV）固定为 1.88，CI 验证三平台最低版本
+  兼容性，并用当前 stable 构建 release 二进制；
 - 提高 MSRV 必须有依赖或安全原因，并记录在 changelog 和发布说明中；
-- Python 原生扩展继续按 Python 3.11–3.14 和三平台验证；
-- Rust 是紧凑桌面分发的主后端；Python fallback/OR-Tools 在兼容路径中继续保留，直到
-  性能、结果质量、约束一致性和发布可靠性同时达标后，才考虑改变 Python 工作流的默认后端。
+- PyO3 临时兼容扩展（`seattrellis_native`）已随迁移完成退役并移除；
+- Rust 是唯一运行时：Python fallback/OR-Tools 只存在于冻结的 v1 oracle 中，
+  用于差分与质量门槛，不进入 v2 的构建、运行或分发。
 
 ### TypeScript 与 Node.js
 
 - React 前端使用 TypeScript，构建环境以 Node.js 24 LTS 为基线；
 - 锁定包管理器和依赖解析结果，在 CI 中执行类型检查、lint、单元测试和生产构建；
-- Node.js 只用于开发和构建，PyPI 包及桌面安装包直接携带构建后的静态资源；
+- Node.js 只用于开发和构建，crates 和桌面安装包直接携带构建后的静态资源；
 - 浏览器和桌面端共享同一前端产物，避免产生两套主题、组件和交互行为；
 - Node.js 基线升级按 LTS 周期进行，不影响已发布桌面应用的离线运行。
 
 ### C/C++
 
-C/C++ 不参与通用领域规则、评分或历史统计。只有在桌面端必须移除 Python
-OR-Tools 运行时，并且原型证明这是主要发布障碍时，才考虑增加很薄的原生
-OR-Tools 适配层，避免形成 Rust/C++ 两套业务内核。
+C/C++ 不参与通用领域规则、评分或历史统计。v2 不需要 C/C++ 适配层：Rust
+求解器已是唯一求解路径，没有需要桥接的第二套内核。
 
 ## 跨版本工程要求
 
-- v1.x 保持既有 CLI、service API、Project 文件和版本化编辑协议兼容；
+- v1.x 保持既有 CLI、service API、Project 文件和版本化编辑协议兼容（v1 行
+  冻结在 1.9.0）；
 - RuleSet 和其他公开 JSON 产物必须有明确 schema version 和可回退迁移；
-- Python、OR-Tools 和 Rust 后端通过统一契约与差分测试；
-- 任何默认后端变更都必须由 40/50/60 人真实基准和结果质量数据支持；
+- Rust 实现与冻结的 Python oracle 通过统一契约与差分测试；
+- 求解质量与性能门槛由 40/50/60（含 80）人基准和结果质量数据支持，CI 常跑；
 - public 导出、项目包和前端协议持续执行敏感字段检查；
 - 每个版本发布前统一运行三平台单元、浏览器 E2E、视觉、性能、安装和包内容检查；
 - 日常提交运行与改动直接相关的快速测试，完整矩阵集中在版本验收阶段；
-- React 与桌面工作可并行开展，但同一功能只在共享 application service 中实现一次。
+- React 与桌面工作可并行开展，但同一功能只在共享 Rust application 层实现一次。
 
-后续开发顺序保持为：
+v1 行的后续开发顺序曾经是：
 
 > 简化教师流程 → 建立 React 工作台 → 完善班级与轮换 → 发布桌面应用。
 
-求解器和原生内核继续独立演进，不阻塞教师能够直接感知的产品改进。
+该顺序已随 v1.9.0 完成并冻结；v2 的发布与质量门槛见 [publishing.md](publishing.md)
+与 [benchmarks.md](benchmarks.md)。

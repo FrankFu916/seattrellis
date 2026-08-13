@@ -1,12 +1,12 @@
 # 中文字体策略
 
-本文档说明 SeatTrellis 导出功能（HTML / PDF / PNG）中的中文字体兼容策略。
+本文档说明 SeatTrellis v2 导出功能（HTML / PDF / PNG）中的中文字体兼容策略。
 
 ## 核心原则
 
 - **不将字体文件提交到仓库**。字体文件体积大（单个中文字体 5–30 MB），且大多数字体有版权限制。
-- **使用跨平台 CSS font-family 回退链**，优先使用系统自带字体。
-- **允许用户自行配置字体**，但不作为默认功能。
+- **PDF 不嵌入字体**：按名字引用系统 CJK 字体，由查看器替换，保证导出文件体积紧凑。
+- **使用跨平台字体发现链**：按固定质量优先级在常见平台字体目录中查找可用 CJK 字体。
 
 ## 各平台默认字体
 
@@ -33,85 +33,50 @@ CSS 回退链：`"Microsoft YaHei", "SimHei", "SimSun", sans-serif`
 ### Linux
 
 系统字体取决于发行版和用户安装：
-- `Noto Sans SC`（Google Noto 中文，部分发行版默认）
+- `Noto Sans CJK SC`（Google Noto 中文，部分发行版默认）
 - `WenQuanYi Micro Hei`（文泉驿微米黑，常见社区字体）
 - `WenQuanYi Zen Hei`（文泉驿正黑）
 - `FandolSong` / `FandolHei`（部分 TeX 发行版附带）
 
-CSS 回退链：`"Noto Sans SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", sans-serif`
+CSS 回退链：`"Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", sans-serif`
 
-## 推荐 CSS 回退链（跨平台）
+## PDF 导出（系统字体智能引用）
 
-```css
-font-family:
-    "PingFang SC",
-    "Microsoft YaHei",
-    "Noto Sans SC",
-    "WenQuanYi Micro Hei",
-    -apple-system,
-    sans-serif;
-```
+v2 的 PDF 渲染器不依赖 WeasyPrint、Pango 或任何 Python 包。它按固定的质量
+优先级链在常见平台字体目录中枚举字体，把最佳可用 CJK 字体按 PostScript 名字
+写入 PDF，由查看器用自己的字体替换（任何带图形界面的设备都有 CJK 字体）：
 
-## PDF 导出（WeasyPrint）
+1. `PingFang SC`（macOS）或 `Noto Sans CJK SC`（Linux）——推荐档，效果最佳；
+2. `Microsoft YaHei`（Windows）——可接受档；
+3. `SimSun` / 其他 CJK 字体——fallback 档，导出时会提示"效果可能低于预期"；
+4. 找不到任何 CJK 字体——保持纯 ASCII 的 Helvetica 路径，并提示安装字体。
 
-WeasyPrint 除了 Python 包，还需要系统 Pango。macOS 可通过 Homebrew 安装：
+发现链顺序固定，因此同一台机器上的导出结果是确定性的；只有"哪款字体存在"依赖
+环境。Windows 应确保微软雅黑已安装（默认已安装）；Linux（服务器/Docker）可安装：
 
 ```bash
-brew install pango
-python -m pip install -e ".[pdf]"
+# Debian/Ubuntu
+sudo apt-get install fonts-noto-cjk
+# CentOS/RHEL
+sudo yum install google-noto-sans-cjk-fonts
 ```
 
-Apple Silicon 的 Homebrew 库通常位于 `/opt/homebrew/lib`。SeatTrellis 会在导出
-前自动检查这个目录，也兼容 Intel Homebrew 的 `/usr/local/lib` 和 MacPorts 的
-`/opt/local/lib`。如果使用自定义安装位置，可以在启动前设置：
+## PNG 导出
 
-```bash
-export DYLD_FALLBACK_LIBRARY_PATH="/your/pango/lib:$DYLD_FALLBACK_LIBRARY_PATH"
-```
-
-Linux 应使用发行版包管理器安装 Pango；Windows 建议按照 WeasyPrint 官方文档
-安装对应运行库。Pango 安装完成后可运行下面的命令确认版本：
-
-```bash
-pango-view --version
-```
-
-系统库可加载但 PDF 中文显示为方块或空白时，再检查字体：
-
-1. **macOS**：通常无需配置，PingFang SC 自动可用。
-2. **Windows**：确保微软雅黑已安装（默认已安装）。
-3. **Linux（服务器/Docker）**：
-   ```bash
-   # Debian/Ubuntu
-   sudo apt-get install fonts-noto-cjk
-   # CentOS/RHEL
-   sudo yum install google-noto-sans-cjk-fonts
-   ```
-
-WeasyPrint 也可以配置自定义字体目录：
-```python
-from weasyprint import HTML
-HTML('input.html').write_pdf('output.pdf', font_config=...)
-```
-
-## PNG 导出（Pillow）
-
-PNG 导出使用 Pillow 的默认字体（通常为系统默认位图字体），中文支持有限。如需高质量中文 PNG：
-1. 安装支持中文的 TrueType 字体
-2. 在 `exporters/png.py` 中指定字体路径
-
-这项改动暂未安排，当前 PNG 导出仍依赖系统字体。
+PNG 渲染器使用与 PDF 相同的系统字体发现逻辑（同一优先级链），把发现的 CJK
+字体文件交给本地光栅化器绘制。发现链找不到中文字体时，PNG 中的中文可能显示为
+占位符；此时按上面 Linux/服务器一节安装 CJK 字体即可。
 
 ## 用户自定义字体
 
 如果用户有自己的字体文件（如学校购买的授权字体），可以：
 
-1. 将 `.ttf` / `.otf` 文件放在项目目录外（如 `~/fonts/`）
-2. 通过环境变量或配置文件指定字体路径
-3. v1.0 后可能提供 `SEATTRELLIS_FONT_PATH` 配置项
+1. 将 `.ttf` / `.otf` 文件放在系统字体目录（如 `~/Library/Fonts` 或
+   `~/.fonts`），使其进入系统字体发现路径；
+2. 导出时优先使用质量档更高的字体（如 PingFang SC / Noto Sans CJK SC）。
 
 ## 版本兼容
 
-- 本策略文档随版本更新，不产生 breaking change
-- 默认行为保持：不要求用户安装字体，不随仓库分发字体
-- 所有 examples/ 使用系统默认字体即可正常渲染
+- 本策略文档随版本更新，不产生 breaking change；
+- 默认行为保持：不要求用户安装字体，不随仓库分发字体，不嵌入字体文件；
+- 所有 examples/ 使用系统默认字体即可正常渲染。

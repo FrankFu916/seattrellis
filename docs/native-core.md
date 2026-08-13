@@ -1,74 +1,28 @@
-# Rust native core and Python compatibility extension
+# Rust core
 
-SeatTrellis now has a Rust-first compact desktop runtime. The `app/` and Tauri
-paths use `seattrellis_core` directly and are covered in
-[the migration guide](rust-migration.md). Python 1.x remains the compatibility
-and library path during the staged migration.
+SeatTrellis v2 是纯 Rust 实现：`seattrellis_core` 是唯一的语义真相，负责规则
+编译、合法性校验、编辑状态机、migration、隐私和求解状态；CLI、loopback App
+服务器、Tauri 桌面壳和 React 工作台都建立在这套 core 之上。
 
-This document specifically describes the separate `seattrellis_native` PyO3
-extension. It is still an optional Python-side experiment and is not the same
-thing as the standalone Rust App or CLI.
+历史说明：v1 迁移期间曾有一个 PyO3 临时兼容扩展（`seattrellis_native`，通过
+`--backend native` 选择），它只在 Python 兼容路径中作为可选的验证/评分实验，
+从未作为默认求解器。v2 迁移完成后该扩展已退役，v2 树中不再包含 Python 集成；
+`native/` 目录与 PyO3 crate 在 v2 final 前已删除。
 
-Current behavior:
+当前运行时（无 Python、无 Node.js、无 OR-Tools）：
 
-- `--backend native` is explicit opt-in;
-- normal `auto`, `fallback`, and `ortools` flows do not require Rust;
-- the native backend currently delegates search to Python fallback, then uses
-  one versioned, identity-free DTO to precompute graph distances, verify
-  assignment structure and hard rules, and calculate a peer-mixing score;
-- if the extension is not installed, SeatTrellis reports a clear missing native
-  backend error instead of silently falling back.
+- `seattrellis_cli`：独立求解 + 导出工具，28 个子命令；
+- `seattrellis_app`：只绑定 `127.0.0.1` 的 loopback HTTP 服务，嵌入 React
+  工作台资源，为浏览器和 Tauri 壳提供本地 API；
+- `app/src-tauri/`：Tauri 2 桌面壳。
 
-## Installation status
-
-The experimental `seattrellis_native` extension is not bundled with the main
-`seattrellis` wheel and is not currently published by this project as a
-separate wheel. There is no `native` runtime extra. PyPI users should use
-`auto`, `fallback`, or `ortools`; do not select `native` unless the compatibility
-check below succeeds.
-
-Local Rust checks:
+构建与测试：
 
 ```bash
-cargo test --locked
+cargo test --locked -p seattrellis_core
+cargo test --locked -p seattrellis_cli
+cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
 ```
 
-To evaluate the extension, activate a virtual environment in a matching source
-checkout and run:
-
-```bash
-python -m pip install -e .
-python -m pip install "maturin>=1.14.1,<2"
-python -m maturin develop --release --manifest-path native/seattrellis_native/Cargo.toml --features extension-module
-python -c "from seattrellis.solver.native import require_native_core; print(require_native_core().NATIVE_API_VERSION)"
-seattrellis doctor
-```
-
-`maturin develop` requires an active virtual environment. The Rust target must
-match the Python interpreter architecture; for example, an Apple Silicon Python
-requires an `aarch64-apple-darwin` Rust toolchain.
-`doctor` reads package metadata without loading the extension into its own
-process; the explicit compatibility command above performs the API check.
-
-Then run:
-
-```bash
-seattrellis solve \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
-  --rules examples/rules.json \
-  --backend native
-```
-
-Pull requests build and install experimental wheels on Linux, Windows, and
-macOS at the supported Python range boundaries, 3.11 and 3.14. Ubuntu also
-checks Python 3.12 and 3.13. Those wheels are retained as short-lived CI
-artifacts for inspection; they are not release assets and are not supported as
-public binary distributions yet. The native workspace has a Rust 1.83 MSRV;
-current stable Rust remains the recommended development toolchain.
-
-The native wheel contract runs Python/Rust differential checks for hard rules,
-graph topology and peer-mixing scoring. The v1.4 decision is to continue this
-work as an optional validator and precompute experiment, but not make it a
-default solver: the current search still runs in Python and therefore cannot
-yet demonstrate the required end-to-end speedup on 40/50/60-student cases.
+v1（Python）行冻结在 1.9.0，由 `v1.x-maintenance` 分支维护，只作为行为基准的
+oracle；它不影响 v2 的构建、运行或分发。
