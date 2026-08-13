@@ -593,7 +593,7 @@
             "pair_history_count": 0,
             "warnings": []
           },
-          "version": "1.8.4"
+          "version": "1.9.0"
         },
         "metrics": {
           "attempt_limit": 240,
@@ -1550,7 +1550,7 @@
             "pair_history_count": 0,
             "warnings": []
           },
-          "version": "1.8.4"
+          "version": "1.9.0"
         },
         "metrics": {
           "attempt_limit": 240,
@@ -2507,7 +2507,7 @@
             "pair_history_count": 0,
             "warnings": []
           },
-          "version": "1.8.4"
+          "version": "1.9.0"
         },
         "metrics": {
           "attempt_limit": 240,
@@ -2882,7 +2882,7 @@
     "project": "SeatTrellis",
     "requested_candidate_count": 3,
     "solver_backend": "fallback-heuristic",
-    "version": "1.8.4"
+    "version": "1.9.0"
   },
   "recommended_candidate_id": "candidate_03",
   "schema_version": "0.2.2",

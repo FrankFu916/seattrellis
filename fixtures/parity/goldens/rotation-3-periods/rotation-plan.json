@@ -15915,7 +15915,7 @@
           },
           "rotation_label": "Period 1",
           "rotation_period": 1,
-          "version": "1.8.4"
+          "version": "1.9.0"
         },
         "metrics": {
           "attempt_limit": 480,
@@ -17405,7 +17405,7 @@
           },
           "rotation_label": "Period 2",
           "rotation_period": 2,
-          "version": "1.8.4"
+          "version": "1.9.0"
         },
         "metrics": {
           "attempt_limit": 480,
@@ -18917,7 +18917,7 @@
           },
           "rotation_label": "Period 3",
           "rotation_period": 3,
-          "version": "1.8.4"
+          "version": "1.9.0"
         },
         "metrics": {
           "attempt_limit": 480,
