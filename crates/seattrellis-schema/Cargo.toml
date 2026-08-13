@@ -4,7 +4,11 @@ version = "2.0.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "v2 durable artifact envelope, registry and typed wire DTOs (M2-01/M2-02)."
+description = "SeatTrellis v2 durable artifact envelope, registry and typed wire DTOs."
+repository = "https://github.com/FrankFu916/seattrellis"
+homepage = "https://github.com/FrankFu916/seattrellis"
+keywords = ["seating", "classroom", "education", "solver"]
+categories = ["command-line-utilities", "science"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

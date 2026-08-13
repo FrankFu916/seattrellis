@@ -4,12 +4,16 @@ version = "2.0.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Export/render primitives: solved plan to SVG / HTML / PNG / PDF / XLSX / DOCX / PPTX bytes (M1-02 crate split)."
+description = "Export and render primitives for SeatTrellis: solved plans to SVG / HTML / PNG / PDF / XLSX / DOCX / PPTX."
+repository = "https://github.com/FrankFu916/seattrellis"
+homepage = "https://github.com/FrankFu916/seattrellis"
+keywords = ["seating", "classroom", "education", "solver"]
+categories = ["command-line-utilities", "science"]
 
 [dependencies]
 fontdue = "0.9"
 flate2 = "1"
-seattrellis_core = { path = "../../crates/seattrellis-core" }
+seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0-rc.1" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"

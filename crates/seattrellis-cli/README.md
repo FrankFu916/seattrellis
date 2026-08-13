@@ -1,28 +1,30 @@
 # seattrellis_cli
 
-A single-file native command-line solver and exporter for
-[SeatTrellis](https://github.com/FrankFu916/seattrellis) classroom seating. The
-release binary is ~1.6 MB with no runtime dependencies.
+Native command-line solver and exporter for [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序) classroom seating. The release binary is dependency-free and works offline.
 
-This is the compact native CLI surface, not yet a drop-in replacement for the
-Python CLI. It currently focuses on solving a versioned JSON problem and
-exporting a solved plan; input validation is available, while history, project,
-schema migration, and full candidate-report commands remain on the migration
-roadmap.
+## Commands
 
+- `solve` / `validate` / `precheck` / `audit` / `score` / `candidates` — solve a JSON problem, check inputs, diagnose feasibility, audit a plan, score a fixed assignment, generate candidate sets
+- `edit` / `repair` — apply manual operations to a snapshot or repair a constrained plan (saved-lock aware)
+- `history-report` / `pair-report` — summarize historical snapshots
+- `project-*` — project workspace lifecycle: init, list, info, validate, solve, export, rotate, edit, repair, privacy, pack, restore
+- `schema-list` / `schema-export` / `schema-migrate` — the 12-kind v2 artifact registry, generated JSON Schemas, and v1→v2 migration
+- `export` — render a solved plan as SVG / HTML / print-HTML / PNG / PDF / XLSX / DOCX / PPTX
+
+Exit codes follow the frozen contract: 0 solved, 2 invalid input, 3 proven infeasible, 4 timeout, 5 unknown, 70 internal error, 130 cancelled.
+
+## Install
+
+```bash
+cargo install seattrellis_cli
+# or use the prebuilt binaries from GitHub Releases
 ```
-seattrellis_cli validate --problem problem.json
-seattrellis_cli solve --problem problem.json [--seed N] [--output result.json]
-seattrellis_cli export --problem problem.json --solution result.json --format svg|html|png|pdf --output plan.svg
+
+## Example
+
+```bash
+seattrellis_cli solve --problem problem.json --output plan.json
+seattrellis_cli export --problem problem.json --snapshot plan.json --format png --output plan.png
 ```
 
-- `solve` runs the cost-ranked solver from `seattrellis_core` and prints a
-  feasibility/cost summary.
-- `validate` checks the versioned request, capacity, coordinates, student
-  records, and hard-rule references without running the search.
-- `export` renders the solved plan as a self-contained SVG, inline HTML, PNG,
-  or a hand-written single-page PDF.
-- Colored help and results when the terminal supports it; plain text when
-  piped.
-
-Licensed under Apache-2.0.
+License: Apache-2.0.

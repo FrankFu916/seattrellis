@@ -4,7 +4,7 @@ version = "2.0.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Single-file solve + export CLI for SeatTrellis classroom seating."
+description = "Native command-line solver and exporter for SeatTrellis classroom seating."
 repository = "https://github.com/FrankFu916/seattrellis"
 homepage = "https://github.com/FrankFu916/seattrellis"
 readme = "README.md"
@@ -18,11 +18,11 @@ categories = ["command-line-utilities", "mathematics"]
 # is hand-written straight into the binary (no extra crate) to stay small.
 [dependencies]
 seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0-rc.1" }
-seattrellis-io = { path = "../../crates/seattrellis-io" }
-seattrellis-export = { path = "../../crates/seattrellis-export" }
-seattrellis-application = { path = "../../crates/seattrellis-application" }
-seattrellis-domain = { path = "../../crates/seattrellis-domain" }
-seattrellis-schema = { path = "../../crates/seattrellis-schema" }
+seattrellis-io = { path = "../../crates/seattrellis-io", version = "2.0.0-rc.1" }
+seattrellis-export = { path = "../../crates/seattrellis-export", version = "2.0.0-rc.1" }
+seattrellis-application = { path = "../../crates/seattrellis-application", version = "2.0.0-rc.1" }
+seattrellis-domain = { path = "../../crates/seattrellis-domain", version = "2.0.0-rc.1" }
+seattrellis-schema = { path = "../../crates/seattrellis-schema", version = "2.0.0-rc.1" }
 serde_json = "1"
 png = "0.17"
 
