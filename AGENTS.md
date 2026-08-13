@@ -237,6 +237,23 @@ official corpus 的"官方来源"扩充、CLI stdout 字节级 golden。按修�
   分支建立时机（计划 §9.1），然后执行 Python retirement（删除面已确认
   无 Rust 依赖，c4ba074）。
 
+## M6 beta.1（2026-08-13，ledger §19.40）：Python retirement 执行完成
+
+- **v1 保护线**：annotated tag `v1.9.0` + `v1.x-maintenance` 分支（同
+  commit `da9fdf6`），分支保护已配置（Rust/Tests/hygiene 检查 + 1 review +
+  enforce admins）；`GOLDEN_PROVENANCE.final_v1_reference` 已解析。
+- **删除面**：`src/seattrellis/`、`native/`（PyO3）、`pyproject.toml`、
+  `tests/`、`e2e/`（Streamlit）、`desktop.yml`、`benchmarks.yml`、
+  `publish.yml` 全部移除；workspace 无 Python 成员。
+- **冻结 oracle**：`.oracle-venv` 从 `v1.9.0` tag 安装
+  （`seattrellis[all] @ git+...@v1.9.0`）；差分脚本优先使用它；
+  oracle guards 移至 `scripts/oracle-guards/`。
+- **CI**：tests.yml 仅剩 rust-msrv / web-e2e-rust / parity-oracle /
+  rust-python-differential；no-python 门禁 `--tree --expect-retired`；
+  hygiene 硬断言退役树不回归；E2E fixtures 在 `e2e-rust/fixtures/`。
+- **M7 RC 计划**：`docs/m7-rc-plan.md`（rc.1 门禁 + 7 天 soak + 三平台
+  验收 + 签名红线；未完成前不得宣称 RC 通过）。
+
 ### 2026-08-09 post-merge acceptance audit
 
 - `0057a7b` 合并了 repair/reports/project/rotation/privacy 等实现路径；`320b68f` 只更改 ledger 状态，未增加 golden 等价证据。
