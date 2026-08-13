@@ -16,3 +16,4 @@ prune examples/outputs
 prune examples/exports
 prune examples/snapshots
 global-exclude .DS_Store
+prune tests
