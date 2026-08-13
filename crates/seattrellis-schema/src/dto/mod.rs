@@ -7,8 +7,13 @@
 pub mod bundle_manifest;
 pub mod candidate_set;
 pub mod classroom_layout;
+pub mod editing_operation_log;
+pub mod editor_protocol;
+pub mod export_preset;
+pub mod history_archive;
 pub mod plan_comparison;
 pub mod project;
+pub mod rotation_plan;
 pub mod rule_set;
 pub mod snapshot;
 pub mod student_roster;

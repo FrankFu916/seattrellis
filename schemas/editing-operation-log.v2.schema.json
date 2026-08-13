@@ -1,0 +1,368 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "BatchMoveItem": {
+      "additionalProperties": false,
+      "description": "One destination in a `batch_move` operation.",
+      "properties": {
+        "seat_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "student_key": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_key",
+        "seat_id"
+      ],
+      "type": "object"
+    },
+    "BatchMovePayload": {
+      "additionalProperties": false,
+      "description": "Payload for `batch_move`.",
+      "properties": {
+        "moves": {
+          "items": {
+            "$ref": "#/$defs/BatchMoveItem"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "moves"
+      ],
+      "type": "object"
+    },
+    "EditingOperation": {
+      "description": "One of the nine frozen editor operations.\n\nThe adjacent tag representation deliberately preserves the wire shape\n`{ \"kind\": \"...\", \"payload\": { ... } }`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "swap_students",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/SwapStudentsPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "move_student",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/StudentSeatPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "batch_move",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/BatchMovePayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "seat_student",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/StudentSeatPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unseat_student",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/StudentPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "lock_student",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/StudentPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unlock_student",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/StudentPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "lock_seat",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/SeatPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unlock_seat",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/SeatPayload"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EditingOperationLogArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "draft_id": {
+          "type": "string"
+        },
+        "final_revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EditingOperation"
+          },
+          "type": "array"
+        },
+        "protocol_version": {
+          "$ref": "#/$defs/EditorProtocolVersion"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "draft_id",
+        "base_revision",
+        "final_revision"
+      ],
+      "type": "object"
+    },
+    "EditorProtocolVersion": {
+      "description": "Frozen protocol version shared by command and state documents.",
+      "enum": [
+        "1.0"
+      ],
+      "type": "string"
+    },
+    "SeatPayload": {
+      "additionalProperties": false,
+      "description": "Payload shared by seat lock/unlock operations.",
+      "properties": {
+        "seat_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "seat_id"
+      ],
+      "type": "object"
+    },
+    "StudentPayload": {
+      "additionalProperties": false,
+      "description": "Payload shared by student lock/unlock/unseat operations.",
+      "properties": {
+        "student_key": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_key"
+      ],
+      "type": "object"
+    },
+    "StudentSeatPayload": {
+      "additionalProperties": false,
+      "description": "Payload shared by `move_student` and `seat_student`.",
+      "properties": {
+        "seat_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "student_key": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "student_key",
+        "seat_id"
+      ],
+      "type": "object"
+    },
+    "SwapStudentsPayload": {
+      "additionalProperties": false,
+      "description": "Payload for `swap_students`.",
+      "properties": {
+        "first_student": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "second_student": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "first_student",
+        "second_student"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/EditingOperationLogArtifact",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: EditingOperationLog",
+  "type": "object"
+}

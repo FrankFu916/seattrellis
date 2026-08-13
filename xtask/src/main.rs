@@ -24,8 +24,12 @@ use schemars::JsonSchema;
 use seattrellis_schema::dto::bundle_manifest::ProjectBundleManifest;
 use seattrellis_schema::dto::candidate_set::CandidateSetArtifact;
 use seattrellis_schema::dto::classroom_layout::ClassroomLayout;
+use seattrellis_schema::dto::editing_operation_log::EditingOperationLogArtifact;
+use seattrellis_schema::dto::export_preset::ExportPresetArtifact;
+use seattrellis_schema::dto::history_archive::HistoryArchiveArtifact;
 use seattrellis_schema::dto::plan_comparison::PlanComparisonReportArtifact;
 use seattrellis_schema::dto::project::SeatTrellisProjectArtifact;
+use seattrellis_schema::dto::rotation_plan::RotationPlanArtifact;
 use seattrellis_schema::dto::rule_set::RuleSetArtifact;
 use seattrellis_schema::dto::snapshot::SeatingSnapshotArtifact;
 use seattrellis_schema::dto::student_roster::StudentRoster;
@@ -50,6 +54,10 @@ const SCHEMA_ARTIFACTS: &[(&str, ArtifactKind)] = &[
     ),
     ("candidate-set", ArtifactKind::CandidateSet),
     ("plan-comparison-report", ArtifactKind::PlanComparison),
+    ("history-archive", ArtifactKind::HistoryArchive),
+    ("rotation-plan", ArtifactKind::RotationPlan),
+    ("editing-operation-log", ArtifactKind::EditingOperationLog),
+    ("export-preset", ArtifactKind::ExportPreset),
 ];
 
 fn repo_root() -> PathBuf {
@@ -110,7 +118,12 @@ fn schema_artifacts() -> Vec<(String, String)> {
                 ArtifactKind::PlanComparison => {
                     schema_for_envelope::<PlanComparisonReportArtifact>(kind)
                 }
-                _ => unreachable!("schema artifacts are listed explicitly"),
+                ArtifactKind::HistoryArchive => schema_for_envelope::<HistoryArchiveArtifact>(kind),
+                ArtifactKind::RotationPlan => schema_for_envelope::<RotationPlanArtifact>(kind),
+                ArtifactKind::EditingOperationLog => {
+                    schema_for_envelope::<EditingOperationLogArtifact>(kind)
+                }
+                ArtifactKind::ExportPreset => schema_for_envelope::<ExportPresetArtifact>(kind),
             };
             (
                 format!("schemas/{slug}.v2.schema.json"),
@@ -638,5 +651,45 @@ mod tests {
             validator.validate(&bad).is_err(),
             "unknown payload fields must be rejected by the generated schema"
         );
+    }
+
+    /// The registry is the authoritative list of durable artifacts: adding a
+    /// kind without a generated typed schema must fail this test immediately.
+    #[test]
+    fn every_registry_kind_has_exactly_one_generated_schema() {
+        assert_eq!(SCHEMA_ARTIFACTS.len(), seattrellis_schema::REGISTRY.len());
+        let mut kinds = std::collections::HashSet::new();
+        for (_, kind) in SCHEMA_ARTIFACTS {
+            assert!(
+                kinds.insert(*kind),
+                "duplicate generated schema for {kind:?}"
+            );
+        }
+        for entry in seattrellis_schema::REGISTRY {
+            assert!(
+                kinds.contains(&entry.kind),
+                "registry kind {:?} has no generated schema",
+                entry.kind
+            );
+        }
+    }
+
+    #[test]
+    fn all_generated_schemas_reject_unknown_payload_fields() {
+        for (relative, content) in schema_artifacts() {
+            let schema: serde_json::Value = serde_json::from_str(&content).unwrap();
+            let data_ref = schema
+                .pointer("/properties/data/$ref")
+                .and_then(serde_json::Value::as_str)
+                .expect("envelope data has a typed schema reference");
+            let definition = data_ref
+                .strip_prefix("#/$defs/")
+                .expect("schemars definition reference");
+            assert_eq!(
+                schema.pointer(&format!("/$defs/{definition}/additionalProperties")),
+                Some(&serde_json::Value::Bool(false)),
+                "{relative} payload must reject unknown fields"
+            );
+        }
     }
 }

@@ -71,6 +71,17 @@ pub enum ExportFormat {
     Png,
 }
 
+impl ExportFormat {
+    /// The canonical wire label (`html` | `excel` | `png`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExportFormat::Html => "html",
+            ExportFormat::Excel => "excel",
+            ExportFormat::Png => "png",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

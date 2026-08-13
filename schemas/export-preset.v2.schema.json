@@ -1,0 +1,182 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "ExportFormat": {
+      "enum": [
+        "svg",
+        "html",
+        "print-html",
+        "png",
+        "pdf",
+        "xlsx",
+        "docx",
+        "pptx"
+      ],
+      "type": "string"
+    },
+    "ExportOrientation": {
+      "enum": [
+        "portrait",
+        "landscape"
+      ],
+      "type": "string"
+    },
+    "ExportPresetArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/ExportFormat"
+        },
+        "locale": {
+          "default": "zh",
+          "type": "string"
+        },
+        "margin_mm": {
+          "default": 12.0,
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orientation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExportOrientation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_scale": {
+          "default": 1.0,
+          "format": "double",
+          "type": "number"
+        },
+        "paper_size": {
+          "$ref": "#/$defs/PaperSize",
+          "default": "a4"
+        },
+        "privacy": {
+          "$ref": "#/$defs/ExportPrivacyOptions",
+          "default": {
+            "anonymize": false,
+            "hide_notes": false,
+            "hide_scores": false,
+            "hide_special_needs": false,
+            "show_height": false,
+            "show_vision": false
+          }
+        },
+        "show_student_ids": {
+          "default": false,
+          "type": "boolean"
+        },
+        "template": {
+          "$ref": "#/$defs/ExportTemplate",
+          "default": "teacher"
+        }
+      },
+      "required": [
+        "name",
+        "format"
+      ],
+      "type": "object"
+    },
+    "ExportPrivacyOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "anonymize": {
+          "default": false,
+          "type": "boolean"
+        },
+        "hide_notes": {
+          "default": true,
+          "type": "boolean"
+        },
+        "hide_scores": {
+          "default": true,
+          "type": "boolean"
+        },
+        "hide_special_needs": {
+          "default": true,
+          "type": "boolean"
+        },
+        "show_height": {
+          "default": true,
+          "type": "boolean"
+        },
+        "show_vision": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ExportTemplate": {
+      "enum": [
+        "public",
+        "teacher",
+        "report"
+      ],
+      "type": "string"
+    },
+    "PaperSize": {
+      "enum": [
+        "a4",
+        "a3",
+        "letter"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/ExportPresetArtifact",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: ExportPreset",
+  "type": "object"
+}
