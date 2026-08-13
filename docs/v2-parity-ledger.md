@@ -1942,6 +1942,22 @@ project.schema.json）：
 - **身份转变**：Python 在 v2 主线仅存"冻结 oracle"（v1.9.0 tag +
   v1.x-maintenance），无生产依赖、无运行时探测路径。
 
+### 19.41 2026-08-13：M6→M7 交接记录（诚实状态）
+
+- **M6 beta.1 完成**：Python retirement 提交链（13dc02e/7033f7f/e594cc5/
+  05ffda7）CI 全绿——Rust 三平台 + no-python `--expect-retired` 门禁 +
+  hygiene + parity-oracle（**oracle 从 v1.9.0 tag 安装**的新路径重放
+  通过）+ differential（41/34/374/38）+ E2E 4/4。
+- **发布红线自检**：release 二进制 seattrellis_desktop 9.8MB /
+  seattrellis_app 4.8MB / seattrellis_cli 3.6MB（含内嵌前端），体积
+  5–20MB 目标内；最终打包体积由 tauri.yml release 构建验证。
+- **M7 状态（诚实）**：`docs/m7-rc-plan.md` 定义了 rc.1 候选、冻结
+  范围、门禁清单、7 天 soak 规则、三平台真实硬件验收与签名红线。
+  **soak、平台验收、签名尚未执行**——需要真实教师使用与真实硬件/
+  证书环境；在完成前不得宣称 RC 通过（§10.2/§17 规则）。
+- **待产品输入**：rc.1 版本号（v2.0.0-rc.1）与发布时机、soak 参与者、
+  签名证书、GitHub Release 发布决定（当前未发布任何 Release/PyPI）。
+
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
 ### corpus 状态
