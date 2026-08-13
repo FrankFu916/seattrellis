@@ -1,5 +1,5 @@
 {
-  "stdout": "",
-  "stderr": "error: project-export renders a saved plan: run 'project-solve --output <snapshot.json>' first, then pass --snapshot <file>\n",
-  "exit": 2
+  "stdout": "wrote svg to '<tmp>/proj/out.svg'",
+  "stderr": "",
+  "exit": 0
 }

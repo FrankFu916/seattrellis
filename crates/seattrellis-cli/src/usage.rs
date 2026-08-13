@@ -113,9 +113,8 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("validate"));
-    out.push_str(
-        " --problem <problem.json> [--preset <name>] [--history <snapshot.json>]... [--strict]\n\n",
-    );
+    out.push_str(" --problem <problem.json> [--preset <name>] [--history <snapshot.json>]...\n");
+    out.push_str("             [--history-dir <dir>] [--strict]\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(" <file>  Solve-request JSON (CoreSolveRequest). Required.\n      ");
@@ -123,6 +122,8 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" <name>  Preset name for preset-context warnings.\n      ");
     out.push_str(&styler.bold("--history"));
     out.push_str(" <file>  History snapshot counted for preset history warnings.\n      ");
+    out.push_str(&styler.bold("--history-dir"));
+    out.push_str(" <dir>  Directory scanned for *.snapshot.json files (joins --history).\n      ");
     out.push_str(&styler.bold("--strict"));
     out.push_str("       Treat warnings as validation failures.\n\n");
 
@@ -250,8 +251,21 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" <file>  Portable project workspace file. Required.\n      ");
     out.push_str(&styler.bold("--seed"));
     out.push_str(" <n>        Override the project's solver seed.\n      ");
+    out.push_str(&styler.bold("--strict"));
+    out.push_str("       project-validate only: treat warnings as failures.\n      ");
+    out.push_str(&styler.bold("--candidates"));
+    out.push_str(" <n>    project-solve only: candidate count 1-20 (default: the\n      ");
+    out.push_str("        project's default_candidates).\n      ");
+    out.push_str(&styler.bold("--report"));
+    out.push_str(" <file>  project-solve only: also write a plan comparison report.\n      ");
     out.push_str(&styler.bold("--format"));
-    out.push_str(" <f>       project-export only: svg|html|png|pdf.\n      ");
+    out.push_str(
+        " <f>       project-export only: svg|html|print-html|png|pdf|xlsx|docx|pptx\n      ",
+    );
+    out.push_str("        (default: the project's default_export_format).\n      ");
+    out.push_str(&styler.bold("--candidate"));
+    out.push_str(" <id>   project-export only: candidate ID for a candidate-set\n      ");
+    out.push_str("        snapshot (default: recommended).\n      ");
     out.push_str(&styler.bold("--output"));
     out.push_str(" <file>   project-solve/export write their artifact here.\n      ");
     out.push_str(&styler.bold("--snapshot"));

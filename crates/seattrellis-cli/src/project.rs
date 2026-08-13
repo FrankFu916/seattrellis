@@ -41,11 +41,19 @@ pub fn project_info(project_path: &Path) -> Result<String, String> {
             .and_then(Value::as_str)
             .unwrap_or("outputs")
     ));
+    // "Defaults:" section mirrors Python `compute_project_info`
+    // (service.py): candidates / candidate / export format.
+    let defaults = seattrellis_io::projects::project_defaults(project_path)?;
+    lines.push("Defaults:".to_string());
+    lines.push(format!("- candidates: {}", defaults.candidates));
+    lines.push(format!("- candidate: {}", defaults.candidate));
+    lines.push(format!(
+        "- export format: {}",
+        defaults.export_format.as_str()
+    ));
     Ok(lines.join("\n"))
 }
 
-/// `project-validate`: validate the project document, its referenced files,
-/// and the compiled solve request.
 /// The project's display name (for plan/artifact naming).
 pub fn project_name(project_path: &Path) -> Result<String, String> {
     let (project, _) = seattrellis_io::projects::load_project_document(project_path)?;
@@ -56,7 +64,11 @@ pub fn project_name(project_path: &Path) -> Result<String, String> {
         .to_string())
 }
 
-pub fn project_validate(project_path: &Path) -> Result<String, String> {
+/// `project-validate`: validate the project document, its referenced files,
+/// and the compiled solve request. `--strict` turns warnings into failures
+/// (oracle `project_validate --strict`; warnings become errors -> non-zero
+/// exit), judged on the same rule-capability warnings as `validate`.
+pub fn project_validate(project_path: &Path, strict: bool) -> Result<String, String> {
     let request = build_request(project_path)?;
     let request_json = serde_json::to_string(&request)
         .map_err(|error| format!("could not serialize the compiled request: {error}"))?;
@@ -64,7 +76,7 @@ pub fn project_validate(project_path: &Path) -> Result<String, String> {
         .map_err(|error| format!("project is invalid: {error}"))?;
     let parsed: CoreSolveRequest = serde_json::from_str(&request_json)
         .map_err(|error| format!("compiled request is malformed: {error}"))?;
-    Ok(format!(
+    let mut report = format!(
         "valid: true\nstudents: {}\nseats: {}\nedges: {}\nhard rules: {} fixed, {} must, {} cannot, {} min-distance",
         parsed.student_count,
         parsed.seat_positions.len(),
@@ -73,5 +85,26 @@ pub fn project_validate(project_path: &Path) -> Result<String, String> {
         parsed.must_be_adjacent.len(),
         parsed.cannot_be_adjacent.len(),
         parsed.min_distance.len(),
-    ))
+    );
+    // The same rule-capability warnings `validate` reports (no preset and no
+    // history reach the project path, mirroring the oracle `project_validate`
+    // which passes only students/layout/rules/strict to `run_validate`).
+    let warnings = crate::commands::capability_warnings(&parsed);
+    if !warnings.is_empty() {
+        report.push_str(&format!("\nwarnings: {}", warnings.len()));
+        for warning in &warnings {
+            report.push_str(&format!("\n- {warning}"));
+        }
+    }
+    if strict && !warnings.is_empty() {
+        return Err(format!(
+            "Warnings treated as errors by --strict:\n{}",
+            warnings
+                .iter()
+                .map(|warning| format!("- {warning}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
+    Ok(report)
 }

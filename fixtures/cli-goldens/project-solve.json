@@ -1,5 +1,5 @@
 {
-  "stdout": "feasible: true\nstatus: Solved\ntotal_cost: 0\nstudents seated: 20\nwrote result JSON to '<tmp>/proj/outputs/plan.json'",
+  "stdout": "Candidate set written to '<tmp>/proj/outputs/plan.json'\nGenerated 5 candidate seating plans.\n\nRecommended: candidate_05\n\nCandidate summary:\n- candidate_05: total 1.0 | fair rotation not available | neighbor repetition not available | score balance not available\n- candidate_01: total 0.9 | fair rotation not available | neighbor repetition not available | score balance not available\n- candidate_03: total 0.9 | fair rotation not available | neighbor repetition not available | score balance not available\n- candidate_04: total 0.9 | fair rotation not available | neighbor repetition not available | score balance not available\n- candidate_02: total 0.9 | fair rotation not available | neighbor repetition not available | score balance not available",
   "stderr": "",
   "exit": 0
 }

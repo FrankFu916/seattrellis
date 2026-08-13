@@ -72,36 +72,15 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
     // Warning semantics mirror `run_validate` (service.py:944 ->
     // validation.py): capability warnings for the loaded models plus
     // preset-context warnings for the preferred-data requirements.
-    let mut warnings: Vec<String> = Vec::new();
+    let mut warnings = capability_warnings(&problem);
 
-    // score_distribution with scope='group' requires group_id on every
-    // enabled seat (validation.py `_add_rule_capability_warnings`).
-    if let (Some(rules), Some(layout)) = (&problem.rules, &problem.layout) {
-        let distribution = &rules.soft.score_distribution;
-        if distribution.enabled
-            && distribution.scope == seattrellis_core::models::DistributionScope::Group
-        {
-            let missing: Vec<&str> = layout
-                .seats
-                .iter()
-                .filter(|seat| seat.enabled && seat.group_id.is_none())
-                .map(|seat| seat.seat_id.as_str())
-                .collect();
-            if !missing.is_empty() {
-                let preview = missing[..missing.len().min(5)].join(", ");
-                let suffix = if missing.len() > 5 { "..." } else { "" };
-                warnings.push(format!(
-                    "score_distribution with scope='group' requires group_id on every \
-                     enabled seat. Missing group_id: {preview}{suffix}. The objective \
-                     will be skipped until all enabled seats are grouped."
-                ));
-            }
-        }
-    }
-
-    // History files are counted for preset history warnings; unreadable
-    // paths are errors exactly like the oracle's snapshot loading.
-    for path in &args.history {
+    // History files (`--history` plus the `--history-dir` `*.snapshot.json`
+    // glob, oracle `load_history_snapshots`) are counted for preset history
+    // warnings; unreadable paths are errors exactly like the oracle's
+    // snapshot loading. Unlike the reports, validate never fails for a
+    // missing history, so an empty collection is fine.
+    let history = collect_history_paths_allow_empty(&args.history, args.history_dir.as_deref())?;
+    for path in &history {
         read_text(path)?;
     }
     if let Some(preset_name) = &args.preset {
@@ -123,7 +102,7 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
             preset_name,
             &problem.students,
             &soft,
-            args.history.len(),
+            history.len(),
         ));
     }
 
@@ -150,10 +129,44 @@ pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
     Ok(())
 }
 
+/// Rule capability warnings for a compiled request (validation.py
+/// `_add_rule_capability_warnings`): `score_distribution` with scope='group'
+/// requires `group_id` on every enabled seat. Shared by `validate` and
+/// `project-validate --strict` so both judge the same warnings.
+pub(crate) fn capability_warnings(problem: &CoreSolveRequest) -> Vec<String> {
+    let mut warnings: Vec<String> = Vec::new();
+    if let (Some(rules), Some(layout)) = (&problem.rules, &problem.layout) {
+        let distribution = &rules.soft.score_distribution;
+        if distribution.enabled
+            && distribution.scope == seattrellis_core::models::DistributionScope::Group
+        {
+            let missing: Vec<&str> = layout
+                .seats
+                .iter()
+                .filter(|seat| seat.enabled && seat.group_id.is_none())
+                .map(|seat| seat.seat_id.as_str())
+                .collect();
+            if !missing.is_empty() {
+                let preview = missing[..missing.len().min(5)].join(", ");
+                let suffix = if missing.len() > 5 { "..." } else { "" };
+                warnings.push(format!(
+                    "score_distribution with scope='group' requires group_id on every \
+                     enabled seat. Missing group_id: {preview}{suffix}. The objective \
+                     will be skipped until all enabled seats are grouped."
+                ));
+            }
+        }
+    }
+    warnings
+}
+
 /// Run the solver and return the frozen v2 `SolveStatus` so the caller
 /// can map it onto the frozen CLI exit-code table (plan §4.1, M1-03).
 /// `project-solve`: compile the project workspace into a solve request and
-/// run the solver (plan §5.5 project lifecycle).
+/// run the solver (plan §5.5 project lifecycle). `--candidates N` generates
+/// a scored candidate set (the project's `default_candidates` when absent,
+/// oracle service.py `project_solve`) and `--report` additionally writes the
+/// plan comparison report (oracle `--report`).
 pub fn run_project_solve(args: &ProjectArgs) -> Result<SolveStatus, String> {
     let mut request = crate::project::build_request(&args.project)?;
     if let Some(seed) = args.seed {
@@ -161,6 +174,19 @@ pub fn run_project_solve(args: &ProjectArgs) -> Result<SolveStatus, String> {
     }
     let request_json = serde_json::to_string(&request)
         .map_err(|error| format!("could not serialize the compiled request: {error}"))?;
+
+    // Candidate count: Python uses the project's `default_candidates` when
+    // `--candidates` is absent; the io layer resolves that default and
+    // validates it (1-20), and the parser enforces the same range.
+    let candidates = args.candidates.unwrap_or(
+        seattrellis_io::projects::project_defaults(&args.project)
+            .map_err(|error| format!("could not read project defaults: {error}"))?
+            .candidates as usize,
+    );
+    if args.report.is_some() || candidates > 1 {
+        return run_project_solve_candidates(args, &request_json, candidates);
+    }
+
     let response_json = solve_problem_json(&request_json)
         .map_err(|error| format!("solver rejected the problem: {error}"))?;
     let response: CoreSolveResponse = serde_json::from_str(&response_json)
@@ -201,6 +227,234 @@ pub fn run_project_solve(args: &ProjectArgs) -> Result<SolveStatus, String> {
         println!("wrote result JSON to '{}'", output.display());
     }
     Ok(response.status)
+}
+
+/// `project-solve --candidates N` (also with `--report`): generate a scored
+/// candidate set through the core engine, write the candidate-set artifact
+/// to `--output` (oracle default `outputs/latest.candidates.json`), print
+/// the oracle `_format_candidate_set_summary` shape, and optionally write
+/// the plan comparison report (oracle `build_plan_comparison_report`).
+fn run_project_solve_candidates(
+    args: &ProjectArgs,
+    request_json: &str,
+    candidates: usize,
+) -> Result<SolveStatus, String> {
+    let report_json = generate_candidates_json_with_latest_snapshot(request_json, candidates, "")
+        .map_err(|error| format!("candidate generation failed: {error}"))?;
+    let report: serde_json::Value = serde_json::from_str(&report_json)
+        .map_err(|error| format!("candidate report is malformed: {error}"))?;
+
+    let output = match &args.output {
+        Some(path) => path.clone(),
+        None => {
+            let (_, root) = seattrellis_io::projects::load_project_document(&args.project)?;
+            let outputs = root.join("outputs");
+            std::fs::create_dir_all(&outputs)
+                .map_err(|error| format!("could not create {}: {error}", outputs.display()))?;
+            outputs.join("latest.candidates.json")
+        }
+    };
+    write_output_atomically(&output, report_json.as_bytes())?;
+    println!("Candidate set written to '{}'", output.display());
+    println!("{}", format_candidate_set_summary(&report));
+    if let Some(report_path) = &args.report {
+        let comparison = build_plan_comparison_artifact(&report)?;
+        write_output_atomically(report_path, comparison.as_bytes())?;
+        println!("\nFull report written to '{}'", report_path.display());
+    }
+    Ok(SolveStatus::Solved)
+}
+
+/// The oracle `_format_candidate_set_summary` shape (service.py): generated
+/// count, recommended id, per-candidate totals and dimension ratings, plus
+/// any warnings. Ratings use the oracle band labels; the neighbor-repetition
+/// rating is inverted (`_neighbor_rating`).
+fn format_candidate_set_summary(report: &serde_json::Value) -> String {
+    let count = report
+        .get("candidate_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let recommended = report
+        .get("recommended_candidate_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let mut lines = vec![
+        format!("Generated {count} candidate seating plans."),
+        String::new(),
+        format!("Recommended: {recommended}"),
+        String::new(),
+        "Candidate summary:".to_string(),
+    ];
+    let candidates = report
+        .get("candidates")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut ranked: Vec<&serde_json::Value> = candidates.iter().collect();
+    // Python ranks by (-total_score, candidate_id) before printing.
+    ranked.sort_by(|left, right| {
+        let left_total = left["plan_score"]["total"].as_f64().unwrap_or(0.0);
+        let right_total = right["plan_score"]["total"].as_f64().unwrap_or(0.0);
+        right_total
+            .partial_cmp(&left_total)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                left["candidate_id"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(right["candidate_id"].as_str().unwrap_or(""))
+            })
+    });
+    for candidate in ranked {
+        let id = candidate["candidate_id"].as_str().unwrap_or("");
+        let total = candidate["plan_score"]["total"].as_f64().unwrap_or(0.0);
+        let rating = |dimension: &str| {
+            candidate["plan_score"]["breakdown"][dimension]["rating"]
+                .as_str()
+                .unwrap_or("not_available")
+                .replace('_', " ")
+        };
+        let neighbor = match rating("avoid_recent_neighbors_score").as_str() {
+            "high" => "low".to_string(),
+            "low" => "high".to_string(),
+            other => other.to_string(),
+        };
+        lines.push(format!(
+            "- {id}: total {total:.1} | fair rotation {} | neighbor repetition {} | \
+             score balance {}",
+            rating("fair_rotation_score"),
+            neighbor,
+            rating("score_balance_score"),
+        ));
+    }
+    let warnings = report
+        .get("warnings")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if !warnings.is_empty() {
+        lines.push(String::new());
+        lines.push("Warnings:".to_string());
+        for warning in warnings {
+            lines.push(format!("- {}", warning.as_str().unwrap_or_default()));
+        }
+    }
+    lines.join("\n")
+}
+
+/// Build the v2 `plan_comparison_report` artifact (schema dto
+/// `PlanComparisonReportArtifact`) from a generated candidate report.
+/// Entry fields mirror Python's `build_plan_comparison_report` (scoring.py);
+/// explanation/history-comparison text generation has no Rust builder yet,
+/// so those stay empty lists (a registered M4 decision item).
+fn build_plan_comparison_artifact(report: &serde_json::Value) -> Result<String, String> {
+    use seattrellis_schema::dto::plan_comparison::PlanComparisonReportArtifact;
+    let candidates = report
+        .get("candidates")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("candidate report has no candidates array")?;
+    let recommended = report
+        .get("recommended_candidate_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let recommended_total = candidates
+        .iter()
+        .find(|candidate| {
+            candidate
+                .get("candidate_id")
+                .and_then(serde_json::Value::as_str)
+                == Some(recommended.as_str())
+        })
+        .and_then(|candidate| candidate["plan_score"]["total"].as_f64())
+        .unwrap_or(0.0);
+    let mut entries = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        let id = candidate
+            .get("candidate_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let total = candidate["plan_score"]["total"].as_f64().unwrap_or(0.0);
+        let breakdown = &candidate["plan_score"]["breakdown"];
+        let mut dimension_scores = HashMap::new();
+        for name in [
+            "fair_rotation_score",
+            "avoid_recent_neighbors_score",
+            "score_balance_score",
+            "height_preference_score",
+            "vision_preference_score",
+            "diversity_score",
+            "stability_score",
+        ] {
+            dimension_scores.insert(
+                name.to_string(),
+                breakdown[name]
+                    .get("score")
+                    .and_then(serde_json::Value::as_f64),
+            );
+        }
+        if let Some(rule_scores) = breakdown
+            .get("rule_scores")
+            .and_then(serde_json::Value::as_object)
+        {
+            for (name, dimension) in rule_scores {
+                dimension_scores.insert(
+                    name.clone(),
+                    dimension.get("score").and_then(serde_json::Value::as_f64),
+                );
+            }
+        }
+        let hard = &breakdown["hard_constraint_summary"];
+        entries.push(
+            seattrellis_schema::dto::plan_comparison::PlanComparisonEntry {
+                candidate_id: id,
+                total_score: total,
+                // Python rounds the delta to six decimal places.
+                score_delta_from_recommended: Some(
+                    ((total - recommended_total) * 1_000_000.0).round() / 1_000_000.0,
+                ),
+                hard_constraints_satisfied: true,
+                hard_constraint_checked_count: hard
+                    .get("checked_rule_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|count| count as u32),
+                hard_constraint_violation_count: hard
+                    .get("violation_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|count| count as u32),
+                dimension_scores,
+                explanations: Vec::new(),
+                advantages: Vec::new(),
+                costs: Vec::new(),
+                history_comparison: HashMap::new(),
+            },
+        );
+    }
+    let artifact = PlanComparisonReportArtifact {
+        schema_version: "0.2.2".to_string(),
+        kind: "plan_comparison_report".to_string(),
+        created_at: String::new(),
+        candidate_count: entries.len() as u32,
+        recommended_candidate_id: recommended,
+        candidates: entries,
+        warnings: report
+            .get("warnings")
+            .and_then(serde_json::Value::as_array)
+            .map(|list| {
+                list.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        metadata: serde_json::Value::Null,
+    };
+    artifact
+        .validate_references()
+        .map_err(|error| format!("plan comparison report is inconsistent: {error}"))?;
+    serde_json::to_string(&artifact)
+        .map_err(|error| format!("could not serialize the plan comparison report: {error}"))
 }
 
 /// Rebuild a `CoreSolveResponse` from a saved plan document so the export
@@ -280,11 +534,25 @@ fn response_from_snapshot(
 /// `project-export`: render a SAVED plan (snapshot from `project-solve
 /// --output`) to the requested format (plan §5.5 project lifecycle). It
 /// never re-solves: exporting must reflect the plan the teacher saved.
+/// `--candidate` selects one plan inside a candidate-set artifact (oracle
+/// `project_export`; default: the project's `default_candidate`, i.e.
+/// `recommended`). All Python export formats route through the shared
+/// export crate renderer (svg/html/print-html/png/pdf/xlsx/docx/pptx).
 pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
-    let format = args
-        .format
-        .as_deref()
-        .ok_or("project-export requires --format <svg|html|png|pdf|print-html>")?;
+    let format = match &args.format {
+        Some(raw) => normalize_export_format(raw)?,
+        None => {
+            let defaults = seattrellis_io::projects::project_defaults(&args.project)
+                .map_err(|error| format!("could not read project defaults: {error}"))?;
+            match defaults.export_format.as_str() {
+                // The project default is html/excel/png (oracle
+                // `default_export_format`); excel routes through the xlsx
+                // renderer like the explicit `--format excel`.
+                "excel" => "xlsx".to_string(),
+                other => other.to_string(),
+            }
+        }
+    };
     let output = args
         .output
         .clone()
@@ -300,7 +568,8 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
         .map_err(|error| format!("compiled request is malformed: {error}"))?;
     let snapshot: serde_json::Value = serde_json::from_str(&read_text(&snapshot_path)?)
         .map_err(|error| format!("'{}' is not valid JSON: {error}", snapshot_path.display()))?;
-    let response = response_from_snapshot(&request, &snapshot)?;
+    let selected = select_artifact_plan(&snapshot, args.candidate.as_deref())?;
+    let response = response_from_snapshot(&request, &selected)?;
 
     let export_document = json!({
         "draft_id": "project-export",
@@ -324,6 +593,97 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
     write_output_atomically(&output, &bytes)?;
     println!("wrote {} to '{}'", format, output.display());
     Ok(())
+}
+
+/// The Python `project-export` format set (cli.py `--format`: svg, html,
+/// print-html, png, pdf, excel, docx, pptx). `excel` is normalized to the
+/// `xlsx` renderer label; the export crate accepts both spellings.
+fn normalize_export_format(raw: &str) -> Result<String, String> {
+    match raw.to_ascii_lowercase().as_str() {
+        "svg" | "html" | "print-html" | "png" | "pdf" | "xlsx" | "docx" | "pptx" => {
+            Ok(raw.to_ascii_lowercase())
+        }
+        "excel" => Ok("xlsx".to_string()),
+        other => Err(format!(
+            "unknown export format '{other}' (expected svg, html, print-html, png, pdf, xlsx, docx or pptx)"
+        )),
+    }
+}
+
+/// Select the plan document inside an artifact for export/edit:
+/// a candidate-set artifact — the Python `kind: "candidate_set"` shape or
+/// the CLI's core candidate report (`candidates` + `recommended_candidate_id`)
+/// — picks the `--candidate` entry (or the recommended one) and unwraps its
+/// `snapshot` document when present; CLI candidate entries carry index-pair
+/// `assignment` lists and are wrapped into a `CoreSolveResponse` document so
+/// the independent validator re-checks the selected plan. Anything else is
+/// used as-is (oracle `load_seating_artifact` / `artifact.get_candidate`).
+fn select_artifact_plan(
+    artifact: &serde_json::Value,
+    candidate: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let is_candidate_set = artifact.get("kind").and_then(serde_json::Value::as_str)
+        == Some("candidate_set")
+        || (artifact.get("candidates").is_some()
+            && artifact.get("recommended_candidate_id").is_some());
+    if !is_candidate_set {
+        if candidate.is_some() {
+            return Err(
+                "--candidate can only be used when --snapshot is a candidate set.".to_string(),
+            );
+        }
+        return Ok(artifact.clone());
+    }
+    let candidates = artifact
+        .get("candidates")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("candidate set has no candidates array")?;
+    let recommended = artifact
+        .get("recommended_candidate_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("recommended");
+    let wanted = candidate.unwrap_or("recommended");
+    let selected_id = if wanted == "recommended" {
+        recommended
+    } else {
+        wanted
+    };
+    let selected = candidates.iter().find(|entry| {
+        entry
+            .get("candidate_id")
+            .and_then(serde_json::Value::as_str)
+            == Some(selected_id)
+    });
+    let selected = selected.ok_or_else(|| {
+        let available = candidates
+            .iter()
+            .filter_map(|entry| {
+                entry
+                    .get("candidate_id")
+                    .and_then(serde_json::Value::as_str)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        // The oracle get_candidate error uses Python's `!r` single quotes.
+        format!("Unknown candidate ID '{wanted}'. Available candidates: {available}.")
+    })?;
+    if let Some(snapshot) = selected.get("snapshot") {
+        return Ok(snapshot.clone());
+    }
+    // CLI candidate reports carry index-pair `assignment` lists; wrap them
+    // into the CoreSolveResponse shape `response_from_snapshot` reads.
+    let assignment = selected
+        .get("assignment")
+        .cloned()
+        .ok_or("candidate entry has no assignment pairs")?;
+    Ok(json!({
+        "api_version": seattrellis_core::NATIVE_API_VERSION,
+        "feasible": true,
+        "status": "Solved",
+        "assignment": assignment,
+        "attempts_used": selected.get("attempts_used").cloned().unwrap_or(json!(0)),
+        "hard_constraints_satisfied": true,
+    }))
 }
 
 /// `project-rotate`: generate future seating periods for a project workspace
@@ -680,11 +1040,14 @@ fn repaired_snapshot_output_path(source: &Path, project_path: &Path) -> Result<P
 /// pairs the editor draft understands. Two shapes are accepted, matching
 /// `response_from_snapshot`: the `CoreSolveResponse` JSON written by
 /// `project-solve --output` (index-pair `assignment`) and editor-style
-/// snapshots with `assignments: [{student_key, seat_id}]`.
+/// snapshots with `assignments: [{student_key, seat_id}]`. Candidate-set
+/// artifacts (`project-solve --candidates N`) select the recommended
+/// candidate first (oracle `project_edit` default candidate).
 fn editor_assignment_pairs(
     request: &CoreSolveRequest,
     snapshot: &serde_json::Value,
 ) -> Result<Vec<(String, String)>, String> {
+    let snapshot = select_artifact_plan(snapshot, None)?;
     let keys = seattrellis_application::class_generation::student_keys(request);
     let seat_ids: Vec<String> = (0..request.seat_positions.len())
         .map(|index| seattrellis_application::class_generation::seat_id_for_index(request, index))
@@ -845,19 +1208,25 @@ pub fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
         "plan_comparison" | "plancomparison" | "plan-comparison" => {
             Ok(include_str!("../../../schemas/plan-comparison-report.v2.schema.json").to_string())
         }
-        // `rotation_plan` intentionally stays on the v1 schema: the Rust
-        // rotation artifact mirrors the v1 oracle contract
-        // (schema_version "0.2.2", ledger L5), so the v1 schema is the
-        // correct validator for what this crate actually writes.
+        // All 12 registry kinds now have a typed DTO and a generated .v2.
+        // schema (xtask `contract schemas`, drift-checked).
         "rotation_plan" | "rotation" => {
-            Ok(include_str!("../../../schemas/rotation-plan.schema.json").to_string())
+            Ok(include_str!("../../../schemas/rotation-plan.v2.schema.json").to_string())
+        }
+        "history_archive" | "historyarchive" => {
+            Ok(include_str!("../../../schemas/history-archive.v2.schema.json").to_string())
+        }
+        "editing_operation_log" | "editingoperationlog" => {
+            Ok(include_str!("../../../schemas/editing-operation-log.v2.schema.json").to_string())
+        }
+        "export_preset" | "exportpreset" => {
+            Ok(include_str!("../../../schemas/export-preset.v2.schema.json").to_string())
         }
         other => Err(format!(
             "no v2 JSON Schema embedded for kind {other:?} (known: student_roster, \
              classroom_layout, ruleset, seating_snapshot, project, \
-             project_bundle_manifest, candidate_set, plan_comparison, rotation_plan; \
-             history_archive/editing_operation_log/export_preset have no typed DTO \
-             and are not generated by `xtask contract schemas`)"
+             project_bundle_manifest, candidate_set, plan_comparison, rotation_plan, \
+             history_archive, editing_operation_log, export_preset)"
         )),
     }
 }
@@ -1279,6 +1648,23 @@ fn collect_history_paths(
     history: &[PathBuf],
     history_dir: Option<&Path>,
 ) -> Result<Vec<PathBuf>, String> {
+    let paths = collect_history_paths_allow_empty(history, history_dir)?;
+    if paths.is_empty() {
+        return Err(
+            "no history snapshots found (pass --history <snapshot.json> or --history-dir)"
+                .to_string(),
+        );
+    }
+    Ok(paths)
+}
+
+/// Like [`collect_history_paths`], but an empty collection is not an error
+/// (`validate` counts zero history snapshots, like the oracle's
+/// `load_history_snapshots` returning `[]`).
+fn collect_history_paths_allow_empty(
+    history: &[PathBuf],
+    history_dir: Option<&Path>,
+) -> Result<Vec<PathBuf>, String> {
     let mut paths = history.to_vec();
     if let Some(dir) = history_dir {
         let entries = std::fs::read_dir(dir)
@@ -1296,12 +1682,6 @@ fn collect_history_paths(
             .collect();
         scanned.sort();
         paths.extend(scanned);
-    }
-    if paths.is_empty() {
-        return Err(
-            "no history snapshots found (pass --history <snapshot.json> or --history-dir)"
-                .to_string(),
-        );
     }
     Ok(paths)
 }
@@ -1708,7 +2088,7 @@ fn artifact_kind_from_name(kind_name: &str) -> Option<seattrellis_schema::regist
         "history-archive" => Some(ArtifactKind::HistoryArchive),
         "rotation-plan" => Some(ArtifactKind::RotationPlan),
         "editing-operation-log" => Some(ArtifactKind::EditingOperationLog),
-        "project" => Some(ArtifactKind::Project),
+        "project" | "seattrellis-project" | "seattrellisproject" => Some(ArtifactKind::Project),
         "project-bundle-manifest" => Some(ArtifactKind::ProjectBundleManifest),
         "export-preset" => Some(ArtifactKind::ExportPreset),
         _ => None,

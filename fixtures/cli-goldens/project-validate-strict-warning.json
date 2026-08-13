@@ -1,0 +1,5 @@
+{
+  "stdout": "",
+  "stderr": "error: Warnings treated as errors by --strict:\n- score_distribution with scope='group' requires group_id on every enabled seat. Missing group_id: R1C1, R1C2, R1C3, R1C4, R2C1.... The objective will be skipped until all enabled seats are grouped.\n",
+  "exit": 2
+}

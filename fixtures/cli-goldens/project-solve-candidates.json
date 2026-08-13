@@ -1,0 +1,5 @@
+{
+  "stdout": "Candidate set written to '<tmp>/proj/outputs/candidates.json'\nGenerated 3 candidate seating plans.\n\nRecommended: candidate_03\n\nCandidate summary:\n- candidate_03: total 0.9 | fair rotation not available | neighbor repetition not available | score balance not available\n- candidate_01: total 0.9 | fair rotation not available | neighbor repetition not available | score balance not available\n- candidate_02: total 0.9 | fair rotation not available | neighbor repetition not available | score balance not available\n\nFull report written to '<tmp>/proj/outputs/report.json'",
+  "stderr": "",
+  "exit": 0
+}

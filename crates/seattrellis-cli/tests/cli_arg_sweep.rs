@@ -221,6 +221,12 @@ impl Fixtures {
                 "project-solve",
                 "--project",
                 project_file.to_str().unwrap(),
+                // --candidates 1 keeps the artifact a single-snapshot
+                // CoreSolveResponse (the parity round made the default the
+                // project's `default_candidates`, which would write a
+                // candidate-set report instead).
+                "--candidates",
+                "1",
                 "--output",
                 snapshot_json.to_str().unwrap(),
             ]),
@@ -1504,7 +1510,9 @@ fn project_commands_sweep() {
                     "--output",
                     format!("{}/proj/pe2.svg", fx.root),
                 ],
-                Kind::Clean,
+                // The parity round made --format optional: the project's
+                // `default_export_format` (html) is used when absent.
+                Kind::Valid,
             ),
             Case::new(
                 "project-export:missing-output",

@@ -74,6 +74,9 @@ pub struct ValidateArgs {
     pub preset: Option<String>,
     /// Optional history snapshot paths counted for preset history warnings.
     pub history: Vec<PathBuf>,
+    /// Directory scanned for `*.snapshot.json` files (oracle
+    /// `--history-dir` default glob; the scanned files join `--history`).
+    pub history_dir: Option<PathBuf>,
     /// Treat warnings as validation failures (oracle `--strict`).
     pub strict: bool,
 }
@@ -181,6 +184,18 @@ pub struct ProjectArgs {
     /// Saved plan to render: `project-export` exports an existing snapshot
     /// (the result of `project-solve --output <file>`), it never re-solves.
     pub snapshot: Option<PathBuf>,
+    /// `project-validate` only: treat warnings as validation failures
+    /// (oracle `--strict`; warnings become errors -> non-zero exit).
+    pub strict: bool,
+    /// `project-solve` only: candidate count (1-20). Absent = the project's
+    /// `default_candidates` (oracle `SeatTrellisProject.default_candidates`).
+    pub candidates: Option<usize>,
+    /// `project-solve` only: also write a plan comparison report JSON
+    /// (oracle `--report`).
+    pub report: Option<PathBuf>,
+    /// `project-export` only: candidate ID for a candidate-set snapshot
+    /// (oracle `--candidate`; default: the project's `default_candidate`).
+    pub candidate: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -445,6 +460,10 @@ fn parse_validate(tokens: &[String]) -> Result<Command, String> {
             takes_value: true,
         },
         Flag {
+            name: "--history-dir",
+            takes_value: true,
+        },
+        Flag {
             name: "--strict",
             takes_value: false,
         },
@@ -465,11 +484,13 @@ fn parse_validate(tokens: &[String]) -> Result<Command, String> {
         .filter_map(|(_, value)| value.clone())
         .map(PathBuf::from)
         .collect();
+    let history_dir = flag_value(&parsed, "--history-dir")?.map(PathBuf::from);
     let strict = parsed.iter().any(|(name, _)| name == "--strict");
     Ok(Command::Validate(ValidateArgs {
         problem: PathBuf::from(problem),
         preset,
         history,
+        history_dir,
         strict,
     }))
 }
@@ -749,6 +770,22 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
             takes_value: true,
         },
         Flag {
+            name: "--strict",
+            takes_value: false,
+        },
+        Flag {
+            name: "--candidates",
+            takes_value: true,
+        },
+        Flag {
+            name: "--report",
+            takes_value: true,
+        },
+        Flag {
+            name: "--candidate",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -769,12 +806,31 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
     let format = flag_value(&parsed, "--format")?.map(str::to_string);
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     let snapshot = flag_value(&parsed, "--snapshot")?.map(PathBuf::from);
+    let strict = parsed.iter().any(|(name, _)| name == "--strict");
+    let candidates = match flag_value(&parsed, "--candidates")? {
+        Some(raw) => {
+            let count = raw
+                .parse::<usize>()
+                .map_err(|error| format!("invalid --candidates value '{raw}': {error}"))?;
+            if !(1..=20).contains(&count) {
+                return Err(format!("candidates must be between 1 and 20, got {count}"));
+            }
+            Some(count)
+        }
+        None => None,
+    };
+    let report = flag_value(&parsed, "--report")?.map(PathBuf::from);
+    let candidate = flag_value(&parsed, "--candidate")?.map(str::to_string);
     let args = ProjectArgs {
         project: PathBuf::from(project),
         seed,
         format,
         output,
         snapshot,
+        strict,
+        candidates,
+        report,
+        candidate,
     };
     Ok(match command {
         "project-info" => Command::ProjectInfo(args),
@@ -1012,7 +1068,7 @@ fn parse_schema_export(tokens: &[String]) -> Result<Command, String> {
         return Ok(Command::Help);
     }
     let kind = flag_value(&parsed, "--kind")?
-        .ok_or("schema-export requires --kind <student_roster|classroom_layout|ruleset|seating_snapshot|project|project_bundle_manifest|candidate_set|plan_comparison|rotation_plan>")?;
+        .ok_or("schema-export requires --kind <student_roster|classroom_layout|ruleset|seating_snapshot|project|project_bundle_manifest|candidate_set|plan_comparison|rotation_plan|history_archive|editing_operation_log|export_preset>")?;
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     Ok(Command::SchemaExport(SchemaExportArgs {
         kind: kind.to_string(),
@@ -1625,17 +1681,19 @@ fn run_command(command: Command) -> ExitCode {
                 ExitCode::from(2)
             }
         },
-        Command::ProjectValidate(args) => match project::project_validate(&args.project) {
-            Ok(report) => {
-                println!("{report}");
-                ExitCode::SUCCESS
+        Command::ProjectValidate(args) => {
+            match project::project_validate(&args.project, args.strict) {
+                Ok(report) => {
+                    println!("{report}");
+                    ExitCode::SUCCESS
+                }
+                Err(message) => {
+                    let styler = Styler::stderr();
+                    eprintln!("{}: {message}", styler.red("error"));
+                    ExitCode::from(2)
+                }
             }
-            Err(message) => {
-                let styler = Styler::stderr();
-                eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::from(2)
-            }
-        },
+        }
         Command::ProjectSolve(args) => match commands::run_project_solve(&args) {
             Ok(status) => ExitCode::from(exit_code_for(status)),
             Err(message) => {
@@ -2346,6 +2404,10 @@ mod tests {
             format: None,
             output: Some(snapshot.clone()),
             snapshot: None,
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: None,
         })
         .expect("project-solve should succeed");
         assert_eq!(status, SolveStatus::Solved);
@@ -2358,6 +2420,10 @@ mod tests {
             format: Some("svg".to_string()),
             output: Some(output.clone()),
             snapshot: Some(snapshot.clone()),
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: None,
         })
         .expect("project-export should succeed");
         let rendered = std::fs::read_to_string(&output).unwrap();
@@ -2371,6 +2437,10 @@ mod tests {
             format: Some("svg".to_string()),
             output: Some(dir.join("missing.svg")),
             snapshot: None,
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: None,
         })
         .expect_err("project-export without --snapshot must refuse to re-solve");
         assert!(
@@ -2392,6 +2462,10 @@ mod tests {
             format: Some("svg".to_string()),
             output: Some(dir.join("bad.svg")),
             snapshot: Some(dir.join("bad.json")),
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: None,
         })
         .expect_err("a snapshot that double-occupies a seat must be refused");
         assert!(
@@ -2441,6 +2515,10 @@ mod tests {
             format: None,
             output: Some(dir.join("snapshot.json")),
             snapshot: None,
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: None,
         })
         .unwrap();
         // privacy: fail-closed verdict on a teacher project
@@ -2474,7 +2552,7 @@ mod tests {
         .unwrap();
         let restored_project = restored_root.join("seattrellis.project.json");
         assert!(restored_project.is_file());
-        assert!(crate::project::project_validate(&restored_project).is_ok());
+        assert!(crate::project::project_validate(&restored_project, false).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&restored_root);
     }
@@ -2524,6 +2602,10 @@ mod tests {
             format: None,
             output: Some(snapshot.clone()),
             snapshot: None,
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: None,
         })
         .unwrap();
         assert!(snapshot.is_file());
@@ -2626,6 +2708,33 @@ mod tests {
         assert_eq!(migrated["kind"], "student_roster");
         assert_eq!(migrated["schema_version"], 2);
 
+        // schema-migrate on the v1 project file: the `seattrellis_project`
+        // kind must be recognized and wrapped in the v2 project envelope
+        // with every field (including the Defaults: section) preserved.
+        let v2_project_out = dir.join("v2-project.json");
+        commands::run_schema_migrate(&SchemaMigrateArgs {
+            input: project.clone(),
+            output: Some(v2_project_out.clone()),
+            in_place: false,
+            dry_run: false,
+        })
+        .unwrap();
+        let migrated_project: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&v2_project_out).unwrap()).unwrap();
+        assert_eq!(migrated_project["kind"], "project");
+        assert_eq!(migrated_project["schema_version"], 2);
+        assert!(
+            migrated_project["data"]["name"]
+                .as_str()
+                .is_some_and(|name| !name.is_empty()),
+            "project name is preserved"
+        );
+        assert_eq!(migrated_project["data"]["students"], "students.csv");
+        assert_eq!(migrated_project["data"]["outputs_dir"], "outputs");
+        assert_eq!(migrated_project["data"]["default_candidates"], 5);
+        assert_eq!(migrated_project["data"]["default_candidate"], "recommended");
+        assert_eq!(migrated_project["data"]["default_export_format"], "html");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2652,25 +2761,349 @@ mod tests {
                 .contains("SeatTrellis v2 artifact"),
             "plan_comparison resolves to the v2 schema"
         );
-        // rotation_plan intentionally mirrors the v1 oracle artifact
-        // contract (schema_version 0.2.2), so it must keep the v1 schema.
-        let rotation = commands::v2_schema_for_kind("rotation_plan").unwrap();
+        // All 12 registry kinds now have a typed DTO and a generated .v2.
+        // schema (M5 closure round, §19.38): rotation_plan moved from the
+        // v1 artifact contract to the strict v2 DTO.
+        for kind in [
+            "rotation_plan",
+            "history_archive",
+            "editing_operation_log",
+            "export_preset",
+        ] {
+            let schema = commands::v2_schema_for_kind(kind)
+                .unwrap_or_else(|error| panic!("{kind} must resolve to a v2 schema: {error}"));
+            let title = serde_json::from_str::<serde_json::Value>(&schema).unwrap()["title"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert!(
+                title.contains("SeatTrellis v2 artifact"),
+                "{kind} resolves to the v2 schema, got: {title}"
+            );
+        }
+        // Unknown kinds fail with an explicit error.
+        assert!(
+            commands::v2_schema_for_kind("not-a-kind")
+                .unwrap_err()
+                .contains("no v2 JSON Schema embedded"),
+            "unknown kinds report a clear error"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // CLI option-parity round: validate --history-dir, project-validate
+    // --strict, project-solve --candidates/--report, project-export
+    // --candidate (Python cli.py mirror)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn parse_validate_accepts_history_dir() {
+        let Command::Validate(args) = parse_args(&args_of(&[
+            "validate",
+            "--problem",
+            "p.json",
+            "--preset",
+            "daily",
+            "--history",
+            "h1.json",
+            "--history-dir",
+            "history",
+            "--strict",
+        ]))
+        .unwrap() else {
+            panic!("expected a validate command");
+        };
+        assert_eq!(args.history_dir, Some(PathBuf::from("history")));
+        assert_eq!(args.history, vec![PathBuf::from("h1.json")]);
+        assert_eq!(args.preset.as_deref(), Some("daily"));
+        assert!(args.strict);
+    }
+
+    #[test]
+    fn parse_project_command_new_flags() {
+        let Command::ProjectSolve(args) = parse_args(&args_of(&[
+            "project-solve",
+            "--project",
+            "p.json",
+            "--candidates",
+            "3",
+            "--seed",
+            "7",
+            "--report",
+            "report.json",
+        ]))
+        .unwrap() else {
+            panic!("expected a project-solve command");
+        };
+        assert_eq!(args.candidates, Some(3));
+        assert_eq!(args.seed, Some(7));
+        assert_eq!(args.report, Some(PathBuf::from("report.json")));
+        assert!(!args.strict);
+        assert_eq!(args.candidate, None);
+
+        let Command::ProjectExport(args) = parse_args(&args_of(&[
+            "project-export",
+            "--project",
+            "p.json",
+            "--candidate",
+            "candidate_02",
+        ]))
+        .unwrap() else {
+            panic!("expected a project-export command");
+        };
+        assert_eq!(args.candidate.as_deref(), Some("candidate_02"));
+
+        let Command::ProjectValidate(args) = parse_args(&args_of(&[
+            "project-validate",
+            "--project",
+            "p.json",
+            "--strict",
+        ]))
+        .unwrap() else {
+            panic!("expected a project-validate command");
+        };
+        assert!(args.strict);
+        assert_eq!(args.candidates, None);
+    }
+
+    #[test]
+    fn project_solve_candidates_must_be_between_1_and_20() {
+        for raw in ["0", "21", "abc"] {
+            let error = parse_args(&args_of(&[
+                "project-solve",
+                "--project",
+                "p.json",
+                "--candidates",
+                raw,
+            ]))
+            .unwrap_err();
+            if raw == "abc" {
+                assert!(
+                    error.contains("invalid --candidates value"),
+                    "unexpected error: {error}"
+                );
+            } else {
+                assert!(
+                    error.contains("between 1 and 20"),
+                    "unexpected error: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn validate_history_dir_scans_snapshots_for_preset_warnings() {
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-histdir-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("history")).unwrap();
+        std::fs::create_dir_all(dir.join("empty")).unwrap();
+        std::fs::write(
+            dir.join("problem.json"),
+            r#"{"api_version":2,"student_count":2,"seat_positions":[[0.0,0.0],[1.0,0.0]],"edges":[[0,1]],"fixed_seats":[],"must_be_adjacent":[],"cannot_be_adjacent":[],"min_distance":[],"seed":7,"students":[{"key":"STU001","display_name":"Student001","height_cm":157.0,"score":92.0,"tags":["leader"],"needs":["vision_front"]},{"key":"STU002","display_name":"Student002","height_cm":177.0,"score":52.0}],"student_scores":[],"rules":{"seed":7,"soft":{"fair_rotation":{"enabled":true,"weight":12},"avoid_recent_neighbors":{"enabled":true,"weight":12},"score_balance":{"enabled":true,"weight":4},"height_back":{"enabled":true,"weight":4},"vision_front":{"enabled":true,"weight":20}}},"layout":null,"history":null,"pair_history":null,"time_limit_seconds":null}"#,
+        )
+        .unwrap();
+        // A snapshot found by the *.snapshot.json glob and a non-snapshot
+        // file the glob must ignore.
+        std::fs::write(
+            dir.join("history").join("week1.snapshot.json"),
+            r#"{"assignments":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("history").join("notes.txt"), "ignore me").unwrap();
+        let problem = dir.join("problem.json");
+
+        // No history at all: the daily preset history warning fires.
+        commands::run_validate(&ValidateArgs {
+            problem: problem.clone(),
+            preset: Some("daily".to_string()),
+            history: vec![],
+            history_dir: None,
+            strict: false,
+        })
+        .expect("validate without history stays valid");
+        // --history-dir supplies the history and the warning disappears;
+        // explicit --history files and the glob both count.
+        commands::run_validate(&ValidateArgs {
+            problem: problem.clone(),
+            preset: Some("daily".to_string()),
+            history: vec![dir.join("history").join("week1.snapshot.json")],
+            history_dir: Some(dir.join("history")),
+            strict: false,
+        })
+        .expect("validate with --history-dir stays valid");
+        // Strict mode with a warning (empty history dir) fails.
+        let error = commands::run_validate(&ValidateArgs {
+            problem,
+            preset: Some("daily".to_string()),
+            history: vec![],
+            history_dir: Some(dir.join("empty")),
+            strict: true,
+        })
+        .expect_err("--strict must turn the preset warning into a failure");
+        assert!(
+            error.contains("Warnings treated as errors by --strict"),
+            "unexpected error: {error}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn project_validate_strict_fails_on_capability_warnings() {
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-pvstrict-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("students.csv"), "id,name\n1,A\n2,B\n3,C\n4,D\n").unwrap();
+        std::fs::write(
+            dir.join("layout.json"),
+            r#"{"layout_id":"l","name":"Room","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true},
+                {"seat_id":"R2C1","row":2,"col":1,"x":0.0,"y":1.0,"enabled":true},
+                {"seat_id":"R2C2","row":2,"col":2,"x":1.0,"y":1.0,"enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"],["R2C1","R2C2"],["R1C1","R2C1"],["R1C2","R2C2"]]}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("rules.json"),
+            r#"{"seed":7,"soft":{"score_distribution":{"enabled":true,"weight":18,"scope":"group"}}}"#,
+        )
+        .unwrap();
+        commands::run_project_init(&ProjectInitArgs { dir: dir.clone() }).unwrap();
+        let project = dir.join("seattrellis.project.json");
+
+        let report = crate::project::project_validate(&project, false).unwrap();
+        assert!(report.contains("warnings: 1"), "got: {report}");
+        let error = crate::project::project_validate(&project, true).unwrap_err();
+        assert!(
+            error.contains("Warnings treated as errors by --strict"),
+            "unexpected error: {error}"
+        );
+        // Without the warning-triggering rule the strict run stays clean.
+        std::fs::write(dir.join("rules.json"), r#"{"seed":7,"soft":{}}"#).unwrap();
+        assert!(crate::project::project_validate(&project, true).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn project_solve_candidates_writes_candidate_set_and_report() {
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-candsolve-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = write_project_workspace(&dir);
+        let candidates_out = dir.join("candidates.json");
+        let report_out = dir.join("report.json");
+        let status = commands::run_project_solve(&ProjectArgs {
+            project: project.clone(),
+            seed: Some(7),
+            format: None,
+            output: Some(candidates_out.clone()),
+            snapshot: None,
+            strict: false,
+            candidates: Some(3),
+            report: Some(report_out.clone()),
+            candidate: None,
+        })
+        .expect("project-solve --candidates 3 should succeed");
+        assert_eq!(status, SolveStatus::Solved);
+        let artifact: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&candidates_out).unwrap()).unwrap();
+        assert_eq!(artifact["candidate_count"], 3);
+        let recommended = artifact["recommended_candidate_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let report: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&report_out).unwrap()).unwrap();
+        assert_eq!(report["kind"], "plan_comparison_report");
+        assert_eq!(report["candidate_count"], 3);
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&rotation).unwrap()["title"],
-            "SeatTrellis Rotation Plan"
+            report["recommended_candidate_id"].as_str(),
+            Some(recommended.as_str())
         );
-        // Kinds without a typed DTO fail with an explicit, documented error.
+
+        // project-export selects a specific candidate from the artifact.
+        let svg = dir.join("candidate.svg");
+        commands::run_project_export(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: Some("svg".to_string()),
+            output: Some(svg.clone()),
+            snapshot: Some(candidates_out.clone()),
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: Some(recommended.clone()),
+        })
+        .expect("project-export --candidate should succeed");
+        let rendered = std::fs::read_to_string(&svg).unwrap();
+        assert!(rendered.contains("<svg"), "expected an SVG document");
+        assert!(rendered.contains("Alice"), "candidate names are rendered");
+
+        // Unknown candidate ids are refused like the oracle get_candidate.
+        let error = commands::run_project_export(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: Some("svg".to_string()),
+            output: Some(dir.join("missing.svg")),
+            snapshot: Some(candidates_out.clone()),
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: Some("candidate_99".to_string()),
+        })
+        .expect_err("unknown candidate ids must be refused");
         assert!(
-            commands::v2_schema_for_kind("history_archive")
-                .unwrap_err()
-                .contains("no typed DTO"),
-            "history_archive reports the missing-DTO gap"
+            error.contains("Unknown candidate ID 'candidate_99'"),
+            "unexpected error: {error}"
         );
+
+        // --candidate on a plain snapshot is refused like the oracle.
+        let snapshot_out = dir.join("snapshot.json");
+        commands::run_project_solve(&ProjectArgs {
+            project: project.clone(),
+            seed: Some(7),
+            format: None,
+            output: Some(snapshot_out.clone()),
+            snapshot: None,
+            strict: false,
+            candidates: Some(1),
+            report: None,
+            candidate: None,
+        })
+        .expect("project-solve --candidates 1 stays a single snapshot");
+        let error = commands::run_project_export(&ProjectArgs {
+            project,
+            seed: None,
+            format: Some("svg".to_string()),
+            output: Some(dir.join("plain.svg")),
+            snapshot: Some(snapshot_out),
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: Some("candidate_01".to_string()),
+        })
+        .expect_err("--candidate on a plain snapshot must be refused");
         assert!(
-            commands::v2_schema_for_kind("export_preset")
-                .unwrap_err()
-                .contains("no typed DTO"),
-            "export_preset reports the missing-DTO gap"
+            error.contains("--candidate can only be used when --snapshot is a candidate set"),
+            "unexpected error: {error}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

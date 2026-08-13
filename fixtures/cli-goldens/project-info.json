@@ -1,5 +1,5 @@
 {
-  "stdout": "project:    <tmp>/proj/seattrellis.project.json\nname:       proj\nroot:       <tmp>/proj\nstudents   students.csv (ok)\nlayout     layout.json (ok)\nrules      rules.json (ok)\noutputs_dir: outputs",
+  "stdout": "project:    <tmp>/proj/seattrellis.project.json\nname:       proj\nroot:       <tmp>/proj\nstudents   students.csv (ok)\nlayout     layout.json (ok)\nrules      rules.json (ok)\noutputs_dir: outputs\nDefaults:\n- candidates: 5\n- candidate: recommended\n- export format: html",
   "stderr": "",
   "exit": 0
 }
