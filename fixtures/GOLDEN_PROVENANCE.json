@@ -221,24 +221,24 @@
     },
     "parity": {
       "contract": "Python oracle inputs and semantic golden artifacts",
-      "generated_at": "2026-08-12T14:58:08Z",
+      "generated_at": "2026-08-13T02:43:56Z",
       "generator": "scripts/gen_parity_fixtures.py",
       "goldens": {
         "file_count": 194,
-        "tree_sha256": "631c7ea8b75011a763a0c15c8db889e50d7fd021f135723b985352d7609137c7"
+        "tree_sha256": "00b9f3a23d44124429e42b5646ce19d7baea6053ea2a3f1f6e3290209eb51eff"
       },
       "inputs": {
         "file_count": 148,
-        "tree_sha256": "4479ad408a89cf45c8afad2dcc96b372d4bfee657cb0a14fad1f7495604ebf18"
+        "tree_sha256": "fc9912d785c4a86a26c402cc7535ed417c6e36d0756e08e960164b765286240e"
       },
       "last_corpus_update_commit": "d2e1aed16d1e86361b9af8d1846d367b14b54add",
       "manifest_path": "fixtures/parity/MANIFEST.json",
-      "manifest_sha256": "dcacb77f1e75d6b9221d3e4bc5b45dbf2c92faf4bdb852550d005ecf552d1701",
+      "manifest_sha256": "aaae2deabb7edcf4d82174cb1cdb9165d092e97e8d1c19bd90f49a08afac8f0e",
       "pip_extras": "image,excel,pdf,docx,pptx",
       "python_version": "3.12.13",
-      "seattrellis_version": "1.8.4",
+      "seattrellis_version": "1.9.0",
       "solver_backend": "fallback",
-      "source_commit": "4911352853b41ab5a0517bb68c4f43fccd33530f",
+      "source_commit": "76bddc4fc3c823ce2d1173184535df010e6a0e02",
       "verify_command": "python scripts/gen_parity_fixtures.py verify"
     },
     "roster_mapping": {
