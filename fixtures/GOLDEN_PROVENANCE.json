@@ -55,8 +55,8 @@
             "sha256": "0e2343f661ce73dbfb60eb31f4e953ea3c6ea898e19704cfa7965999942733ff"
           },
           "doctor.json": {
-            "bytes": 137,
-            "sha256": "ff16abab1d90ed0b9ff7d5e2e4a46aa04aaa129bce56ec405b3919bc1f9563dd"
+            "bytes": 142,
+            "sha256": "9560ab8aba8d1ef368341b832eedf7451740f1cf01c395dbe22583987f7a8540"
           },
           "edit.json": {
             "bytes": 253,
@@ -195,12 +195,12 @@
             "sha256": "5593a284fe012acfab737c44840bb955cf6962f988b1c29125fc96641ad6521c"
           },
           "version.json": {
-            "bytes": 69,
-            "sha256": "a5963449fcf214238906bf3c990d3260831b2de81eac2d1c1e24f02ae18b1c65"
+            "bytes": 74,
+            "sha256": "280ecaaee2f244cd2a9b8a1bf2fa348adef9c381a6b5a526028af5658eaf547a"
           }
         },
         "root": "fixtures/cli-goldens",
-        "tree_sha256": "c221c938efaac85a9922eba7b1f02af2cd54f3349886e1c3c27144964ce52493"
+        "tree_sha256": "82a7ddbb95d099f82d03b5aab1734f3f1cd3aa43b28afd274642a007cd6d87b8"
       },
       "normalization": [
         "temporary paths",
