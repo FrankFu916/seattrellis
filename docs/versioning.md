@@ -8,7 +8,7 @@ SeatTrellis 遵循 [Semantic Versioning 2.0.0](https://semver.org/)。
 - **次版本号 (MINOR)**：向后兼容的新功能。
 - **修订号 (PATCH)**：向后兼容的 Bug 修复。
 
-当前稳定版本为 `1.9.0`，包版本以 `pyproject.toml` 为准。从 v1.0 起，公开
+当前稳定版本为 `1.9.0`（v1 冻结线；annotated tag `v1.9.0` = `da9fdf64ce94e228f853033309443e2c0166d5be`，维护分支 `v1.x-maintenance`），包版本以 `pyproject.toml` 为准。从 v1.0 起，公开
 CLI、文件格式和 service API 的不兼容变更必须通过新的 MAJOR 版本发布。
 
 ## Schema Version

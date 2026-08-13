@@ -311,9 +311,9 @@
     "planned_maintenance_branch": "v1.x-maintenance",
     "planned_tag": "v1.9.0",
     "required_before_python_retirement": true,
-    "resolved_commit": null,
-    "resolved_tag": null,
-    "status": "pending"
+    "resolved_commit": "da9fdf64ce94e228f853033309443e2c0166d5be",
+    "resolved_tag": "v1.9.0",
+    "status": "resolved"
   },
   "kind": "seattrellis_golden_provenance",
   "milestone": "M6_beta_1_pre_retirement",
