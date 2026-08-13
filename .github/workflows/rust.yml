@@ -61,9 +61,9 @@ jobs:
       # MSRV compile break in seattrellis-schema ship undetected
       # (schema audit 2026-08-12). The PyO3 shim stays excluded.
       - name: Test the workspace (except the PyO3 shim)
-        run: cargo test --locked --workspace --exclude seattrellis_native
+        run: cargo test --locked --workspace
       - name: Clippy (workspace, except the PyO3 shim)
-        run: cargo clippy --all-targets --workspace --exclude seattrellis_native -- -D warnings
+        run: cargo clippy --all-targets --workspace -- -D warnings
 
   contract-drift:
     # M1-06: the OpenAPI document and the generated TypeScript client must
@@ -149,9 +149,8 @@ jobs:
     # M6 §9.1 red line: the v2 artifacts must not probe or load a Python
     # runtime. The release CLI and App server are scanned for libpython /
     # PyO3 / v1-stack symbols, and the production tree for Python build
-    # dependencies. The oracle tree (src/seattrellis) and the PyO3 shim
-    # are scanned indirectly: the binary scan fails if the shim were ever
-    # linked in.
+    # dependencies. After M6 retirement the tree gate runs with
+    # --expect-retired (the oracle tree must be gone).
     name: No Python runtime in v2 artifacts
     runs-on: ubuntu-latest
     steps:
@@ -168,7 +167,7 @@ jobs:
           cargo build --release --locked -p seattrellis_app
       - name: Scan the production tree and the release binaries
         run: |
-          python3 scripts/check_no_python_runtime.py --tree
+          python3 scripts/check_no_python_runtime.py --tree --expect-retired
           python3 scripts/check_no_python_runtime.py --binary target/release/seattrellis_cli target/release/seattrellis_app
 
   build-binaries:

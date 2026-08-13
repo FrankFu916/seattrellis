@@ -75,13 +75,19 @@ CANDIDATES_GOLDEN_COUNTS: dict[str, list[int]] = {
 
 
 def cli_bin() -> str:
-    cand = ROOT / ".venv" / "bin" / "seattrellis"
-    if cand.exists():
-        return str(cand)
+    # M6: the oracle is pinned from the v1.9.0 tag into .oracle-venv so the
+    # v2 tree can be Python-free while differentials keep running. The
+    # legacy .venv (editable install of the deleted tree) is a fallback for
+    # transition, then PATH.
+    for cand in (ROOT / ".oracle-venv" / "bin" / "seattrellis", ROOT / ".venv" / "bin" / "seattrellis"):
+        if cand.exists():
+            return str(cand)
     found = shutil.which("seattrellis")
     if found:
         return found
-    raise SystemExit("seattrellis CLI not found; activate the project venv")
+    raise SystemExit("seattrellis CLI not found; install the frozen oracle: "
+                     "python -m venv .oracle-venv && .oracle-venv/bin/pip install "
+                     "'seattrellis @ git+https://github.com/FrankFu916/seattrellis@v1.9.0'")
 
 
 def case_seed(case_id: str) -> int:

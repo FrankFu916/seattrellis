@@ -3,18 +3,20 @@
 SeatTrellis 的测试分为五层：单元测试、应用级 smoke、浏览器 E2E、性能基准和
 发布前人工验收。普通开发可以先跑较快的子集，发布前再跑完整清单。
 
-## 本地自动测试
+## 本地自动测试（v2 主线，M6 后无 Python）
 
 ```bash
-python -m pytest
-python -m compileall -q src/seattrellis scripts/benchmark_solver.py scripts/smoke_cli.py
-cargo test --locked
+cargo test --locked --workspace
+cargo clippy --all-targets --workspace -- -D warnings
+cargo run -p xtask -- contract check
 python scripts/check_repository_hygiene.py
-mkdocs build --strict
+python scripts/check_no_python_runtime.py --tree --expect-retired
 ```
 
-其中 Rust 测试只覆盖可选 native core，不代表默认 Python backend 被替换。
-文档构建完成后，`site/schemas/` 应包含 registry 中的全部公开 Schema。
+Rust 是唯一语义真相；Python oracle 已退休（v1.9.0 冻结，
+v1.x-maintenance 维护）。oracle 差分以冻结 tag 安装：
+`python -m venv .oracle-venv && .oracle-venv/bin/pip install "seattrellis[all] @ git+https://github.com/FrankFu916/seattrellis@v1.9.0"`
+然后 `.oracle-venv/bin/python scripts/rust_python_diff.py --fixtures`。
 
 ## Web smoke 测试
 

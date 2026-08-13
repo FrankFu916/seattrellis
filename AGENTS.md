@@ -23,7 +23,7 @@ Python 是 oracle（行为基准），Rust 是 v2 目标实现，React 仅是展
 | `schemas/` | v1 oracle schema + `xtask` 由 Rust DTO 生成的 `*.v2.schema.json` | 契约 |
 | `fixtures/parity/` | golden parity corpus（`MANIFEST.json` + `inputs/` + `goldens/`，由 `scripts/gen_parity_fixtures.py` 生成） | 验证 |
 | `e2e/` `e2e-rust/` | Streamlit 浏览器验收；NO_PYTHON_RUNTIME 工作台 E2E（`web-e2e-rust` CI job，Python 仅作 runner，不安装包） | 验证 |
-| `docs/` `scripts/` `tests/` | 文档、dev/benchmark/diff 脚本、Python pytest 套件 | 支撑 |
+| `docs/` `scripts/` | 文档、dev/benchmark/diff 脚本（Python 仅作 dev 工具，oracle 从 v1.9.0 tag 安装） | 支撑 |
 
 ## 构建与测试
 
@@ -49,8 +49,9 @@ npm test          # vitest
 npm run typecheck # tsc -b
 npm run build     # tsc -b && vite build
 
-# Python oracle（tests/ 下 pytest；安装：pip install -e ".[web]"）
-python -m pytest
+# Python oracle（M6 后从冻结 tag 安装，仅作差分基准；v2 树本身无 Python）
+python -m venv .oracle-venv && .oracle-venv/bin/pip install "seattrellis[all] @ git+https://github.com/FrankFu916/seattrellis@v1.9.0"
+.oracle-venv/bin/python scripts/rust_python_diff.py --fixtures   # 或 --cli-golden 等
 ```
 
 注意：根 workspace 已统一；不要恢复 `native/`、`app/`、`app/src-tauri/` 的独立 workspace/lockfile，也不要在迁移期顺手升级 edition。PyO3 只是 oracle 兼容层，v2 final 前必须删除。

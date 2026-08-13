@@ -49,7 +49,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "target" / "release" / "seattrellis_cli"  # single root workspace since M1-01
-PY_CLI = ROOT / ".venv" / "bin" / "seattrellis"
+# M6: the oracle is pinned from the v1.9.0 tag into .oracle-venv (the v2
+# tree is Python-free); .venv remains a transition fallback.
+_ORACLE = ROOT / ".oracle-venv" / "bin" / "seattrellis"
+PY_CLI = _ORACLE if _ORACLE.exists() else ROOT / ".venv" / "bin" / "seattrellis"
 FIXTURES = ROOT / "fixtures" / "parity"
 INPUTS = FIXTURES / "inputs"
 GOLDENS = FIXTURES / "goldens"

@@ -37,3 +37,6 @@ node_modules/
 .vscode/
 .reasonix/
 .zcode/
+
+# Frozen oracle venv (M6: installed from the v1.9.0 tag for differentials)
+.oracle-venv/

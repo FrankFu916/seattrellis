@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from conftest import RustServer
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-FIXTURES = REPOSITORY_ROOT / "tests" / "fixtures"
+FIXTURES = REPOSITORY_ROOT / "e2e-rust" / "fixtures"
 STUDENTS_CSV = FIXTURES / "students.csv"
 
 

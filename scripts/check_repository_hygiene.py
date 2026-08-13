@@ -55,6 +55,15 @@ def _path_problem(raw_path: str) -> str | None:
     return None
 
 
+def m6_retired_tree_assertion(root: Path) -> list[str]:
+    """M6: the v2 production tree must not carry the Python oracle tree."""
+    problems = []
+    for relative in ("src/seattrellis", "native", "pyproject.toml"):
+        if (root / relative).exists():
+            problems.append(f"M6: retired Python tree still present: {relative}")
+    return problems
+
+
 def tracked_paths(root: Path) -> list[str]:
     result = subprocess.run(
         ["git", "ls-files", "-z"],

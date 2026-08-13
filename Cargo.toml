@@ -10,7 +10,6 @@
 members = [
     "crates/seattrellis-core",
     "crates/seattrellis-cli",
-    "native/seattrellis_native",
     "app",
     "app/src-tauri",
     "xtask",
