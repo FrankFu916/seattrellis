@@ -1,7 +1,7 @@
 {
   "format": "seattrellis-parity-reference",
   "format_version": 1,
-  "seattrellis_version": "1.8.4",
+  "seattrellis_version": "1.9.0",
   "solver_backend": "fallback",
   "case": {
     "size": 50,

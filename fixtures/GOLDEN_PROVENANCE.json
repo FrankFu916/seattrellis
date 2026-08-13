@@ -35,7 +35,7 @@
         "corpus_commit": null,
         "note": "Recorded from the final Python oracle working tree before v1.9.0 freeze; corpus_commit remains null until the reviewed freeze commit is created.",
         "python_version": "3.12.13",
-        "seattrellis_version": "1.8.4",
+        "seattrellis_version": "1.9.0",
         "status": "working_tree_recorded"
       },
       "rust_guard": "crates/seattrellis-io/tests/artifact_parity.rs",
@@ -212,9 +212,9 @@
       "recording_source": {
         "full_33_case_commit": "d636db8bd2e33d31222df7a304ff2b81ca2f9d62",
         "last_material_update_commit": "a85316965c72728d09af3d078ce4eae96da9f184",
-        "note": "Historical recording did not persist the Python interpreter version; file hashes are authoritative.",
+        "note": "Historical recording did not persist the Python interpreter version; file hashes are authoritative. Expanded 33 -> 38 cases at the v1.9.0 freeze (ledger §19.38).",
         "python_version": null,
-        "seattrellis_version": "1.8.4",
+        "seattrellis_version": "1.9.0",
         "status": "partially_recorded"
       },
       "verify_command": ".venv/bin/python scripts/rust_python_diff.py --cli-golden"
@@ -300,7 +300,7 @@
         "corpus_commit": "8af82d97f55a2ec32c02904fb9fe5a0866bf6a01",
         "note": "The recording commit is exact; the historical interpreter version was not persisted.",
         "python_version": null,
-        "seattrellis_version": "1.8.4",
+        "seattrellis_version": "1.9.0",
         "status": "commit_recorded"
       },
       "rust_guard": "crates/seattrellis-io/tests/roster_mapping_parity.rs"

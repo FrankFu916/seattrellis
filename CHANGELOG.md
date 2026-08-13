@@ -17,6 +17,19 @@
   AppImage form is not published by default because it bundles the GTK/WebKit
   runtime.
 
+## 1.9.0 - 2026-08-13
+
+### User-facing changes
+
+- Final v1 line release: the Python package is frozen at 1.9.0 and moves to
+  maintenance; v2 development continues on the Rust/Tauri line.
+- CLI parity completed against the frozen oracle: `validate --history-dir`,
+  `project-validate --strict`, `project-solve --candidates/--report`,
+  `project-export --candidate` and the full export format set; `project-info`
+  prints the project Defaults section.
+- Golden parity corpus extended to 12 typed artifact kinds; artifact
+  compare/restore now share an oracle-recorded golden with Python.
+
 ## 1.8.4 - 2026-08-01
 
 ### User-facing changes

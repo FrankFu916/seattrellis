@@ -303,7 +303,7 @@ Current fair rotation and relationship avoidance use heuristic scoring from hist
 
 ## Release
 
-The current stable release is v1.8.4. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
+The current stable release is v1.9.0. See the [release checklist](docs/release-checklist.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

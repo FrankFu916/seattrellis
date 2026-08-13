@@ -3,7 +3,7 @@
 > **文档目的**：M0（v1.8.5）产出的不可争议迁移基线。逐项记录 Python v1.x（oracle）与 Rust v2 之间的功能对应关系与状态，供后续所有迁移决策引用。
 >
 > - 基线源码（分析基准）：`282fd99a7e766aaedaea6c5bb4c61e3ef14d257c`（与《SeatTrellis_v2.0.0_开发与发布总计划_修订版》第 5 行一致）
-> - 基线版本：`seattrellis 1.8.4`（`pyproject.toml:7`、`src/seattrellis/__init__.py:3`）
+> - 基线版本：`seattrellis 1.9.0`（v1 冻结线 2026-08-13；`pyproject.toml:7`、`src/seattrellis/__init__.py:3`）
 > - 建立日期：2026-08-08
 > - 状态判定依据：源码阅读 + 现有单元/契约测试 + 已登记的 golden 证据。实现路径或单元测试只能支持 `RUST_PARTIAL` / `RUST_PARITY_PENDING`；未登记自动等价证据前不得升级为 `RUST_VERIFIED`
 > - 关联计划：M0 阶段（计划 §3），《SeatTrellis_v2.0.0_开发与发布总计划_修订版.md》3.1
