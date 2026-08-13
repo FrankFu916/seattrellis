@@ -30,6 +30,10 @@ def _is_allowed_example_snapshot(path: PurePosixPath) -> bool:
     # files; it is synthetic test data, not real student data.
     if "fixtures" in parts and "parity" in parts:
         return True
+    # The artifact-parity corpus (fixtures/artifact-parity) carries its own
+    # outputs/ directory with synthetic compare/restore evidence files.
+    if "fixtures" in parts and "artifact-parity" in parts:
+        return True
     for index in range(len(parts) - 2):
         if parts[index : index + 2] == ("examples", "history"):
             return True
