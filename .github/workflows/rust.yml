@@ -172,7 +172,12 @@ jobs:
 
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}
-    if: github.event_name == 'release'
+    # v2 releases only: the v1 line (v1.* tags) publishes Python wheel/sdist
+    # + desktop bundles from the maintenance branch, and must not receive
+    # Rust binaries (the v1.9.0 release initially did — fixed).
+    if: >-
+      github.event_name == 'release' &&
+      !startsWith(github.event.release.tag_name, 'v1.')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

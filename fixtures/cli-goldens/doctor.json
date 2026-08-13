@@ -1,5 +1,5 @@
 {
-  "stdout": "binary: seattrellis_cli\nversion: 0.1.0\ncore api version: 2\ntemp dir: <tmp>/ (writable)",
+  "stdout": "binary: seattrellis_cli\nversion: 2.0.0-rc.1\ncore api version: 2\ntemp dir: <tmp>/ (writable)",
   "stderr": "",
   "exit": 0
 }
