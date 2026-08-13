@@ -1920,6 +1920,28 @@ project.schema.json）：
 - **M6 前置**：`docs/m6-retirement-checklist.md` 起草（删除序列/验收/
   保留面）；no-python 门禁 `--expect-retired` 为 M6 硬检查。
 
+### 19.40 2026-08-13：M6 beta.1 Python retirement 执行
+
+按计划 §9.1 顺序（v1.9.0 tag + v1.x-maintenance 保护线之后）执行：
+
+- **删除面**：`src/seattrellis/`、`native/`（PyO3）、`pyproject.toml`、
+  `tests/`（816 pytest 套件移至维护线）、`e2e/`（Streamlit）、
+  `desktop.yml`（Python 桌面构建）、`benchmarks.yml`（Python 求解器
+  基准）、`publish.yml`（Python 分发）、`check_release_version.py`。
+- **oracle 工具链**：差分脚本改从 `.oracle-venv` 取冻结 oracle
+  （`seattrellis[all] @ git+...@v1.9.0`）；E2E fixture 移入
+  `e2e-rust/fixtures/`；runner 约束移至 `e2e-rust/constraints.txt`；
+  oracle guards 移至 `scripts/oracle-guards/`（provenance 指针更新）。
+- **CI 缩减**：tests.yml 保留 rust-msrv / web-e2e-rust / parity-oracle /
+  rust-python-differential（oracle 从 tag 安装）；rust.yml no-python
+  门禁启用 `--tree --expect-retired`；hygiene 硬断言退役树不回归。
+- **验证（全部通过）**：workspace 630 测试、clippy/fmt、release 构建、
+  no-python `--expect-retired` 0、hygiene、CLI golden 38/38、
+  fixtures 41/41、rotation 34/34、exports 374/0（全部经冻结 oracle）、
+  E2E 4/4。
+- **身份转变**：Python 在 v2 主线仅存"冻结 oracle"（v1.9.0 tag +
+  v1.x-maintenance），无生产依赖、无运行时探测路径。
+
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
 ### corpus 状态
