@@ -1,5 +1,5 @@
 # Playwright runner pins for the NO_PYTHON_RUNTIME workbench E2E (M6: the
 # Streamlit e2e tree was retired with the Python package; only the runner
 # dependencies remain, pinned for reproducibility).
-playwright==1.61.0
+playwright==1.62.0
 pytest-playwright==0.8.0
