@@ -1904,6 +1904,22 @@ project.schema.json）：
    `PYTHON_ONLY=0`、`RUST_PARTIAL=0`、`RUST_PARITY_PENDING=102`、
    `RUST_VERIFIED=81`、`INTENTIONALLY_REMOVED_V2=17`。
 
+### 19.39 2026-08-13：v1.9.0 版本冻结与 corpus 重录
+
+- **版本冻结**：pyproject/`__version__`/README/CHANGELOG/versioning/ledger
+  基线/benchmark 引用全部升至 1.9.0（`check_release_version.py` 通过）；
+  Rust 预览线保持独立版本（tauri 0.1.0，§CHANGELOG 已声明双线）。
+- **corpus 重录**：版本字段嵌入每个 oracle 工件
+  （`metadata.version`），冻结后全量重生成 41 case（98 文件，diff 纯为
+  version 1.8.4→1.9.0）；本地 verify 0 diff；GOLDEN_PROVENANCE parity
+  inventory 同步刷新（首轮 CI 因未随重录提交而报 inventory drift，
+  已补交）。
+- **冻结 gate 状态**：Rust 三平台/contract/msrv/no-python/长跑门禁绿；
+  Tests 各 job 绿（E2E/差分/全平台 pytest）；parity-oracle 复验等待
+  最新 push（bf7bbbb）完成后确认。
+- **M6 前置**：`docs/m6-retirement-checklist.md` 起草（删除序列/验收/
+  保留面）；no-python 门禁 `--expect-retired` 为 M6 硬检查。
+
 ## 附：M0 收口——oracle golden corpus 与差分 harness（2026-08-08）
 
 ### corpus 状态
