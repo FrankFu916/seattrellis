@@ -1,0 +1,321 @@
+{
+  "corpora": {
+    "artifact_parity": {
+      "contract": "Python/Rust artifact compare and restore semantic parity corpus",
+      "inventory": {
+        "file_count": 5,
+        "files": {
+          "expected.json": {
+            "bytes": 2016,
+            "sha256": "1da0e6bd988b118dba31a2839b4ec08f4bb6f4e43ad4a3fa01f5ee65b79ef407"
+          },
+          "history/snapshot-left.json": {
+            "bytes": 818,
+            "sha256": "1ae24aa1c3e3b1d5f4ae352ccde34893b9e6ba95150af6a50783aebb4f473694"
+          },
+          "outputs/candidates.json": {
+            "bytes": 1858,
+            "sha256": "561246dd5eb118074d3c6c74a666a1469304473c47dcf1f39d23cc80e0bb6aa2"
+          },
+          "outputs/snapshot-right.json": {
+            "bytes": 862,
+            "sha256": "95227f7b028bf7dee1d57ec20276a50322f2eff0a350b1d3b8993e89cb93a10e"
+          },
+          "project.json": {
+            "bytes": 237,
+            "sha256": "fbfb6315b8537e39c625f1f636f2e2fb8e77f811be3dafa5dafb1cf10e18a16d"
+          }
+        },
+        "root": "fixtures/artifact-parity",
+        "tree_sha256": "eb777e369b9962fcc23ec82431f675ece6870028eec4ed381c0b73e3f85777a7"
+      },
+      "oracle_guard": "tests/test_artifact_parity.py",
+      "producer": "src/seattrellis/api/handlers.py::project_artifact_compare/project_artifact_restore",
+      "recording_source": {
+        "corpus_commit": null,
+        "note": "Recorded from the final Python oracle working tree before v1.9.0 freeze; corpus_commit remains null until the reviewed freeze commit is created.",
+        "python_version": "3.12.13",
+        "seattrellis_version": "1.8.4",
+        "status": "working_tree_recorded"
+      },
+      "rust_guard": "crates/seattrellis-io/tests/artifact_parity.rs",
+      "status": "recorded"
+    },
+    "cli_goldens": {
+      "contract": "Rust CLI normalized stdout/stderr and exit code; Python participates only as success/failure exit semantics where registered",
+      "inventory": {
+        "file_count": 38,
+        "files": {
+          "audit.json": {
+            "bytes": 124,
+            "sha256": "540574f944c756c134f1d1db298c4b735f3f1de4329c8721143189efdc2e6f2e"
+          },
+          "candidates.json": {
+            "bytes": 8686,
+            "sha256": "0e2343f661ce73dbfb60eb31f4e953ea3c6ea898e19704cfa7965999942733ff"
+          },
+          "doctor.json": {
+            "bytes": 137,
+            "sha256": "ff16abab1d90ed0b9ff7d5e2e4a46aa04aaa129bce56ec405b3919bc1f9563dd"
+          },
+          "edit.json": {
+            "bytes": 253,
+            "sha256": "26071da04e7f492e0d2815684f507b48ce7d7a965bfd1cb817599ae1cc2dae8f"
+          },
+          "help.json": {
+            "bytes": 8352,
+            "sha256": "22f569afdf6c9b4d9d68c0aa1538c5f4e20d440a158bf986dbce2c344fe9a86b"
+          },
+          "history-report.json": {
+            "bytes": 9984,
+            "sha256": "3c1265edb30066c193d9f6a821a53c424fd3dac0ae0055fe2477584e2bc4860b"
+          },
+          "pair-report.json": {
+            "bytes": 3801,
+            "sha256": "4d7a7b1f07e8ce315ff21e75e563f72b15393fd6fd1c05e62405d617d2d62bbf"
+          },
+          "precheck.json": {
+            "bytes": 3167,
+            "sha256": "5d2895e9d6937006e75e39139957f91eb566b6da6a2cd758203a3456b0ce310f"
+          },
+          "project-edit.json": {
+            "bytes": 124,
+            "sha256": "472b847fa3ae38e3fc290e5079309e245a5a5400a36cd75bbde59fec5a47a065"
+          },
+          "project-export-candidate.json": {
+            "bytes": 87,
+            "sha256": "33975cba5976c0c2cb6849139adddaaaf9cdfb1c96c102d989f067eb1a3d946e"
+          },
+          "project-export.json": {
+            "bytes": 81,
+            "sha256": "4022e2e1ee98512a34c2f4bf349bd5ab6820d30b636450c90bf1b8c1b5e1e242"
+          },
+          "project-info.json": {
+            "bytes": 323,
+            "sha256": "2af56d3269d2cdd6ae9d66dda363f0b7c4a7477055cfb0b9e40fdec4753eee41"
+          },
+          "project-init.json": {
+            "bytes": 91,
+            "sha256": "1552363e07e304fd032c85ded8106340b3112dfc38fc948e8c5bcd3007ee9c16"
+          },
+          "project-list.json": {
+            "bytes": 221,
+            "sha256": "a2774a49c8096140f3b69997146d8991d91fcd7509ab8da2a55733956bda0570"
+          },
+          "project-pack.json": {
+            "bytes": 72,
+            "sha256": "58d668f2ec927a07fef4f4e22034a9b2e54c52173861f4be9091b871c6438dee"
+          },
+          "project-privacy-no-outputs.json": {
+            "bytes": 479,
+            "sha256": "a1e901c5c665a5522722bf90ecd02ae19ae1bae0a098e3f2ee61e4ccf35946f4"
+          },
+          "project-privacy.json": {
+            "bytes": 708,
+            "sha256": "776880d02a1b3e48705122c8e4c1807c35f7d6604ce2043b443b4285ef3aa0ec"
+          },
+          "project-repair.json": {
+            "bytes": 101,
+            "sha256": "890f1601741892b3901f88f984f3b04be4036a42c1101287f286049e79230e99"
+          },
+          "project-restore.json": {
+            "bytes": 98,
+            "sha256": "e51bee468960c274399ab20b8b2d8ff2fb8abb725361e23454f727424c1d5baa"
+          },
+          "project-rotate.json": {
+            "bytes": 122,
+            "sha256": "fc93aa67667a1a8e42a80068813ba54e4bbe4a32e6b7fa82fc3b161280ce7cef"
+          },
+          "project-solve-candidates.json": {
+            "bytes": 626,
+            "sha256": "144a9333f66ef373162b416ffd247276065d1a0eb55a5713f130a807f649004f"
+          },
+          "project-solve.json": {
+            "bytes": 807,
+            "sha256": "d2fd6797ba8aa549cadb189b50a656262d9465df205bfb919832c266bccc729c"
+          },
+          "project-validate-strict-warning.json": {
+            "bytes": 296,
+            "sha256": "7eb0562719063382de1c2f01f5e1c562471988e0655e5ce8b6c2a93bdf038cc3"
+          },
+          "project-validate-strict.json": {
+            "bytes": 150,
+            "sha256": "3473147babe888c4ce5049507046a5f5e0e1a5bb49e53e8ccc8b35be2dd06ca0"
+          },
+          "project-validate.json": {
+            "bytes": 150,
+            "sha256": "3473147babe888c4ce5049507046a5f5e0e1a5bb49e53e8ccc8b35be2dd06ca0"
+          },
+          "repair-ignore-saved-locks.json": {
+            "bytes": 2036,
+            "sha256": "b783fd151571d484ebc62d179930c62b2ef07e67b7bccb22dbc8e09a5a79486d"
+          },
+          "repair-saved-locks.json": {
+            "bytes": 2037,
+            "sha256": "03dc4e0257dd38b6d1381788b9aa2f1c5016f173d66eb0684450bbb23a851cb3"
+          },
+          "repair.json": {
+            "bytes": 2036,
+            "sha256": "b783fd151571d484ebc62d179930c62b2ef07e67b7bccb22dbc8e09a5a79486d"
+          },
+          "schema-export.json": {
+            "bytes": 112,
+            "sha256": "215d24eb0d1891f1969b9bf2364ab289ef3dde682ab4b98e2eeed849c6959e76"
+          },
+          "schema-list.json": {
+            "bytes": 571,
+            "sha256": "fd8d01d3719e03971c0d4a3858c4187279c17bc402cd837c608994934bd8e5d8"
+          },
+          "schema-migrate.json": {
+            "bytes": 207,
+            "sha256": "3417a8208ee90a72447ac2ed92ba9a97d8a424bf857fd3ddc173749da912904d"
+          },
+          "solve.json": {
+            "bytes": 171,
+            "sha256": "d9b07979968f7eda9e619b68515f8c32ab8b14f52c54bea3a9cd9eeab2038dbb"
+          },
+          "validate-group-scope.json": {
+            "bytes": 312,
+            "sha256": "63f98a9f628219e3768c21096c49f94733d22dde8685299833fd891410bef01c"
+          },
+          "validate-history-dir.json": {
+            "bytes": 99,
+            "sha256": "5593a284fe012acfab737c44840bb955cf6962f988b1c29125fc96641ad6521c"
+          },
+          "validate-strict.json": {
+            "bytes": 472,
+            "sha256": "ae19129f5bd33bcb2fdd3216c72a5d3ad74088b916252e68b63a4cb7987d503d"
+          },
+          "validate-warnings.json": {
+            "bytes": 268,
+            "sha256": "527bafeb82650027195c248ac24c637e61be24e0ed2780c02ed1f0caa88e190d"
+          },
+          "validate.json": {
+            "bytes": 99,
+            "sha256": "5593a284fe012acfab737c44840bb955cf6962f988b1c29125fc96641ad6521c"
+          },
+          "version.json": {
+            "bytes": 69,
+            "sha256": "a5963449fcf214238906bf3c990d3260831b2de81eac2d1c1e24f02ae18b1c65"
+          }
+        },
+        "root": "fixtures/cli-goldens",
+        "tree_sha256": "c221c938efaac85a9922eba7b1f02af2cd54f3349886e1c3c27144964ce52493"
+      },
+      "normalization": [
+        "temporary paths",
+        "created_at and modified_at timestamps",
+        "canonical JSON key order"
+      ],
+      "producer": "scripts/rust_python_diff.py",
+      "record_command": ".venv/bin/python scripts/rust_python_diff.py --cli-golden-record",
+      "recording_source": {
+        "full_33_case_commit": "d636db8bd2e33d31222df7a304ff2b81ca2f9d62",
+        "last_material_update_commit": "a85316965c72728d09af3d078ce4eae96da9f184",
+        "note": "Historical recording did not persist the Python interpreter version; file hashes are authoritative.",
+        "python_version": null,
+        "seattrellis_version": "1.8.4",
+        "status": "partially_recorded"
+      },
+      "verify_command": ".venv/bin/python scripts/rust_python_diff.py --cli-golden"
+    },
+    "parity": {
+      "contract": "Python oracle inputs and semantic golden artifacts",
+      "generated_at": "2026-08-12T14:58:08Z",
+      "generator": "scripts/gen_parity_fixtures.py",
+      "goldens": {
+        "file_count": 194,
+        "tree_sha256": "631c7ea8b75011a763a0c15c8db889e50d7fd021f135723b985352d7609137c7"
+      },
+      "inputs": {
+        "file_count": 148,
+        "tree_sha256": "4479ad408a89cf45c8afad2dcc96b372d4bfee657cb0a14fad1f7495604ebf18"
+      },
+      "last_corpus_update_commit": "d2e1aed16d1e86361b9af8d1846d367b14b54add",
+      "manifest_path": "fixtures/parity/MANIFEST.json",
+      "manifest_sha256": "dcacb77f1e75d6b9221d3e4bc5b45dbf2c92faf4bdb852550d005ecf552d1701",
+      "pip_extras": "image,excel,pdf,docx,pptx",
+      "python_version": "3.12.13",
+      "seattrellis_version": "1.8.4",
+      "solver_backend": "fallback",
+      "source_commit": "4911352853b41ab5a0517bb68c4f43fccd33530f",
+      "verify_command": "python scripts/gen_parity_fixtures.py verify"
+    },
+    "roster_mapping": {
+      "contract": "Python suggest_roster_mapping assignments and ordered issues for ten synthetic CSV cases",
+      "inventory": {
+        "file_count": 11,
+        "files": {
+          "chinese-aliases.csv": {
+            "bytes": 89,
+            "sha256": "e9ea822192b37fcd554e1faf5e18e4273ddb48c9053ac7e8616682b3ba98e422"
+          },
+          "duplicate-alias.csv": {
+            "bytes": 35,
+            "sha256": "c346c41bf1c73e83dc90540d4a4d540713346c9b1f162992467bc94280679f8b"
+          },
+          "expected.json": {
+            "bytes": 1650,
+            "sha256": "f1ad3fdab37d29abb5f5d3fc3f93a4f588e2efde6fe4a9310be9a908234b2d91"
+          },
+          "fuzzy-headers.csv": {
+            "bytes": 66,
+            "sha256": "5ce7dbd8b2477414c8a90f6850b975c4fcaf49dbf546f1131f51b7635350990f"
+          },
+          "headerless-name-only.csv": {
+            "bytes": 16,
+            "sha256": "f2cc5b85908ef08229277017f2abe1032783a324202337c8033d0f759fddb00e"
+          },
+          "headerless-numeric-id.csv": {
+            "bytes": 38,
+            "sha256": "fb9ef276328d7d49069a94d71ae92183b944ecdca302054996b0fc52110fd2a6"
+          },
+          "headerless-short-id.csv": {
+            "bytes": 18,
+            "sha256": "e1ec78eda49bf33ea720e4e34109d06203b6168f2189c00e099f5571d61c7a2d"
+          },
+          "missing-identity.csv": {
+            "bytes": 30,
+            "sha256": "494e140b61c1c4062d54cc61f43cceaa3c8596c92f2b32697399a5aea4a857dc"
+          },
+          "mixed-alias-prefix.csv": {
+            "bytes": 41,
+            "sha256": "16abdac0df772fc8c9e2b155b096ca3fc75abd4cd8076b68607b58720ffa08c0"
+          },
+          "needs-plus-tags.csv": {
+            "bytes": 70,
+            "sha256": "4efa1b6c4712446131284d7cd3cfac7897880b31d8c08482f3c08c374bebcf72"
+          },
+          "normal-headers.csv": {
+            "bytes": 92,
+            "sha256": "4070fcd82beb74fb4d9a55c9c491d7472cd00d980fa25a058e2db3d2acb7956e"
+          }
+        },
+        "root": "fixtures/roster-mapping",
+        "tree_sha256": "5dd7ececb925af20209405f417b400f652ee6f1ba72211d5cfeab8361dc33fa9"
+      },
+      "oracle_guard": "tests/test_roster_mapping_parity.py",
+      "producer": "seattrellis.application.roster_mapping.suggest_roster_mapping",
+      "recording_source": {
+        "corpus_commit": "8af82d97f55a2ec32c02904fb9fe5a0866bf6a01",
+        "note": "The recording commit is exact; the historical interpreter version was not persisted.",
+        "python_version": null,
+        "seattrellis_version": "1.8.4",
+        "status": "commit_recorded"
+      },
+      "rust_guard": "crates/seattrellis-io/tests/roster_mapping_parity.rs"
+    }
+  },
+  "data_classification": "synthetic_only",
+  "final_v1_reference": {
+    "planned_maintenance_branch": "v1.x-maintenance",
+    "planned_tag": "v1.9.0",
+    "required_before_python_retirement": true,
+    "resolved_commit": null,
+    "resolved_tag": null,
+    "status": "pending"
+  },
+  "kind": "seattrellis_golden_provenance",
+  "milestone": "M6_beta_1_pre_retirement",
+  "schema_version": "1.0"
+}
