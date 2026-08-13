@@ -40,3 +40,6 @@ node_modules/
 
 # Frozen oracle venv (M6: installed from the v1.9.0 tag for differentials)
 .oracle-venv/
+
+# Local agent/session state
+.reasonix/

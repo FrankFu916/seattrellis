@@ -4,67 +4,37 @@ Thank you for helping improve SeatTrellis / 席序.
 
 ## Development Setup
 
+SeatTrellis v2 is a Rust workspace with a React workbench. Prerequisites: Rust 1.88+ (MSRV), Node 20+.
+
 ```bash
-git clone https://github.com/<your-username>/seattrellis.git
+git clone https://github.com/FrankFu916/seattrellis.git
 cd seattrellis
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev,web]"
-```
 
-On Windows PowerShell:
+# The server embeds the React workbench, so build it first
+cd clients/web && npm ci && npm run build && cd ../..
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev,web]"
+cargo build
+cargo test --workspace
 ```
 
 ## Running Tests
 
 ```bash
-pytest
-python scripts/check_repository_hygiene.py
+cargo test --workspace                 # all crates
+cargo clippy --all-targets --workspace -- -D warnings
+cargo run -p xtask -- contract check   # generated schema/API contract drift check
+cd clients/web && npm test && npm run typecheck
 ```
 
-Please add or update tests for any new rule, importer, exporter, or CLI behavior.
-Changes to a browser-facing workflow should also run the real-browser suite:
+Please add or update tests for any new rule, importer, exporter, or CLI behavior. Every fix should carry a regression test.
 
-```bash
-python -m pip install -e ".[web,e2e]"
-python -m playwright install chromium
-python -m pytest e2e --browser=chromium
-```
+## Code Style
 
-Changes to solver behavior must update the
-[rule capability audit](docs/rule-capability-audit.md). A rule is considered
-implemented only when validation, solving, scoring (where applicable), tests,
-and documentation agree.
+- `cargo fmt` before committing; clippy must be clean with `-D warnings`.
+- MSRV is Rust 1.88 — avoid newer std APIs.
+- Comments and commit messages in English; user-facing docs are bilingual (zh/en).
+- Keep the loopback security contract intact: new write paths must not bypass the token / Host / Origin middleware.
 
-Architecture-level decisions should be recorded in `docs/adr/` before two
-independent implementations or public interfaces depend on them.
+## Release Process
 
-## Issues
-
-When opening an Issue:
-
-- describe the expected behavior and actual behavior;
-- include a minimal fictional example when possible;
-- mention your Python version and operating system;
-- do not paste real student names, IDs, grades, class names, school names, or seating snapshots.
-
-## Pull Requests
-
-Before opening a Pull Request:
-
-- run `pytest`;
-- run the browser suite when Web workflow behavior changes;
-- keep core solving logic independent from CLI and Streamlit UI;
-- update README or examples if user-facing behavior changes;
-- keep examples fictional;
-- do not commit generated outputs, snapshots, `.env` files, or private classroom data.
-- run the repository hygiene check before pushing.
-
-## Privacy
-
-SeatTrellis is designed for local-first classroom data processing. Public contributions must not contain real student data. Use fictional IDs such as `STU001` and names such as `Student001` in tests and examples.
+See `docs/publishing.md` and `docs/release-checklist.md`. Releases are cut from `main` for the v2 line; the v1 Python line is maintained on `v1.x-maintenance` (frozen at 1.9.0).
