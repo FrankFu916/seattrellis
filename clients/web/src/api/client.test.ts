@@ -38,6 +38,24 @@ describe("desktop session handoff", () => {
       "Bearer desktop-session",
     );
   });
+
+  it("surfaces the server ErrorEnvelope error field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "Artifact is outside the project." }), {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    const { fetchEditorState } = await import("./client");
+    await expect(fetchEditorState("draft-1")).rejects.toMatchObject({
+      status: 422,
+      message: "Artifact is outside the project.",
+    });
+  });
 });
 
 describe("session token re-bootstrap", () => {

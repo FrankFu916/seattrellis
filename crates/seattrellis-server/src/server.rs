@@ -1,6 +1,6 @@
 //! Loopback-only HTTP backend for the SeatTrellis desktop app.
 //!
-//! Serves the compiled React workbench (`web_static/`) and exposes the native
+//! Serves the compiled React workbench (`clients/web/dist`) and exposes the native
 //! endpoints the workbench's teacher flow needs end-to-end: roster upload &
 //! preview, class generation (which also creates an editable draft), the
 //! command-driven seating editor, export, and the static catalogs.
@@ -35,11 +35,10 @@ use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// Compiled React workbench location resolved at build time. Used as a
 /// fallback so the binary serves assets regardless of the launch directory.
-const BUILTIN_WEB_STATIC: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../src/seattrellis/web_static");
+const BUILTIN_WEB_STATIC: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../clients/web/dist");
 /// Display path used when a release binary serves the compiled-in workbench.
 /// It deliberately does not point at a real filesystem directory.
-const EMBEDDED_WEB_STATIC: &str = "<embedded>/src/seattrellis/web_static";
+const EMBEDDED_WEB_STATIC: &str = "<embedded>/clients/web/dist";
 
 /// The solve-request store now lives in the application layer (M1-02);
 /// re-exported here so the transport keeps a single import path.
@@ -198,19 +197,16 @@ fn generate_session_token() -> String {
 
 /// Locate a complete workbench build (`index.html` present) from, in order:
 /// 1. the `SEATTRELLIS_WEB_STATIC` env var,
-/// 2. the launch working directory (`src/seattrellis/web_static` or a
-///    `../src/...` when launched from the app crate),
+/// 2. the launch working directory (`clients/web/dist`, including app and
+///    Tauri-shell relative forms),
 /// 3. the workbench embedded at build time,
 /// 4. the compile-time path baked into the binary (a development fallback).
 pub fn resolve_web_root() -> Result<PathBuf, ServerError> {
     let disk_candidates = [
         std::env::var_os("SEATTRELLIS_WEB_STATIC").map(PathBuf::from),
-        // M6: the React build is the workbench; prefer it over the
-        // Python-tree copy (deleted with Python retirement).
         Some(PathBuf::from("clients/web/dist")),
         Some(PathBuf::from("../clients/web/dist")),
-        Some(PathBuf::from("src/seattrellis/web_static")),
-        Some(PathBuf::from("../src/seattrellis/web_static")),
+        Some(PathBuf::from("../../clients/web/dist")),
     ];
 
     for candidate in disk_candidates.into_iter().flatten() {
@@ -237,7 +233,7 @@ pub fn resolve_web_root() -> Result<PathBuf, ServerError> {
     Err(ServerError::MissingWebRoot(format!(
         "no workbench build found under SEATTRELLIS_WEB_STATIC, the launch \
          directory, or the built-in path {BUILTIN_WEB_STATIC:?}; build the \
-         React frontend first (index.html must exist in web_static/)"
+         React frontend first (clients/web/dist/index.html must exist)"
     )))
 }
 
@@ -3735,7 +3731,11 @@ mod tests {
         // Provenance metadata exists and points at the source.
         let document: Value = serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
         assert_eq!(document["metadata"]["restored_from"], "plan.snapshot.json");
-        assert!(document["restored_at"].is_number());
+        assert!(document["metadata"]["restored_at"]
+            .as_str()
+            .is_some_and(|value| value.ends_with("+00:00")));
+        assert!(document.get("restored_at").is_none());
+        assert!(document.get("kind").is_none());
         // The assignment content survived the restore.
         assert_eq!(document["assignments"].as_array().unwrap().len(), 2);
         assert_eq!(document["assignments"][0]["seat_id"], "R1C1");
@@ -3825,13 +3825,14 @@ mod tests {
 
         let document: Value = serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
         assert_eq!(document["metadata"]["restored_from"], "candidates-a.json");
-        assert!(document["restored_at"].is_number());
-        // The candidate document (including its inner snapshot) survived.
-        assert_eq!(document["candidates"].as_array().unwrap().len(), 1);
-        assert_eq!(
-            document["candidates"][0]["snapshot"]["assignments"][0]["seat_id"],
-            "R1C1"
-        );
+        assert!(document["metadata"]["restored_at"]
+            .as_str()
+            .is_some_and(|value| value.ends_with("+00:00")));
+        // Python restores a candidate set's recommended candidate as a fresh
+        // SeatingSnapshot rather than preserving the candidate-set envelope.
+        assert!(document.get("kind").is_none());
+        assert!(document.get("candidates").is_none());
+        assert_eq!(document["assignments"][0]["seat_id"], "R1C1");
     }
 
     #[test]

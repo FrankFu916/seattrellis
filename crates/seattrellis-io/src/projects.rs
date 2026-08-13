@@ -42,6 +42,8 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use seattrellis_schema::dto::project::ExportFormat;
+use seattrellis_schema::dto::snapshot::SeatingSnapshotArtifact;
 use seattrellis_schema::{
     aggregate_verdicts, classify_findings, classify_scan, classify_unscanned, is_sensitive_key,
     scan_document, PrivacyVerdict,
@@ -189,11 +191,26 @@ struct ProjectFile {
     history_dir: Option<String>,
     #[serde(default = "default_outputs_dir")]
     outputs_dir: String,
+    #[serde(default)]
+    default_candidates: Option<u32>,
+    #[serde(default)]
+    default_candidate: Option<String>,
+    #[serde(default)]
+    default_export_format: Option<ExportFormat>,
 }
 
 fn default_outputs_dir() -> String {
     "outputs".to_string()
 }
+
+/// Oracle fallback for `default_candidates` (Python `SeatTrellisProject`).
+const DEFAULT_CANDIDATES: u32 = 5;
+
+/// Oracle fallback for `default_candidate` (Python `SeatTrellisProject`).
+const DEFAULT_CANDIDATE: &str = "recommended";
+
+/// Oracle fallback for `default_export_format` (Python `SeatTrellisProject`).
+const DEFAULT_EXPORT_FORMAT: ExportFormat = ExportFormat::Html;
 
 /// Resolved project references, all guaranteed (when present) to live inside
 /// the project root.
@@ -242,6 +259,14 @@ fn load_project(path: &Path) -> Result<ProjectFile, String> {
     require_relative_path(Some(&project.outputs_dir), "outputs_dir")?;
     if let Some(history) = project.history_dir.as_deref() {
         require_relative_path(Some(history), "history_dir")?;
+    }
+    if let Some(candidates) = project.default_candidates {
+        if !(1..=20).contains(&candidates) {
+            return Err(format!(
+                "Invalid project file: {} (default_candidates must be between 1 and 20)",
+                path.display()
+            ));
+        }
     }
     Ok(project)
 }
@@ -435,6 +460,33 @@ pub fn load_project_document(project_path: &Path) -> Result<(Value, PathBuf), St
         .map(Path::to_path_buf)
         .unwrap_or_else(|| project_file.clone());
     Ok((value, root))
+}
+
+/// Resolved generation/export defaults carried by a project document — the
+/// Python `project_info` "Defaults:" section. Omitted fields fall back to
+/// the oracle defaults (`5` / `recommended` / `html`, mirroring
+/// `SeatTrellisProject` in `models/project.py`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectDefaults {
+    pub candidates: u32,
+    pub candidate: String,
+    pub export_format: ExportFormat,
+}
+
+/// Load a project document and return its resolved generation/export
+/// defaults. Referenced inputs are not required to exist (mirrors the
+/// `project-info` contract: the document itself is authoritative).
+pub fn project_defaults(project_path: &Path) -> Result<ProjectDefaults, String> {
+    let (project, _) = resolve_project(project_path, false)?;
+    Ok(ProjectDefaults {
+        candidates: project.default_candidates.unwrap_or(DEFAULT_CANDIDATES),
+        candidate: project
+            .default_candidate
+            .unwrap_or_else(|| DEFAULT_CANDIDATE.to_string()),
+        export_format: project
+            .default_export_format
+            .unwrap_or(DEFAULT_EXPORT_FORMAT),
+    })
 }
 
 /// Compile the core `CoreSolveRequest` JSON from a project workspace:
@@ -1735,38 +1787,35 @@ fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
             ))
         }
     };
-
-    let mut assignments: Vec<(String, String)> = Vec::new();
-    if let Some(list) = snapshot.get("assignments").and_then(Value::as_array) {
-        for assignment in list {
-            if let (Some(student), Some(seat)) = (
-                assignment.get("student_key").and_then(Value::as_str),
-                assignment.get("seat_id").and_then(Value::as_str),
-            ) {
-                assignments.push((student.to_string(), seat.to_string()));
-            }
-        }
+    // Compare the typed semantic model, not raw JSON spelling. This mirrors
+    // Python/Pydantic: omitting a field and explicitly writing its default
+    // must not be reported as a layout/rules change.
+    let mut snapshot_value = snapshot.clone();
+    if let Some(object) = snapshot_value.as_object_mut() {
+        object.remove("kind");
+        object.remove("restored_at");
+        object
+            .entry("schema_version".to_string())
+            .or_insert_with(|| json!("1.0"));
     }
-    let student_count = snapshot
-        .get("students")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
+    let snapshot: SeatingSnapshotArtifact = serde_json::from_value(snapshot_value)
+        .map_err(|error| format!("Invalid snapshot in {}: {error}", path.display()))?;
+    let assignments = snapshot
+        .assignments
+        .iter()
+        .map(|assignment| (assignment.student_key.clone(), assignment.seat_id.clone()))
+        .collect();
+    let student_count = snapshot.students.len();
     let enabled_seat_count = snapshot
-        .get("layout")
-        .and_then(|layout| layout.get("seats"))
-        .and_then(Value::as_array)
-        .map(|seats| {
-            seats
-                .iter()
-                .filter(|seat| seat.get("enabled").and_then(Value::as_bool).unwrap_or(true))
-                .count()
-        })
-        .unwrap_or(0);
-    let solver_status = snapshot
-        .get("solver_status")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+        .layout
+        .seats
+        .iter()
+        .filter(|seat| seat.enabled)
+        .count();
+    let layout = serde_json::to_value(&snapshot.layout)
+        .map_err(|error| format!("Could not normalize layout: {error}"))?;
+    let rules = serde_json::to_value(&snapshot.rules)
+        .map_err(|error| format!("Could not normalize rules: {error}"))?;
 
     Ok(ArtifactSnapshotView {
         kind,
@@ -1774,9 +1823,9 @@ fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
         assignments,
         student_count,
         enabled_seat_count,
-        layout: snapshot.get("layout").cloned(),
-        rules: snapshot.get("rules").cloned(),
-        solver_status,
+        layout: Some(layout),
+        rules: Some(rules),
+        solver_status: Some(snapshot.solver_status),
     })
 }
 
@@ -1917,41 +1966,76 @@ pub fn compare_artifacts_json(
 pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<String, String> {
     let (_, paths) = resolve_project(Path::new(project_path), false)?;
     let source_path = resolve_project_artifact(&paths, Path::new(artifact_path))?;
-    let view = artifact_snapshot_view(&source_path)?;
-    if view.kind == "rotation_plan" {
+    let bytes = read_file_capped(&source_path, MAX_BUNDLE_FILE_BYTES)?;
+    let source_document: Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Invalid JSON in {}: {e}", source_path.display()))?;
+    let source_kind = artifact_kind(&source_document);
+    if source_kind == "rotation_plan" {
         return Err(
             "Select a snapshot or candidate set inside a rotation plan before restoring it."
                 .to_string(),
         );
     }
+    let snapshot_value = match source_kind.as_str() {
+        "candidate_set" => {
+            let recommended = source_document
+                .get("recommended_candidate_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            source_document
+                .get("candidates")
+                .and_then(Value::as_array)
+                .and_then(|candidates| {
+                    candidates.iter().find(|candidate| {
+                        candidate.get("candidate_id").and_then(Value::as_str) == Some(recommended)
+                    })
+                })
+                .or_else(|| {
+                    source_document
+                        .get("candidates")
+                        .and_then(Value::as_array)
+                        .and_then(|candidates| candidates.first())
+                })
+                .and_then(|candidate| candidate.get("snapshot"))
+                .cloned()
+                .ok_or_else(|| {
+                    format!("Candidate set has no snapshot: {}", source_path.display())
+                })?
+        }
+        "snapshot" => source_document,
+        _ => {
+            return Err(format!(
+                "Unsupported project artifact kind for restoration: {source_kind}"
+            ));
+        }
+    };
     fs::create_dir_all(&paths.outputs_dir)
         .map_err(|e| format!("Could not create outputs directory: {e}"))?;
 
-    // Rebuild the snapshot document with restoration metadata.
-    let bytes = read_file_capped(&source_path, MAX_BUNDLE_FILE_BYTES)?;
-    let mut document: Value = serde_json::from_slice(&bytes)
-        .map_err(|e| format!("Invalid JSON in {}: {e}", source_path.display()))?;
+    // Mirror the Python oracle: every restorable artifact becomes a typed
+    // SeatingSnapshot, including a candidate set's recommended snapshot.
+    // Legacy Rust restores carried a top-level `restored_at`; Python's typed
+    // model ignores that field, so remove it before strict Rust parsing.
+    let mut snapshot_value = snapshot_value;
+    if let Some(object) = snapshot_value.as_object_mut() {
+        object.remove("kind");
+        object.remove("restored_at");
+        object
+            .entry("schema_version".to_string())
+            .or_insert_with(|| json!("1.0"));
+    }
+    let mut snapshot: SeatingSnapshotArtifact = serde_json::from_value(snapshot_value)
+        .map_err(|error| format!("Invalid snapshot in {}: {error}", source_path.display()))?;
     let source_name = source_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if let Some(metadata) = document.get_mut("metadata").and_then(Value::as_object_mut) {
-        metadata.insert("restored_from".to_string(), json!(source_name));
-    } else if let Some(object) = document.as_object_mut() {
-        object.insert(
-            "metadata".to_string(),
-            json!({ "restored_from": source_name }),
-        );
-    }
-    if let Some(object) = document.as_object_mut() {
-        object.insert(
-            "restored_at".to_string(),
-            json!(std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|duration| duration.as_secs())
-                .unwrap_or(0)),
-        );
-    }
+    snapshot
+        .metadata
+        .insert("restored_from".to_string(), json!(source_name));
+    snapshot
+        .metadata
+        .insert("restored_at".to_string(), json!(now_iso()));
 
     // restored-{stem}.snapshot.json, never overwriting an existing file.
     let stem = source_path
@@ -1980,7 +2064,7 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
     }
     fs::write(
         &target,
-        serde_json::to_vec(&document)
+        serde_json::to_vec(&snapshot)
             .map_err(|e| format!("Could not serialize restored artifact: {e}"))?,
     )
     .map_err(|e| {
@@ -2342,6 +2426,90 @@ mod tests {
         assert!(list_projects(root.to_str().unwrap(), 101).is_err());
         let projects = list_projects(root.to_str().unwrap(), 1).unwrap();
         assert_eq!(projects.len(), 1);
+    }
+
+    #[test]
+    fn project_defaults_are_read_from_the_document() {
+        // The Python "Defaults:" fields must survive the io load path
+        // (previously they were silently dropped).
+        let root = temp_root("defaults-read");
+        let project_file = root.join("project.seattrellis.json");
+        fs::write(
+            &project_file,
+            r#"{
+                "kind": "seattrellis_project",
+                "schema_version": 1,
+                "name": "Defaults",
+                "students": "students.csv",
+                "layout": "layout.json",
+                "rules": "rules.json",
+                "outputs_dir": "outputs",
+                "default_candidates": 7,
+                "default_candidate": "balanced",
+                "default_export_format": "png"
+            }"#,
+        )
+        .unwrap();
+        let defaults = project_defaults(&project_file).unwrap();
+        assert_eq!(defaults.candidates, 7);
+        assert_eq!(defaults.candidate, "balanced");
+        assert_eq!(defaults.export_format, ExportFormat::Png);
+        // The document also resolves without requiring the referenced files.
+        assert_eq!(defaults, project_defaults(&project_file).unwrap());
+    }
+
+    #[test]
+    fn project_defaults_fall_back_to_oracle_values() {
+        let root = temp_root("defaults-fallback");
+        let project_file = write_project(&root, "Plain", "student_ref,gender\n", false);
+        let defaults = project_defaults(&project_file).unwrap();
+        assert_eq!(defaults.candidates, DEFAULT_CANDIDATES);
+        assert_eq!(defaults.candidate, DEFAULT_CANDIDATE);
+        assert_eq!(defaults.export_format, ExportFormat::Html);
+    }
+
+    #[test]
+    fn project_defaults_reject_invalid_values() {
+        let root = temp_root("defaults-invalid");
+        let project_file = root.join("project.seattrellis.json");
+        // default_candidates outside the Python 1..=20 range is rejected at
+        // load time (the oracle model raises ValueError).
+        for bad in ["0", "21"] {
+            fs::write(
+                &project_file,
+                format!(
+                    r#"{{
+                        "kind": "seattrellis_project",
+                        "schema_version": 1,
+                        "students": "students.csv",
+                        "layout": "layout.json",
+                        "rules": "rules.json",
+                        "default_candidates": {bad}
+                    }}"#
+                ),
+            )
+            .unwrap();
+            let error = project_defaults(&project_file).unwrap_err();
+            assert!(
+                error.contains("default_candidates must be between 1 and 20"),
+                "candidates {bad}: {error}"
+            );
+        }
+        // An unknown export format is rejected exactly like the Python
+        // Literal["html", "excel", "png"] field.
+        fs::write(
+            &project_file,
+            r#"{
+                "kind": "seattrellis_project",
+                "schema_version": 1,
+                "students": "students.csv",
+                "layout": "layout.json",
+                "rules": "rules.json",
+                "default_export_format": "pdf"
+            }"#,
+        )
+        .unwrap();
+        assert!(project_defaults(&project_file).is_err());
     }
 
     #[test]
@@ -3101,7 +3269,11 @@ mod tests {
 
         let document: Value = serde_json::from_str(&fs::read_to_string(restored).unwrap()).unwrap();
         assert_eq!(document["metadata"]["restored_from"], "plan.snapshot.json");
-        assert!(document["restored_at"].is_number());
+        assert!(document["metadata"]["restored_at"]
+            .as_str()
+            .is_some_and(|value| value.ends_with("+00:00")));
+        assert!(document.get("restored_at").is_none());
+        assert!(document.get("kind").is_none());
         // The assignment content survived.
         assert_eq!(document["assignments"].as_array().unwrap().len(), 2);
     }

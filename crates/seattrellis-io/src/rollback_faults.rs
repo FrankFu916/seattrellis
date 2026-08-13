@@ -340,12 +340,9 @@ fn artifact_restore_rolls_back() {
     let project = write_project_workspace(&dir);
     let artifact = dir.write(
         "outputs/plan.snapshot.json",
-        r#"{
-        "kind": "snapshot",
-        "schema_version": 2,
-        "assignments": [{"student_key": "1", "student_name": "A", "seat_id": "R1C1"}]
-    }"#,
+        include_str!("../../../fixtures/artifact-parity/history/snapshot-left.json"),
     );
+    let before = sha256_file(&artifact);
 
     let _guard = FaultGuard::arm();
     let error = crate::projects::restore_artifact_json(
@@ -355,16 +352,7 @@ fn artifact_restore_rolls_back() {
     .expect_err("artifact restore commit must fail");
     assert!(error.contains("injected"), "got: {error}");
     // The source artifact is never modified by a restore.
-    assert_eq!(
-        sha256_file(&artifact),
-        sha256_bytes(
-            br#"{
-        "kind": "snapshot",
-        "schema_version": 2,
-        "assignments": [{"student_key": "1", "student_name": "A", "seat_id": "R1C1"}]
-    }"#
-        )
-    );
+    assert_eq!(sha256_file(&artifact), before);
     let _ = dir;
 }
 

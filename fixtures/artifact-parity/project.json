@@ -1,0 +1,10 @@
+{
+  "kind": "seattrellis_project",
+  "schema_version": 1,
+  "name": "Artifact parity fixture",
+  "students": "students.csv",
+  "layout": "classroom.json",
+  "rules": "rules.json",
+  "history_dir": "history",
+  "outputs_dir": "outputs"
+}

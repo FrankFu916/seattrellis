@@ -1,0 +1,77 @@
+{
+  "compare": {
+    "api_version": "1",
+    "left": {
+      "name": "snapshot-left.json",
+      "path": "snapshot-left.json",
+      "kind": "snapshot",
+      "created_at": "2026-08-09T00:00:00Z",
+      "student_count": 2,
+      "assignment_count": 2,
+      "enabled_seat_count": 3,
+      "solver_status": "FEASIBLE"
+    },
+    "right": {
+      "name": "snapshot-right.json",
+      "path": "snapshot-right.json",
+      "kind": "snapshot",
+      "created_at": "2026-08-09T01:00:00Z",
+      "student_count": 3,
+      "assignment_count": 2,
+      "enabled_seat_count": 3,
+      "solver_status": "OPTIMAL"
+    },
+    "diff": {
+      "assignment_changes": 3,
+      "roster_added": 1,
+      "roster_removed": 1,
+      "layout_changed": false,
+      "rules_changed": true,
+      "solver_status_changed": true,
+      "assignment_details": [
+        {
+          "student_ref": "student-1",
+          "change": "moved",
+          "before_seat_id": "R1C1",
+          "after_seat_id": "R1C2"
+        },
+        {
+          "student_ref": "student-2",
+          "change": "unseated",
+          "before_seat_id": "R1C2",
+          "after_seat_id": null
+        },
+        {
+          "student_ref": "student-3",
+          "change": "seated",
+          "before_seat_id": null,
+          "after_seat_id": "R1C1"
+        }
+      ]
+    }
+  },
+  "restore_snapshot": {
+    "schema_version": "1.0",
+    "kind": null,
+    "restored_from": "snapshot-left.json",
+    "restored_at": "<RFC3339>",
+    "student_keys": ["S1", "S2"],
+    "assignments": [
+      {"student_key": "S1", "seat_id": "R1C1"},
+      {"student_key": "S2", "seat_id": "R1C2"}
+    ],
+    "has_candidate_envelope": false
+  },
+  "restore_candidate_set": {
+    "schema_version": "1.0",
+    "kind": null,
+    "restored_from": "candidates.json",
+    "restored_at": "<RFC3339>",
+    "student_keys": ["S1", "S2"],
+    "assignments": [
+      {"student_key": "S1", "seat_id": "R1C3"},
+      {"student_key": "S2", "seat_id": "R1C1"}
+    ],
+    "has_candidate_envelope": false
+  }
+}

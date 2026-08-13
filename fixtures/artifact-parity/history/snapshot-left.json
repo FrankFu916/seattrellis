@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-08-09T00:00:00Z",
+  "seed": 42,
+  "metadata": {},
+  "students": [
+    {"student_id": "S1", "name": "示例甲"},
+    {"student_id": "S2", "name": "示例乙"}
+  ],
+  "layout": {
+    "layout_id": "fixture-room",
+    "name": "Fixture room",
+    "seats": [
+      {"seat_id": "R1C1", "row": 1, "col": 1, "x": 1.0, "y": 1.0, "zone": "front"},
+      {"seat_id": "R1C2", "row": 1, "col": 2, "x": 2.0, "y": 1.0, "zone": "front"},
+      {"seat_id": "R1C3", "row": 1, "col": 3, "x": 3.0, "y": 1.0, "zone": "front"}
+    ]
+  },
+  "rules": {"schema_version": 1, "seed": 42},
+  "assignments": [
+    {"student_key": "S1", "student_name": "示例甲", "seat_id": "R1C1"},
+    {"student_key": "S2", "student_name": "示例乙", "seat_id": "R1C2"}
+  ],
+  "solver_status": "FEASIBLE"
+}

@@ -144,12 +144,16 @@ async function safeErrorDetail(
   try {
     const body = (await response.json()) as {
       code?: string;
+      error?: string;
       message?: string;
       detail?: { code?: string; message?: string };
     };
     const code = body.code ?? body.detail?.code ?? "request_failed";
     const message =
-      body.message ?? body.detail?.message ?? "The request could not be completed.";
+      body.message ??
+      body.error ??
+      body.detail?.message ??
+      "The request could not be completed.";
     return { code, message };
   } catch {
     return { code: "request_failed", message: "The request could not be completed." };
