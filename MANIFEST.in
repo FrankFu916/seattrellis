@@ -1,7 +1,10 @@
-include README.en.md CHANGELOG.md CONTRIBUTING.md SECURITY.md
-recursive-include docs *
+# v1.9.0 sdist contents: the package plus public documentation only.
+# Internal planning, audits, product decisions, migration guides and parity
+# tooling stay out of the published artifact (PD-D19 / public communications
+# policy).
+include README.md README.en.md CHANGELOG.md CONTRIBUTING.md SECURITY.md
+include LICENSE NOTICE
 recursive-include examples *
-recursive-include scripts *.py
 prune outputs
 prune exports
 prune snapshots
@@ -13,3 +16,4 @@ prune examples/outputs
 prune examples/exports
 prune examples/snapshots
 global-exclude .DS_Store
+prune tests
