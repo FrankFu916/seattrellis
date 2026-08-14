@@ -497,3 +497,53 @@ def test_rotation_save_reopen_workflow(
     s1 = seat(page, "Student001")
     s1.scroll_into_view_if_needed()
     expect(s1).to_be_visible(timeout=15_000)
+
+
+# ---------------------------------------------------------------------------
+# 4. Regression: context switch must not leave a demo-only room id behind
+# ---------------------------------------------------------------------------
+
+
+def test_context_switch_then_regenerate_still_works(
+    page: Page, rust_server: RustServer
+) -> None:
+    """Regression for the room_not_found bug: switching from a saved class back
+    to the scratch workspace used to reset the room id to the demo-only
+    `compact` template, so the next generate always failed with
+    'Unknown room template "compact"'. Reset must pick a real catalog room."""
+
+    page.goto(rust_server.url)
+    expect(page.get_by_text("Your local class is ready")).to_be_visible(
+        timeout=15_000
+    )
+    upload_and_confirm_roster(page)
+
+    # First generation (exercises the normal path).
+    go_to_generate_step(page)
+    generate_seating_plan(page)
+
+    # Save the scratch draft as a class (G-5) — this moves into a class
+    # context without resetting the draft.
+    page.get_by_role("button", name="Save as class", exact=True).click()
+    page.get_by_placeholder("e.g. Class 8–3").fill("My class")
+    page.get_by_role("button", name="Save & open", exact=True).click()
+    expect(
+        page.get_by_role("button", name="My class created this session")
+    ).to_be_visible(timeout=15_000)
+
+    # Switch back to the scratch workspace — this triggers resetWorkbench(),
+    # the path that used to hard-reset the room id to "compact".
+    page.get_by_role("button", name=re.compile("Scratch workspace")).first.click()
+    expect(page.get_by_text("Your local class is ready")).to_be_visible(
+        timeout=15_000
+    )
+
+    # Regenerate: with the fix this succeeds; before it the request carried
+    # template_id "compact" and the server answered room_not_found.
+    # After resetWorkbench the view returns to the roster step (demo students),
+    # so walk Room -> Rules -> Generate from the context action bar. The
+    # generate_seating_plan assertion (reaching the Adjust step) is the
+    # regression check: a room_not_found failure would never reach it.
+    page.get_by_role("button", name="Choose classroom", exact=True).click()
+    go_to_generate_step(page)
+    generate_seating_plan(page)
