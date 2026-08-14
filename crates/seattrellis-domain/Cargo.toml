@@ -1,6 +1,6 @@
 [package]
 name = "seattrellis-domain"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ keywords = ["seating", "classroom", "education", "solver"]
 categories = ["command-line-utilities", "science"]
 
 [dependencies]
-seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0-rc.1" }
+seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0-rc.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

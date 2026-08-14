@@ -8,7 +8,7 @@ SeatTrellis v2 是纯 Rust 项目，发布渠道包括：GitHub Release（预编
 
 ### GitHub Release（`v<version>` tag）
 
-在 GitHub 上为已审查的提交创建 tag `v<version>`（如 `v2.0.0-rc.1`）并发布 Release。
+在 GitHub 上为已审查的提交创建 tag `v<version>`（如 `v2.0.0-rc.2`）并发布 Release。
 `release` 事件触发 `.github/workflows/rust.yml`：
 
 1. 在三平台（Linux/Windows/macOS）构建 React 工作台（嵌入 App 服务器二进制）与
@@ -43,7 +43,7 @@ Release tag 一致，并在干净环境中用 `cargo install` 验证一次安装
 
 ## 候选验证（RC）
 
-每次候选验证使用独立的预发布版本，例如 `2.0.0-rc.1`、`2.0.0-rc.2`。候选通过后
+每次候选验证使用独立的预发布版本，例如 `2.0.0-rc.2`、`2.0.0-rc.2`。候选通过后
 把版本恢复为最终版本并再次运行完整测试；不要把预发布版本提交合并到正式发布分支。
 
 发布前本地复核：

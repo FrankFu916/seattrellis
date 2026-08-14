@@ -51,7 +51,7 @@ installation.
 ## Version policy
 
 v2 is the current MAJOR line; crate versions live in `Cargo.toml` (currently
-`2.0.0-rc.1`). v1 tags (`v1.*`) belong to the frozen legacy line and do not
+`2.0.0-rc.2`). v1 tags (`v1.*`) belong to the frozen legacy line and do not
 receive Rust binaries. v1-era files (CSV rosters, layout/rules JSON, snapshots,
 candidate sets, projects) are migrated to v2 automatically, with backups
 created before each migration.
