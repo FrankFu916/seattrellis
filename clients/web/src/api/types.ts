@@ -337,6 +337,35 @@ export type RuleCompileError = {
   message: string;
 };
 
+/** One field-level finding from `POST /api/v1/rules/validate` (M6-02). */
+export type RuleDiagnostic = {
+  path: string;
+  code: RuleDiagnosticCode;
+  detail?: string;
+};
+
+/** Stable diagnostic codes mirrored from the Rust rule validator. */
+export type RuleDiagnosticCode =
+  | "invalid_json"
+  | "root_object"
+  | "unknown_field"
+  | "object_required"
+  | "array_required"
+  | "pair_shape"
+  | "fixed_seat_shape"
+  | "distance_value"
+  | "group_shape"
+  | "group_members"
+  | "group_mode"
+  | "unknown_student"
+  | "unknown_seat"
+  | "value_type";
+
+export type RuleValidateResponse = {
+  api_version: "1";
+  diagnostics: RuleDiagnostic[];
+};
+
 export type DetailedRuleSettings = {
   enabled: boolean;
   fairRotation: {

@@ -32,6 +32,7 @@ import type {
   RosterUpdatePreviewResponse,
   RuleTemplatesResponse,
   CompiledRule,
+  RuleValidateResponse,
   DraftAuditReport,
 } from "./types";
 
@@ -483,6 +484,19 @@ export async function compileRuleSentence(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ template_id: templateId, slots }),
+  });
+}
+
+/** Validate a whole custom rules JSON document against the Rust registry (M6-02). */
+export async function validateRuleDocument(
+  source: string,
+  studentIds: string[],
+  seatIds: string[],
+): Promise<RuleValidateResponse> {
+  return fetchJson<RuleValidateResponse>("/rules/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source, students: studentIds, seats: seatIds }),
   });
 }
 

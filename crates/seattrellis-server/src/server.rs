@@ -540,6 +540,7 @@ pub(crate) fn route(
         ("GET", ["api", "v1", "catalogs"]) => catalogs_response(),
         ("GET", ["api", "v1", "rules", "templates"]) => rules_templates_response(),
         ("POST", ["api", "v1", "rules", "compile"]) => rules_compile_response(&request.body),
+        ("POST", ["api", "v1", "rules", "validate"]) => rules_validate_response(&request.body),
         ("POST", ["api", "v2", "solve"]) => solve_v2_response(&request.body),
         ("POST", ["api", "v1", "files", "read"]) => file_read_response(&request.body, trusted_root),
         ("GET", ["api", "v1", "files", "root"]) => file_root_response(trusted_root),
@@ -700,6 +701,56 @@ fn rules_compile_response(body: &[u8]) -> Response {
             }),
         ),
     }
+}
+
+/// `POST /api/v1/rules/validate`: validate a whole custom rules JSON document
+/// against the Rust rule registry (M6-02). Replaces the client-side rule
+/// validator the workbench used to run; Rust is the single source of truth for
+/// rule field taxonomy and shape. Returns the structured diagnostic list
+/// (`{ diagnostics: [{ path, code, detail? }] }`) the advanced settings view
+/// renders live.
+fn rules_validate_response(body: &[u8]) -> Response {
+    if body.is_empty() {
+        return json_error(400, "empty request body");
+    }
+    let raw: Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return json_error(400, "request body is not valid JSON"),
+    };
+    let Some(source) = raw.get("source").and_then(Value::as_str) else {
+        return json_error(400, "validate requires a source string");
+    };
+    let student_ids: Vec<String> = raw
+        .get("students")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let seat_ids: Vec<String> = raw
+        .get("seats")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let diagnostics = seattrellis_rules::validate_rule_document(source, &student_ids, &seat_ids);
+    Response::json(
+        200,
+        json!({
+            "api_version": "1",
+            "diagnostics": diagnostics,
+        }),
+    )
 }
 
 /// `GET /api/v1/catalogs`: static bilingual teacher catalogs, matching the
@@ -2537,6 +2588,46 @@ mod tests {
         );
         assert_eq!(unknown.status, 422);
         assert_eq!(body_json(&unknown)["code"], "unknown_template");
+    }
+
+    #[test]
+    fn rules_validate_route_reports_registry_diagnostics() {
+        let root = test_web_root();
+        let body = br#"{
+            "source": "{\"hard\": {\"fixed_seats\": [{\"student\": \"S01\", \"seat_id\": \"R9C9\"}]}}",
+            "students": ["S01", "S02"],
+            "seats": ["R1C1", "R1C2"]
+        }"#;
+        let response = route_one(&request("POST", "/api/v1/rules/validate", body), &root);
+        assert_eq!(response.status, 200);
+        let value = body_json(&response);
+        let diagnostics = value["diagnostics"].as_array().unwrap();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d["code"] == "unknown_seat" && d["path"] == "hard.fixed_seats[0].seat_id"),
+            "expected unknown_seat diagnostic, got {diagnostics:?}"
+        );
+
+        // Clean input -> empty diagnostics.
+        let clean_body = br#"{
+            "source": "{\"hard\": {\"fixed_seats\": [{\"student\": \"S01\", \"seat_id\": \"R1C1\"}]}}",
+            "students": ["S01", "S02"],
+            "seats": ["R1C1", "R1C2"]
+        }"#;
+        let clean = route_one(
+            &request("POST", "/api/v1/rules/validate", clean_body),
+            &root,
+        );
+        assert_eq!(clean.status, 200);
+        assert!(body_json(&clean)["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        // Reject malformed wrapper bodies.
+        let bad = route_one(&request("POST", "/api/v1/rules/validate", b"{}"), &root);
+        assert_eq!(bad.status, 400);
     }
 
     #[test]

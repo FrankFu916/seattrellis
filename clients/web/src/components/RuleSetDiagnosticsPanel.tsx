@@ -1,9 +1,7 @@
-import type { Student } from "../api/types";
-import {
-  diagnoseRuleSetJson,
-  type RuleDiagnostic,
-  type RuleDiagnosticCode,
-} from "../domain/ruleDiagnostics";
+import { useEffect, useState } from "react";
+
+import { validateRuleDocument } from "../api/client";
+import type { RuleDiagnostic, RuleDiagnosticCode, Student } from "../api/types";
 import type { MessageKey, Translate } from "../i18n/messages";
 
 type RuleSetDiagnosticsPanelProps = {
@@ -51,21 +49,69 @@ function diagnosticText(diagnostic: RuleDiagnostic, t: Translate): string {
   return t(CODE_MESSAGES[diagnostic.code], { path: diagnostic.path });
 }
 
+/**
+ * Live diagnostic view of the custom rules JSON (advanced settings). The
+ * validation itself lives in Rust (`POST /api/v1/rules/validate`, M6-02); the
+ * workbench only renders the returned findings, so rule field taxonomy and
+ * legality are never re-derived in TypeScript.
+ */
 export function RuleSetDiagnosticsPanel({
   source,
   students,
   seatIds,
   t,
 }: RuleSetDiagnosticsPanelProps) {
+  const [diagnostics, setDiagnostics] = useState<RuleDiagnostic[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
   const text = source.trim();
-  if (!text) {
+  const hasSource = text.length > 0;
+
+  useEffect(() => {
+    if (!hasSource) {
+      setDiagnostics([]);
+      setError(null);
+      return;
+    }
+    let current = true;
+    void validateRuleDocument(
+      text,
+      students.map((student) => student.id),
+      seatIds,
+    )
+      .then((result) => {
+        if (current) {
+          setDiagnostics(result.diagnostics);
+          setError(null);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (current) {
+          setDiagnostics([]);
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [text, students, seatIds, hasSource]);
+
+  if (!hasSource) {
     return (
       <p className="rules-diagnostics rules-diagnostics-empty" data-testid="rules-diagnostics">
         {t("generate.rulesDiagnosticEmpty")}
       </p>
     );
   }
-  const diagnostics = diagnoseRuleSetJson(source, students, seatIds);
+
+  if (error !== null) {
+    return (
+      <p className="rules-diagnostics has-errors" data-testid="rules-diagnostics">
+        {t("generate.rulesDiagnosticError")}
+      </p>
+    );
+  }
+
   return (
     <div
       className={`rules-diagnostics ${diagnostics.length ? "has-errors" : "is-valid"}`}

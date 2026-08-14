@@ -1,11 +1,24 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import * as client from "../api/client";
 import { createTranslator } from "../i18n/messages";
 import { RuleSetDiagnosticsPanel } from "./RuleSetDiagnosticsPanel";
 
 describe("RuleSetDiagnosticsPanel", () => {
-  it("shows a localized field-level error and keeps the path visible", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("shows a localized field-level error and keeps the path visible", async () => {
+    vi.spyOn(client, "validateRuleDocument").mockResolvedValue({
+      api_version: "1",
+      diagnostics: [
+        { path: "hard.fixed_seats[0].student", code: "unknown_student" },
+        { path: "hard.fixed_seats[0].seat_id", code: "unknown_seat" },
+      ],
+    });
+
     render(
       <RuleSetDiagnosticsPanel
         source='{"hard":{"fixed_seats":[{"student":"S9","seat_id":"R9C9"}]}}'
@@ -15,17 +28,19 @@ describe("RuleSetDiagnosticsPanel", () => {
       />,
     );
 
-    expect(screen.getByTestId("rules-diagnostics")).toHaveAttribute("role", "alert");
+    await waitFor(() => {
+      expect(screen.getByTestId("rules-diagnostics")).toHaveAttribute("role", "alert");
+    });
     expect(screen.getByText("hard.fixed_seats[0].student")).toBeInTheDocument();
     expect(screen.getByText("This student ID is not in the current roster.")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Choose a student from the current roster; re-import the roster if it changed.",
-      ),
-    ).toBeInTheDocument();
   });
 
-  it("confirms a valid object and explains an empty editor", () => {
+  it("confirms a valid object and explains an empty editor", async () => {
+    vi.spyOn(client, "validateRuleDocument").mockResolvedValue({
+      api_version: "1",
+      diagnostics: [],
+    });
+
     const { rerender } = render(
       <RuleSetDiagnosticsPanel
         source='{"hard":{"must_be_adjacent":[{"students":["S1","S2"]}]}}'
@@ -34,7 +49,9 @@ describe("RuleSetDiagnosticsPanel", () => {
         t={createTranslator("en")}
       />,
     );
-    expect(screen.getByTestId("rules-diagnostics")).toHaveAttribute("role", "status");
+    await waitFor(() => {
+      expect(screen.getByTestId("rules-diagnostics")).toHaveAttribute("role", "status");
+    });
     expect(
       screen.getByText("The format and field checks passed. You can generate the plan."),
     ).toBeInTheDocument();
@@ -52,5 +69,22 @@ describe("RuleSetDiagnosticsPanel", () => {
         "No custom rules entered. The selected goal and common settings will be used.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("explains a service outage without crashing", async () => {
+    vi.spyOn(client, "validateRuleDocument").mockRejectedValue(new Error("down"));
+
+    render(
+      <RuleSetDiagnosticsPanel
+        source='{"hard":{}}'
+        students={[{ id: "S1", name: "Alice" }]}
+        seatIds={["R1C1"]}
+        t={createTranslator("en")}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/unavailable right now/)).toBeInTheDocument();
+    });
   });
 });

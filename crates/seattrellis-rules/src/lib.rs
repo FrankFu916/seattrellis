@@ -10,9 +10,11 @@
 pub mod params;
 pub mod sentence;
 pub mod spec;
+pub mod validate;
 
 pub use sentence::{compile_sentence, sentence_template, sentence_templates, CompiledRule};
 pub use spec::{
     rule_registry_json, rule_spec, rule_specs, ExplanationCode, LocalizedKeys, ObjectiveMeta,
     RuleCategory, RuleSpec,
 };
+pub use validate::{validate_rule_document, RuleDiagnostic};
