@@ -217,6 +217,9 @@ function friendlyError(err: unknown, t?: Translate): string {
     const localizedKey: Record<string, Parameters<Translate>[0]> = {
       class_not_ready: "app.classNotReady",
       invalid_class_draft: "app.classNotReady",
+      invalid_assignment: "app.classNotReady",
+      room_not_found: "app.roomNotFound",
+      unknown_goal: "app.goalNotFound",
       plan_not_found: "app.planNotFound",
       feature_unavailable: "app.featureUnavailable",
       session_required: "app.sessionExpired",
@@ -567,9 +570,19 @@ export function App() {
     setStudents(demoStudents);
     setRevision(0);
     setSelectedFileName(null);
-    setSelectedRoomId("compact");
+    // Reset the room/goal to the catalog's first entries, NOT to a hard-coded
+    // demo id. The demo catalog uses ids (compact/standard/wide) the Rust
+    // backend does not recognize, so a stale "compact" would make the next
+    // generate fail with room_not_found. Fall back to the demo ids only when
+    // the catalog has not loaded yet (the bootstrap self-heal then corrects
+    // them on mount).
+    setSelectedRoomId(
+      catalogs.roomTemplates[0]?.id ?? "compact",
+    );
     setRoomSettings(DEFAULT_ROOM_SETTINGS);
-    setSelectedGoalId("daily-rotation");
+    setSelectedGoalId(
+      catalogs.teacherGoals[0]?.id ?? "daily-rotation",
+    );
     setAdvancedSettings(DEFAULT_ADVANCED_SETTINGS);
     setDetailedRules(DEFAULT_DETAILED_RULE_SETTINGS);
     setConstraints([]);
