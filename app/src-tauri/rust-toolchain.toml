@@ -1,7 +1,9 @@
-# Tauri 2.x dependencies currently require rustc >= 1.86/1.88 (icu_normalizer 2.2,
-# plist 1.10, time 0.3.55, serde_with 3.21, darling 0.23). The rest of the repo
-# (app/, crates/) builds on the default toolchain; only this shell crate needs
-# the newer compiler. Reversible: delete this file to go back to default.
+# Tauri 2.x dependencies require rustc >= 1.88 (icu_normalizer 2.2, plist 1.10,
+# time 0.3.55, serde_with 3.21, darling 0.23). The whole workspace now pins its
+# MSRV to 1.88 (root Cargo.toml rust-version = "1.88"), so this file pins the
+# shell to the exact 1.88.0 toolchain to keep the desktop build reproducible
+# independently of the machine's default toolchain. Reversible: delete this
+# file to fall back to the default toolchain.
 [toolchain]
 channel = "1.88.0"
 profile = "minimal"

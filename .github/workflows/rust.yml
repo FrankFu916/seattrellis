@@ -97,13 +97,24 @@ jobs:
           command: check all
 
   msrv:
-    name: Rust core / 1.88 MSRV
+    name: Rust workspace / 1.88 MSRV
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.88
-      - name: Test the core at MSRV
-        run: cargo test --locked -p seattrellis_core
+      - name: Install CJK fonts (Linux)
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      # The full workspace must compile at MSRV, not just core: testing only
+      # core previously let an MSRV compile break in another crate ship
+      # undetected (see the workspace test matrix note above). The PyO3 shim
+      # is excluded from the workspace already.
+      - name: Build the React workbench (server embeds clients/web/dist)
+        run: |
+          npm ci
+          npm run build
+        working-directory: clients/web
+      - name: Test the workspace at MSRV (except the PyO3 shim)
+        run: cargo test --locked --workspace
 
   long-run-gates:
     # M3 evidence that is release-only (the 80x20 candidate combination and

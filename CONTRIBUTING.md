@@ -4,7 +4,7 @@ Thank you for helping improve SeatTrellis / 席序.
 
 ## Development Setup
 
-SeatTrellis v2 is a Rust workspace with a React workbench. Prerequisites: Rust 1.88+ (MSRV), Node 20+.
+SeatTrellis v2 is a Rust workspace with a React workbench. Prerequisites: Rust 1.88+ (MSRV), Node 22.12+ (see `clients/web/package.json` engines).
 
 ```bash
 git clone https://github.com/FrankFu916/seattrellis.git
