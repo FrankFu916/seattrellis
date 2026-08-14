@@ -1,7 +1,7 @@
 # API
 
 SeatTrellis v2 的程序化接口是 loopback HTTP API（`seattrellis_app` /
-`seattrellis-server`），完整契约见 [`api-v1-openapi.json`](api-v1-openapi.json)。
+`seattrellis-server`），完整契约见 `docs/api-v1-openapi.json`。
 所有接口只绑定本机服务，`/api/*` 全部要求 `Authorization: Bearer <token>`
 （`/api/v1/session` 引导端点除外），Host 必须为 loopback 名 + 绑定端口，Origin
 存在时必须同源，响应含 CSP / X-Frame-Options: DENY / Referrer-Policy:

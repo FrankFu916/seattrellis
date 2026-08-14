@@ -47,3 +47,8 @@ node_modules/
 # Private local mirror of the internal planning/decision docs (restored from
 # git history; intentionally never tracked or pushed to GitHub).
 docs-internal/
+
+# Docusaurus docs site (website/) build cache; the build/ output dir is
+# already covered by the global `build/` entry above.
+website/.docusaurus/
+website/node_modules/

@@ -1,0 +1,14 @@
+/**
+ * SeatTrellis docs site — minimal theme, deferring to Docusaurus defaults.
+ * Accent colour echoes the product's clay/terracotta brand token (#c6613f).
+ */
+:root {
+  --ifm-color-primary: #c6613f;
+  --ifm-color-primary-dark: #b45735;
+  --ifm-color-primary-darker: #a6502f;
+  --ifm-color-primary-darkest: #8a4227;
+  --ifm-color-primary-light: #cc6f50;
+  --ifm-color-primary-lighter: #d17b5f;
+  --ifm-color-primary-lightest: #dd9b85;
+  --ifm-code-font-size: 95%;
+}

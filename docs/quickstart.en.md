@@ -1,6 +1,6 @@
 # Quick Start
 
-This document covers installation and CLI usage for SeatTrellis v2 (the Rust-only line). For a brief project overview, see the [documentation home](index.md).
+This document covers installation and CLI usage for SeatTrellis v2 (the Rust-only line). For a brief project overview, see the [documentation home](/).
 
 ## Installation
 
