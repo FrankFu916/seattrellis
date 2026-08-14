@@ -24,6 +24,14 @@ jobs:
         uses: dtolnay/rust-toolchain@1.88
       - name: Install CJK fonts (Linux)
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - name: Install Tauri system libraries (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf
       - name: Build the React workbench (server embeds clients/web/dist)
         run: |
           npm ci

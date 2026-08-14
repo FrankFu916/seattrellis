@@ -104,6 +104,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.88
       - name: Install CJK fonts (Linux)
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - name: Install Tauri system libraries (Linux)
+        # The workspace includes the Tauri desktop shell (seattrellis_desktop),
+        # whose glib-sys/gtk-sys build scripts need the WebKitGTK stack.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf
       # The full workspace must compile at MSRV, not just core: testing only
       # core previously let an MSRV compile break in another crate ship
       # undetected (see the workspace test matrix note above). The PyO3 shim
