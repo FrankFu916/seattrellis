@@ -31,6 +31,11 @@ pub struct SoftObjectiveContext {
     pub mentor_pairs: Vec<MentorPair>,
     pub seat_by_id: HashMap<String, Seat>,
     pub adjacency_edges: HashSet<(String, String)>,
+    /// Student keys in sorted order, computed once per request. Per-student
+    /// float summations walk this order instead of HashMap iteration order,
+    /// so results are reproducible across processes without re-sorting the
+    /// assignment on every evaluation call (determinism gate B).
+    pub sorted_student_keys: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -172,6 +177,9 @@ pub fn compile_soft_objectives(
         .collect();
     let adjacency_edges = build_adjacency_edges(layout);
 
+    let mut sorted_student_keys: Vec<String> = percentiles.keys().cloned().collect();
+    sorted_student_keys.sort_unstable();
+
     SoftObjectiveContext {
         score_percentiles: percentiles,
         seat_row_percentiles: seat_rows,
@@ -179,6 +187,7 @@ pub fn compile_soft_objectives(
         mentor_pairs,
         seat_by_id,
         adjacency_edges,
+        sorted_student_keys,
         warnings,
     }
 }
@@ -201,12 +210,16 @@ pub fn evaluate_soft_objectives(
     // Deterministic traversal (determinism gate B): every per-student
     // collection below feeds a float mean/RMS, and f64 addition is
     // order-sensitive, so the assignment is walked in sorted-key order
-    // instead of HashMap order.
-    let mut assigned: Vec<(&str, &str)> = assignment
+    // (precomputed on the context — no per-call sort or string compares).
+    let assigned: Vec<(&str, &str)> = context
+        .sorted_student_keys
         .iter()
-        .map(|(student_key, seat_id)| (student_key.as_str(), seat_id.as_str()))
+        .filter_map(|student_key| {
+            assignment
+                .get(student_key)
+                .map(|seat_id| (student_key.as_str(), seat_id.as_str()))
+        })
         .collect();
-    assigned.sort_unstable();
 
     // --- score_position ----------------------------------------------------
     let position_rule = &rules.soft.score_position;

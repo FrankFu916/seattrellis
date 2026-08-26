@@ -1015,7 +1015,7 @@ fn standalone_commands_sweep() {
                 "schema-export:equals-syntax",
                 args![
                     "schema-export",
-                    format!("--kind=layout"),
+                    "--kind=layout",
                     "--output",
                     format!("{}/layout.schema.json", fx.std_out),
                 ],
