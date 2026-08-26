@@ -7,7 +7,7 @@ v2 的所有导出格式都由本地 Rust 渲染器生成，不需要任何可�
 | 格式 | 说明 |
 |------|------|
 | HTML | 核心导出，始终可用 |
-| 打印 HTML | `print-html`，A4 打印友好模板（通过 `project-export` 使用） |
+| 打印 HTML | `print-html`，A4 打印友好模板，默认 A4 横向（通过 `project-export` 使用） |
 | SVG | 自包含矢量座位图，便于继续编辑 |
 | PNG | 座位图图片 |
 | PDF | 打印文件，系统字体智能引用 |
@@ -58,7 +58,23 @@ seattrellis_cli project-export \
 ```
 
 `project-export` 支持 `svg|html|print-html|png|pdf|xlsx|docx|pptx`，默认使用
-project 的 `default_export_format`。
+project 的 `default_export_format`。它还接受两个版式选项：
+
+- `--template <teacher|public>`（默认 `teacher`）：教师内部版保留真实姓名、学号
+  与明细字段；`public` 为班级公示版，强制匿名并隐藏姓名、学号与身高/视力明细；
+- `--orientation <portrait|landscape|auto>`（默认 `auto`）：`auto` 时
+  `print-html` 使用 A4 横向打印，其余格式纵向；显式指定 `portrait` /
+  `landscape` 则覆盖该默认。
+
+```bash
+seattrellis_cli project-export \
+  --project my-class/seattrellis.project.json \
+  --snapshot outputs/candidates.json \
+  --format print-html \
+  --template public \
+  --orientation landscape \
+  --output outputs/wall-copy.html
+```
 
 ## 模板与隐私
 
@@ -68,8 +84,10 @@ project 的 `default_export_format`。
 `--template` 接受 `public` 与 `teacher`。
 
 CLI 导出一律经过隐私过滤层：默认隐藏成绩、备注、特殊需求、身高和视力字段；
-`--template public` 额外匿名化姓名。`public` 模板的安全默认字段不能放宽——CLI
-参数只能进一步隐藏信息，绝不会暴露敏感字段。
+`--template` 接受 `teacher`（默认）与 `public`，`public` 额外匿名化姓名，且
+`public` 的强制匿名在 CLI 侧同样生效（`project-export --template public` 输出
+不含真实姓名与学号）。`public` 模板的安全默认字段不能放宽——CLI 参数只能进一步
+隐藏信息，绝不会暴露敏感字段。
 
 ## 画布导出（SVG / PPTX）
 
@@ -83,6 +101,10 @@ PDF 渲染器不嵌入字体，也不依赖 WeasyPrint 或 Pango：它按固定�
 （PingFang SC → Noto Sans CJK SC → Microsoft YaHei → SimSun → 其他 CJK 字体）
 在常见平台字体目录中查找系统 CJK 字体，并在 PDF 中按名字引用，由查看器替换。
 字体质量低于"推荐"档时会给出导出 warning。具体见[字体策略](font-strategy.zh.md)。
+
+## 已知限制
+
+RTL 文字（阿拉伯/希伯来等）在 PNG/PDF 中按逻辑序绘制，暂不支持双向排版。
 
 ## 相关文档
 

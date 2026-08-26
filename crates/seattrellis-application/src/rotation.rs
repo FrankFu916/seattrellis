@@ -13,7 +13,7 @@ use crate::class_generation::{
     build_history_json, frontend_class_request_to_core, new_draft_id, seat_id_for_index,
     seat_specs, student_keys, DEFAULT_SEED,
 };
-use crate::{AppError, SolveRequestStore};
+use crate::{store_solve_request, AppError, SolveRequestStore};
 use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of a rotation-plan request: the plan document plus an editable
@@ -218,7 +218,12 @@ pub fn generate_rotation_plan_from_core(
     // like Python's post-generation `build_seat_history` report.
     let (final_history, final_pair_history) =
         build_history_json(&students, &grid, &snapshots).unwrap_or((Value::Null, Value::Null));
-    let fairness_summary = fairness_summary_from_history(&final_history, snapshots.len());
+    // The fairness spread is computed over the whole roster: a student who
+    // never reached a category must count as 0 there (oracle parity), so
+    // the roster keys are needed at summary time.
+    let keys: Vec<String> = student_keys(&request);
+    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let fairness_summary = fairness_summary_from_history(&final_history, snapshots.len(), &keys);
     let pair_summary = pair_repeat_summary_from_history(&final_pair_history, snapshots.len());
 
     let plan = json!({
@@ -249,8 +254,6 @@ pub fn generate_rotation_plan_from_core(
     // first period's draft is also the response's `editor`; the workbench
     // switches periods by matching `candidate_id == "period-N"`.
     let draft_id = new_draft_id();
-    let keys: Vec<String> = student_keys(&request);
-    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
     let seat_ids: Vec<String> = (0..request.seat_positions.len())
         .map(|index| seat_id_for_index(&request, index))
         .collect();
@@ -283,13 +286,12 @@ pub fn generate_rotation_plan_from_core(
             Err(message) => return Err(AppError::internal(&message)),
         };
         // Remember the (core-shaped) request that produced this draft so
-        // export can rebuild the full plan after edits.
-        match solve_requests.lock() {
-            Ok(mut guard) => {
-                guard.insert(period_draft_id, core_request.clone());
-            }
-            Err(_) => return Err(AppError::internal("solve request store is poisoned")),
-        }
+        // export can rebuild the full plan after edits. Route through the
+        // capped FIFO store (`store_solve_request`): a direct insert here
+        // would let long rotation runs accumulate PII-bearing requests
+        // without bound.
+        store_solve_request(solve_requests, period_draft_id, core_request.clone())
+            .map_err(AppError::internal)?;
         let editor_value =
             serde_json::to_value(editor).map_err(|error| AppError::internal(error.to_string()))?;
         if first_editor.is_none() {
@@ -369,10 +371,34 @@ fn build_period_snapshot(
     })
 }
 
+/// Canonical position-report categories for the fairness summary, mirroring
+/// the Python oracle's `POSITION_REPORT_CATEGORIES` (core's
+/// `REPORT_POSITION_CATEGORIES` is crate-private there, so the list is
+/// repeated at this call boundary).
+const ROTATION_POSITION_CATEGORIES: [&str; 10] = [
+    "front",
+    "back",
+    "middle",
+    "side",
+    "corner",
+    "near_window",
+    "near_door",
+    "near_platform",
+    "near_ac",
+    "unknown",
+];
+
 /// Fairness summary from the final history document (mirrors
-/// `history.build_fairness_report`): per-category totals and per-category
-/// min/max/spread across students.
-fn fairness_summary_from_history(history: &Value, snapshot_count: usize) -> Value {
+/// `history.build_fairness_report`): per-category totals plus per-category
+/// min/max/spread across the **whole roster** — every (student, category)
+/// cell absent from the history document counts as 0 participation (the
+/// oracle's `category_counts.get(key, 0)`), so students who never reached a
+/// category pull its minimum down instead of being silently skipped.
+fn fairness_summary_from_history(
+    history: &Value,
+    snapshot_count: usize,
+    roster_keys: &[String],
+) -> Value {
     if history.is_null() {
         return json!({
             "history_count": snapshot_count,
@@ -381,38 +407,43 @@ fn fairness_summary_from_history(history: &Value, snapshot_count: usize) -> Valu
             "summary": { "warning_count": 0 },
         });
     }
-    let students = history
-        .get("students")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    let student_count = students.len();
+    let students = history.get("students").and_then(Value::as_object);
+    let student_count = students.map(serde_json::Map::len).unwrap_or(0);
 
-    // Per-category totals: sum every student's category_counts.
+    // Per-category totals: sum every student's recorded category_counts.
     let mut totals: std::collections::BTreeMap<String, u64> = Default::default();
-    // Per-category spread: min/max across students.
-    let mut spread: std::collections::BTreeMap<String, (u64, u64)> = Default::default();
-    for student in students.values() {
+    for student in students.into_iter().flat_map(|students| students.values()) {
         let Some(counts) = student.get("category_counts").and_then(Value::as_object) else {
             continue;
         };
         for (category, count) in counts {
-            let count = count.as_u64().unwrap_or(0);
-            *totals.entry(category.clone()).or_default() += count;
-            let entry = spread.entry(category.clone()).or_insert((count, count));
-            entry.0 = entry.0.min(count);
-            entry.1 = entry.1.max(count);
+            *totals.entry(category.clone()).or_default() += count.as_u64().unwrap_or(0);
         }
     }
-    let category_spread: serde_json::Map<String, Value> = spread
-        .into_iter()
-        .map(|(category, (min, max))| {
-            (
-                category,
-                json!({ "min": min, "max": max, "spread": max - min }),
-            )
-        })
-        .collect();
+
+    // Per-category spread over the whole roster; missing cells are 0.
+    let count_of = |student_key: &str, category: &str| -> u64 {
+        students
+            .and_then(|students| students.get(student_key))
+            .and_then(|student| student.get("category_counts"))
+            .and_then(|counts| counts.get(category))
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    };
+    let mut category_spread: serde_json::Map<String, Value> = serde_json::Map::new();
+    for category in ROTATION_POSITION_CATEGORIES {
+        let counts: Vec<u64> = roster_keys
+            .iter()
+            .map(|key| count_of(key, category))
+            .collect();
+        // An empty roster mirrors the oracle's empty-counts branch.
+        let min = counts.iter().copied().min().unwrap_or(0);
+        let max = counts.iter().copied().max().unwrap_or(0);
+        category_spread.insert(
+            category.to_string(),
+            json!({ "min": min, "max": max, "spread": max - min }),
+        );
+    }
 
     json!({
         "history_count": history
@@ -476,4 +507,98 @@ fn pair_repeat_summary_from_history(pair_history: &Value, snapshot_count: usize)
         "max_occurrences": max_occurrences,
         "relation_totals": relation_totals,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// O regression: a student absent from a category must count as 0
+    /// participation (oracle `category_counts.get(key, 0)`), so the spread
+    /// reflects them instead of only the students who appear in the history.
+    #[test]
+    fn fairness_summary_counts_absent_students_as_zero_participants() {
+        let history = json!({
+            "history_count": 2,
+            "students": {
+                "S1": { "category_counts": { "front": 1 } },
+                "S2": { "category_counts": {} },
+                "S3": { "category_counts": {} },
+            },
+        });
+        let roster: Vec<String> = ["S1", "S2", "S3"]
+            .iter()
+            .map(|key| key.to_string())
+            .collect();
+        let summary = fairness_summary_from_history(&history, 2, &roster);
+        let front = &summary["summary"]["category_spread"]["front"];
+        assert_eq!(front["min"], 0, "absent students pull the minimum to 0");
+        assert_eq!(front["max"], 1);
+        assert_eq!(front["spread"], 1);
+        // Totals keep their recorded-count semantics.
+        assert_eq!(summary["category_totals"]["front"], 1);
+    }
+
+    #[test]
+    fn fairness_summary_spreads_every_canonical_category() {
+        let history = json!({
+            "history_count": 1,
+            "students": {
+                "S1": { "category_counts": { "front": 3, "side": 1 } },
+            },
+        });
+        let roster: Vec<String> = vec!["S1".to_string()];
+        let summary = fairness_summary_from_history(&history, 1, &roster);
+        let spread = &summary["summary"]["category_spread"];
+        for category in ROTATION_POSITION_CATEGORIES {
+            assert!(
+                spread.get(category).is_some(),
+                "canonical category {category} must always be reported"
+            );
+        }
+        assert_eq!(spread["back"]["min"], 0, "unvisited category counts as 0");
+    }
+
+    fn small_rotation_request(periods: usize) -> Value {
+        json!({
+            "draft": {
+                "name": "Rotation Bound",
+                "students": (0..4)
+                    .map(|index| {
+                        json!({
+                            "student_id": format!("S{}", index + 1),
+                            "name": format!("Student {}", index + 1),
+                            "score": 100 - (index as i64),
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                "room": {"template_id": "standard-30"},
+                "goal": {"goal_id": "daily-rotation"}
+            },
+            "period_count": periods,
+            "options": {"seed": 42}
+        })
+    }
+
+    /// N regression: rotation drafts remember their originating request via
+    /// the same FIFO-capped store as single solves; per-period inserts must
+    /// never grow it past [`crate::MAX_SOLVE_REQUESTS`].
+    #[test]
+    fn rotation_period_requests_stay_bounded_in_the_fifo_store() {
+        let editor_store = editing::new_draft_store();
+        let solve_requests = SolveRequestStore::default();
+        // 5 runs x 14 periods = 70 per-period inserts > the cap of 64.
+        for _ in 0..5 {
+            let outcome =
+                generate_rotation_plan(&small_rotation_request(14), &editor_store, &solve_requests)
+                    .expect("rotation terminates with a domain result");
+            assert!(outcome.feasible, "small-classroom rotation must solve");
+        }
+        let guard = solve_requests.lock().unwrap();
+        assert_eq!(
+            guard.len(),
+            crate::MAX_SOLVE_REQUESTS,
+            "store stays at the cap despite 70 rotation inserts"
+        );
+    }
 }

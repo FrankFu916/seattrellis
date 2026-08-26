@@ -56,6 +56,31 @@ export function toggleSeatLock(
   );
 }
 
+/**
+ * Place one student on a seat, or clear the seat when `student` is null.
+ *
+ * The student's previous seat (if any) is emptied in the same pass so the
+ * optimistic local update can never leave one student occupying two seats;
+ * this mirrors what the Rust editor applies for `move_student`. Callers
+ * resolve the student from the roster so unseated students can be placed
+ * too.
+ */
+export function assignStudentToSeat(
+  assignments: SeatAssignment[],
+  seatId: string,
+  student: Student | null,
+): SeatAssignment[] {
+  return assignments.map((seat) => {
+    if (seat.seatId === seatId) {
+      return { ...seat, student: student ?? undefined };
+    }
+    if (student && seat.student?.id === student.id) {
+      return { ...seat, student: undefined };
+    }
+    return seat;
+  });
+}
+
 export function seatRemainingStudents(
   assignments: SeatAssignment[],
   students: Student[],

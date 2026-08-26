@@ -57,7 +57,10 @@ See the [quick start guide](docs/quickstart.en.md) for full scenarios, the [inpu
 
 ## Migrating from v1
 
-Project files and artifacts from v1.x migrate automatically in the v2 workbench or via `seattrellis_cli schema-migrate`, with automatic backups before each migration.
+v1 rosters, classroom layouts, and project files migrate to v2 in the workbench
+or via `seattrellis_cli schema-migrate`, with an automatic backup before each
+overwrite. Other artifacts such as snapshots and candidate sets have no
+migration step yet and are rejected with an explicit error.
 
 ## Documentation
 

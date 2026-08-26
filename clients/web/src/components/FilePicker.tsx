@@ -83,10 +83,11 @@ export function FilePicker({ onFile, busy = false, fileName = null, t }: FilePic
             ? t("filePicker.pathMissingFile")
             : err.status === 413
               ? t("filePicker.pathTooLarge")
-              : t("filePicker.pathFailed", { message: err.message });
+              : t("filePicker.pathReadFailed");
         setPathError(message);
       } else {
-        setPathError(t("filePicker.pathFailed", { message: t("filePicker.dialogFailed") }));
+        console.error("Trusted-root file read failed", err);
+        setPathError(t("filePicker.pathReadFailed"));
       }
     } finally {
       setPathReading(false);

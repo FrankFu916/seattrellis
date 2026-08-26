@@ -259,26 +259,32 @@ pub struct ExportRequest {
 
 /// Produce the export bytes for a combined export request (see the module doc
 /// for the JSON shape). Never panics; errors are descriptive `String`s.
+///
+/// Non-fatal quality warnings (e.g. a missing system font for PNG/PDF text)
+/// are dropped here; use [`export_plan_with_warnings`] to receive them.
 pub fn export_plan(request_json: &str) -> Result<Vec<u8>, String> {
-    let request = parse_export_request(request_json)?;
-    render_export(&request)
+    export_plan_with_warnings(request_json).map(|(bytes, _)| bytes)
 }
 
-/// Parse just the `format` field so the server can set a `Content-Type`
-/// without running the full export. Fails on invalid JSON or a missing/invalid
-/// `format`.
-pub fn format_of(request_json: &str) -> Result<ExportFormat, String> {
-    let value: serde_json::Value = serde_json::from_str(request_json)
-        .map_err(|error| format!("export request is not valid JSON: {error}"))?;
-    let format = value
-        .get("format")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "export request is missing a string 'format' field".to_string())?;
-    ExportFormat::parse(format)
+/// [`export_plan`] plus the non-fatal warning list collected while rendering.
+/// The bytes are always the complete document — warnings accompany, never
+/// replace, the artifact (R3: PNG/PDF without a usable system font must not
+/// fail silently *or* loudly).
+pub fn export_plan_with_warnings(request_json: &str) -> Result<(Vec<u8>, Vec<String>), String> {
+    let request = parse_export_request(request_json)?;
+    render_export_with_warnings(&request)
 }
 
 /// Dispatch an already-parsed export request to the matching renderer.
 pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
+    render_export_with_warnings(request).map(|(bytes, _)| bytes)
+}
+
+/// [`render_export`] plus the non-fatal warning list (see
+/// [`export_plan_with_warnings`]).
+pub fn render_export_with_warnings(
+    request: &ExportRequest,
+) -> Result<(Vec<u8>, Vec<String>), String> {
     let format = ExportFormat::parse(&request.format)?;
     let template = ExportTemplate::parse(&request.template)?;
     let orientation = match request.orientation.as_deref() {
@@ -320,21 +326,21 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
         )
     };
 
-    match format {
-        ExportFormat::Svg => Ok(render_svg(&grid).into_bytes()),
-        ExportFormat::Html => Ok(render_html(&grid).into_bytes()),
-        ExportFormat::Png => render_png(&grid),
+    let bytes = match format {
+        ExportFormat::Svg => render_svg(&grid, &request.locale).into_bytes(),
+        ExportFormat::Html => render_html(&grid, &request.locale).into_bytes(),
+        ExportFormat::Png => render_png(&grid)?,
         ExportFormat::Pdf => {
             let layout = PdfLayout::from_paper(
                 paper,
                 orientation == ExportOrientation::Landscape,
                 margin_mm,
             );
-            Ok(render_pdf_with(&grid, layout.with_scale(page_scale)).into_bytes())
+            render_pdf_with(&grid, layout.with_scale(page_scale)).into_bytes()
         }
-        ExportFormat::Xlsx => crate::office::render_xlsx(&grid),
+        ExportFormat::Xlsx => crate::office::render_xlsx(&grid)?,
         ExportFormat::Docx => {
-            crate::office::render_docx(&grid, orientation == ExportOrientation::Landscape)
+            crate::office::render_docx(&grid, orientation == ExportOrientation::Landscape)?
         }
         ExportFormat::PrintHtml => {
             let print_options = crate::print_html::PrintHtmlOptions {
@@ -347,12 +353,38 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
                 seed: Some(request.request.seed),
                 period_label: None,
             };
-            Ok(
-                crate::print_html::render_print_html(&grid, &request.request, &print_options)
-                    .into_bytes(),
-            )
+            crate::print_html::render_print_html(&grid, &request.request, &print_options)
+                .into_bytes()
         }
-        ExportFormat::Pptx => crate::office::render_pptx(&grid),
+        ExportFormat::Pptx => crate::office::render_pptx(&grid)?,
+    };
+    Ok((bytes, font_warnings(format)))
+}
+
+/// Parse just the `format` field so the server can set a `Content-Type`
+/// without running the full export. Fails on invalid JSON or a missing/invalid
+/// `format`.
+pub fn format_of(request_json: &str) -> Result<ExportFormat, String> {
+    let value: serde_json::Value = serde_json::from_str(request_json)
+        .map_err(|error| format!("export request is not valid JSON: {error}"))?;
+    let format = value
+        .get("format")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "export request is missing a string 'format' field".to_string())?;
+    ExportFormat::parse(format)
+}
+
+/// Non-fatal quality warnings for one export. Only PNG/PDF rasterize text
+/// with the discovered system font; when that lookup ends without a usable
+/// font they draw no text at all, so the artifact ships with an explanation
+/// instead of silently missing every name (R3).
+fn font_warnings(format: ExportFormat) -> Vec<String> {
+    if matches!(format, ExportFormat::Png | ExportFormat::Pdf) {
+        crate::fonts::font_unavailable_warning()
+            .into_iter()
+            .collect()
+    } else {
+        Vec::new()
     }
 }
 
@@ -866,5 +898,104 @@ mod tests {
                 .unwrap();
         assert!(!svg.contains("Alice"), "name must be hidden: {svg}");
         assert!(!svg.contains("160 cm"), "detail must be hidden: {svg}");
+    }
+
+    // V2/V3: zh SVG/HTML must agree with PNG/PDF/print-html wording instead
+    // of leaking English labels.
+
+    #[test]
+    fn zh_locale_svg_and_html_use_chinese_labels() {
+        for format in ["svg", "html"] {
+            let document = String::from_utf8(export_ok(&export_body(format, "teacher"))).unwrap();
+            assert!(
+                document.contains("空座"),
+                "{format} must use the zh empty-seat label: {document}"
+            );
+            assert!(
+                document.contains("教室前方"),
+                "{format} must use the zh front-of-room label"
+            );
+            assert!(
+                document.contains("4 名学生 · 6 个座位 · 可行"),
+                "{format} must use the zh subtitle"
+            );
+            assert!(
+                !document.contains(">empty<") && !document.contains(">front of room<"),
+                "{format} must not render English labels: {document}"
+            );
+            assert!(!document.contains("students / "), "{format} en subtitle");
+        }
+
+        // en stays exactly as before the i18n fix.
+        let mut body = export_body("svg", "teacher");
+        body["locale"] = serde_json::Value::String("en".into());
+        let svg = String::from_utf8(export_ok(&body)).unwrap();
+        assert!(svg.contains(">empty<"));
+        assert!(svg.contains("front of room"));
+        assert!(svg.contains("4 students / 6 seats / feasible"));
+    }
+
+    #[test]
+    fn omitted_orientation_defaults_print_html_to_landscape_a4() {
+        // The CLI project-export default (`--orientation auto`) omits the
+        // field; the frozen print decision (A4 landscape, wall posting) then
+        // applies to print-html while other formats stay portrait.
+        let mut body = export_body("print-html", "teacher");
+        body.as_object_mut().unwrap().remove("orientation");
+        let html = String::from_utf8(export_ok(&body)).unwrap();
+        assert!(
+            html.contains("@page { size: 297mm 210mm"),
+            "print-html defaults to landscape A4: {}",
+            &html[..html.len().min(600)]
+        );
+
+        // Explicit portrait still wins over the format default.
+        body["orientation"] = serde_json::Value::String("portrait".into());
+        let html = String::from_utf8(export_ok(&body)).unwrap();
+        assert!(
+            html.contains("@page { size: 210mm 297mm"),
+            "explicit portrait"
+        );
+    }
+
+    #[test]
+    fn png_pdf_exports_carry_the_font_warning_exactly_when_fontless() {
+        let fontless = crate::fonts::load_cjk_font().is_none();
+        for format in ["png", "pdf"] {
+            let (_, warnings) =
+                export_plan_with_warnings(&body_string(&export_body(format, "teacher")))
+                    .expect("raster export succeeds");
+            assert_eq!(
+                !warnings.is_empty(),
+                fontless,
+                "{format} warnings must track font availability: {warnings:?}"
+            );
+            if fontless {
+                assert!(
+                    warnings
+                        .iter()
+                        .any(|warning| warning.contains("no usable system font")),
+                    "{format} must explain the omitted text: {warnings:?}"
+                );
+            }
+        }
+        // Formats that never rasterize text carry no font warning anywhere.
+        for format in ["svg", "html", "xlsx"] {
+            let (_, warnings) =
+                export_plan_with_warnings(&body_string(&export_body(format, "teacher")))
+                    .expect("vector/office export succeeds");
+            assert!(
+                warnings.is_empty(),
+                "{format} must not warn about fonts: {warnings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn export_plan_wrapper_drops_warnings_but_keeps_bytes() {
+        let with = export_plan_with_warnings(&body_string(&export_body("svg", "teacher")))
+            .expect("export succeeds");
+        let without = export_plan(&body_string(&export_body("svg", "teacher"))).expect("export");
+        assert_eq!(with.0, without, "both entry points render identical bytes");
     }
 }

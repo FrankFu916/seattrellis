@@ -10,6 +10,7 @@ import type {
   Student,
 } from "../api/types";
 import type { Locale, Translate } from "../i18n/messages";
+import { describeApiError } from "../domain/errorMessages";
 
 type SentenceBuilderProps = {
   templates: SentenceTemplate[] | null;
@@ -179,11 +180,17 @@ export function SentenceBuilder({
       setActiveSlot(null);
     } catch (err) {
       const detail = err as { code?: string; slot?: string | null; message?: string };
-      setError(
-        t("rules.compileFailed", {
-          message: detail.message ?? t("app.operationFailed"),
-        }),
-      );
+      // Map the stable compile-error codes onto teacher-facing sentences; the
+      // raw transport message never reaches the panel (W7 pattern).
+      const localizedMessage =
+        detail.code === "missing_slot"
+          ? t("rules.compileMissingSlot")
+          : detail.code === "invalid_choice"
+            ? t("rules.compileInvalidChoice")
+            : detail.code === "unknown_template"
+              ? t("rules.compileFailedGeneric")
+              : describeApiError(err, t, "rules.compileFailedGeneric");
+      setError(t("rules.compileFailed", { message: localizedMessage }));
       if (detail.slot) {
         setActiveSlot(detail.slot);
       }

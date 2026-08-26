@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -257,8 +257,7 @@ describe("ProjectWorkspacePanel", () => {
     vi.restoreAllMocks();
   });
 
-  it("loads a recent project and shows its history without student data", async () => {
-    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+  it("loads a recent project and shows its history without student data", async () => {    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("project-select")).toHaveValue(
@@ -750,5 +749,135 @@ describe("ProjectWorkspacePanel", () => {
       "Added 1 · removed 1",
     );
     expect(screen.getByTestId("project-group-register-preview")).not.toHaveTextContent("Alice");
+  });
+
+  it("drops a stale project listing that resolves after a newer refresh (W3)", async () => {
+    const user = userEvent.setup();
+    const staleResponse = {
+      api_version: "1" as const,
+      root: "/classes",
+      projects: [
+        {
+          name: "Stale Class",
+          path: "/classes/stale.seattrellis.json",
+          modified_at: "2026-07-01T00:00:00Z",
+        },
+      ],
+    };
+    vi.mocked(fetchProjectHistory).mockImplementation(async (path: string) => ({
+      ...historyResponse,
+      project_path: path,
+      project_name: path.includes("newer") ? "Newer Class" : "Demo Class",
+    }));
+    // Mount refresh is slow and stale; the teacher presses Enter in the root
+    // field (the input stays enabled while loading) to start a faster refresh.
+    vi.mocked(listRecentProjects)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => setTimeout(() => resolve(staleResponse), 250)),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          ...recentResponse,
+          projects: [
+            {
+              name: "Newer Class",
+              path: "/classes/newer.seattrellis.json",
+              modified_at: "2026-08-05T00:00:00Z",
+            },
+          ],
+        }),
+      );
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await user.clear(screen.getByTestId("project-root-input"));
+    await user.type(screen.getByTestId("project-root-input"), "{enter}");
+    await waitFor(() => {
+      expect(screen.getByTestId("project-select")).toHaveValue(
+        "/classes/newer.seattrellis.json",
+      );
+    });
+
+    // The slow stale answer arrives and must be ignored.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 350)));
+    expect(screen.getByTestId("project-select")).toHaveValue(
+      "/classes/newer.seattrellis.json",
+    );
+    expect(screen.queryByText(/Stale Class/)).toBeNull();
+    expect(screen.getByTestId("project-refresh")).toBeEnabled();
+  });
+
+  it("drops a stale project history response when another project opens faster (W3)", async () => {
+    const user = userEvent.setup();
+    const historyDelays: Record<string, number> = {
+      "/classes/slow.seattrellis.json": 250,
+      "/classes/fast.seattrellis.json": 30,
+    };
+    vi.mocked(fetchProjectHistory).mockImplementation((path: string) =>
+      new Promise((resolve) =>
+        setTimeout(
+          () =>
+            resolve({
+              ...historyResponse,
+              project_path: path,
+              project_name: path.includes("slow")
+                ? "Slow Class"
+                : path.includes("fast")
+                  ? "Fast Class"
+                  : "Demo Class",
+            }),
+          historyDelays[path] ?? 0,
+        ),
+      ),
+    );
+    vi.mocked(listRecentProjects).mockResolvedValue({
+      api_version: "1" as const,
+      root: "/classes",
+      projects: [
+        {
+          name: "Demo Class",
+          path: "/classes/demo.seattrellis.json",
+          modified_at: "2026-08-01T00:00:00Z",
+        },
+        {
+          name: "Slow Class",
+          path: "/classes/slow.seattrellis.json",
+          modified_at: "2026-08-02T00:00:00Z",
+        },
+        {
+          name: "Fast Class",
+          path: "/classes/fast.seattrellis.json",
+          modified_at: "2026-08-03T00:00:00Z",
+        },
+      ],
+    });
+    render(<ProjectWorkspacePanel locale="en" t={createTranslator("en")} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-select")).toHaveValue(
+        "/classes/demo.seattrellis.json",
+      );
+    });
+
+    // Two quick selections in a row: the slow one starts first, the fast one
+    // wins, and the slow response must never overwrite it afterwards.
+    await user.selectOptions(
+      screen.getByTestId("project-select"),
+      "/classes/slow.seattrellis.json",
+    );
+    await user.selectOptions(
+      screen.getByTestId("project-select"),
+      "/classes/fast.seattrellis.json",
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("project-status")).toHaveTextContent(
+        "Loaded Fast Class",
+      );
+    });
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 350)));
+    expect(screen.getByTestId("project-status")).toHaveTextContent(
+      "Loaded Fast Class",
+    );
   });
 });

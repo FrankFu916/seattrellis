@@ -40,6 +40,7 @@ import type {
   ExportTemplate,
 } from "./api/types";
 import { AppHeader } from "./components/AppHeader";
+import { ClassContextGuide } from "./components/ClassContextGuide";
 import { ContextBar } from "./components/ContextBar";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ExportPreviewDialog } from "./components/ExportPreviewDialog";
@@ -77,6 +78,7 @@ import {
   type WorkbenchView,
 } from "./domain/navigation";
 import {
+  assignStudentToSeat,
   getUnseatedStudents,
   reconcileStudentAssignments,
   swapStudents,
@@ -195,7 +197,12 @@ const DEFAULT_DETAILED_RULE_SETTINGS: DetailedRuleSettings = {
   },
 };
 
-function getInitialLocale(): Locale {
+/**
+ * Initial UI language (W2): an explicit choice in localStorage always wins;
+ * on first start the system language decides (`zh*` → Chinese, else English)
+ * and that choice is then persisted by the locale effect below.
+ */
+export function getInitialLocale(): Locale {
   const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
   if (stored === "zh-CN" || stored === "en") {
     return stored;
@@ -223,8 +230,8 @@ function friendlyError(err: unknown, t?: Translate): string {
       plan_not_found: "app.planNotFound",
       feature_unavailable: "app.featureUnavailable",
       session_required: "app.sessionExpired",
-      editor_revision_conflict: "app.operationFailed",
-      layout_revision_conflict: "app.operationFailed",
+      editor_revision_conflict: "app.revisionConflict",
+      layout_revision_conflict: "app.revisionConflict",
     };
     const key = localizedKey[err.code];
     return t && key ? t(key) : t ? t("app.operationFailed") : err.message;
@@ -234,6 +241,19 @@ function friendlyError(err: unknown, t?: Translate): string {
     return t ? t("app.operationFailed") : err.message;
   }
   return t ? t("app.operationFailed") : "The operation could not be completed.";
+}
+
+/**
+ * Whether an editor command failed because the authoritative draft moved
+ * forward underneath this workbench (stale `base_revision`). The Rust
+ * transport answers 409; older services may attach the stable
+ * `editor_revision_conflict` code instead.
+ */
+export function isRevisionConflict(error: unknown): boolean {
+  return (
+    error instanceof RosterApiError &&
+    (error.code === "editor_revision_conflict" || error.status === 409)
+  );
 }
 
 /** Convert the authoritative editor state into the canvas plan model. */
@@ -911,8 +931,21 @@ export function App() {
       setSelectedSeatId(null);
       setIsDirty(true);
     } catch (err) {
-      setSaveError(friendlyError(err, t));
       setSelectedSeatId(null);
+      if (isRevisionConflict(err)) {
+        // The authoritative draft moved forward (another window, or a stale
+        // workbench). Show the localized conflict note and reload the
+        // editor state so the next attempt starts from the fresh revision.
+        setSaveError(t("app.revisionConflict"));
+        try {
+          const editor = await fetchEditorState(editorDraftId);
+          applyEditorState(editor);
+        } catch {
+          // The draft may be gone; the conflict note above still explains.
+        }
+        return;
+      }
+      setSaveError(friendlyError(err, t));
     }
   }
 
@@ -1077,19 +1110,14 @@ export function App() {
       return;
     }
     setHistory((previous) => [...previous, assignments]);
-    setAssignments((current) =>
-      current.map((item) =>
-        item.seatId === seatId
-          ? {
-              ...item,
-              student: studentId
-                ? current.find((candidate) => candidate.student?.id === studentId)
-                    ?.student
-                : undefined,
-            }
-          : item,
-      ),
-    );
+    // Resolve from the roster (not from seated assignments) so unseated
+    // students can be placed, and clear the student's previous seat in the
+    // same pass — the optimistic scratch update must never leave one student
+    // occupying two seats.
+    const student = studentId
+      ? students.find((candidate) => candidate.id === studentId) ?? null
+      : null;
+    setAssignments(assignStudentToSeat(assignments, seatId, student));
     setIsDirty(true);
   }
 
@@ -1436,6 +1464,16 @@ export function App() {
                 setFirstRunDismissed(true);
                 window.localStorage.setItem(FIRST_RUN_KEY, "done");
               }}
+            />
+          ) : null}
+          {/* A class picked from the sidebar starts as a scratch draft; the
+              guide makes that explicit instead of showing an empty demo under
+              the class name, and disappears once real data is loaded (W4). */}
+          {classContext.kind === "class" && !hasPlan ? (
+            <ClassContextGuide
+              context={classContext}
+              t={t}
+              onOpenTools={() => switchView("history")}
             />
           ) : null}
           <main

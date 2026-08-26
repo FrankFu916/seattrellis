@@ -26,7 +26,7 @@ use std::fs;
 use std::io;
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
@@ -1805,10 +1805,17 @@ fn rotation_load_drafts(
             })
             .collect();
         let candidate_id = format!("period-{period_number}");
+        // Draft ids must be unique across loads: the store rejects a second
+        // draft with an existing id, which used to make reloading the same
+        // plan fail with "an editor draft already exists". The workbench
+        // keeps matching on candidate_id ("period-N"); only the storage id
+        // is freshly minted, using the same timestamp+sequence shape as the
+        // application layer's `new_draft_id`.
+        let draft_id = new_rebuilt_draft_id();
         let editor = seattrellis_domain::editing::create_draft(
             editor_store,
-            candidate_id.clone(),
-            Some(candidate_id.clone()),
+            draft_id,
+            Some(candidate_id),
             &key_refs,
             seats.clone(),
             &pairs,
@@ -1834,6 +1841,21 @@ fn rotation_load_drafts(
         "period_editors": period_editors,
     }))
     .map_err(|error| format!("could not encode rotation load response: {error}"))
+}
+
+/// Sequence source for rebuilt draft ids (see [`new_rebuilt_draft_id`]).
+static REBUILT_DRAFT_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Mint a fresh editor draft id (`draft-<nanos hex><seq hex>`), mirroring the
+/// application layer's `new_draft_id` so ids stay unique across repeated
+/// loads of the same rotation plan and across generate flows.
+fn new_rebuilt_draft_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let seq = REBUILT_DRAFT_SEQ.fetch_add(1, Ordering::Relaxed);
+    format!("draft-{nanos:x}{seq:x}")
 }
 
 /// `POST /api/v1/projects/rotation/group-register`: render a printable HTML or
@@ -5225,6 +5247,154 @@ mod tests {
         assert_eq!(bad.status, 400);
     }
 
+    /// Contract test (L): the state documents the server actually emits —
+    /// fetched state, command responses (with the injected `validation`
+    /// object), and rotation-load rebuilt drafts — must all validate against
+    /// the published `schemas/editor-state.schema.json`.
+    #[test]
+    fn editor_state_responses_validate_against_published_schema() {
+        let schema_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/editor-state.schema.json");
+        let schema: Value = serde_json::from_slice(
+            &fs::read(&schema_path)
+                .unwrap_or_else(|error| panic!("cannot read {}: {error}", schema_path.display())),
+        )
+        .unwrap();
+        let validator = jsonschema::validator_for(&schema)
+            .unwrap_or_else(|error| panic!("published editor-state schema is invalid: {error}"));
+        let assert_valid = |label: &str, document: &Value| {
+            let errors: Vec<String> = validator
+                .iter_errors(document)
+                .map(|error| error.to_string())
+                .collect();
+            assert!(
+                errors.is_empty(),
+                "{label} violates the published editor-state schema: {errors:?}"
+            );
+        };
+
+        let root = test_web_root();
+        let editor_store = editing::new_draft_store();
+        let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
+
+        // A real generate flow creates the draft.
+        let problem = json!({
+            "api_version": 2,
+            "student_count": 2,
+            "seat_positions": [[1.0, 1.0], [2.0, 1.0], [3.0, 1.0]],
+            "students": [{"key": "A"}, {"key": "B"}]
+        });
+        let generated = route(
+            &request(
+                "POST",
+                "/api/v1/classes/generate",
+                &serde_json::to_vec(&problem).unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+            &root,
+        );
+        assert_eq!(generated.status, 200);
+        let draft_id = body_json(&generated)["editor"]["draft_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // 1. Fetched state validates and carries no `validation` object.
+        let fetched = route(
+            &request("GET", &format!("/api/v1/editing/drafts/{draft_id}"), b""),
+            &root,
+            &editor_store,
+            &solve_requests,
+            &root,
+        );
+        assert_eq!(fetched.status, 200);
+        let fetched_value = body_json(&fetched);
+        assert!(fetched_value.get("validation").is_none());
+        assert_valid("fetched editor state", &fetched_value);
+
+        // 2. Command responses validate with the extra `validation` object.
+        let command = json!({
+            "kind": "seattrellis_editor_command",
+            "protocol_version": "1.0",
+            "command_id": "contract-cmd-1",
+            "draft_id": draft_id,
+            "base_revision": 0,
+            "action": "apply",
+            "operations": [{
+                "kind": "swap_students",
+                "payload": {"first_student": "A", "second_student": "B"}
+            }]
+        });
+        let applied = route(
+            &request(
+                "POST",
+                &format!("/api/v1/editing/drafts/{draft_id}/commands"),
+                &serde_json::to_vec(&command).unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+            &root,
+        );
+        assert_eq!(applied.status, 200);
+        let applied_value = body_json(&applied);
+        let validation = applied_value
+            .get("validation")
+            .expect("command responses carry the validation contract");
+        assert_eq!(validation["valid"], true);
+        assert_eq!(validation["hard_constraints_satisfied"], true);
+        assert!(validation["violations"].is_array());
+        assert_valid("command response state", &applied_value);
+
+        // 3. Rotation-load rebuilt drafts use the same serializer and must
+        //    validate too.
+        let dir = rotation_project_dir();
+        let project_path = rotation_project_file(&dir);
+        let save = route_with_store(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/save",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "rotation_plan": rotation_plan_value(),
+                }))
+                .unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(save.status, 200);
+        let save_val = body_json(&save);
+        let output_path = save_val["output_path"].as_str().unwrap();
+        let loaded = route_with_store(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/load",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "artifact_path": output_path,
+                }))
+                .unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(
+            loaded.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&loaded.body)
+        );
+        for editor in body_json(&loaded)["period_editors"].as_array().unwrap() {
+            assert!(editor.get("validation").is_none());
+            assert_valid("rebuilt rotation draft", editor);
+        }
+    }
+
     #[test]
     fn method_not_allowed_on_api() {
         let root = test_web_root();
@@ -6335,6 +6505,102 @@ mod tests {
             String::from_utf8_lossy(&multipart_save.body)
         );
         assert_eq!(body_json(&multipart_save)["group_count"], 1);
+    }
+
+    /// Reloading the same saved rotation plan twice must succeed: rebuilt
+    /// drafts get unique storage ids while `candidate_id` stays "period-N"
+    /// for the workbench to match on (K: the fixed "period-N" draft id used
+    /// to collide with "an editor draft already exists" on the second load).
+    #[test]
+    fn rotation_load_twice_creates_independent_drafts() {
+        let root = test_web_root();
+        let dir = rotation_project_dir();
+        let project_path = rotation_project_file(&dir);
+
+        let save = route_one(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/save",
+                &serde_json::to_vec(&json!({
+                    "project_path": project_path,
+                    "rotation_plan": rotation_plan_value(),
+                }))
+                .unwrap(),
+            ),
+            &root,
+        );
+        assert_eq!(
+            save.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&save.body)
+        );
+        let output_path = body_json(&save)["output_path"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let load_body = serde_json::to_vec(&json!({
+            "project_path": project_path,
+            "artifact_path": output_path,
+        }))
+        .unwrap();
+
+        // Both loads share one editor store, like a real session.
+        let editor_store = editing::new_draft_store();
+        let solve_requests: SolveRequestStore = Mutex::new(HashMap::new());
+
+        let first = route_with_store(
+            &request("POST", "/api/v1/projects/rotation/load", &load_body),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(
+            first.status,
+            200,
+            "body: {}",
+            String::from_utf8_lossy(&first.body)
+        );
+
+        let second = route_with_store(
+            &request("POST", "/api/v1/projects/rotation/load", &load_body),
+            &root,
+            &editor_store,
+            &solve_requests,
+        );
+        assert_eq!(
+            second.status,
+            200,
+            "second load of the same plan must not collide, body: {}",
+            String::from_utf8_lossy(&second.body)
+        );
+
+        let first_val = body_json(&first);
+        let second_val = body_json(&second);
+
+        // candidate_id stays stable for frontend period matching.
+        assert_eq!(first_val["editor"]["candidate_id"], "period-1");
+        assert_eq!(second_val["editor"]["candidate_id"], "period-1");
+
+        // Storage ids are freshly minted and distinct, per load and per period.
+        let first_draft_id = first_val["editor"]["draft_id"].as_str().unwrap();
+        let second_draft_id = second_val["editor"]["draft_id"].as_str().unwrap();
+        assert_ne!(first_draft_id, second_draft_id);
+        let first_editors = first_val["period_editors"].as_array().unwrap();
+        assert_ne!(first_editors[0]["draft_id"], first_editors[1]["draft_id"]);
+
+        // Both drafts exist independently in the store.
+        for (draft_id, expected_revision) in [(first_draft_id, 0u64), (second_draft_id, 0u64)] {
+            let fetched = route_with_store(
+                &request("GET", &format!("/api/v1/editing/drafts/{draft_id}"), b""),
+                &root,
+                &editor_store,
+                &solve_requests,
+            );
+            assert_eq!(fetched.status, 200);
+            assert_eq!(body_json(&fetched)["draft_id"], draft_id);
+            assert_eq!(body_json(&fetched)["revision"], expected_revision);
+        }
     }
 
     /// Missing artifacts and bad request shapes map to 400/404/422.

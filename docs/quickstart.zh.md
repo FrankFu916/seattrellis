@@ -1,6 +1,6 @@
 # 快速开始
 
-本文档提供 SeatTrellis v2（纯 Rust 版本）的安装与命令行使用指南。如果你只想快速了解项目概况，请阅读[文档首页](/)。
+本文档提供 SeatTrellis v2（纯 Rust 版本）的安装与命令行使用指南。如果你只想快速了解项目概况，请阅读[文档首页](index.md)。
 
 ## 安装
 
@@ -82,7 +82,7 @@ seattrellis_cli solve --problem problem.json --output plan.json
 seattrellis_cli export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
-`export` 支持 `svg`、`html`、`print-html`（仅 project-export）、`png`、`pdf`、`xlsx`、`docx`、`pptx` 格式。`solve` 的退出码是 v2 冻结表：`0` 成功、`2` 输入无效、`3` 确认不可行、`4` 超时、`5` 未知、`70` 内部错误、`130` 用户取消。
+`export` 支持 `svg`、`html`、`png`、`pdf`、`xlsx`、`docx`、`pptx` 七种格式；打印版 `print-html` 仅通过 `project-export` 使用。`solve` 的退出码是 v2 冻结表：`0` 成功、`2` 输入无效、`3` 确认不可行、`4` 超时、`5` 未知、`70` 内部错误、`130` 用户取消。确认不可行的退出码 3 在 `solve` / `candidates` / `project-rotate` / `project-solve` 上保持一致。
 
 ## 示例数据
 
@@ -211,11 +211,18 @@ v2 产物（snapshot、candidate set、project、rotation plan 等）都带 `sch
 ```bash
 seattrellis_cli schema-list
 seattrellis_cli schema-export --kind seatingsnapshot --output seating-snapshot.v2.schema.json
-seattrellis_cli schema-migrate --input v1-project.json --output v2-project.json
-seattrellis_cli schema-migrate --input v1-rules.json --in-place   # 先自动创建 .bak 备份
+
+# project 文件自带 kind 字段，可直接迁移到 v2：
+seattrellis_cli schema-migrate --input my-class/seattrellis.project.json --output my-class/seattrellis.v2.project.json
+
+# 学生名单 / 教室布局的 v1 文档没有 kind 字段，需包一层信封再迁移，
+# 或用 --in-place 就地重写（先自动创建隐藏事务备份，重复运行不会互相覆盖）：
+# {"kind": "student_roster", "schema_version": 1,
+#  "data": {"students": [{"student_id": "STU001", "name": "Alice"}]}}
+seattrellis_cli schema-migrate --input roster-v1.json --in-place
 ```
 
-v1 时代的文件（学生名单 CSV、layout/rules JSON、snapshot、candidate set、project）会由 v2 的迁移路径自动处理；project 和产物迁移前会自动备份。
+目前只有 roster（`student_roster`）、layout（`classroom_layout`）、project（`seattrellis_project`）三类提供 v1→v2 迁移步骤；snapshot、candidate set、ruleset 等暂无迁移步骤，传入会明确报错。`schema_version` 高于支持版本的文件会被拒绝迁移（防降级）。
 
 ## 继续阅读
 

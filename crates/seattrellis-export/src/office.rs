@@ -126,11 +126,27 @@ fn excel_column(index: usize) -> String {
     name
 }
 
+/// Excel's hard limit for one cell's string value, in characters (R1):
+/// longer inline strings produce a workbook that independent readers
+/// (openpyxl / Excel) refuse to open, so values are truncated instead.
+const MAX_CELL_CHARS: usize = 32_767;
+
+/// Clamp a cell value to [`MAX_CELL_CHARS`] characters, marking the cut with
+/// an ellipsis so the truncation is visible rather than silent.
+fn truncate_cell_text(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.chars().count() <= MAX_CELL_CHARS {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut truncated: String = text.chars().take(MAX_CELL_CHARS - 1).collect();
+    truncated.push('…');
+    std::borrow::Cow::Owned(truncated)
+}
+
 /// One `<c>` cell carrying an inline string.
 fn inline_string_cell(reference: &str, text: &str) -> String {
     format!(
         r#"<c r="{reference}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
-        xml_escape(text)
+        xml_escape(&truncate_cell_text(text))
     )
 }
 
@@ -629,6 +645,19 @@ mod tests {
         }
     }
 
+    /// The inline-string values written by this module (`<is><t …>text</t>`),
+    /// recovered for cell-length assertions. Only the writer's own tag
+    /// vocabulary is scanned, so a plain prefix search on `<t` is exact here.
+    fn inline_cell_texts(xml: &str) -> Vec<String> {
+        xml.split("</t>")
+            .filter_map(|chunk| {
+                let start = chunk.rfind("<t")?;
+                let open_end = chunk[start..].find('>')? + start + 1;
+                Some(chunk[open_end..].to_string())
+            })
+            .collect()
+    }
+
     #[test]
     fn xlsx_package_is_well_formed_and_carries_both_sheets() {
         let bytes = render_xlsx(&sample_grid()).expect("xlsx renders");
@@ -735,6 +764,39 @@ mod tests {
             "raw special characters must not appear"
         );
         assert_well_formed_xml(seating, "sheet1.xml");
+    }
+
+    #[test]
+    fn xlsx_truncates_over_limit_cells_and_stays_well_formed() {
+        // A 40_000-character name exceeds Excel's 32_767-char cell limit;
+        // the raw value would corrupt the workbook for independent readers.
+        let long_name = "名".repeat(40_000);
+        let mut grid = sample_grid();
+        grid.cells[0].student = Some(long_name.clone());
+        grid.cells[0].student_key = Some("S1".to_string());
+
+        let entries = unzip(&render_xlsx(&grid).expect("xlsx renders"));
+        for part in ["xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"] {
+            assert_well_formed_xml(&entries[part], part);
+            assert!(
+                !entries[part].contains(&long_name),
+                "{part} must not carry the untruncated value"
+            );
+            for text in inline_cell_texts(&entries[part]) {
+                assert!(
+                    text.chars().count() <= 32_767,
+                    "{part} carries an over-limit cell ({})",
+                    text.chars().count()
+                );
+            }
+        }
+        // The cut is marked with an ellipsis and keeps the head of the name.
+        let expected_head: String = "名".repeat(32_766) + "…";
+        let assignments = &entries["xl/worksheets/sheet2.xml"];
+        assert!(
+            inline_cell_texts(assignments).contains(&expected_head),
+            "the truncated name (… suffix, 32767 chars) survives in the Assignments sheet"
+        );
     }
 
     #[test]

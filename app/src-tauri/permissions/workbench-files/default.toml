@@ -1,0 +1,11 @@
+"$schema" = "schemas/schema.json"
+
+[[permission]]
+identifier = "allow-workbench-files"
+description = "Allows the desktop file-bridge commands (pick_open_file, pick_save_file, read_user_file, write_user_file) for the loopback workbench page. The page is the app's own embedded frontend served from 127.0.0.1, so this is a same-trust grant; the byte-moving commands still verify dialog-granted paths only."
+commands.allow = [
+  "pick_open_file",
+  "pick_save_file",
+  "read_user_file",
+  "write_user_file",
+]

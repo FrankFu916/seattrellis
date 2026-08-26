@@ -814,6 +814,21 @@ const zh = {
   "project.kindRotation": "轮换计划",
   "project.kindUnknown": "项目文件",
   "project.periods": "期",
+  "app.revisionConflict": "座位数据已被更新，已为你刷新最新状态，请重试。",
+  "app.errorGeneric": "操作没有完成，请重试。",
+  "ctx.classGuideTitle": "此班级尚未载入数据",
+  "ctx.classGuideBody":
+    "当前工作台显示的是临时示例草稿。请在「历史 / 轮换」的「项目工具」中打开这个班的座位项目文件；也可以直接在下方开始一次新的排座。",
+  "ctx.classGuideAction": "打开项目工具",
+  "project.actionFailed": "项目操作没有完成，请检查文件与目录后重试。",
+  "layoutEditor.fileInvalid": "无法读取布局 JSON，请粘贴一个对象格式的教室布局。",
+  "layoutEditor.actionFailed": "教室编辑操作没有完成，请重试。",
+  "audit.auditFailed": "方案评分暂时不可用，请稍后重试。",
+  "rules.compileMissingSlot": "还有必填槽位没有填写，请补全后再添加。",
+  "rules.compileInvalidChoice": "某个槽位的选择无效，请重新选择。",
+  "rules.compileFailedGeneric": "这条规则无法编译，请检查各槽位的填写。",
+  "filePicker.pathReadFailed":
+    "无法读取该文件，请确认路径在可信根内且为受支持的格式。",
 } as const;
 
 export type MessageKey = keyof typeof zh;
@@ -1634,6 +1649,25 @@ const en: Record<MessageKey, string> = {
   "project.kindRotation": "Rotation plan",
   "project.kindUnknown": "Project file",
   "project.periods": "periods",
+  "app.revisionConflict":
+    "The seating data changed elsewhere. The latest state has been refreshed — please try again.",
+  "app.errorGeneric": "The operation could not be completed. Please try again.",
+  "ctx.classGuideTitle": "No data loaded for this class yet",
+  "ctx.classGuideBody":
+    "The workbench is showing a scratch sample draft. Open this class’s project file in History / rotation → Project tools, or start a new seating below.",
+  "ctx.classGuideAction": "Open project tools",
+  "project.actionFailed":
+    "The project action could not be completed. Check the files and folder, then try again.",
+  "layoutEditor.fileInvalid":
+    "This layout JSON could not be read. Paste a classroom layout object.",
+  "layoutEditor.actionFailed":
+    "The layout editor action could not be completed. Try again.",
+  "audit.auditFailed": "Plan scoring is unavailable right now. Try again shortly.",
+  "rules.compileMissingSlot": "Some required slots are still empty. Fill them in, then add the rule.",
+  "rules.compileInvalidChoice": "A slot choice is invalid. Choose a different value.",
+  "rules.compileFailedGeneric": "This rule cannot be compiled. Check every slot.",
+  "filePicker.pathReadFailed":
+    "This file could not be read. Make sure the path is inside the trusted root and uses a supported format.",
 };
 
 const dictionaries: Record<Locale, Record<MessageKey, string>> = {

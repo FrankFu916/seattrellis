@@ -28,7 +28,7 @@ use crate::{
     ProjectPackArgs, ProjectPrivacyArgs, ProjectRepairArgs, ProjectRestoreArgs, ProjectRotateArgs,
     RepairArgs, SchemaExportArgs, SchemaMigrateArgs, ScoreArgs, SolveArgs,
 };
-use seattrellis_export::export::export_plan;
+use seattrellis_export::export::export_plan_with_warnings;
 
 /// Publish a CLI output atomically (staged sibling temp + journaled
 /// transaction with rollback, plan §5.5 "all project writes roll back").
@@ -538,6 +538,12 @@ fn response_from_snapshot(
 /// `project_export`; default: the project's `default_candidate`, i.e.
 /// `recommended`). All Python export formats route through the shared
 /// export crate renderer (svg/html/print-html/png/pdf/xlsx/docx/pptx).
+///
+/// J+V1 (frozen dogfood decision "A4 landscape wall posting"): `--template`
+/// defaults to `teacher`; `public` forces full anonymization (no names, no
+/// student ids, no height/vision). `--orientation` defaults to `auto`,
+/// which omits the field so the export layer applies its per-format default
+/// (print-html → landscape A4, everything else portrait).
 pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
     let format = match &args.format {
         Some(raw) => normalize_export_format(raw)?,
@@ -553,6 +559,21 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
             }
         }
     };
+    let template = args.template.as_deref().unwrap_or("teacher");
+    if template != "teacher" && template != "public" {
+        return Err(format!(
+            "unknown export template '{template}' (expected public or teacher)"
+        ));
+    }
+    // The public template is fail-closed: anonymize + no identifiers + no
+    // height/vision detail, regardless of any other setting.
+    let public = template == "public";
+    let orientation = args.orientation.as_deref().unwrap_or("auto");
+    if orientation != "portrait" && orientation != "landscape" && orientation != "auto" {
+        return Err(format!(
+            "unknown export orientation '{orientation}' (expected portrait, landscape or auto)"
+        ));
+    }
     let output = args
         .output
         .clone()
@@ -571,25 +592,34 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
     let selected = select_artifact_plan(&snapshot, args.candidate.as_deref())?;
     let response = response_from_snapshot(&request, &selected)?;
 
-    let export_document = json!({
+    // `orientation: auto` stays absent so the export layer's per-format
+    // default applies (print-html → landscape per the frozen print spec).
+    let mut export_document = json!({
         "draft_id": "project-export",
         "format": format,
-        "template": "teacher",
+        "template": template,
         "privacy": {
             "hide_scores": false, "hide_notes": false, "hide_special_needs": false,
-            "anonymize": false, "show_height": true, "show_vision": true
+            "anonymize": public,
+            "show_height": !public, "show_vision": !public
         },
-        "orientation": "portrait",
         "page_scale": 1.0,
         "locale": "zh",
-        "show_student_ids": true,
+        "show_student_ids": !public,
         "request": request_value,
         "response": serde_json::to_value(&response)
             .map_err(|error| format!("response re-encode failed: {error}"))?,
     });
+    if orientation != "auto" {
+        export_document["orientation"] = serde_json::Value::String(orientation.to_string());
+    }
     let export_json = serde_json::to_string(&export_document)
         .map_err(|error| format!("could not serialize the export request: {error}"))?;
-    let bytes = export_plan(&export_json).map_err(|error| error.to_string())?;
+    let (bytes, warnings) =
+        export_plan_with_warnings(&export_json).map_err(|error| error.to_string())?;
+    for warning in &warnings {
+        eprintln!("warning: {warning}");
+    }
     write_output_atomically(&output, &bytes)?;
     println!("wrote {} to '{}'", format, output.display());
     Ok(())
@@ -2036,7 +2066,13 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
         "request": problem_value,
         "response": solution_value,
     });
-    let bytes = export_plan(&export_request.to_string())?;
+    let (bytes, warnings) = export_plan_with_warnings(&export_request.to_string())?;
+    // Non-fatal quality warnings (e.g. PNG/PDF without a usable system font)
+    // go to stderr: the artifact is complete, but the missing text must be
+    // explained (R3).
+    for warning in &warnings {
+        eprintln!("warning: {warning}");
+    }
     write_bytes(&args.output, &bytes)?;
 
     let format_name = match args.format {

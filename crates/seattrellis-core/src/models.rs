@@ -562,7 +562,9 @@ pub fn effective_neighbor_rule(rules: &RuleSet) -> AvoidRecentNeighborsRule {
     let cooling_lookback = cooling_rule.lookback.unwrap_or(0);
     AvoidRecentNeighborsRule {
         enabled: true,
-        weight: base.weight + cooling_rule.weight,
+        // Saturating: both weights are user-supplied i32 values and the sum
+        // must never overflow into a negative (huge-discount) weight.
+        weight: base.weight.saturating_add(cooling_rule.weight),
         relation_types,
         lookback: Some(base_lookback.max(cooling_lookback)),
         max_recent_count: base.max_recent_count.min(cooling_rule.max_recent_count),

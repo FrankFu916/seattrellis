@@ -11,6 +11,7 @@ import {
   reasonCardFor,
   type DimensionKey,
 } from "../domain/auditTerms";
+import { describeApiError } from "../domain/errorMessages";
 import type { Locale, Translate } from "../i18n/messages";
 
 export type CandidateMeta = {
@@ -77,7 +78,7 @@ export function CandidatesPanel({
           return {
             draftId,
             report: null,
-            message: error instanceof Error ? error.message : String(error),
+            message: describeApiError(error, t, "audit.auditFailed"),
           };
         }
       }),
@@ -100,7 +101,7 @@ export function CandidatesPanel({
     return () => {
       current = false;
     };
-  }, [recommended?.draft_id, compared?.draft_id]);
+  }, [recommended?.draft_id, compared?.draft_id, t]);
 
   const recommendedAudit = recommended ? audits[recommended.draft_id] : undefined;
   const comparedAudit = compared ? audits[compared.draft_id] : undefined;

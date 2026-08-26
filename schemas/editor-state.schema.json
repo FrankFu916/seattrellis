@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://frankfu916.github.io/seattrellis/schemas/editor-state.schema.json",
   "title": "SeatTrellis Editor State",
+  "description": "The editor state the server returns for a draft. Fetched states (`GET /api/v1/editing/drafts/{id}`) and command responses (`POST .../commands`) share this shape; command responses additionally carry the optional `validation` object registered below.",
   "additionalProperties": false,
   "properties": {
     "kind": {
@@ -63,8 +64,32 @@
       "title": "Seats",
       "type": "array"
     },
-    "hard_constraints": {
-      "$ref": "#/definitions/EditorHardConstraintState"
+    "validation": {
+      "description": "Independent hard-rule re-validation of the resulting assignment. Attached only to editor command responses (never to fetched state); see the server's `editor_validation_report`.",
+      "properties": {
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "hard_constraints_satisfied": {
+          "title": "Hard Constraints Satisfied",
+          "type": "boolean"
+        },
+        "violations": {
+          "items": {
+            "$ref": "#/definitions/EditorViolation"
+          },
+          "title": "Violations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "valid",
+        "hard_constraints_satisfied",
+        "violations"
+      ],
+      "title": "Validation",
+      "type": "object"
     }
   },
   "required": [
@@ -75,42 +100,59 @@
     "undo_depth",
     "redo_depth",
     "students",
-    "seats",
-    "hard_constraints"
+    "seats"
   ],
   "type": "object",
   "definitions": {
-    "EditorHardConstraintState": {
+    "EditorViolation": {
       "additionalProperties": false,
       "properties": {
-        "satisfied": {
-          "title": "Satisfied",
-          "type": "boolean"
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
         },
-        "checked_rule_count": {
-          "minimum": 0,
-          "title": "Checked Rule Count",
-          "type": "integer"
+        "entity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Entity"
         },
-        "violation_count": {
-          "minimum": 0,
-          "title": "Violation Count",
-          "type": "integer"
+        "reason": {
+          "title": "Reason",
+          "type": "string"
         },
-        "violations": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Violations",
-          "type": "array"
+        "witness": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Witness"
+        },
+        "suggested_action": {
+          "title": "Suggested Action",
+          "type": "string"
+        },
+        "message_key": {
+          "title": "Message Key",
+          "type": "string"
         }
       },
       "required": [
-        "satisfied",
-        "checked_rule_count",
-        "violation_count"
+        "rule_id",
+        "entity",
+        "reason",
+        "witness",
+        "suggested_action",
+        "message_key"
       ],
-      "title": "EditorHardConstraintState",
+      "title": "EditorViolation",
       "type": "object"
     },
     "EditorSeatState": {

@@ -49,7 +49,10 @@
 - `130`：用户取消（`Cancelled`）。
 
 启发式耗尽只能报告 `Unknown`（5），绝不能伪装成 `ProvenInfeasible`（3）；有合法
-方案时即使超时也报告 `Solved`（0）。`export` 失败按内部错误（70）处理。
+方案时即使超时也报告 `Solved`（0）。确认不可行（3）与输入无效（2）的判定在
+`solve` / `candidates` / `project-rotate` / `project-solve` 上保持一致。`export`
+失败按内部错误（70）处理。已知边界：进程发生 Rust panic 时按语言默认行为退出
+101，该码不在上表冻结范围内。
 
 ## 求解
 
@@ -192,24 +195,33 @@ seattrellis_cli project-restore --bundle <bundle.zip> --output-dir <dir> [--forc
 `--report <file>`（方案比较报告）；`project-export` 渲染的是 `project-solve
 --output` 保存的方案，**导出永远不会重新求解**，并支持
 `svg|html|print-html|png|pdf|xlsx|docx|pptx` 格式（默认使用 project 的
-`default_export_format`）。`project-rotate` 的 `--periods` 为 1–20（默认 4）。
+`default_export_format`）。`project-export` 还接受 `--template
+<teacher|public>`（默认 `teacher`；`public` 强制匿名，隐藏姓名、学号与明细字段）
+和 `--orientation <portrait|landscape|auto>`（默认 `auto`：`print-html` 使用 A4
+横向，其余格式纵向）。`project-rotate` 的 `--periods` 为 1–20（默认 4）。
 `project-validate --strict` 把 warning 当作失败。
 
 ## Schema 工具
 
 ```bash
 seattrellis_cli schema-list
-seattrellis_cli schema-export --kind <kind> [--output <file>]
+seattrellis_cli schema-export --kind <kind> --output <file>
 seattrellis_cli schema-migrate --input <file> [--output <file> | --in-place] [--dry-run]
 ```
 
 `schema-list` 列出 12 类 v2 产物（studentroster、classroomlayout、ruleset、
 seatingsnapshot、candidateset、plancomparison、historyarchive、rotationplan、
 editingoperationlog、project、projectbundlemanifest、exportpreset），版本均为
-`v2`。`schema-export --kind` 写出对应 JSON Schema。`schema-migrate` 校验并重写
-带版本号的 JSON 产物；`--dry-run` 只验证不写盘，`--in-place` 覆盖原文件前先创建
-`.bak` 备份（重复运行时依次使用 `.bak.1`、`.bak.2` 等）。v1 时代的 snapshot、
-candidate set、project 等文件会迁移到 v2 版本。
+`v2`。`schema-export --kind` 写出对应 JSON Schema，`--output` 为必填。
+`schema-migrate` 校验并重写带版本号的 JSON 产物；`--dry-run` 只验证不写盘；
+`--in-place` 覆盖原文件前先创建一个隐藏事务备份
+（如 `.my.json.seattrellis-backup-<事务ID>-<步骤>.bak`），备份名包含唯一事务 ID，
+重复运行不会互相覆盖。
+
+迁移覆盖是显式的：目前只有 roster（`student_roster`）、layout
+（`classroom_layout`）、project（`seattrellis_project`）三类提供 v1→v2 迁移
+步骤；snapshot、candidate set、ruleset 等暂无迁移步骤，传入会明确报错。
+`schema_version` 高于支持版本的文件会被拒绝迁移（防降级）。
 
 ## 导出
 
@@ -220,8 +232,9 @@ seattrellis_cli export --problem problem.json --solution result.json \
 
 `--solution` 是 `solve --output` 写出的结果 JSON；导出前会用独立 validator 复核
 方案，绝不会导出无效方案。所有格式都经过共享的隐私过滤层：默认隐藏成绩、备注、
-特殊需求、身高和视力字段；`--template public` 额外匿名化姓名。`print-html` 格式
-通过 `project-export` 使用（渲染已保存方案）。
+特殊需求、身高和视力字段；`--template` 接受 `teacher`（默认）与 `public`，
+`public` 额外匿名化姓名。`print-html` 不在 `export` 的格式面内，通过
+`project-export` 使用（渲染已保存方案）。
 
 ## 相关文档
 

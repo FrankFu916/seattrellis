@@ -374,7 +374,17 @@ fn resolve_reference(
                     candidate.display()
                 ))
             } else {
-                Ok(candidate)
+                // The target does not exist yet (outputs/history directories
+                // are created lazily). Resolve it through its nearest existing
+                // ancestor so `..` components or a smuggled symlink cannot
+                // point outside the project root.
+                crate::rotation::resolve_lexically_inside(&candidate, root, label).map_err(|_| {
+                    format!(
+                        "Project reference \"{label}\" points outside the project root or \
+                             cannot be resolved safely: {} ({err})",
+                        candidate.display()
+                    )
+                })
             }
         }
     }
@@ -2188,6 +2198,7 @@ fn extract_bundle(
     entries: &[ValidatedEntry],
     staging: &Path,
 ) -> Result<(), String> {
+    let mut total_written: u64 = 0;
     for entry in entries {
         let target = staging.join(&entry.name);
         if !target.starts_with(staging) {
@@ -2197,13 +2208,31 @@ fn extract_bundle(
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Could not create directory {}: {e}", parent.display()))?;
         }
-        let mut source = archive
+        let source = archive
             .by_index(entry.index)
             .map_err(|e| format!("Could not read project bundle: {e}"))?;
         let mut output = fs::File::create(&target)
             .map_err(|e| format!("Could not write restored file {}: {e}", target.display()))?;
-        std::io::copy(&mut source, &mut output)
+        // Zip headers can lie about the uncompressed size (a compressed bomb
+        // may claim a few bytes), so enforce the real byte budget while
+        // copying: one extra byte beyond a limit trips the check below.
+        let mut limited = source.take(MAX_BUNDLE_FILE_BYTES.saturating_add(1));
+        let written = std::io::copy(&mut limited, &mut output)
             .map_err(|e| format!("Could not write restored file {}: {e}", target.display()))?;
+        if written > MAX_BUNDLE_FILE_BYTES {
+            return Err(format!(
+                "Project bundle file exceeds the {MAX_BUNDLE_FILE_BYTES} byte extraction \
+                 limit: {}",
+                entry.name
+            ));
+        }
+        total_written += written;
+        if total_written > MAX_BUNDLE_TOTAL_BYTES {
+            return Err(format!(
+                "Project bundle exceeds the {MAX_BUNDLE_TOTAL_BYTES} byte total extraction \
+                 limit."
+            ));
+        }
     }
     Ok(())
 }
@@ -2787,6 +2816,145 @@ mod tests {
             .is_file());
         // The restored project file must validate.
         assert!(load_project(&restored_project).is_ok());
+    }
+
+    #[test]
+    fn resolve_rejects_escaping_outputs_dir_for_missing_paths() {
+        // `../escaped` does not exist anywhere, so the old code path returned
+        // the unvalidated join result and later created/wrote outside the
+        // root. Resolution must refuse instead.
+        let root = temp_root("outputs-escape");
+        let project_file = write_project(&root, "Escaped", "id,name\n", false);
+        let project = root.join("project.seattrellis.json");
+        let escaped = r#"{"kind":"seattrellis_project","schema_version":1,"students":"students.csv","layout":"classroom.json","rules":"rules.json","outputs_dir":"../escaped"}"#;
+        fs::write(&project, escaped).unwrap();
+
+        let error = resolve_project_workspace(&project_file).unwrap_err();
+        assert!(
+            error.contains("outside the project root"),
+            "unexpected error: {error}"
+        );
+        assert!(project_history_json(project_file.to_str().unwrap()).is_err());
+        assert!(project_defaults(&project_file).is_err());
+
+        // Nothing may have been created outside the project root.
+        let escaped_sibling = fs::read_dir(root.parent().unwrap())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .any(|entry| entry.file_name().to_string_lossy().contains("escaped"));
+        assert!(!escaped_sibling);
+    }
+
+    #[test]
+    fn resolve_allows_missing_relative_outputs_dir() {
+        // A legal not-yet-existing relative path still resolves inside the
+        // root so fresh projects keep working.
+        let root = temp_root("outputs-new");
+        let project_file = write_project(&root, "Fresh", "id,name\n1,A\n2,B\n3,C\n4,D\n", false);
+        let workspace = resolve_project_workspace(&project_file).unwrap();
+        let canonical_root = fs::canonicalize(&root).unwrap();
+        assert_eq!(workspace.outputs_dir, canonical_root.join("outputs"));
+
+        let project = root.join("project.seattrellis.json");
+        let rewritten = fs::read_to_string(&project)
+            .unwrap()
+            .replace("\"outputs\"", "\"outputs/2026/fall\"");
+        fs::write(&project, rewritten).unwrap();
+        let workspace = resolve_project_workspace(&workspace.project_file).unwrap();
+        assert_eq!(
+            workspace.outputs_dir,
+            canonical_root.join("outputs/2026/fall")
+        );
+    }
+
+    /// Overwrite the uncompressed-size fields (central directory + local file
+    /// header) of entry `name` so the archive lies about its real size. The
+    /// `real_size` assertions pin the layout this test relies on.
+    fn forge_declared_size(zip_bytes: &mut [u8], name: &str, real_size: u32, declared: u32) {
+        let needle = name.as_bytes();
+        let mut index = 0usize;
+        while index + 46 <= zip_bytes.len() {
+            if &zip_bytes[index..index + 4] == b"PK\x01\x02"
+                && zip_bytes[index + 46..].starts_with(needle)
+            {
+                // Central directory: uncompressed size sits at +24.
+                let cd_size = &mut zip_bytes[index + 24..index + 28];
+                assert_eq!(
+                    u32::from_le_bytes(cd_size.try_into().unwrap()),
+                    real_size,
+                    "fixture layout changed: CD uncompressed size mismatch"
+                );
+                cd_size.copy_from_slice(&declared.to_le_bytes());
+                // Local file header offset lives at +40 in this writer's
+                // central-directory records.
+                // This writer's central-directory records keep the local
+                // header offset at +42.
+                let local_offset =
+                    u32::from_le_bytes(zip_bytes[index + 42..index + 46].try_into().unwrap())
+                        as usize;
+                debug_assert_eq!(
+                    &zip_bytes[local_offset + 30..local_offset + 30 + needle.len()],
+                    needle,
+                    "fixture layout changed: local header name mismatch"
+                );
+                // Local file header: uncompressed size sits at +22.
+                let lfh_size = &mut zip_bytes[local_offset + 22..local_offset + 26];
+                assert_eq!(
+                    u32::from_le_bytes(lfh_size.try_into().unwrap()),
+                    real_size,
+                    "fixture layout changed: LFH uncompressed size mismatch"
+                );
+                lfh_size.copy_from_slice(&declared.to_le_bytes());
+                return;
+            }
+            index += 1;
+        }
+        panic!("central directory entry {name} not found");
+    }
+
+    #[test]
+    fn restore_enforces_real_extraction_size_limits() {
+        // A deflated bomb whose headers lie: bomb.bin really inflates to
+        // MAX_BUNDLE_FILE_BYTES + 1 zero bytes while claiming 512. The
+        // extraction cap must trip on actual bytes, fail cleanly, and leave
+        // no staging leftovers or partial destination behind.
+        let dest_parent = temp_root("bomb-parent");
+        let dest = dest_parent.join("restored");
+
+        let payload_size = MAX_BUNDLE_FILE_BYTES as u32 + 1;
+        let manifest = simple_manifest(&["bomb.bin", "proj.json"], "proj.json");
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut writer = ZipWriter::new(&mut cursor);
+            let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+            writer.start_file("manifest.json", stored).unwrap();
+            writer.write_all(&manifest).unwrap();
+            let deflated =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            writer.start_file("proj.json", deflated).unwrap();
+            writer
+                .write_all(br#"{"kind":"seattrellis_project","schema_version":1,"students":"students.csv","layout":"classroom.json","rules":"rules.json"}"#)
+                .unwrap();
+            writer.start_file("bomb.bin", deflated).unwrap();
+            writer.write_all(&vec![0u8; payload_size as usize]).unwrap();
+            writer.finish().unwrap();
+        }
+        let mut zip = cursor.into_inner();
+        forge_declared_size(&mut zip, "bomb.bin", payload_size, 512);
+
+        let error = restore_project_bundle(&zip, dest.to_str().unwrap(), false).unwrap_err();
+        assert!(
+            error.contains("extraction limit"),
+            "unexpected error: {error}"
+        );
+        assert!(!dest.exists(), "no destination may be published");
+        let leftovers: Vec<String> = fs::read_dir(&dest_parent)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".seattrellis-restore-"))
+            .collect();
+        assert!(leftovers.is_empty(), "staging leftovers: {leftovers:?}");
     }
 
     #[test]

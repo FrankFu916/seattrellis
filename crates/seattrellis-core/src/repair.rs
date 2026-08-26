@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 ///   everyone connected by a hard pair rule are movable, everyone else is
 ///   fixed; without `affected_students` only the locks are fixed and the
@@ -16,7 +16,9 @@ use std::collections::{BTreeMap, HashMap};
 /// Returns the repaired snapshot document (`assignments` + `solver_status`)
 /// plus a short summary of moved/unseated students.
 use crate::engine::{effective_students, validate_solve_request};
-use crate::solver::{solve_problem, validate_solve_response, CoreSolveRequest};
+use crate::solver::{
+    parse_core_solve_request, solve_problem, validate_solve_response, CoreSolveRequest,
+};
 
 #[derive(Debug, Clone)]
 
@@ -168,8 +170,7 @@ pub fn repair_json_with_options(
     locked_seats: &[String],
     reuse_saved_locks: bool,
 ) -> Result<String, String> {
-    let mut request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let mut request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
     let snapshot: Value = serde_json::from_str(snapshot_json)
         .map_err(|error| format!("invalid snapshot document: {error}"))?;
@@ -434,55 +435,21 @@ pub fn repair_json_with_options(
         }
     }
 
-    // Disable reserved empty seats in the solver layout so they stay empty.
-    if !reserved_empty_seats.is_empty() {
-        if let Some(layout) = request.layout.as_mut() {
-            for reserved in &reserved_empty_seats {
-                if let Some(seat) = layout.seats.get_mut(*reserved) {
-                    seat.enabled = false;
-                }
-            }
-        } else {
-            // No typed layout in the request: synthesize one from the
-            // seat positions so disabled seats are representable.
-            let positions = request.seat_positions.clone();
-            let seats: Vec<Value> = positions
-                .iter()
-                .enumerate()
-                .map(|(index, [x, y])| {
-                    json!({
-                        "seat_id": seat_ids[index],
-                        "row": 1 + index as u32,
-                        "col": 1,
-                        "x": x,
-                        "y": y,
-                        "enabled": !reserved_empty_seats.contains(&index),
-                        "zone": "middle",
-                        "near_platform": false,
-                        "near_window": false,
-                        "near_door": false,
-                        "near_ac": false,
-                        "tags": [],
-                        "attributes": {}
-                    })
-                })
-                .collect();
-            request.layout = Some(
-                serde_json::from_value(json!({
-                    "layout_id": "repair-reserved",
-                    "name": "repair reserved layout",
-                    "seats": seats,
-                    "adjacency": {"include_horizontal": true, "include_vertical": true}
-                }))
-                .map_err(|error: serde_json::Error| {
-                    format!("could not build reserved layout: {error}")
-                })?,
-            );
-        }
-    }
-
     request.fixed_seats = original_fixed_seats;
     request.fixed_seats.extend(repair_anchors);
+    // Reserved empty seats must leave the solve domain entirely: the search
+    // space comes from `seat_positions` (candidate domains never read the
+    // layout's `enabled` flag, and several cost paths ignore it too), so
+    // disabling the seat in the layout alone still let a student take it.
+    // The seats are removed from the request before solving;
+    // `solved_seat_ids` maps the post-removal seat indices back to the
+    // original seat ids for the repaired snapshot.
+    let solved_seat_ids = if reserved_empty_seats.is_empty() {
+        seat_ids.clone()
+    } else {
+        remove_reserved_empty_seats(&mut request, &reserved_empty_seats)?
+    };
+
     // Re-run static conflict detection now that repair anchors have been
     // merged with the original hard rules (also catches anchor/anchor clashes).
     validate_solve_request(&request)
@@ -507,7 +474,7 @@ pub fn repair_json_with_options(
     let mut unseated = 0;
     for [student, seat] in &response.assignment {
         let student_key = students[*student].key.clone();
-        let seat_id = seat_ids[*seat].clone();
+        let seat_id = solved_seat_ids[*seat].clone();
         let display_name = students[*student]
             .display_name
             .clone()
@@ -539,6 +506,110 @@ pub fn repair_json_with_options(
     });
     serde_json::to_string(&repaired)
         .map_err(|error| format!("could not serialize repair result: {error}"))
+}
+
+/// Remove the reserved empty seats from the request's solve domain: drop
+/// their positions, remap every seat-indexed field (edges, fixed anchors),
+/// filter the typed layout in lockstep (or synthesize the compact fallback
+/// layout), and return the surviving seat ids indexed by the NEW seat
+/// indices so the repaired snapshot can name seats with original ids.
+fn remove_reserved_empty_seats(
+    request: &mut CoreSolveRequest,
+    reserved: &[usize],
+) -> Result<Vec<String>, String> {
+    let old_count = request.seat_positions.len();
+    let old_ids = request_seat_ids(request);
+    let reserved_set: HashSet<usize> = reserved.iter().copied().collect();
+
+    let mut remap: Vec<usize> = vec![usize::MAX; old_count];
+    let mut new_positions: Vec<[f64; 2]> = Vec::with_capacity(old_count);
+    let mut kept_ids: Vec<String> = Vec::with_capacity(old_count);
+    for (index, position) in request.seat_positions.iter().enumerate() {
+        if reserved_set.contains(&index) {
+            continue;
+        }
+        remap[index] = new_positions.len();
+        new_positions.push(*position);
+        kept_ids.push(old_ids[index].clone());
+    }
+
+    // Edges that touch a removed seat lose their meaning and are dropped.
+    request.edges = request
+        .edges
+        .iter()
+        .filter_map(|[first, second]| {
+            let first = remap.get(*first).copied().unwrap_or(usize::MAX);
+            let second = remap.get(*second).copied().unwrap_or(usize::MAX);
+            if first == usize::MAX || second == usize::MAX {
+                None
+            } else {
+                Some([first, second])
+            }
+        })
+        .collect();
+
+    // Anchors were already checked against the reserved set, but a bad
+    // mapping must fail loudly rather than silently re-anchor a student.
+    for [student, seat] in &mut request.fixed_seats {
+        let remapped = remap.get(*seat).copied().unwrap_or(usize::MAX);
+        if remapped == usize::MAX {
+            return Err(format!(
+                "Repair anchor for student {student} references the reserved seat \
+                 index {seat}."
+            ));
+        }
+        *seat = remapped;
+    }
+
+    if let Some(layout) = request.layout.as_mut() {
+        // The layout's seats are aligned with `seat_positions`; filtering in
+        // lockstep preserves that alignment under the new indexing.
+        let mut new_seats = Vec::with_capacity(old_count);
+        for (index, seat) in layout.seats.iter().enumerate() {
+            if index >= old_count || !reserved_set.contains(&index) {
+                new_seats.push(seat.clone());
+            }
+        }
+        layout.seats = new_seats;
+    } else {
+        // No typed layout in the request: synthesize the compact fallback
+        // layout over the surviving seats only.
+        let seats: Vec<Value> = new_positions
+            .iter()
+            .enumerate()
+            .map(|(new_index, [x, y])| {
+                json!({
+                    "seat_id": kept_ids[new_index],
+                    "row": 1 + new_index as u32,
+                    "col": 1,
+                    "x": x,
+                    "y": y,
+                    "enabled": true,
+                    "zone": "middle",
+                    "near_platform": false,
+                    "near_window": false,
+                    "near_door": false,
+                    "near_ac": false,
+                    "tags": [],
+                    "attributes": {}
+                })
+            })
+            .collect();
+        request.layout = Some(
+            serde_json::from_value(json!({
+                "layout_id": "repair-reserved",
+                "name": "repair reserved layout",
+                "seats": seats,
+                "adjacency": {"include_horizontal": true, "include_vertical": true}
+            }))
+            .map_err(|error: serde_json::Error| {
+                format!("could not build reserved layout: {error}")
+            })?,
+        );
+    }
+
+    request.seat_positions = new_positions;
+    Ok(kept_ids)
 }
 
 pub(crate) const REPORT_POSITION_CATEGORIES: [&str; 10] = [

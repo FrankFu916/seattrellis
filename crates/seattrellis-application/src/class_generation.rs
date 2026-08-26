@@ -813,7 +813,12 @@ pub(crate) fn new_draft_id() -> String {
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let seq = DRAFT_SEQ.fetch_add(1, Ordering::Relaxed);
-    format!("draft-{nanos:x}{seq:x}")
+    // Fixed-width hex fields keep lexicographic order equal to issuance
+    // order, which the FIFO evictions rely on ("smallest key is oldest"):
+    // with variable-width `{seq:x}` a same-nanosecond rollover (...f ->
+    // ...10) would sort the newer id first. Nanos stay 16 hex digits until
+    // ~year 380000; the sequence is padded wider than any realistic burst.
+    format!("draft-{nanos:016x}{seq:08x}")
 }
 
 /// Produce `candidate_count` distinct feasible plans (plan §6.3): each

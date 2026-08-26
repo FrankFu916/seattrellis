@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the desktop file-bridge commands (pick_open_file, pick_save_file, read_user_file, write_user_file) for the loopback workbench page. The page is the app's own embedded frontend served from 127.0.0.1, so this is a same-trust grant; the byte-moving commands still verify dialog-granted paths only.",
+          "type": "string",
+          "const": "allow-workbench-files",
+          "markdownDescription": "Allows the desktop file-bridge commands (pick_open_file, pick_save_file, read_user_file, write_user_file) for the loopback workbench page. The page is the app's own embedded frontend served from 127.0.0.1, so this is a same-trust grant; the byte-moving commands still verify dialog-granted paths only."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

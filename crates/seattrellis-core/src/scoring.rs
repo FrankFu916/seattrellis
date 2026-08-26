@@ -27,7 +27,7 @@ use crate::evaluation::{
     assigned_students_are_adjacent, assigned_students_meet_distance, build_graph_distance_matrix,
     build_index_adjacency,
 };
-use crate::solver::{resolve_group_rules, CoreSolveRequest};
+use crate::solver::{parse_core_solve_request, resolve_group_rules};
 
 fn score_rating(score: f64) -> &'static str {
     if score >= 75.0 {
@@ -93,8 +93,7 @@ pub fn score_assignment_json(
     latest_snapshot_json: &str,
     diversity_score: Option<f64>,
 ) -> Result<String, String> {
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
 
     // Rebuild the student->seat probe (same completeness checks as the
@@ -162,7 +161,7 @@ pub fn score_assignment_json(
                 )
             })
             .sum();
-        let penalty_units = penalty as f64 / (fair_rule.weight.max(1) * 100) as f64;
+        let penalty_units = penalty as f64 / (i64::from(fair_rule.weight.max(1)) * 100) as f64;
         let score = 100.0 / (1.0 + penalty_units / student_count.max(1) as f64);
         score_dimension(
             score,
@@ -224,7 +223,7 @@ pub fn score_assignment_json(
                 );
             }
         }
-        let excess_units = penalty as f64 / (neighbor_rule.weight.max(1) * 100) as f64;
+        let excess_units = penalty as f64 / (i64::from(neighbor_rule.weight.max(1)) * 100) as f64;
         let score = 100.0 / (1.0 + excess_units / relevant_pairs.max(1) as f64);
         score_dimension(
             score,
@@ -280,6 +279,10 @@ pub fn score_assignment_json(
                         gaps.push((first_score - second_score).abs());
                     }
                 }
+                // The adjacency edge set is a HashSet; sorting the gaps makes the
+                // float mean below independent of hash iteration order
+                // (determinism gate B).
+                gaps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             }
             if gaps.is_empty() {
                 not_available_dimension("No adjacent assigned pairs have score data.")

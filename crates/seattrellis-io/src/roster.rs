@@ -1,5 +1,5 @@
-//! Roster import domain: bounded CSV parsing, column-mapping suggestions, and
-//! conflict-aware update previews.
+//! Roster import domain: bounded CSV/XLSX parsing, column-mapping suggestions,
+//! and conflict-aware update previews.
 //!
 //! This is the self-contained Rust port of the Python roster pipeline
 //! (`src/seattrellis/io/roster_table.py`, `application/roster_mapping.py`,
@@ -7,12 +7,16 @@
 //!
 //! * [`parse_roster_csv`] — a bounded, hand-rolled UTF-8 CSV reader plus
 //!   automatic field-mapping suggestions. No third-party CSV dependency.
+//! * [`parse_roster_xlsx`] — a bounded reader for the first worksheet of an
+//!   OOXML workbook (`.xlsx`/`.xlsm`) built on the existing `zip` dependency,
+//!   producing the same draft shape as the CSV reader.
 //! * [`preview_roster_update`] — an incremental or full-replacement difference
 //!   preview with the same identity rules and conflict codes as the Python
 //!   implementation.
 //! * [`RosterDraftStore`] — an in-memory, TTL-bounded draft map plus a global
-//!   process-wide instance, so a loopback HTTP server can wire up drafts with a
-//!   few JSON in/out helpers ([`upload_draft_json`], [`preview_update_json`]).
+//!   process-wide instance, so a loopback HTTP server can wire up drafts with
+//!   a few JSON in/out helpers ([`upload_draft_json`], [`upload_draft_file_json`],
+//!   [`preview_update_json`]).
 //!
 //! JSON shapes match `clients/web/src/api/types.ts` (`snake_case`):
 //! `RosterDraftResponse` and `RosterUpdatePreviewResponse` are produced
@@ -22,12 +26,14 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::io::{Cursor, Read};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use zip::ZipArchive;
 
 // ---------------------------------------------------------------------------
 // Bounds
@@ -352,13 +358,23 @@ pub fn parse_roster_csv(bytes: &[u8]) -> Result<RosterDraft, String> {
         .map_err(|error| format!("Roster CSV must be UTF-8 text: {error}"))?;
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let records = parse_csv(text)?;
+    draft_from_records(records, "csv")
+}
 
+/// Build a stored draft from a table of raw cell strings (header row first),
+/// shared by the CSV and XLSX readers so mapping, bounds, and headerless
+/// detection behave identically for both formats. Rows are renumbered
+/// sequentially with the header at row 1 (`row_number: index + 2`).
+fn draft_from_records(
+    records: Vec<Vec<String>>,
+    source_format: &'static str,
+) -> Result<RosterDraft, String> {
     if records.is_empty() {
-        return Err("Roster CSV is empty; a header row is required.".to_string());
+        return Err("Roster is empty; a header row is required.".to_string());
     }
     let raw_headers = &records[0];
     if raw_headers.is_empty() {
-        return Err("Roster CSV has no columns in its header row.".to_string());
+        return Err("Roster has no columns in its header row.".to_string());
     }
     if raw_headers.len() > MAX_ROSTER_COLUMNS {
         return Err(format!(
@@ -460,7 +476,7 @@ pub fn parse_roster_csv(bytes: &[u8]) -> Result<RosterDraft, String> {
 
     Ok(RosterDraft {
         draft_id: new_draft_id(),
-        source_format: "csv",
+        source_format,
         headerless,
         columns,
         rows,
@@ -562,6 +578,509 @@ fn parse_csv(text: &str) -> Result<Vec<Vec<String>>, String> {
         records.push(std::mem::take(&mut record));
     }
     Ok(records)
+}
+
+// ---------------------------------------------------------------------------
+// XLSX parsing
+// ---------------------------------------------------------------------------
+
+/// Package entry holding the workbook structure.
+const WORKBOOK_ENTRY: &str = "xl/workbook.xml";
+/// Package entry resolving workbook sheet `r:id`s to worksheet parts.
+const WORKBOOK_RELS_ENTRY: &str = "xl/_rels/workbook.xml.rels";
+/// Conventional first-worksheet entry used when the workbook metadata is
+/// unreadable or missing.
+const DEFAULT_SHEET_ENTRY: &str = "xl/worksheets/sheet1.xml";
+/// Package entry holding shared strings, when present.
+const SHARED_STRINGS_ENTRY: &str = "xl/sharedStrings.xml";
+
+/// Parse roster-shaped XLSX/XLSM `bytes` (the first worksheet of an OOXML
+/// workbook) into a stored draft with mapping suggestions.
+///
+/// The same bounds as the CSV reader apply: the container is capped at
+/// [`MAX_ROSTER_FILE_BYTES`], each decompressed XML part at the same limit,
+/// and data rows/columns at [`MAX_ROSTER_ROWS`] / [`MAX_ROSTER_COLUMNS`].
+/// Shared (`t="s"`), inline (`t="inlineStr"`), formula-result (`t="str"`)
+/// boolean (`t="b"`) and untyped numeric cells are supported; formulas are
+/// only read through their cached result and rejected otherwise.
+pub fn parse_roster_xlsx(bytes: &[u8]) -> Result<RosterDraft, String> {
+    if bytes.len() > MAX_ROSTER_FILE_BYTES {
+        return Err(format!(
+            "Roster file is {} bytes; the limit is {} bytes.",
+            bytes.len(),
+            MAX_ROSTER_FILE_BYTES
+        ));
+    }
+    let mut archive = ZipArchive::new(Cursor::new(bytes))
+        .map_err(|error| format!("Roster XLSX is not a valid OOXML archive: {error}"))?;
+    let sheet_path = resolve_first_sheet_path(&mut archive)?;
+    let shared_strings = load_shared_strings(&mut archive)?;
+    let sheet_xml = read_xlsx_entry(&mut archive, &sheet_path)?;
+    let records = parse_worksheet_records(&sheet_xml, &shared_strings)?;
+    draft_from_records(records, "xlsx")
+}
+
+/// Read one required package entry as UTF-8 text, capped at
+/// [`MAX_ROSTER_FILE_BYTES`] of *decompressed* output so a compressed bomb
+/// cannot expand unboundedly in memory.
+fn read_xlsx_entry(archive: &mut ZipArchive<Cursor<&[u8]>>, name: &str) -> Result<String, String> {
+    match try_read_xlsx_entry(archive, name)? {
+        Some(text) => Ok(text),
+        None => Err(format!("Roster XLSX is missing the required entry {name}.")),
+    }
+}
+
+/// Read one optional package entry; `None` when it does not exist.
+fn try_read_xlsx_entry(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    name: &str,
+) -> Result<Option<String>, String> {
+    let file = match archive.by_name(name) {
+        Ok(file) => file,
+        Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+        Err(error) => return Err(format!("Could not read Roster XLSX entry {name}: {error}")),
+    };
+    let limit = MAX_ROSTER_FILE_BYTES as u64;
+    if file.size() > limit {
+        return Err(format!(
+            "Roster XLSX entry {name} is {} bytes; the limit is {} bytes.",
+            file.size(),
+            MAX_ROSTER_FILE_BYTES
+        ));
+    }
+    // The declared size can lie; enforce the cap on real bytes too.
+    let mut limited = file.take(limit.saturating_add(1));
+    let mut buffer = Vec::new();
+    limited
+        .read_to_end(&mut buffer)
+        .map_err(|error| format!("Could not read Roster XLSX entry {name}: {error}"))?;
+    if buffer.len() > MAX_ROSTER_FILE_BYTES {
+        return Err(format!(
+            "Roster XLSX entry {name} expands to more than the allowed \
+             {MAX_ROSTER_FILE_BYTES} bytes."
+        ));
+    }
+    String::from_utf8(buffer)
+        .map(Some)
+        .map_err(|error| format!("Roster XLSX entry {name} is not valid UTF-8: {error}"))
+}
+
+/// Locate the package path of the first worksheet: follow the first
+/// `<sheet>`'s relationship id through `xl/_rels/workbook.xml.rels`, fall back
+/// to the first worksheet-typed relationship, then to `sheet1.xml`.
+fn resolve_first_sheet_path(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<String, String> {
+    let workbook = read_xlsx_entry(archive, WORKBOOK_ENTRY)?;
+    let rels = try_read_xlsx_entry(archive, WORKBOOK_RELS_ENTRY)?.unwrap_or_default();
+
+    for candidate in sheet_entry_candidates(&workbook, &rels) {
+        if archive.by_name(&candidate).is_ok() {
+            return Ok(candidate);
+        }
+    }
+    if archive.by_name(DEFAULT_SHEET_ENTRY).is_ok() {
+        return Ok(DEFAULT_SHEET_ENTRY.to_string());
+    }
+    Err(
+        "Roster XLSX does not contain a readable worksheet; expected \
+         xl/worksheets/sheet1.xml."
+            .to_string(),
+    )
+}
+
+/// Ordered worksheet-part candidates derived from workbook/relationship
+/// metadata (external `http(s)` targets are ignored).
+fn sheet_entry_candidates(workbook: &str, rels: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let relationship_id = xml_elements(workbook, "sheet")
+        .first()
+        .map(|element| &workbook[element.open_tag.0..element.open_tag.1])
+        .and_then(|tag| xml_attr(tag, "id"));
+
+    let mut push_relationship = |tag: &str| {
+        if let Some(target) = xml_attr(tag, "target") {
+            if let Some(path) = relationship_target(&target) {
+                candidates.push(path);
+                return true;
+            }
+        }
+        false
+    };
+
+    if let Some(relationship_id) = relationship_id.as_deref() {
+        for element in xml_elements(rels, "Relationship") {
+            let tag = &rels[element.open_tag.0..element.open_tag.1];
+            if xml_attr(tag, "id").as_deref() == Some(relationship_id) && push_relationship(tag) {
+                return candidates;
+            }
+        }
+    }
+    for element in xml_elements(rels, "Relationship") {
+        let tag = &rels[element.open_tag.0..element.open_tag.1];
+        let is_worksheet = xml_attr(tag, "type")
+            .map(|relationship_type| relationship_type.ends_with("/worksheet"))
+            .unwrap_or(false);
+        if is_worksheet && push_relationship(tag) {
+            return candidates;
+        }
+    }
+    candidates
+}
+
+/// Resolve a relationship target to a package-absolute entry path relative to
+/// the `xl/` part directory. Returns `None` for unsupported external targets.
+fn relationship_target(target: &str) -> Option<String> {
+    let joined = if let Some(absolute) = target.strip_prefix('/') {
+        absolute.to_string()
+    } else if target.contains("://") || target.starts_with("//") {
+        return None;
+    } else {
+        format!("xl/{target}")
+    };
+    Some(
+        joined
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
+}
+
+/// Load the shared-string table (empty when the part is absent).
+fn load_shared_strings(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Vec<String>, String> {
+    match try_read_xlsx_entry(archive, SHARED_STRINGS_ENTRY)? {
+        Some(xml) => Ok(xml_elements(&xml, "si")
+            .iter()
+            .map(|element| xml_concat_t_text(&xml[element.inner.0..element.inner.1]))
+            .collect()),
+        None => Ok(Vec::new()),
+    }
+}
+
+/// Convert worksheet XML into raw records (header row first). Empty rows —
+/// including the ghost rows spreadsheet apps append — are skipped, gaps in the
+/// cell grid become empty cells, and row/column bounds are enforced.
+fn parse_worksheet_records(
+    sheet_xml: &str,
+    shared_strings: &[String],
+) -> Result<Vec<Vec<String>>, String> {
+    let mut records: Vec<Vec<String>> = Vec::new();
+    let mut data_rows = 0usize;
+    for (row_index, element) in xml_elements(sheet_xml, "row").iter().enumerate() {
+        let row_inner = &sheet_xml[element.inner.0..element.inner.1];
+        let mut cells: Vec<String> = Vec::new();
+        let mut cursor_column = 0usize;
+        for cell in xml_elements(row_inner, "c") {
+            let cell_tag = &row_inner[cell.open_tag.0..cell.open_tag.1];
+            let column_index = match xml_attr(cell_tag, "r").as_deref().map(parse_cell_ref) {
+                Some(Some((_, column))) => column - 1,
+                Some(None) => {
+                    return Err(format!(
+                        "Roster XLSX has an invalid cell reference in sheet row {}.",
+                        row_index + 1
+                    ));
+                }
+                // Cells without an explicit reference fill positionally.
+                None => cursor_column,
+            };
+            if column_index >= MAX_ROSTER_COLUMNS {
+                return Err(format!(
+                    "Roster has more than the allowed {MAX_ROSTER_COLUMNS} columns."
+                ));
+            }
+            while cursor_column < column_index {
+                cells.push(String::new());
+                cursor_column += 1;
+            }
+            cursor_column = column_index + 1;
+            cells.push(extract_cell_value(
+                &row_inner[cell.inner.0..cell.inner.1],
+                xml_attr(cell_tag, "t").as_deref(),
+                shared_strings,
+                row_index + 1,
+                column_index + 1,
+            )?);
+        }
+        while cells.last().map(|cell| cell.trim().is_empty()) == Some(true) {
+            cells.pop();
+        }
+        if cells.iter().all(|cell| cell.trim().is_empty()) {
+            continue;
+        }
+        if !records.is_empty() {
+            data_rows += 1;
+            if data_rows > MAX_ROSTER_ROWS {
+                return Err(format!(
+                    "Roster has more than the allowed {MAX_ROSTER_ROWS} data rows."
+                ));
+            }
+        }
+        records.push(cells);
+    }
+    Ok(records)
+}
+
+/// Resolve one worksheet cell to its display text.
+///
+/// Formula cells are read through their cached result only; a formula without
+/// a cached value is rejected with a clear error instead of guessed at.
+fn extract_cell_value(
+    inner: &str,
+    type_attr: Option<&str>,
+    shared_strings: &[String],
+    row_number: usize,
+    column_number: usize,
+) -> Result<String, String> {
+    let position = format!("row {row_number}, column {column_number}");
+    let cached = xml_first_element_text(inner, "v");
+    match type_attr {
+        Some("s") => {
+            let text = cached.ok_or_else(|| {
+                format!("Roster XLSX cell {position} is a shared-string cell without a value.")
+            })?;
+            let index: usize = text.trim().parse().map_err(|_| {
+                format!("Roster XLSX cell {position} has an invalid shared-string index {text:?}.")
+            })?;
+            shared_strings.get(index).cloned().ok_or_else(|| {
+                format!("Roster XLSX shared-string index {index} ({position}) is out of range.")
+            })
+        }
+        Some("inlineStr") => Ok(xml_concat_t_text(inner)),
+        Some("str") => cached.ok_or_else(|| {
+            format!(
+                "Roster XLSX cell {position} holds a formula string without a cached value; \
+                 save the workbook with calculated values before importing."
+            )
+        }),
+        Some("b") => match cached.as_deref().map(str::trim) {
+            Some("1") => Ok("TRUE".to_string()),
+            Some("0") => Ok("FALSE".to_string()),
+            Some(other) => Err(format!(
+                "Roster XLSX cell {position} has an unsupported boolean value {other:?}."
+            )),
+            None => Err(format!(
+                "Roster XLSX cell {position} is a boolean cell without a cached value."
+            )),
+        },
+        // `t="n"` is the standard numeric cell type written by Excel and
+        // openpyxl alike; it carries the value in `<v>` exactly like an
+        // untyped cell, so it takes the same path.
+        Some("n") | None => match cached {
+            Some(value) => Ok(value),
+            None => {
+                if xml_elements(inner, "f").is_empty() {
+                    Ok(String::new())
+                } else {
+                    Err(format!(
+                        "Roster XLSX cell {position} contains a formula without a cached \
+                         value; open and save the workbook so values are stored before \
+                         importing."
+                    ))
+                }
+            }
+        },
+        Some(other) => Err(format!(
+            "Roster XLSX cell {position} uses unsupported cell type {other:?}."
+        )),
+    }
+}
+
+/// Parse an `A1`-style cell reference into 1-based `(row, column)` numbers.
+fn parse_cell_ref(reference: &str) -> Option<(usize, usize)> {
+    let bytes = reference.trim().as_bytes();
+    let mut index = 0;
+    let mut column = 0usize;
+    while index < bytes.len() && bytes[index].is_ascii_alphabetic() {
+        column = column
+            .checked_mul(26)?
+            .checked_add((bytes[index].to_ascii_uppercase() - b'A') as usize + 1)?;
+        index += 1;
+    }
+    if index == 0 {
+        return None;
+    }
+    let mut row = 0usize;
+    while index < bytes.len() && bytes[index].is_ascii_digit() {
+        row = row
+            .checked_mul(10)?
+            .checked_add((bytes[index] - b'0') as usize)?;
+        index += 1;
+    }
+    if index != bytes.len() || row == 0 {
+        return None;
+    }
+    Some((row, column))
+}
+
+// ---------------------------------------------------------------------------
+// Minimal XML scanning helpers (OOXML worksheets are machine-generated; no
+// general XML parser dependency is warranted here)
+// ---------------------------------------------------------------------------
+
+/// One XML element occurrence inside a scanned region: byte ranges of the open
+/// tag (inclusive of `<name … >`) and of the inner content.
+#[derive(Debug, Clone, Copy)]
+struct XmlElement {
+    open_tag: (usize, usize),
+    inner: (usize, usize),
+}
+
+/// Find every `<name …>…</name>` occurrence (self-closing elements yield an
+/// empty inner range). Names cannot nest for the OOXML subset used here.
+fn xml_elements(xml: &str, name: &str) -> Vec<XmlElement> {
+    let open = format!("<{name}");
+    let close = format!("</{name}>");
+    let mut elements = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(found) = xml[cursor..].find(&open).map(|position| position + cursor) {
+        cursor = found + open.len();
+        // Reject longer names that merely share a prefix (`<sheetData` vs
+        // `<sheet`): the next char must end or continue a real open tag.
+        match xml[cursor..].chars().next() {
+            Some(ch) if ch == '>' || ch == '/' || ch.is_ascii_whitespace() => {}
+            _ => continue,
+        }
+        let Some(open_end) = xml[cursor..].find('>').map(|position| position + cursor) else {
+            break;
+        };
+        if xml[cursor..open_end].ends_with('/') {
+            elements.push(XmlElement {
+                open_tag: (found, open_end + 1),
+                inner: (open_end + 1, open_end + 1),
+            });
+            continue;
+        }
+        let Some(close_start) = xml[open_end..].find(&close).map(|p| p + open_end) else {
+            continue;
+        };
+        elements.push(XmlElement {
+            open_tag: (found, open_end + 1),
+            inner: (open_end + 1, close_start),
+        });
+        cursor = close_start + close.len();
+    }
+    elements
+}
+
+/// Read one attribute from an open-tag fragment, matching local attribute
+/// names case-insensitively (namespace prefixes like `r:id` are stripped).
+fn xml_attr(tag: &str, wanted: &str) -> Option<String> {
+    let bytes = tag.as_bytes();
+    let len = bytes.len();
+    let mut index = 0usize;
+    while index < len
+        && !bytes[index].is_ascii_whitespace()
+        && bytes[index] != b'>'
+        && bytes[index] != b'/'
+    {
+        index += 1;
+    }
+    loop {
+        while index < len && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if index >= len || bytes[index] == b'>' || bytes[index] == b'/' {
+            return None;
+        }
+        let name_start = index;
+        while index < len
+            && bytes[index] != b'='
+            && !bytes[index].is_ascii_whitespace()
+            && bytes[index] != b'>'
+            && bytes[index] != b'/'
+        {
+            index += 1;
+        }
+        let name = &tag[name_start..index];
+        while index < len && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if index >= len || bytes[index] != b'=' {
+            // Attribute without a value (invalid XML); keep scanning.
+            continue;
+        }
+        index += 1;
+        while index < len && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        let quote = if index < len { bytes[index] } else { b' ' };
+        if quote != b'"' && quote != b'\'' {
+            continue;
+        }
+        index += 1;
+        let value_start = index;
+        while index < len && bytes[index] != quote {
+            index += 1;
+        }
+        if index >= len {
+            return None;
+        }
+        let value = &tag[value_start..index];
+        index += 1;
+        let local = name.rsplit_once(':').map_or(name, |(_, local)| local);
+        if local.eq_ignore_ascii_case(wanted) {
+            return Some(xml_unescape(value));
+        }
+    }
+}
+
+/// Concatenate every `<t>` text under `xml`, preserving order and whitespace.
+fn xml_concat_t_text(xml: &str) -> String {
+    let mut out = String::new();
+    for element in xml_elements(xml, "t") {
+        out.push_str(&xml_unescape(&xml[element.inner.0..element.inner.1]));
+    }
+    out
+}
+
+/// Inner text of the first `<tag>` element under `xml`, if any.
+fn xml_first_element_text(xml: &str, tag: &str) -> Option<String> {
+    xml_elements(xml, tag)
+        .first()
+        .map(|element| xml_unescape(&xml[element.inner.0..element.inner.1]))
+}
+
+/// Unescape the five predefined XML entities plus decimal/hex character refs.
+/// Unknown escapes are kept verbatim.
+fn xml_unescape(text: &str) -> String {
+    if !text.contains('&') {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(position) = rest.find('&') {
+        out.push_str(&rest[..position]);
+        let tail = &rest[position..];
+        let Some(semi) = tail.find(';') else {
+            out.push('&');
+            rest = &tail[1..];
+            continue;
+        };
+        let entity = &tail[1..semi];
+        let replacement = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            _ => entity
+                .strip_prefix("#x")
+                .or_else(|| entity.strip_prefix("#X"))
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .or_else(|| {
+                    entity
+                        .strip_prefix('#')
+                        .and_then(|dec| dec.parse::<u32>().ok())
+                })
+                .and_then(char::from_u32),
+        };
+        match replacement {
+            Some(ch) => out.push(ch),
+            None => out.push_str(&tail[..semi + 1]),
+        }
+        rest = &tail[semi + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -970,10 +1489,43 @@ fn global_store() -> &'static Mutex<RosterDraftStore> {
     STORE.get_or_init(|| Mutex::new(RosterDraftStore::new()))
 }
 
-/// Upload roster CSV bytes and return the `RosterDraftResponse` JSON. Uses the
+/// MIME type used by Excel workbook uploads (`.xlsx` / `.xlsm`).
+const XLSX_CONTENT_TYPE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/// Whether the supplied metadata identifies an Excel workbook upload.
+pub fn looks_like_xlsx(filename: Option<&str>, content_type: Option<&str>) -> bool {
+    let by_type = content_type
+        .map(|value| value.trim().eq_ignore_ascii_case(XLSX_CONTENT_TYPE))
+        .unwrap_or(false);
+    let by_extension = filename.map(|name| {
+        let lower = name.trim().to_ascii_lowercase();
+        lower.ends_with(".xlsx") || lower.ends_with(".xlsm")
+    });
+    by_type || by_extension.unwrap_or(false)
+}
+
+/// Upload roster bytes and return the `RosterDraftResponse` JSON, routing
+/// `.xlsx`/`.xlsm` uploads (by filename, content type, or zip magic bytes) to
+/// the XLSX reader and everything else to the CSV reader. Uses the
 /// process-wide draft store.
 pub fn upload_draft_json(bytes: &[u8]) -> Result<String, String> {
-    let draft = parse_roster_csv(bytes)?;
+    upload_draft_file_json(bytes, None, None)
+}
+
+/// [`upload_draft_json`] with source metadata from an upload form. When
+/// `filename` / `content_type` identify a spreadsheet the bytes are parsed as
+/// XLSX; otherwise they parse as CSV.
+pub fn upload_draft_file_json(
+    bytes: &[u8],
+    filename: Option<&str>,
+    content_type: Option<&str>,
+) -> Result<String, String> {
+    let is_xlsx = looks_like_xlsx(filename, content_type) || bytes.starts_with(b"PK\x03\x04");
+    let draft = if is_xlsx {
+        parse_roster_xlsx(bytes)?
+    } else {
+        parse_roster_csv(bytes)?
+    };
     let response = global_store()
         .lock()
         .map_err(|_| "roster draft store lock is poisoned".to_string())?
@@ -2212,5 +2764,336 @@ mod tests {
         assert_eq!(resulting["score"], 93.0);
         assert!(resulting.get("height_cm").is_some());
         assert!(resulting.get("tags").is_some());
+    }
+
+    // -----------------------------------------------------------------------
+    // XLSX import
+    // -----------------------------------------------------------------------
+
+    /// Build a minimal in-memory XLSX container from raw package parts.
+    fn build_xlsx(parts: &[(&str, String)]) -> Vec<u8> {
+        use std::io::Write as _;
+        use zip::write::SimpleFileOptions;
+        use zip::CompressionMethod;
+        use zip::ZipWriter;
+
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut writer = ZipWriter::new(&mut cursor);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            for (name, content) in parts {
+                writer.start_file(*name, options).unwrap();
+                writer.write_all(content.as_bytes()).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        cursor.into_inner()
+    }
+
+    fn workbook_xml(sheet_ref: bool) -> String {
+        let sheet = if sheet_ref { r#" r:id="rId1""# } else { "" };
+        format!(
+            "<?xml version=\"1.0\"?>\
+             <workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" \
+             xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\
+             <sheets><sheet name=\"Sheet1\" sheetId=\"1\"{sheet}/></sheets></workbook>"
+        )
+    }
+
+    fn workbook_rels_xml() -> String {
+        "<?xml version=\"1.0\"?>\
+         <Relationships \
+         xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\
+         <Relationship Id=\"rId1\" \
+         Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" \
+         Target=\"worksheets/sheet1.xml\"/></Relationships>"
+            .to_string()
+    }
+
+    /// A workbook whose first sheet mixes every supported cell type, plus a
+    /// ghost trailing row that must be skipped.
+    fn mixed_type_xlsx() -> Vec<u8> {
+        let shared_strings = "<?xml version=\"1.0\"?><sst \
+             xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\
+             <si><t>学号</t></si><si><t>姓名</t></si><si><t>总分</t></si>\
+             <si><t>001</t></si><si><t xml:space=\"preserve\">小明</t></si>\
+             <si><t>小红&amp;小刚</t></si></sst>"
+            .to_string();
+        let sheet = "<?xml version=\"1.0\"?><worksheet \
+             xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\
+             <sheetData>\
+             <row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c>\
+             <c r=\"C1\" t=\"s\"><v>2</v></c></row>\
+             <row r=\"2\"><c r=\"A2\" t=\"s\"><v>3</v></c><c r=\"B2\" t=\"s\"><v>4</v></c>\
+             <c r=\"C2\"><v>91</v></c></row>\
+             <row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>002</t></is></c>\
+             <c r=\"B3\" t=\"s\"><v>5</v></c><c r=\"C3\" t=\"str\">\
+             <f>CONCAT(A3,B3)</f><v>88.5</v></c></row>\
+             <row r=\"4\"><c r=\"A4\"/></row>\
+             </sheetData></worksheet>"
+            .to_string();
+        build_xlsx(&[
+            ("xl/workbook.xml", workbook_xml(true)),
+            ("xl/_rels/workbook.xml.rels", workbook_rels_xml()),
+            ("xl/sharedStrings.xml", shared_strings),
+            ("xl/worksheets/sheet1.xml", sheet),
+        ])
+    }
+
+    #[test]
+    fn parse_xlsx_mixed_cell_types_and_skips_ghost_rows() {
+        let xlsx = mixed_type_xlsx();
+        let draft = parse_roster_xlsx(&xlsx).unwrap();
+
+        assert_eq!(draft.source_format, "xlsx");
+        assert!(!draft.headerless);
+        assert_eq!(draft.column_count(), 3);
+        // The ghost row 4 is dropped; data rows keep spreadsheet numbering.
+        assert_eq!(draft.row_count(), 2);
+        assert_eq!(draft.columns[0].header, "学号");
+        // Leading zeros survive via the shared-string text cell.
+        assert_eq!(
+            draft.rows[0].cells,
+            vec!["001".to_string(), "小明".to_string(), "91".to_string()]
+        );
+        assert_eq!(
+            draft.rows[1].cells,
+            vec![
+                "002".to_string(),
+                "小红&小刚".to_string(),
+                "88.5".to_string()
+            ]
+        );
+        assert_eq!(draft.rows[0].row_number, 2);
+        assert_eq!(draft.rows[1].row_number, 3);
+
+        // Chinese headers map exactly like the CSV path.
+        let suggested: Vec<(String, usize)> = draft
+            .suggested_mapping
+            .iter()
+            .map(|item| (item.field.as_str().to_string(), item.column_index))
+            .collect();
+        assert_eq!(
+            suggested,
+            vec![
+                ("student_id".to_string(), 0),
+                ("name".to_string(), 1),
+                ("score".to_string(), 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_xlsx_preserves_text_ids_and_boolean_cells() {
+        let sheet = "<?xml version=\"1.0\"?><worksheet \
+             xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\
+             <sheetData>\
+             <row r=\"1\"><c r=\"A1\"><t/></c><c r=\"B1\" t=\"s\"><v>0</v></c></row>\
+             <row r=\"2\"><c r=\"A2\" t=\"b\"><v>1</v></c><c r=\"B2\"><v>7</v></c></row>\
+             </sheetData></worksheet>"
+            .to_string();
+        let xlsx = build_xlsx(&[
+            (
+                "xl/workbook.xml",
+                workbook_xml(false), // no r:id: falls back to the typed rel
+            ),
+            ("xl/_rels/workbook.xml.rels", workbook_rels_xml()),
+            (
+                "xl/sharedStrings.xml",
+                "<sst xmlns=\"x\"><si><t>视力</t></si></sst>".to_string(),
+            ),
+            ("xl/worksheets/sheet1.xml", sheet),
+        ]);
+        let draft = parse_roster_xlsx(&xlsx).unwrap();
+        assert_eq!(
+            draft.rows[0].cells,
+            vec!["TRUE".to_string(), "7".to_string()]
+        );
+        assert_eq!(draft.columns[1].header, "视力");
+    }
+
+    #[test]
+    fn parse_xlsx_formula_without_cached_value_is_rejected() {
+        let sheet = "<?xml version=\"1.0\"?><worksheet \
+             xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\
+             <sheetData>\
+             <row r=\"1\"><c r=\"A1\"><t/></c></row>\
+             <row r=\"2\"><c r=\"A2\"><f>SUM(1,2)</f></c></row>\
+             </sheetData></worksheet>"
+            .to_string();
+        let xlsx = build_xlsx(&[
+            ("xl/workbook.xml", workbook_xml(true)),
+            ("xl/_rels/workbook.xml.rels", workbook_rels_xml()),
+            ("xl/worksheets/sheet1.xml", sheet),
+        ]);
+        let error = parse_roster_xlsx(&xlsx).unwrap_err();
+        assert!(
+            error.contains("formula without a cached value"),
+            "unexpected error: {error}"
+        );
+        assert!(error.contains("row 2"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn upload_pipeline_accepts_xlsx_and_previews_updates() {
+        let draft_json =
+            upload_draft_file_json(&mixed_type_xlsx(), Some("roster.xlsx"), None).unwrap();
+        let draft: Value = serde_json::from_str(&draft_json).unwrap();
+        assert_eq!(draft["source_format"], "xlsx");
+        let draft_id = draft["draft_id"].as_str().unwrap().to_string();
+
+        let request = serde_json::json!({
+            "mapping": [
+                {"field": "student_id", "column_index": 0},
+                {"field": "name", "column_index": 1},
+                {"field": "score", "column_index": 2},
+            ],
+            "mode": "incremental",
+        });
+        let preview_json = preview_update_json(&draft_id, &request.to_string()).unwrap();
+        let preview: Value = serde_json::from_str(&preview_json).unwrap();
+        assert_eq!(preview["action_counts"]["add"], 2);
+        assert_eq!(preview["resulting_students"][0]["name"], "小明");
+
+        // Content type alone also routes to the XLSX reader.
+        let by_type = upload_draft_file_json(
+            &mixed_type_xlsx(),
+            None,
+            Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&by_type).unwrap();
+        assert_eq!(value["source_format"], "xlsx");
+    }
+
+    #[test]
+    fn parse_xlsx_reports_corrupt_or_incomplete_workbooks() {
+        // Not a zip container at all.
+        let error = parse_roster_xlsx(b"definitely not a zip archive").unwrap_err();
+        assert!(
+            error.contains("not a valid OOXML archive"),
+            "unexpected error: {error}"
+        );
+
+        // A valid zip without any OOXML parts.
+        let empty_zip = build_xlsx(&[("random.txt", "hello".to_string())]);
+        let error = parse_roster_xlsx(&empty_zip).unwrap_err();
+        assert!(
+            error.contains("missing the required entry xl/workbook.xml"),
+            "unexpected error: {error}"
+        );
+
+        // Workbook metadata present but no worksheet part anywhere.
+        let no_sheet = build_xlsx(&[
+            ("xl/workbook.xml", workbook_xml(true)),
+            ("xl/_rels/workbook.xml.rels", workbook_rels_xml()),
+        ]);
+        let error = parse_roster_xlsx(&no_sheet).unwrap_err();
+        assert!(
+            error.contains("does not contain a readable worksheet"),
+            "unexpected error: {error}"
+        );
+
+        // An empty first sheet.
+        let empty_sheet = build_xlsx(&[
+            ("xl/workbook.xml", workbook_xml(true)),
+            ("xl/_rels/workbook.xml.rels", workbook_rels_xml()),
+            (
+                "xl/worksheets/sheet1.xml",
+                "<?xml version=\"1.0\"?><worksheet xmlns=\"x\"><sheetData/></worksheet>"
+                    .to_string(),
+            ),
+        ]);
+        let error = parse_roster_xlsx(&empty_sheet).unwrap_err();
+        assert!(error.contains("empty"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn parse_xlsx_enforces_decompressed_size_limit() {
+        use std::io::Write as _;
+        use zip::write::SimpleFileOptions;
+        use zip::CompressionMethod;
+        use zip::ZipWriter;
+
+        // A tiny compressed entry that expands past MAX_ROSTER_FILE_BYTES.
+        // Its declared header size is then forged down so only the real-byte
+        // cap (Take + counted read) can catch it, like a crafted bomb would.
+        let huge = format!("<v>{}</v>", "A".repeat(MAX_ROSTER_FILE_BYTES + 1024));
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut writer = ZipWriter::new(&mut cursor);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            writer.start_file("xl/workbook.xml", options).unwrap();
+            writer.write_all(workbook_xml(true).as_bytes()).unwrap();
+            writer
+                .start_file("xl/_rels/workbook.xml.rels", options)
+                .unwrap();
+            writer.write_all(workbook_rels_xml().as_bytes()).unwrap();
+            writer
+                .start_file("xl/worksheets/sheet1.xml", options)
+                .unwrap();
+            writer.write_all(huge.as_bytes()).unwrap();
+            writer.finish().unwrap();
+        }
+        let mut bytes = cursor.into_inner();
+        assert!(bytes.len() < 1024 * 1024, "fixture should compress well");
+        forge_declared_size(&mut bytes, "xl/worksheets/sheet1.xml", huge.len(), 64);
+
+        let error = parse_roster_xlsx(&bytes).unwrap_err();
+        assert!(
+            error.contains("more than the allowed"),
+            "unexpected error: {error}"
+        );
+    }
+
+    /// Overwrite the uncompressed-size fields (central directory + local file
+    /// header) of entry `name` with `declared`, simulating a lying zip bomb
+    /// header. Test-only; asserts the layout it patches still matches.
+    fn forge_declared_size(bytes: &mut [u8], name: &str, real_size: usize, declared: u32) {
+        let needle = name.as_bytes();
+        let mut index = 0usize;
+        while index + 46 <= bytes.len() {
+            if &bytes[index..index + 4] == b"PK\x01\x02" && bytes[index + 46..].starts_with(needle)
+            {
+                let cd_size = &mut bytes[index + 24..index + 28];
+                assert_eq!(
+                    u32::from_le_bytes(cd_size.try_into().unwrap()),
+                    real_size as u32,
+                    "fixture layout changed: CD size mismatch"
+                );
+                cd_size.copy_from_slice(&declared.to_le_bytes());
+                // This writer's central-directory records keep the local
+                // header offset at +42.
+                let local_offset =
+                    u32::from_le_bytes(bytes[index + 42..index + 46].try_into().unwrap()) as usize;
+                debug_assert_eq!(
+                    &bytes[local_offset + 30..local_offset + 30 + needle.len()],
+                    needle,
+                    "fixture layout changed: local header name mismatch"
+                );
+                let lfh_size = &mut bytes[local_offset + 22..local_offset + 26];
+                assert_eq!(
+                    u32::from_le_bytes(lfh_size.try_into().unwrap()),
+                    real_size as u32,
+                    "fixture layout changed: LFH size mismatch"
+                );
+                lfh_size.copy_from_slice(&declared.to_le_bytes());
+                return;
+            }
+            index += 1;
+        }
+        panic!("central directory entry {name} not found");
+    }
+
+    #[test]
+    fn parse_cell_refs_cover_multi_letter_columns() {
+        assert_eq!(parse_cell_ref("A1"), Some((1, 1)));
+        assert_eq!(parse_cell_ref("Z9"), Some((9, 26)));
+        assert_eq!(parse_cell_ref("AA12"), Some((12, 27)));
+        assert_eq!(parse_cell_ref("abc"), None);
+        assert_eq!(parse_cell_ref(""), None);
+        assert_eq!(parse_cell_ref("0A"), None);
     }
 }

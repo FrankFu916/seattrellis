@@ -88,7 +88,17 @@ async fn adapt(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let path = reconstruct_path(&uri);
+    let target = reconstruct_path(&uri);
+    // The dispatcher (`server::route`) trims every leading slash and drops
+    // empty segments before matching, so a literal `//api/v1/...` used to
+    // reach the API handlers while the raw-path `starts_with("/api/")` Bearer
+    // check below saw a non-`/api/` prefix (P0 auth bypass). Normalize the
+    // path once, up front, and use that same normalized shape for the auth
+    // checks and the dispatch, so both always agree. Percent-encoding is left
+    // untouched here: static lookups decode inside `safe_join`, and API route
+    // matching never decodes.
+    let (raw_path, query) = split_query(&target);
+    let normalized_path = normalize_request_path(raw_path);
 
     // 1) DNS-rebinding guard: the Host header must be the loopback address we
     //    are bound to (name + port). A rebinding attack uses an
@@ -108,33 +118,83 @@ async fn adapt(
 
     // 3) The session bootstrap endpoint issues the token to any same-origin
     //    page (Host-checked above); it must not require the token itself.
-    if method == Method::GET && path == "/api/v1/session" {
+    //    Only the canonical literal path bootstraps: malformed spellings such
+    //    as `//api/v1/session` fall through to the Bearer gate below and are
+    //    rejected with 401 instead of handing out a token.
+    if method == Method::GET && target == "/api/v1/session" {
         return into_axum(session_response(&state));
     }
 
-    // 4) Every other /api/* request must carry the Bearer session token.
-    if path.starts_with("/api/") && !bearer_valid(&state, headers.get(header::AUTHORIZATION)) {
+    // 4) Every other /api/* request must carry the Bearer session token. The
+    //    check runs on the normalized path so duplicate-slash spellings can
+    //    never slip past it.
+    if normalized_path.starts_with("/api/")
+        && !bearer_valid(&state, headers.get(header::AUTHORIZATION))
+    {
         return into_axum(error_response(401, "session required"));
     }
 
-    // 5) Legacy dispatch (static assets and /api/* both flow through here).
+    // 5) Legacy dispatch (static assets and /api/* both flow through here),
+    //    handed the same normalized path the checks above saw. Solves can run
+    //    for seconds, so the synchronous dispatch moves onto tokio's blocking
+    //    pool instead of stalling an async worker; request/response are owned
+    //    data, which makes the closure `Send + 'static`.
     let legacy = Request {
         method: method.to_string(),
-        path,
+        path: match query {
+            Some(query) => format!("{normalized_path}?{query}"),
+            None => normalized_path,
+        },
         content_type: headers
             .get(header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .map(str::to_string),
         body: body.to_vec(),
     };
-    let response = route(
-        &legacy,
-        &state.web_root,
-        &state.editor_store,
-        &state.solve_requests,
-        &state.trusted_root,
-    );
-    into_axum(response)
+    let response = tokio::task::spawn_blocking(move || {
+        route(
+            &legacy,
+            &state.web_root,
+            &state.editor_store,
+            &state.solve_requests,
+            &state.trusted_root,
+        )
+    })
+    .await;
+    match response {
+        Ok(response) => into_axum(response),
+        // The dispatch itself cannot fail; only task panics or shutdown land
+        // here. Stay coarse and never leak internals.
+        Err(_) => into_axum(error_response(500, "dispatch failed")),
+    }
+}
+
+/// Split a request target into its path and optional query string. The query
+/// is kept verbatim for the dispatcher, which splits it itself.
+fn split_query(target: &str) -> (&str, Option<&str>) {
+    match target.split_once('?') {
+        Some((path, query)) => (path, Some(query)),
+        None => (target, None),
+    }
+}
+
+/// Collapse leading, trailing, and duplicated slashes so the authorization
+/// checks see exactly the path shape [`crate::server::route`] will match on
+/// (its `path_segments` trims leading slashes and drops empty segments).
+/// Everything else is preserved verbatim — no percent-decoding, and `.`
+/// segments stay in place so static-file behavior is unchanged.
+fn normalize_request_path(path: &str) -> String {
+    let mut normalized = String::with_capacity(path.len() + 1);
+    normalized.push('/');
+    let mut first = true;
+    for segment in path.split('/').filter(|segment| !segment.is_empty()) {
+        if !first {
+            normalized.push('/');
+        }
+        normalized.push_str(segment);
+        first = false;
+    }
+    normalized
 }
 
 /// `Host` header check: the host name must be loopback and the port must
@@ -607,5 +667,271 @@ mod tests {
         assert_eq!(split_host_port("[::1]:8765"), ("::1", Some(8765)));
         assert_eq!(split_host_port("localhost"), ("localhost", None));
         assert_eq!(split_host_port("evil.com:80"), ("evil.com", Some(80)));
+    }
+
+    #[test]
+    fn normalize_request_path_collapses_only_slashes() {
+        assert_eq!(
+            normalize_request_path("/api/v1/health"),
+            "/api/v1/health",
+            "canonical paths are unchanged"
+        );
+        assert_eq!(normalize_request_path("//api/v1/health"), "/api/v1/health");
+        assert_eq!(
+            normalize_request_path("///api/v1/session"),
+            "/api/v1/session"
+        );
+        assert_eq!(
+            normalize_request_path("/a//b///c"),
+            "/a/b/c",
+            "duplicate inner slashes collapse"
+        );
+        // Non-slash segments stay verbatim: no percent-decoding, no `.`-segment
+        // removal (static lookups keep their own normalization).
+        assert_eq!(
+            normalize_request_path("/./api/v1/health"),
+            "/./api/v1/health"
+        );
+        assert_eq!(normalize_request_path("/%2e%2e/api"), "/%2e%2e/api");
+        assert_eq!(normalize_request_path("/"), "/");
+        assert_eq!(normalize_request_path(""), "/");
+    }
+
+    /// Drive one request through [`adapt`] with loopback Host headers and an
+    /// optional Authorization header.
+    async fn adapt_with_token(
+        state: &AppState,
+        method: Method,
+        uri: Uri,
+        authorization: Option<&str>,
+    ) -> AxumResponse {
+        let mut headers =
+            HeaderMap::from_iter([(header::HOST, HeaderValue::from_static("127.0.0.1:8765"))]);
+        if let Some(authorization) = authorization {
+            headers.insert(
+                header::AUTHORIZATION,
+                HeaderValue::from_str(authorization).unwrap(),
+            );
+        }
+        adapt(
+            State(state.clone()),
+            method,
+            uri,
+            headers,
+            axum::body::Bytes::new(),
+        )
+        .await
+    }
+
+    // ------------------------------------------------------------------
+    // Path-normalization regressions (P0): non-canonical `/api` spellings
+    // used to slip past the Bearer gate while `path_segments` still routed
+    // them into the API handlers.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn double_slashed_api_health_requires_bearer() {
+        let response = adapt_with_token(
+            &test_state(),
+            Method::GET,
+            Uri::from_static("//api/v1/health"),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn double_slashed_file_read_requires_bearer() {
+        let response = adapt_with_token(
+            &test_state(),
+            Method::POST,
+            Uri::from_static("//api/v1/files/read"),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn dot_segment_api_path_stays_unmatched_and_public() {
+        // Locked behavior: `/./api/...` never matched an API route (the dot
+        // segment survives normalization and falls through to the static
+        // lookup, which drops it and finds no file). It must stay a 404 —
+        // with or without a token it must never return handler output.
+        let response = adapt_with_token(
+            &test_state(),
+            Method::GET,
+            Uri::from_static("/./api/v1/health"),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = adapt_with_token(
+            &test_state(),
+            Method::GET,
+            Uri::from_static("/./api/v1/health"),
+            Some("Bearer 0123456789abcdef0123456789abcdef"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn triple_slashed_session_endpoint_never_issues_a_token() {
+        // Only the canonical literal path bootstraps a session; the malformed
+        // spelling falls through to the Bearer gate and is rejected.
+        let response = adapt_with_token(
+            &test_state(),
+            Method::GET,
+            Uri::from_static("///api/v1/session"),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn percent_encoded_dot_dot_variants_never_reach_handlers() {
+        for uri in [
+            "/%2e%2e/api/v1/health",
+            "//%2e%2e/api/v1/health",
+            "/api/%2e%2e/v1/health",
+            "/%2E%2E/api/v1/files/root",
+        ] {
+            let response =
+                adapt_with_token(&test_state(), Method::GET, uri.parse().unwrap(), None).await;
+            let status = response.status();
+            assert!(
+                status == StatusCode::UNAUTHORIZED || status == StatusCode::NOT_FOUND,
+                "{uri} must be 401/404 without a token, got {status}"
+            );
+            assert_ne!(status, StatusCode::OK);
+        }
+    }
+
+    #[tokio::test]
+    async fn double_slashed_api_path_with_valid_bearer_reaches_handler() {
+        // Normalization feeds the dispatcher too, so a well-authenticated
+        // request with sloppy slashes routes exactly like the canonical form.
+        let response = adapt_with_token(
+            &test_state(),
+            Method::GET,
+            Uri::from_static("//api/v1/health"),
+            Some("Bearer 0123456789abcdef0123456789abcdef"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // ------------------------------------------------------------------
+    // Blocking-pool offload: a slow solve must not stall the async worker.
+    // ------------------------------------------------------------------
+
+    /// A problem whose search cannot finish before its wall-clock budget:
+    /// a full 60-student class with rich cost data and dense min-distance
+    /// rules exhausts any short deadline and reports `Timeout` (verified:
+    /// the run lasts ~exactly `budget_seconds`, release and debug builds).
+    fn slow_solve_body(budget_seconds: f64) -> Vec<u8> {
+        let student_count = 60usize;
+        let students: Vec<serde_json::Value> = (0..student_count)
+            .map(|index| {
+                serde_json::json!({
+                    "key": format!("S{index}"),
+                    "display_name": format!("Student {index}"),
+                    "score": 60.0 + (index * 7 % 40) as f64,
+                    "height_cm": 150 + (index * 3 % 30),
+                })
+            })
+            .collect();
+        let min_distance: Vec<serde_json::Value> = (0..student_count)
+            .flat_map(|first| {
+                ((first + 1)..student_count)
+                    .filter(move |second| (first + second) % 5 == 0)
+                    .map(move |second| {
+                        serde_json::json!({
+                            "students": [first, second],
+                            "distance": 2.0,
+                            "metric": "euclidean",
+                        })
+                    })
+            })
+            .collect();
+        let seat_positions: Vec<[f64; 2]> = (0..student_count)
+            .map(|index| [(index % 10) as f64, (index / 10) as f64])
+            .collect();
+        serde_json::to_vec(&serde_json::json!({
+            "api_version": 2,
+            "student_count": student_count,
+            "seat_positions": seat_positions,
+            "students": students,
+            "min_distance": min_distance,
+            "seed": 42,
+            "time_limit_seconds": budget_seconds,
+        }))
+        .unwrap()
+    }
+
+    /// On a current-thread runtime, a multi-second solve dispatched inline
+    /// would starve every other request. With the dispatch parked on
+    /// `spawn_blocking`, a concurrent health probe answers while the solve is
+    /// still running. The solve's wall-clock budget makes the slow side
+    /// deterministic; the probe must finish well inside it.
+    #[tokio::test(flavor = "current_thread")]
+    async fn slow_solve_does_not_block_concurrent_health() {
+        use tower::ServiceExt;
+
+        let router = build_router(test_state());
+        let started = std::time::Instant::now();
+
+        let solve_router = router.clone();
+        let solve_task = tokio::spawn(async move {
+            let request = AxumRequest::builder()
+                .method("POST")
+                .uri("/api/v2/solve")
+                .header(header::HOST, "127.0.0.1:8765")
+                .header(
+                    header::AUTHORIZATION,
+                    "Bearer 0123456789abcdef0123456789abcdef",
+                )
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(slow_solve_body(1.0)))
+                .unwrap();
+            let response = solve_router.oneshot(request).await.unwrap();
+            (response.status(), started.elapsed())
+        });
+
+        // Let the solve task reach its blocking dispatch before probing.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let health_request = AxumRequest::builder()
+            .method("GET")
+            .uri("/api/v1/health")
+            .header(header::HOST, "127.0.0.1:8765")
+            .header(
+                header::AUTHORIZATION,
+                "Bearer 0123456789abcdef0123456789abcdef",
+            )
+            .body(Body::empty())
+            .unwrap();
+        let health_started = std::time::Instant::now();
+        let health_response = router.oneshot(health_request).await.unwrap();
+        let health_elapsed = health_started.elapsed();
+        assert_eq!(health_response.status(), StatusCode::OK);
+
+        // The probe answered while the solve was still burning its budget.
+        assert!(
+            health_elapsed < Duration::from_millis(800),
+            "health took {health_elapsed:?}; the solve blocked the worker"
+        );
+
+        let (solve_status, solve_elapsed) = solve_task.await.unwrap();
+        assert_eq!(solve_status, StatusCode::OK);
+        assert!(
+            solve_elapsed >= Duration::from_millis(900),
+            "the solve finished in {solve_elapsed:?}; the fixture no longer \
+             exercises a slow dispatch"
+        );
     }
 }

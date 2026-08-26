@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   compareProjectArtifacts,
@@ -15,7 +15,6 @@ import {
   restoreProjectMigrationBackup,
   restoreProjectArtifact,
   restoreProjectBundle,
-  RosterApiError,
   saveProjectRotationPlan,
   scanProjectPrivacy,
 } from "../api/client";
@@ -35,6 +34,7 @@ import type {
   RecentProject,
 } from "../api/types";
 import type { Locale, Translate } from "../i18n/messages";
+import { describeApiError } from "../domain/errorMessages";
 
 type ProjectWorkspacePanelProps = {
   locale: Locale;
@@ -43,13 +43,6 @@ type ProjectWorkspacePanelProps = {
   rotationDraftIds?: string[];
   onRotationLoad?: (result: ProjectRotationLoadResponse) => void;
 };
-
-function errorMessage(error: unknown): string {
-  if (error instanceof RosterApiError || error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
 
 function formatDate(value: string, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en", {
@@ -231,6 +224,14 @@ export function ProjectWorkspacePanel({
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [operationPeriodFilter, setOperationPeriodFilter] = useState<"all" | number>("all");
+  /**
+   * Monotonic tokens guarding the async loads (W3): every new call bumps its
+   * own counter so a slow `fetchProjectHistory` or project listing can never
+   * overwrite state chosen later. One token per entry point keeps the busy
+   * flag independent from nested `openProject` calls made by a refresh.
+   */
+  const openTokenRef = useRef(0);
+  const refreshTokenRef = useRef(0);
 
   const allArtifacts = useMemo(
     () => [
@@ -304,15 +305,20 @@ export function ProjectWorkspacePanel({
 
   async function openProject(path: string): Promise<void> {
     if (!path) {
+      openTokenRef.current += 1;
       setHistory(null);
       setPrivacy(null);
       return;
     }
+    const token = ++openTokenRef.current;
     setSelectedPath(path);
     setPrivacy(null);
     setError("");
     try {
       const response = await fetchProjectHistory(path);
+      if (token !== openTokenRef.current) {
+        return;
+      }
       setHistory(response);
       setComparison(null);
       setMigrationPreview(null);
@@ -320,27 +326,47 @@ export function ProjectWorkspacePanel({
       setGroupRegisterPreview(null);
       setStatus(t("project.statusLoaded", { name: response.project_name }));
     } catch (caught) {
+      if (token !== openTokenRef.current) {
+        return;
+      }
       setHistory(null);
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(
+        t("project.error", {
+          message: describeApiError(caught, t, "project.actionFailed"),
+        }),
+      );
     }
   }
 
   async function refreshProjects(): Promise<void> {
+    const token = ++refreshTokenRef.current;
     setBusy("loading");
     setError("");
     try {
       const response = await listRecentProjects(root.trim() || ".");
+      if (token !== refreshTokenRef.current) {
+        return;
+      }
       setProjects(response.projects);
       const nextPath = response.projects.some((item) => item.path === selectedPath)
         ? selectedPath
         : response.projects[0]?.path ?? "";
       await openProject(nextPath);
     } catch (caught) {
+      if (token !== refreshTokenRef.current) {
+        return;
+      }
       setProjects([]);
       setHistory(null);
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(
+        t("project.error", {
+          message: describeApiError(caught, t, "project.actionFailed"),
+        }),
+      );
     } finally {
-      setBusy(null);
+      if (token === refreshTokenRef.current) {
+        setBusy(null);
+      }
     }
   }
 
@@ -359,7 +385,7 @@ export function ProjectWorkspacePanel({
     try {
       setPrivacy(await scanProjectPrivacy(selectedPath));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -376,7 +402,7 @@ export function ProjectWorkspacePanel({
       triggerDownload(result.blob, result.filename);
       setStatus(t("project.statusBackup", { name: result.filename }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -401,7 +427,7 @@ export function ProjectWorkspacePanel({
       await refreshProjects();
       setStatus(t("project.statusRestore", { path: result.project_path }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -419,7 +445,7 @@ export function ProjectWorkspacePanel({
       );
       setStatus(t("project.statusCompared"));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -436,7 +462,7 @@ export function ProjectWorkspacePanel({
       await refreshProjects();
       setStatus(t("project.statusArtifactRestored", { name: result.restored_artifact }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -457,7 +483,7 @@ export function ProjectWorkspacePanel({
       setMigrationPreview(result);
       setStatus(t("project.statusMigrationPreview"));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -482,7 +508,7 @@ export function ProjectWorkspacePanel({
       setMigrationPreview(result);
       setStatus(t("project.statusMigrationApplied", { path: result.output_path ?? result.source_path }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -503,7 +529,7 @@ export function ProjectWorkspacePanel({
       await refreshProjects();
       setStatus(t("project.statusMigrationRestored", { path: result.source_path }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -523,7 +549,7 @@ export function ProjectWorkspacePanel({
       setBatchMigrationPreview(result);
       setStatus(t("project.statusMigrationBatchPreview"));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -544,7 +570,7 @@ export function ProjectWorkspacePanel({
       await refreshProjects();
       setStatus(t("project.statusMigrationBatchApplied", { count: result.projects.length }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -569,7 +595,7 @@ export function ProjectWorkspacePanel({
       await refreshProjects();
       setStatus(t("project.statusRotationSaved", { path: result.output_path }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -586,7 +612,7 @@ export function ProjectWorkspacePanel({
       onRotationLoad(result);
       setStatus(t("project.statusRotationLoaded", { name: result.rotation_plan.name }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -608,7 +634,7 @@ export function ProjectWorkspacePanel({
       triggerDownload(result.blob, result.filename);
       setStatus(t("project.statusGroupRegister", { name: result.filename }));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }
@@ -626,7 +652,7 @@ export function ProjectWorkspacePanel({
       );
       setStatus(t("project.statusGroupRegisterPreview"));
     } catch (caught) {
-      setError(t("project.error", { message: errorMessage(caught) }));
+      setError(t("project.error", { message: describeApiError(caught, t, "project.actionFailed") }));
     } finally {
       setBusy(null);
     }

@@ -270,19 +270,11 @@ pub struct EditorSeatState {
     pub locked: bool,
 }
 
-/// Independent validator result for hard constraints in the current state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct EditorHardConstraintState {
-    pub satisfied: bool,
-    pub checked_rule_count: u64,
-    pub violation_count: u64,
-    #[serde(default)]
-    pub violations: Vec<String>,
-}
-
-/// Versioned editor state DTO, including the independent hard-constraint
-/// validation result required by the formal state schema.
+/// Versioned editor state DTO, matching the wire shape the server emits for
+/// fetched state and command responses. The independent hard-constraint
+/// re-validation is not part of the state itself: the server attaches it to
+/// command responses only, as the extra `validation` object documented in
+/// `schemas/editor-state.schema.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EditorState {
@@ -298,7 +290,6 @@ pub struct EditorState {
     pub redo_depth: u64,
     pub students: Vec<EditorStudentState>,
     pub seats: Vec<EditorSeatState>,
-    pub hard_constraints: EditorHardConstraintState,
 }
 
 impl EditorState {
@@ -437,18 +428,32 @@ mod tests {
                 student_key: Some("s1".to_string()),
                 locked: true,
             }],
-            hard_constraints: EditorHardConstraintState {
-                satisfied: false,
-                checked_rule_count: 2,
-                violation_count: 1,
-                violations: vec!["student s1 violates front-row rule".to_string()],
-            },
         };
         state.validate().unwrap();
 
         let encoded = serde_json::to_string(&state).unwrap();
         let decoded: EditorState = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, state);
+    }
+
+    #[test]
+    fn state_rejects_hard_constraints_field_removed_from_the_wire_contract() {
+        // The Rust server never emitted `hard_constraints`; the field was a
+        // planned-but-unshipped Python-era addition. It is no longer part of
+        // the published state contract (command responses carry `validation`
+        // instead), so the strict DTO must refuse it.
+        let state = r#"{
+            "kind":"seattrellis_editor_state",
+            "protocol_version":"1.0",
+            "draft_id":"draft-1",
+            "revision":0,
+            "undo_depth":0,
+            "redo_depth":0,
+            "students":[],
+            "seats":[],
+            "hard_constraints":{"satisfied":true,"checked_rule_count":0,"violation_count":0}
+        }"#;
+        assert!(serde_json::from_str::<EditorState>(state).is_err());
     }
 
     #[test]
@@ -485,7 +490,7 @@ mod tests {
             "redo_depth":0,
             "students":[],
             "seats":[],
-            "hard_constraints":{"satisfied":true,"checked_rule_count":0,"violation_count":0,"unexpected":true}
+            "unexpected":true
         }"#;
         assert!(serde_json::from_str::<EditorState>(state).is_err());
     }

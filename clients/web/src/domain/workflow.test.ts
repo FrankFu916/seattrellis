@@ -1,5 +1,6 @@
 import { createSeatAssignments, demoStudents } from "../api/demo";
 import {
+  assignStudentToSeat,
   getUnseatedStudents,
   reconcileStudentAssignments,
   seatRemainingStudents,
@@ -55,5 +56,36 @@ describe("seating adjustments", () => {
     });
     expect(reconciled[1].student).toMatchObject({ id: "S04", name: "Dora" });
     expect(reconciled[2].student).toBeUndefined();
+  });
+
+  it("moves a seated student and empties the previous seat in one pass", () => {
+    const original = createSeatAssignments(1, 3, demoStudents.slice(0, 2), 2);
+
+    const moved = assignStudentToSeat(original, "R1C3", original[0].student!);
+
+    expect(moved[0].student).toBeUndefined();
+    expect(moved[1].student?.id).toBe("S02");
+    expect(moved[2].student?.id).toBe("S01");
+    const occupied = moved.filter((seat) => seat.student).length;
+    expect(occupied).toBe(2);
+  });
+
+  it("seats an unseated student resolved from the roster", () => {
+    const original = createSeatAssignments(1, 2, demoStudents.slice(0, 1), 1);
+    const newcomer = { id: "S09", name: "胡可欣" };
+
+    const moved = assignStudentToSeat(original, "R1C2", newcomer);
+
+    expect(moved[1].student).toEqual(newcomer);
+    expect(moved[0].student?.id).toBe("S01");
+  });
+
+  it("clears a seat when the assignment is removed", () => {
+    const original = createSeatAssignments(1, 2, demoStudents.slice(0, 2), 2);
+
+    const cleared = assignStudentToSeat(original, "R1C1", null);
+
+    expect(cleared[0].student).toBeUndefined();
+    expect(cleared[1].student?.id).toBe("S02");
   });
 });

@@ -1,6 +1,6 @@
 # Quick Start
 
-This document covers installation and CLI usage for SeatTrellis v2 (the Rust-only line). For a brief project overview, see the [documentation home](/).
+This document covers installation and CLI usage for SeatTrellis v2 (the Rust-only line). For a brief project overview, see the [documentation home](index.md).
 
 ## Installation
 
@@ -82,7 +82,7 @@ seattrellis_cli solve --problem problem.json --output plan.json
 seattrellis_cli export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
-`export` supports `svg`, `html`, `print-html` (project-export only), `png`, `pdf`, `xlsx`, `docx`, and `pptx`. `solve` uses the frozen v2 exit table: `0` solved, `2` invalid input, `3` proven infeasible, `4` timeout, `5` unknown, `70` internal error, `130` cancelled.
+`export` supports seven formats: `svg`, `html`, `png`, `pdf`, `xlsx`, `docx`, and `pptx`; the printable `print-html` format is available through `project-export` only. `solve` uses the frozen v2 exit table: `0` solved, `2` invalid input, `3` proven infeasible, `4` timeout, `5` unknown, `70` internal error, `130` cancelled. The proven-infeasible exit code 3 is consistent across `solve` / `candidates` / `project-rotate` / `project-solve`.
 
 ## Demo data
 
@@ -212,11 +212,19 @@ Every v2 artifact (snapshot, candidate set, project, rotation plan, ...) carries
 ```bash
 seattrellis_cli schema-list
 seattrellis_cli schema-export --kind seatingsnapshot --output seating-snapshot.v2.schema.json
-seattrellis_cli schema-migrate --input v1-project.json --output v2-project.json
-seattrellis_cli schema-migrate --input v1-rules.json --in-place   # creates a .bak backup first
+
+# Project files carry their kind field natively and migrate to v2 directly:
+seattrellis_cli schema-migrate --input my-class/seattrellis.project.json --output my-class/seattrellis.v2.project.json
+
+# v1 roster / layout documents have no kind field; wrap them in an envelope
+# first, or rewrite them in place with --in-place (a hidden transactional
+# backup is created first, and repeated runs never overwrite each other):
+# {"kind": "student_roster", "schema_version": 1,
+#  "data": {"students": [{"student_id": "STU001", "name": "Alice"}]}}
+seattrellis_cli schema-migrate --input roster-v1.json --in-place
 ```
 
-v1-era files (CSV rosters, layout/rules JSON, snapshots, candidate sets, projects) are handled by the v2 migration path, with automatic backups before each migration.
+Only three kinds currently provide a v1→v2 migration step: rosters (`student_roster`), layouts (`classroom_layout`), and projects (`seattrellis_project`). Snapshots, candidate sets, and rulesets have no migration step yet and are rejected with an explicit error. Files whose `schema_version` is newer than the supported target are refused (no downgrades).
 
 ## Next Steps
 

@@ -1,5 +1,158 @@
 # Changelog
 
+## 2.0.0 - 2026-08-26
+
+SeatTrellis 2.0.0 is the first stable release of the complete Rust rewrite.
+The Python implementation is retired: v2 runs natively on macOS, Windows and
+Linux with no Python, Node or other runtime dependencies, and all student
+data stays on the local machine. Teachers get a React workbench (in the
+desktop app or any browser), while automation users get a 27-command CLI —
+both speak to the same Rust core.
+
+**Highlights for teachers**
+
+- Import a roster (CSV or Excel), set up the classroom, choose rules and
+  goals, generate and compare candidate seating plans, fine-tune by hand,
+  track history and fair rotation across terms, and export or print —
+  entirely offline.
+- Hard constraints (fixed seats, must/cannot sit together, minimum distance,
+  groups) are always satisfied in any plan marked *Solved*, and every plan is
+  re-verified by an independent validator before it reaches you.
+- Soft preferences (front seats for poor eyesight, tall students in back,
+  score balance, fair rotation, avoiding recent neighbors, cooling-off) are
+  optimized with explainable per-rule scoring, so every plan can answer
+  "why is this student here?".
+- Public exports anonymize names and identifiers automatically; teacher
+  exports keep the detail you need for your own use.
+
+### Added
+
+- Native Excel roster import for `.xlsx`/`.xlsm`: first worksheet, supporting
+  shared strings, inline strings, cached formula results, numbers, booleans
+  and loss-free leading zeros. Limits: 20 MiB per file, 10,000 data rows,
+  256 columns. Formulas without cached values, encrypted workbooks and
+  legacy `.xls` files are rejected with clear messages.
+- `project-export --template <teacher|public>` (default `teacher`; `public`
+  forces anonymization of names and identifiers) and
+  `--orientation <portrait|landscape|auto>` (default `auto`: print-html
+  prints A4 landscape, other formats portrait).
+- Desktop shell (Tauri 2): native open/save dialogs, drag-and-drop roster
+  import, a content security policy on the workbench page, and a
+  session token injected into webview memory only — never into URLs, logs or
+  disk. File bytes move exclusively through dialog-granted paths.
+- Loopback API hardening: every `/api/*` request path is normalized and
+  requires the Bearer session token; DNS-rebinding, cross-origin and
+  oversized-body protections are enforced for all endpoints.
+
+### Fixed
+
+- Closed an authentication bypass where non-canonical `/api/...` spellings
+  (for example an extra leading slash) skipped the Bearer token check.
+- Same seed plus same input now yields byte-identical results across runs:
+  floating-point soft-cost summation happens in a deterministic order.
+  This restores the reproducibility promise that parity fixtures and
+  regression tests depend on.
+- The desktop app's native open/save dialogs now actually open. The
+  workbench page is served from the loopback backend, which Tauri treats as
+  a remote origin, so the file-bridge commands were silently rejected by the
+  command ACL; they are now granted explicitly, and byte-moving commands
+  still accept only dialog-granted paths. Drag-and-drop import works in the
+  desktop app again (Tauri's own drop handler no longer intercepts the
+  HTML5 drag events).
+- `repair` now really reserves locked empty seats: they leave the solve
+  domain entirely and can no longer be occupied by anyone.
+- Exit codes are unified: a proven-infeasible result exits 3 on `solve`,
+  `candidates`, `project-rotate` and `project-solve` alike, and invalid
+  input (such as a student count mismatch) exits 2 instead of 70.
+- Negative soft-rule weights are now rejected as the rules reference
+  promises; `weight` must be an integer from 0 to 1,000,000 inclusive, and
+  weight combinations can no longer overflow.
+- A non-empty string-reference `rules.hard` block in a native solve request
+  (the CLI's `problem.json`) is rejected with guidance toward the top-level
+  index-pair form instead of being silently ignored — previously such
+  constraints were dropped while the plan still claimed
+  `hard_constraints_satisfied: true`.
+- Rotation: column group registers aggregate correctly (they used to
+  fragment into one group per student); loading a saved rotation plan
+  repeatedly works (draft ids are unique per load); fairness spread uses
+  the whole-class basis (missing history categories count as 0), so the
+  summary no longer overstates fairness.
+- Project references that point outside the project root (for example
+  `outputs_dir: "../x"`) are rejected instead of creating directories and
+  writing files outside the project.
+- Migration refuses files whose `schema_version` is newer than supported
+  instead of silently rewriting them to an older version.
+- Export text honors the Chinese locale consistently across formats: SVG,
+  HTML and print HTML render “空座”, “教室前方” and
+  “N 名学生 · M 个座位 · 可行” like the other export formats.
+- XLSX export truncates cell text at Excel's 32,767-character limit instead
+  of producing a corrupt workbook; PNG/PDF exports with no usable system
+  font now carry a warning in the export envelope and print it to stderr
+  instead of silently rendering no text.
+- Project archives are extracted with real byte limits (per file and total),
+  so a forged zip can no longer inflate past the configured caps.
+- Web workbench: scratch mode can no longer seat one student in two seats;
+  the first launch follows the system language; a 409 revision conflict
+  shows a friendly message and refreshes automatically; a top-level error
+  boundary catches unexpected UI crashes; error toasts no longer surface
+  raw English transport text; production builds ship without sourcemaps.
+
+### Changed
+
+- **Migration coverage is explicit**: only rosters, layouts and projects
+  provide v1→v2 migration steps. Snapshots, candidate sets, rulesets and
+  other kinds fail with a clear error instead of a fake migration.
+  `--in-place` rewrites keep a hidden transactional backup whose name embeds
+  a unique transaction id, so repeated runs never overwrite each other.
+- Plain `export` covers seven formats (`svg`, `html`, `png`, `pdf`, `xlsx`,
+  `docx`, `pptx`); the printable `print-html` stays exclusive to
+  `project-export`.
+- Unknown soft-rule names and unconsumed rule shapes are rejected on the
+  native solve path (previously they were silently ignored), matching the
+  behavior of the workbench validation path.
+- The editor protocol documentation and schemas now match the real wire
+  format: the retired `hard_constraints` field is gone from the editor
+  state, and the `validation` object attached to command responses is
+  registered in the published JSON Schema.
+- Desktop releases ship **unsigned** with `SHA256SUMS` /
+  `DESKTOP-SHA256SUMS` for integrity verification (owner decision,
+  2026-08-26). On first launch, macOS requires right-click → Open, and
+  Windows may show a SmartScreen prompt.
+
+### Upgrade & compatibility
+
+- From v1.9.x: open your project with `seattrellis_cli schema-migrate` or
+  the workbench migration flow — rosters, classroom layouts and project
+  files migrate automatically with a backup taken first. Other v1 artifact
+  kinds are reported as non-migratable rather than half-converted.
+- From v2 release candidates (rc.1/rc.2): projects and artifacts are
+  compatible; re-export saved plans if you depend on the exact bytes of
+  editor-state documents (the schema was aligned to the wire format).
+- The Python package stays frozen at 1.9.0 on the `v1.x-maintenance`
+  branch; it receives no v2 features and is no longer a dependency of
+  anything in v2.
+
+### Privacy
+
+- All data is processed locally. There are no accounts, no telemetry and no
+  cloud sync. Real student data must never be committed to public repos;
+  the repository ships fictional examples only.
+- Public exports are anonymized at a single central policy layer and are
+  covered by release-time scans for scores, notes, special needs, height,
+  vision and un-anonymized identifiers.
+
+### Known limitations
+
+- Right-to-left scripts (Arabic, Hebrew, ...) render in logical order in
+  PNG/PDF exports without bidirectional shaping; HTML/SVG exports are
+  unaffected because the browser does the layout.
+- Legacy binary `.xls` files are not supported (use `.xlsx`/`.xlsm` or CSV).
+- XLSX import numbers rows after skipping blank rows inside the sheet.
+- An unexpected panic exits with code 101, which is outside the frozen
+  exit-code table (0/2/3/4/5/70/130).
+- Windows and Linux installers/bundles are built by CI on the release tag;
+  this repository's local release inspection covers macOS arm64.
+
 ## Unreleased
 
 ### User-facing changes

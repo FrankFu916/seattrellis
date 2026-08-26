@@ -279,6 +279,56 @@ fn escape_text(text: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Renderer labels (V2/V3: SVG/HTML share the zh wording of PNG/PDF/print-html)
+// ---------------------------------------------------------------------------
+
+/// Whether the renderer labels follow the zh convention (the export contract
+/// defaults to `locale: "zh"`; only `en` selects the English labels, matching
+/// `anonymize_grid`'s placeholder rule).
+pub(crate) fn is_zh_locale(locale: &str) -> bool {
+    !matches!(locale.trim().to_ascii_lowercase().as_str(), "en")
+}
+
+/// Label for an enabled seat without a student ("空座" mirrors the PNG/PDF
+/// rasterizers and print-html so every format agrees).
+fn empty_seat_label(locale: &str) -> &'static str {
+    if is_zh_locale(locale) {
+        "空座"
+    } else {
+        "empty"
+    }
+}
+
+/// The front-of-room annotation above the first row.
+fn front_of_room_label(locale: &str) -> &'static str {
+    if is_zh_locale(locale) {
+        "教室前方"
+    } else {
+        "front of room"
+    }
+}
+
+/// The header subtitle. English keeps the grid's built-in
+/// "N students / M seats / feasible" line; zh mirrors it as
+/// "N 名学生 · M 个座位 · 可行" (same numbers, same feasibility verdict).
+fn subtitle_label(grid: &SeatingGrid, locale: &str) -> String {
+    if !is_zh_locale(locale) {
+        return grid.subtitle.clone();
+    }
+    let seated = grid
+        .cells
+        .iter()
+        .filter(|cell| cell.student.is_some())
+        .count();
+    let feasible = !grid.subtitle.ends_with("infeasible");
+    format!(
+        "{seated} 名学生 · {} 个座位 · {}",
+        grid.cells.len(),
+        if feasible { "可行" } else { "不可行" }
+    )
+}
+
+// ---------------------------------------------------------------------------
 // SVG
 // ---------------------------------------------------------------------------
 
@@ -287,7 +337,7 @@ fn escape_text(text: &str) -> String {
 ///
 /// The document deliberately starts with the `<svg` root element (no XML
 /// declaration) so it opens cleanly in browsers and embeds as-is.
-pub fn render_svg(grid: &SeatingGrid) -> String {
+pub fn render_svg(grid: &SeatingGrid, locale: &str) -> String {
     let cols = grid_cols(grid) as f64;
     let rows = grid_rows(grid) as f64;
     let width = PAD * 2.0 + cols * CELL_W;
@@ -309,7 +359,7 @@ pub fn render_svg(grid: &SeatingGrid) -> String {
     out.push_str(&format!(
         "  <text x=\"{}\" y=\"42\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"11\" fill=\"#5a6b7f\">{}</text>\n",
         width / 2.0,
-        escape_text(&grid.subtitle)
+        escape_text(&subtitle_label(grid, locale))
     ));
 
     // Front-of-room indicator (min_row is the front, matching the solver).
@@ -319,9 +369,10 @@ pub fn render_svg(grid: &SeatingGrid) -> String {
         PAD + grid_w
     ));
     out.push_str(&format!(
-        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"#8a97a6\">front of room</text>\n",
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"#8a97a6\">{}</text>\n",
         PAD + grid_w / 2.0,
-        front_y - 5.0
+        front_y - 5.0,
+        escape_text(front_of_room_label(locale))
     ));
 
     for row in grid.min_row..=grid.max_row {
@@ -356,14 +407,19 @@ pub fn render_svg(grid: &SeatingGrid) -> String {
                     ));
                     }
                     None => {
-                        let label = if cell.enabled { "empty" } else { "unused" };
+                        let label = if cell.enabled {
+                            empty_seat_label(locale)
+                        } else {
+                            "unused"
+                        };
                         out.push_str(&format!(
                             "  <rect x=\"{}\" y=\"{}\" width=\"{RECT_W}\" height=\"{RECT_H}\" rx=\"7\" fill=\"#f7f8f9\" stroke=\"#cfd8e2\" stroke-width=\"1\" stroke-dasharray=\"4 3\"/>\n",
                             x + 4.0,
                             y + 4.0
                         ));
                         out.push_str(&format!(
-                            "  <text x=\"{center_x}\" y=\"{center_y}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#9aa7b5\">{label}</text>\n"
+                            "  <text x=\"{center_x}\" y=\"{center_y}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#9aa7b5\">{}</text>\n",
+                            escape_text(label)
                         ));
                     }
                 },
@@ -389,7 +445,7 @@ pub fn render_svg(grid: &SeatingGrid) -> String {
 
 /// Render the plan as a self-contained HTML page: one `<tr>` per grid row, one
 /// `<td>` per grid column, inline CSS only, no scripts.
-pub fn render_html(grid: &SeatingGrid) -> String {
+pub fn render_html(grid: &SeatingGrid, locale: &str) -> String {
     let mut out = String::with_capacity(4096 + grid.cells.len() * 160);
     out.push_str("<!DOCTYPE html>\n");
     out.push_str("<html lang=\"zh-CN\">\n<head>\n");
@@ -421,9 +477,12 @@ pub fn render_html(grid: &SeatingGrid) -> String {
     out.push_str(&format!("<h1>{}</h1>\n", escape_text(&grid.title)));
     out.push_str(&format!(
         "<p class=\"sub\">{}</p>\n",
-        escape_text(&grid.subtitle)
+        escape_text(&subtitle_label(grid, locale))
     ));
-    out.push_str("<p class=\"front\">front of room</p>\n");
+    out.push_str(&format!(
+        "<p class=\"front\">{}</p>\n",
+        escape_text(front_of_room_label(locale))
+    ));
     out.push_str("<table class=\"seating\">\n");
 
     for row in grid.min_row..=grid.max_row {
@@ -446,8 +505,15 @@ pub fn render_html(grid: &SeatingGrid) -> String {
                         ));
                     }
                     None => {
-                        let label = if cell.enabled { "empty" } else { "unused" };
-                        out.push_str(&format!("    <td class=\"empty\">{label}</td>\n"));
+                        let label = if cell.enabled {
+                            empty_seat_label(locale)
+                        } else {
+                            "unused"
+                        };
+                        out.push_str(&format!(
+                            "    <td class=\"empty\">{}</td>\n",
+                            escape_text(label)
+                        ));
                     }
                 },
                 None => {
@@ -1249,7 +1315,7 @@ mod tests {
     #[test]
     fn svg_is_self_contained_and_self_closing() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
-        let svg = render_svg(&grid);
+        let svg = render_svg(&grid, "en");
         assert!(
             svg.starts_with("<svg "),
             "document opens with the <svg root"
@@ -1273,7 +1339,7 @@ mod tests {
             ..sample_response()
         };
         let grid = SeatingGrid::build(&request, &response).unwrap();
-        let svg = render_svg(&grid);
+        let svg = render_svg(&grid, "en");
         assert!(svg.contains("A&amp;B &lt;C&gt;&quot;&apos;"));
         assert!(
             !svg.contains("A&B <C>"),
@@ -1291,7 +1357,7 @@ mod tests {
             ..sample_response()
         };
         let grid = SeatingGrid::build(&sample_request(), &response).unwrap();
-        let svg = render_svg(&grid);
+        let svg = render_svg(&grid, "en");
         assert!(svg.contains("infeasible"), "subtitle notes infeasibility");
         assert!(svg.starts_with("<svg "));
         assert!(!svg.contains("<script"));
@@ -1306,7 +1372,7 @@ mod tests {
             ..sample_response()
         };
         let grid = SeatingGrid::build(&request, &response).unwrap();
-        let html = render_html(&grid);
+        let html = render_html(&grid, "en");
         assert!(html.starts_with("<!DOCTYPE html>"));
         assert!(html.contains("<table"));
         assert!(html.contains("</table>"));
@@ -1321,7 +1387,7 @@ mod tests {
     #[test]
     fn html_renders_empty_and_void_cells() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
-        let html = render_html(&grid);
+        let html = render_html(&grid, "en");
         assert!(html.contains("class=\"empty\""), "empty seats are marked");
         // Row 1 has 3 seats but max col is 3 == min col 1, so no void here;
         // use a wider request to exercise void cells.
@@ -1340,12 +1406,12 @@ mod tests {
         };
         let grid = SeatingGrid::build(&request, &response).unwrap();
         assert_eq!((grid.min_col, grid.max_col), (1, 4));
-        let html = render_html(&grid);
+        let html = render_html(&grid, "en");
         assert!(
             html.contains("class=\"void\""),
             "missing grid positions are void"
         );
-        let svg = render_svg(&grid);
+        let svg = render_svg(&grid, "en");
         assert!(!svg.contains("<script"));
     }
 
@@ -1364,8 +1430,71 @@ mod tests {
         ]));
         let grid = SeatingGrid::build(&request, &sample_response()).unwrap();
         assert!(!grid.cell_at(2, 3).unwrap().enabled);
-        assert!(render_svg(&grid).contains("unused"));
-        assert!(render_html(&grid).contains("unused"));
+        assert!(render_svg(&grid, "en").contains("unused"));
+        assert!(render_html(&grid, "en").contains("unused"));
+    }
+
+    // V2/V3: the zh locale must render the same Chinese wording as PNG/PDF
+    // and print-html ("空座" / front-of-room / subtitle), not English labels.
+
+    #[test]
+    fn svg_localizes_labels_for_zh_and_keeps_en_unchanged() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let svg = render_svg(&grid, "zh");
+        assert!(svg.contains(">空座<"), "zh empty-seat label: {svg}");
+        assert!(svg.contains("教室前方"), "zh front-of-room label");
+        assert!(
+            svg.contains("4 名学生 · 6 个座位 · 可行"),
+            "zh subtitle: {svg}"
+        );
+        assert!(!svg.contains(">empty<"), "no English empty label: {svg}");
+        assert!(
+            !svg.contains("front of room"),
+            "no English front label: {svg}"
+        );
+        assert!(!svg.contains("students / "), "no English subtitle: {svg}");
+
+        let en = render_svg(&grid, "en");
+        assert!(en.contains(">empty<"));
+        assert!(en.contains("front of room"));
+        assert!(en.contains("4 students / 6 seats / feasible"));
+        assert!(!en.contains("空座"));
+    }
+
+    #[test]
+    fn html_localizes_labels_for_zh_and_keeps_en_unchanged() {
+        let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
+        let html = render_html(&grid, "zh");
+        assert!(html.contains(">空座</td>"), "zh empty-seat cell: {html}");
+        assert!(html.contains("教室前方"), "zh front-of-room label");
+        assert!(html.contains("4 名学生 · 6 个座位 · 可行"), "zh subtitle");
+        assert!(
+            !html.contains(">empty<"),
+            "no rendered English empty label (CSS class names excluded): {html}"
+        );
+        assert!(!html.contains(">front of room<"));
+
+        let en = render_html(&grid, "en");
+        assert!(en.contains(">empty</td>"));
+        assert!(en.contains("front of room"));
+        assert!(en.contains("4 students / 6 seats / feasible"));
+    }
+
+    #[test]
+    fn zh_subtitle_reports_infeasibility() {
+        let response = CoreSolveResponse {
+            feasible: false,
+            assignment: Vec::new(),
+            hard_constraints_satisfied: false,
+            total_cost: None,
+            ..sample_response()
+        };
+        let grid = SeatingGrid::build(&sample_request(), &response).unwrap();
+        let svg = render_svg(&grid, "zh");
+        assert!(
+            svg.contains("0 名学生 · 6 个座位 · 不可行"),
+            "zh infeasible verdict: {svg}"
+        );
     }
 
     #[test]

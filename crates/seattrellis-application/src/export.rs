@@ -17,6 +17,23 @@ pub struct ExportOutcome {
     pub body: Vec<u8>,
 }
 
+/// Fetch the originating solve request stored for a draft. A miss means the
+/// request was evicted from the FIFO-capped store (or never recorded), so it
+/// is reported distinctly instead of masquerading as a missing draft.
+pub(crate) fn stored_solve_request(
+    solve_requests: &SolveRequestStore,
+    draft_id: &str,
+) -> Result<Value, AppError> {
+    let guard = solve_requests
+        .lock()
+        .map_err(|_| AppError::internal("solve request store is poisoned"))?;
+    guard.get(draft_id).cloned().ok_or_else(|| {
+        AppError::not_found(format!(
+            "solve request for draft {draft_id:?} was evicted; regenerate the plan"
+        ))
+    })
+}
+
 /// Orchestrate an export: locate the originating solve request, rebuild the
 /// current plan from the editor state, render and return the artifact.
 /// Business logic only - no HTTP types (M1-02).
@@ -35,13 +52,7 @@ pub fn export_draft(
         ));
     }
 
-    let request_value = match solve_requests.lock() {
-        Ok(guard) => match guard.get(draft_id) {
-            Some(value) => value.clone(),
-            None => return Err(AppError::not_found("editor draft was not found")),
-        },
-        Err(_) => return Err(AppError::internal("solve request store is poisoned")),
-    };
+    let request_value = stored_solve_request(solve_requests, draft_id)?;
     // Fetching the state also validates that the draft still exists.
     let state = match editing::fetch_state(editor_store, draft_id) {
         Ok(state) => state,
@@ -246,15 +257,30 @@ pub(crate) fn editor_solve_response(
     }
 
     let mut assignment: Vec<[usize; 2]> = Vec::new();
+    // Fail closed on entries the stored request cannot resolve, naming each
+    // offending key/seat pair: silently dropping them would export (or
+    // bless) a plan that is missing students without any explanation.
+    let mut unresolvable: Vec<String> = Vec::new();
     for student in &state.students {
-        if let Some(seat_id) = &student.seat_id {
-            if let (Some(&student_idx), Some(&seat_idx)) = (
-                student_index.get(&student.student_key),
-                seat_index.get(seat_id),
-            ) {
-                assignment.push([student_idx, seat_idx]);
-            }
+        let Some(seat_id) = &student.seat_id else {
+            continue;
+        };
+        match (
+            student_index.get(&student.student_key),
+            seat_index.get(seat_id),
+        ) {
+            (Some(&student_idx), Some(&seat_idx)) => assignment.push([student_idx, seat_idx]),
+            _ => unresolvable.push(format!("{} -> {}", student.student_key, seat_id)),
         }
+    }
+    if !unresolvable.is_empty() {
+        return Err(AppError::unprocessable(
+            "invalid_export_assignment",
+            format!(
+                "the edited plan references unknown students or seats: {}",
+                unresolvable.join(", ")
+            ),
+        ));
     }
 
     let response = CoreSolveResponse {
@@ -430,6 +456,59 @@ mod tests {
         assert_eq!(
             report["violations"][0]["message_key"],
             "validation.editor_assignment_invalid"
+        );
+    }
+
+    #[test]
+    fn export_missing_solve_request_is_reported_as_eviction_not_missing_draft() {
+        let requests = SolveRequestStore::default();
+        let error = stored_solve_request(&requests, "draft-evicted")
+            .expect_err("a draft without a stored request must not resolve");
+        assert_eq!(error.status, 404);
+        assert!(
+            error.message.contains("was evicted"),
+            "distinct eviction message, got: {}",
+            error.message
+        );
+        assert!(
+            error.message.contains("regenerate the plan"),
+            "actionable guidance, got: {}",
+            error.message
+        );
+        assert!(
+            error.message.contains("draft-evicted"),
+            "names the draft, got: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn stored_solve_request_returns_the_recorded_request() {
+        let requests =
+            SolveRequestStore::new(HashMap::from([("draft-1".to_string(), fixed_request())]));
+        let stored = stored_solve_request(&requests, "draft-1").expect("request is present");
+        assert_eq!(stored, fixed_request());
+    }
+
+    #[test]
+    fn export_names_unresolvable_student_seat_pairs_instead_of_dropping_them() {
+        // Unknown seat id for a known student...
+        let mut state = editor_state("A1", "ZZ");
+        // ...and an unknown student key on an otherwise valid seat.
+        state.students[0].student_key = "GHOST".to_string();
+        let error = editor_solve_response(&fixed_request(), &state)
+            .expect_err("unresolvable entries must fail closed with details");
+        assert_eq!(error.status, 422);
+        assert_eq!(error.code, "invalid_export_assignment");
+        assert!(
+            error.message.contains("S2 -> ZZ"),
+            "names the bad seat pair, got: {}",
+            error.message
+        );
+        assert!(
+            error.message.contains("GHOST -> A1"),
+            "names the unknown student pair, got: {}",
+            error.message
         );
     }
 }

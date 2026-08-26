@@ -9,7 +9,9 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    sourcemap: true,
+    // No source maps in production bundles; `vite dev` and vitest are
+    // unaffected.
+    sourcemap: false,
   },
   server: {
     proxy: {

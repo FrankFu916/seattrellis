@@ -1,7 +1,10 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
+  "$schema": "./gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the main SeatTrellis window. The React workbench talks to the Rust backend over loopback HTTP, so no additional Tauri IPC permissions are required.",
+  "description": "Default capability for the main SeatTrellis window. The workbench page is served by the loopback backend (WebviewUrl::External), which Tauri classifies as a remote origin, so the file-bridge commands must be granted for that origin explicitly. Byte-moving commands additionally verify dialog-granted paths in Rust.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": ["core:default", "allow-workbench-files"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  }
 }

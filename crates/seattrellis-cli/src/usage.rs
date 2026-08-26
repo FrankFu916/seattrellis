@@ -72,7 +72,8 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("solve"));
     out.push_str("    Solve a seating problem and print a summary of the result.\n    ");
     out.push_str(&styler.cyan("export"));
-    out.push_str("   Render a solved seating plan as SVG, HTML, PNG, or PDF.\n    ");
+    out.push_str("   Render a solved seating plan as SVG, HTML, PNG, PDF, XLSX, DOCX,\n    ");
+    out.push_str("or PPTX.\n    ");
     out.push_str(&styler.cyan("help"));
     out.push_str("     Show this help.\n\n");
 
@@ -263,6 +264,14 @@ pub fn render_usage(styler: &Styler) -> String {
         " <f>       project-export only: svg|html|print-html|png|pdf|xlsx|docx|pptx\n      ",
     );
     out.push_str("        (default: the project's default_export_format).\n      ");
+    out.push_str(&styler.bold("--template"));
+    out.push_str(" <t>    project-export only: teacher (default; real names, ids and\n      ");
+    out.push_str("        detail fields) or public (anonymized wall copy: no names,\n      ");
+    out.push_str("        no student ids, no height/vision).\n      ");
+    out.push_str(&styler.bold("--orientation"));
+    out.push_str(" <o> project-export only: portrait|landscape|auto\n      ");
+    out.push_str("        (default auto: print-html prints landscape A4, other\n      ");
+    out.push_str("        formats portrait).\n      ");
     out.push_str(&styler.bold("--candidate"));
     out.push_str(" <id>   project-export only: candidate ID for a candidate-set\n      ");
     out.push_str("        snapshot (default: recommended).\n      ");
@@ -296,7 +305,7 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("seattrellis_cli"));
     out.push(' ');
     out.push_str(&styler.cyan("export"));
-    out.push_str(" --problem <problem.json> --solution <result.json> \\\n                           --format <svg|html|png|pdf> --output <file>\n\n");
+    out.push_str(" --problem <problem.json> --solution <result.json> \\\n                           --format <svg|html|png|pdf|xlsx|docx|pptx> --output <file>\n\n");
     out.push_str("      ");
     out.push_str(&styler.bold("--problem"));
     out.push_str(
@@ -311,8 +320,14 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(&styler.cyan("html"));
     out.push_str(", ");
     out.push_str(&styler.cyan("png"));
-    out.push_str(", or ");
+    out.push_str(", ");
     out.push_str(&styler.cyan("pdf"));
+    out.push_str(", ");
+    out.push_str(&styler.cyan("xlsx"));
+    out.push_str(", ");
+    out.push_str(&styler.cyan("docx"));
+    out.push_str(", or ");
+    out.push_str(&styler.cyan("pptx"));
     out.push_str(". Required.\n      ");
     out.push_str(&styler.bold("--output"));
     out.push_str(" <file>    Write the rendered plan to <file>. Required.\n\n");

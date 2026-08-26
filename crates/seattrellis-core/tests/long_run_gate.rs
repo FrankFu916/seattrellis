@@ -182,7 +182,33 @@ fn cancellation_is_prompt_and_a_fresh_solve_still_works() {
     // A solve running on another thread must observe the cancel within a
     // bounded latency (plan §6.1 "可取消"; §11.9 "取消正在运行的 solve 后
     // 再次 solve").
-    let request = planted_request(80, 0xCA11);
+    //
+    // The planted request with empty soft rules solves in well under the
+    // 20 ms cancel delay on fast release builds, so the cancel would land
+    // after completion and the race would report `Solved`. Use a
+    // soft-optimization-heavy request instead: it keeps the solver busy
+    // well past the cancel point on every supported machine, so the
+    // assertion actually measures cancellation latency.
+    let mut request = planted_request(80, 0xCA11);
+    let scores: Vec<f64> = (0..80usize)
+        .map(|index| 40.0 + (index as f64 * 7.3) % 59.0)
+        .collect();
+    let students: Vec<Value> = (0..80usize)
+        .map(|index| {
+            json!({
+                "key": format!("S{index:03}"),
+                "display_name": format!("Student {index}"),
+                "score": scores[index],
+            })
+        })
+        .collect();
+    request["students"] = json!(students);
+    request["rules"]["soft"] = json!({
+        "score_position": {"enabled": true, "weight": 15, "direction": "high_back"},
+        "height_back": {"enabled": true, "weight": 5},
+        "score_distribution": {"enabled": true, "weight": 8},
+        "randomize": {"enabled": true, "weight": 2},
+    });
     let control = SolveControl::new();
     let cancel_flag = control.clone();
     let request_clone = request.clone();

@@ -52,3 +52,4 @@ docs-internal/
 # already covered by the global `build/` entry above.
 website/.docusaurus/
 website/node_modules/
+/release-v2.0.0/

@@ -102,8 +102,9 @@ entire matrix after every small change.
       `SHA256SUMS` attachment.
 - [ ] For a desktop release, run `Tauri desktop bundles` (or publish a
       `desktop-v*` preview release) and inspect the unsigned
-      `.app`/`.dmg`, `.msi`/NSIS, and `.deb` assets before enabling signing or
-      notarisation. Attach `DESKTOP-SHA256SUMS` alongside the bundles.
+      `.app`/`.dmg`, `.msi`/NSIS, and `.deb` assets (releases ship unsigned by
+      owner decision; integrity is attested via `DESKTOP-SHA256SUMS`).
+      Attach `DESKTOP-SHA256SUMS` alongside the bundles.
 - [ ] Publish the CLI to crates.io and verify a clean
       `cargo install seattrellis_cli` plus one validate/solve/export smoke
       workflow.

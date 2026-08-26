@@ -57,7 +57,9 @@ seattrellis_cli export --problem problem.json --solution plan.json --format png 
 
 ## 从 v1 迁移
 
-v1 的项目文件与工件可在 v2 工作台或通过 `seattrellis_cli schema-migrate` 自动迁移，每次迁移前自动备份。
+v1 的学生名单、教室布局和 project 文件可在 v2 工作台或通过 `seattrellis_cli
+schema-migrate` 迁移到 v2，覆盖前自动创建备份；snapshot、candidate set 等其他
+产物暂无迁移步骤，传入会明确报错。
 
 ## 文档
 

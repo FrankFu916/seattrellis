@@ -161,7 +161,7 @@ impl SolveStatus {
 /// without a sound proof the honest status is `Unknown` (M1-03).
 pub fn classify_solve_error(message: &str) -> SolveStatus {
     let low = message.to_ascii_lowercase();
-    const INVALID_TOKENS: [&str; 18] = [
+    const INVALID_TOKENS: [&str; 21] = [
         "invalid",
         "unknown",
         "require",
@@ -174,6 +174,15 @@ pub fn classify_solve_error(message: &str) -> SolveStatus {
         "unrecognized",
         "unsupported",
         "conflicting",
+        // Validation phrasing used by `validate_solve_request` and the
+        // repair/editing parsers ("students must be empty or match
+        // student_count", "edges must reference two different known
+        // seats", "seat positions must contain finite numbers", ...).
+        // Every non-test "must be/reference/contain" message in this
+        // crate describes rejected input, never an internal fault.
+        "must be",
+        "must reference",
+        "must contain",
         // CLI/io surface messages: unreadable or malformed inputs are
         // InvalidInput (exit 2), not internal failures (exit 70) — the
         // CLI arg sweep (ledger §19.33) pinned these classes.
@@ -356,7 +365,14 @@ pub(crate) fn solve_problem_internal(
     excluded_assignments: &[Vec<usize>],
 ) -> Result<CoreSolveResponse, String> {
     let response = solve_problem_unchecked(request, cancellation, excluded_assignments)?;
-    validate_solve_response_consistency(request, &response)?;
+    // Every product leaving the core passes the independent validators:
+    // Solved responses clear the full consumer-side `validate_solve_response`,
+    // every other status must carry the exact non-Solved shape.
+    if response.status == SolveStatus::Solved {
+        validate_solve_response(request, &response)?;
+    } else {
+        validate_non_solved_response_shape(request, &response)?;
+    }
     Ok(response)
 }
 
@@ -695,13 +711,12 @@ pub fn validate_solve_response(
     .map_err(|error| format!("solve response failed independent validation: {error}"))
 }
 
-fn validate_solve_response_consistency(
+/// Shape check for the non-Solved statuses (Solved responses take the full
+/// [`validate_solve_response`] path instead).
+fn validate_non_solved_response_shape(
     request: &CoreSolveRequest,
     response: &CoreSolveResponse,
 ) -> Result<(), String> {
-    if response.status == SolveStatus::Solved {
-        return validate_solve_response(request, response);
-    }
     validate_solve_request(request)?;
     if response.api_version != NATIVE_API_VERSION {
         return Err(format!(
@@ -737,9 +752,122 @@ fn validate_solve_response_consistency(
 }
 
 pub fn solve_problem_json(request_json: &str) -> Result<String, String> {
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = parse_core_solve_request(request_json)?;
     let response = solve_problem(&request)?;
     serde_json::to_string(&response)
         .map_err(|error| format!("could not serialize native solve response: {error}"))
+}
+
+/// Soft-rule names the cost functions actually read (`models/rules.py`
+/// `SoftRules`). Any other name in `rules.soft` would be silently dropped by
+/// serde, which changes the plan the teacher asked for, so requests carrying
+/// one are rejected instead.
+pub(crate) const KNOWN_SOFT_RULES: [&str; 10] = [
+    "vision_front",
+    "height_back",
+    "randomize",
+    "score_balance",
+    "score_position",
+    "score_distribution",
+    "mentor_pairing",
+    "fair_rotation",
+    "avoid_recent_neighbors",
+    "cooling",
+];
+
+/// Parse a native solve request document with the two contract guards serde
+/// cannot express on [`CoreSolveRequest`]:
+///
+/// 1. a non-empty `rules.hard` block is rejected — the string-reference hard
+///    rules inside it are never consumed by the native path (the solver only
+///    reads the top-level index-pair form and `rules.groups`), so accepting
+///    the request would report `hard_constraints_satisfied: true` while
+///    ignoring the teacher's constraints;
+/// 2. unrecognized `rules.soft` rule names are rejected (docs/rules.zh.md:
+///    "未识别的 soft rule 名称也会报错").
+pub(crate) fn parse_core_solve_request(request_json: &str) -> Result<CoreSolveRequest, String> {
+    let value: serde_json::Value = serde_json::from_str(request_json)
+        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    if let Some(hard) = value.get("rules").and_then(|rules| rules.get("hard")) {
+        if json_value_has_data(hard) {
+            return Err(
+                "unsupported field rules.hard: native solve requests must express hard \
+                 constraints in the top-level index-pair form (fixed_seats / must_be_adjacent \
+                 / cannot_be_adjacent / min_distance); rules.hard is not consumed by \
+                 the native solve path"
+                    .to_string(),
+            );
+        }
+    }
+    if let Some(soft) = value
+        .get("rules")
+        .and_then(|rules| rules.get("soft"))
+        .and_then(serde_json::Value::as_object)
+    {
+        let unknown: Vec<&str> = soft
+            .keys()
+            .map(String::as_str)
+            .filter(|name| !KNOWN_SOFT_RULES.contains(name))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(format!(
+                "unrecognized soft rule name(s) in rules.soft: {}; supported soft rules: {}",
+                unknown.join(", "),
+                KNOWN_SOFT_RULES.join(", ")
+            ));
+        }
+    }
+    serde_json::from_value(value).map_err(|error| format!("invalid native solve request: {error}"))
+}
+
+/// Does this JSON value carry any actual data (as opposed to being null, an
+/// empty object/array, or a container of only empty values)?
+fn json_value_has_data(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Null => false,
+        serde_json::Value::Object(object) => object.values().any(json_value_has_data),
+        serde_json::Value::Array(items) => items.iter().any(json_value_has_data),
+        _ => true,
+    }
+}
+
+#[cfg(test)]
+mod exit_classification_tests {
+    use super::*;
+
+    #[test]
+    fn validation_phrasing_classifies_as_invalid_input_not_internal() {
+        let messages = [
+            "students must be empty or match student_count",
+            "student_scores must be empty or match student_count",
+            "edges must reference two different known seats",
+            "seat positions must contain finite numbers",
+            "min_distance values must be positive and finite",
+            "student scores must be finite numbers",
+            "layout must describe at least as many seats as seat_positions",
+        ];
+        for message in messages {
+            assert_eq!(
+                classify_solve_error(message),
+                SolveStatus::InvalidInput,
+                "misclassified: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn genuine_internal_faults_stay_internal() {
+        let messages = [
+            "candidate generation failed: solver produced no plans",
+            "panicked while ranking candidates",
+            "solver store lock poisoned",
+        ];
+        for message in messages {
+            assert_eq!(
+                classify_solve_error(message),
+                SolveStatus::InternalError,
+                "misclassified: {message}"
+            );
+        }
+    }
 }

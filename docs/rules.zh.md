@@ -49,7 +49,9 @@ seattrellis_cli project-validate --project my-class/seattrellis.project.json --s
 
 ## soft 规则
 
-soft 规则是偏好，不保证一定满足。每条规则包含 `enabled` 和非负整数 `weight`。负数权重会报错，未识别的 soft rule 名称也会报错。
+soft 规则是偏好，不保证一定满足。每条规则包含 `enabled` 和非负整数 `weight`
+（取值范围 0–1,000,000）。负数权重会报错，超过 1,000,000 的权重也会报错，
+未识别的 soft rule 名称同样会报错。
 
 ```json
 {

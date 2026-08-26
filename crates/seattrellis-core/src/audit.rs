@@ -17,7 +17,7 @@ use crate::evaluation::{
     assigned_students_are_adjacent, assigned_students_meet_distance, build_graph_distance_matrix,
     build_index_adjacency,
 };
-use crate::solver::{resolve_group_rules, CoreSolveRequest};
+use crate::solver::{parse_core_solve_request, resolve_group_rules, CoreSolveRequest};
 /// The UI consumes this to explain a candidate: which hard rules were
 /// checked and satisfied, each soft objective's raw loss / weighted cost,
 /// and warnings for rules that could not participate (missing data).
@@ -32,8 +32,7 @@ pub fn audit_report_json(request_json: &str, assignment: &[[usize; 2]]) -> Resul
     use crate::models::effective_neighbor_rule;
     use crate::objectives::evaluate_soft_objectives;
     use crate::rng::SplitMix64;
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
     let resolved = resolve_group_rules(&request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
@@ -338,8 +337,7 @@ pub fn diagnostics_report_json(
     use serde_json::{json, Value};
 
     use crate::objectives::evaluate_soft_objectives;
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
     let resolved = resolve_group_rules(&request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);

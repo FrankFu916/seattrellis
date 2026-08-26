@@ -3,15 +3,19 @@
  *
  * The workbench runs in two environments that differ in how files are
  * picked:
- *  - Tauri desktop: native dialogs via `tauri-plugin-dialog` + two small
- *    shell commands (`read_user_file` / `write_user_file`);
+ *  - Tauri desktop: the shell's wrapper commands run the native dialogs on
+ *    the Rust side (`pick_open_file` / `pick_save_file`) and grant the chosen
+ *    path for this session; `read_user_file` / `write_user_file` then move
+ *    the bytes, but only for granted paths;
  *  - Browser: `input[type=file]` + HTML5 drag-and-drop + the backend's
  *    trusted-root reader for typed paths.
  * (The legacy pywebview shell bridge from v1 was retired with M6.)
  *
  * Security red line (PD-D14): typed paths are relative to the backend's
  * trusted root only — absolute paths, `..` traversal and drive prefixes
- * are rejected client-side first, then again by the backend.
+ * are rejected client-side first, then again by the backend. The renderer
+ * never picks an absolute path itself; it can only use what a native dialog
+ * returned through the shell.
  */
 
 /** True when running inside the Tauri WebView (bridge injected by the shell). */
@@ -67,8 +71,10 @@ export function isTrustedRelativePath(raw: string): boolean {
 
 /**
  * Open the native file dialog (Tauri only) and return the chosen file as a
- * `File`, or `null` when the user cancels. Bytes cross the bridge through
- * the shell's `read_user_file` command; the path never leaves the shell.
+ * `File`, or `null` when the user cancels. The dialog runs inside the shell's
+ * `pick_open_file` command, which registers the chosen path; the bytes then
+ * cross the bridge through `read_user_file`, which accepts granted paths
+ * only. A raw path never crosses from the renderer to the shell.
  */
 export async function pickFileWithDialog(
   extensions: string[],
@@ -77,16 +83,14 @@ export async function pickFileWithDialog(
   if (!isTauriDesktop()) {
     return null;
   }
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const selected = await open({
-    multiple: false,
-    directory: false,
-    filters: [{ name: label, extensions }],
-  });
+  const { invoke } = await import("@tauri-apps/api/core");
+  const selected = (await invoke("pick_open_file", {
+    extensions,
+    label,
+  })) as string | null;
   if (typeof selected !== "string" || !selected) {
     return null;
   }
-  const { invoke } = await import("@tauri-apps/api/core");
   const bytes = (await invoke("read_user_file", {
     path: selected,
   })) as number[];
@@ -106,12 +110,13 @@ export async function saveBlobWithDialog(
   if (!isTauriDesktop()) {
     return "unavailable";
   }
-  const { save } = await import("@tauri-apps/plugin-dialog");
-  const path = await save({ defaultPath: filename });
+  const { invoke } = await import("@tauri-apps/api/core");
+  const path = (await invoke("pick_save_file", {
+    filename,
+  })) as string | null;
   if (typeof path !== "string" || !path) {
     return "cancelled";
   }
-  const { invoke } = await import("@tauri-apps/api/core");
   const bytes = new Uint8Array(await blob.arrayBuffer());
   await invoke("write_user_file", { path, content: Array.from(bytes) });
   return "saved";

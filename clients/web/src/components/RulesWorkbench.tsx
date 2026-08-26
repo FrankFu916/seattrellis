@@ -109,18 +109,18 @@ export function RulesWorkbench({
         }
       })
       .catch((error: unknown) => {
-        // The builder needs the local service; the cards still work.
+        // The builder needs the local service; the cards still work. The
+        // transport detail stays on the console.
+        console.error("Rule templates could not be loaded", error);
         if (current) {
           setTemplates([]);
-          setTemplatesError(
-            error instanceof Error ? error.message : String(error),
-          );
+          setTemplatesError(t("rules.templatesUnavailable"));
         }
       });
     return () => {
       current = false;
     };
-  }, []);
+  }, [t]);
 
   const snapshot = useMemo(
     () =>
@@ -141,10 +141,9 @@ export function RulesWorkbench({
     fetchRuleTemplates()
       .then((result) => setTemplates(result.templates))
       .catch((error: unknown) => {
+        console.error("Rule templates could not be loaded", error);
         setTemplates([]);
-        setTemplatesError(
-          error instanceof Error ? error.message : String(error),
-        );
+        setTemplatesError(t("rules.templatesUnavailable"));
       });
   }
 

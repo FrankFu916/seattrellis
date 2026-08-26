@@ -1,6 +1,6 @@
 [package]
 name = "seattrellis-export"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ categories = ["command-line-utilities", "science"]
 [dependencies]
 fontdue = "0.9"
 flate2 = "1"
-seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0-rc.2" }
+seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"

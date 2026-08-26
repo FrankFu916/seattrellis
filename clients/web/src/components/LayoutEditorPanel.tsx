@@ -5,7 +5,6 @@ import {
   createLayoutDraft,
   deleteLayoutDraft,
   dispatchLayoutCommand,
-  RosterApiError,
 } from "../api/client";
 import type {
   CustomRoomSettings,
@@ -16,6 +15,7 @@ import type {
   LayoutStateResponse,
 } from "../api/types";
 import { buildGridLayout, InvalidAdvancedSettingError } from "../domain/generation";
+import { describeApiError } from "../domain/errorMessages";
 import type { Translate } from "../i18n/messages";
 
 type LayoutEditorPanelProps = {
@@ -38,12 +38,12 @@ function commandId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof RosterApiError || error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
+/**
+ * Carries an already-localized sentence through a catch block untouched —
+ * used where the failure cause is known (bad JSON, invalid room settings)
+ * and the raw error text must not leak into the panel.
+ */
+class LocalizedError extends Error {}
 
 function parseLayoutJson(source: string): Record<string, unknown> | undefined {
   const text = source.trim();
@@ -101,15 +101,15 @@ export function LayoutEditorPanel({
       let sourceLayout: Record<string, unknown> | undefined;
       try {
         sourceLayout = parseLayoutJson(roomSettings.layoutJson);
-      } catch (caught) {
-        throw new Error(t("layoutEditor.invalidJson", { message: errorMessage(caught) }));
+      } catch {
+        throw new LocalizedError(t("layoutEditor.fileInvalid"));
       }
       if (!sourceLayout) {
         try {
           sourceLayout = buildGridLayout(roomSettings);
         } catch (caught) {
           if (caught instanceof InvalidAdvancedSettingError) {
-            throw new Error(t("room.invalid"));
+            throw new LocalizedError(t("room.invalid"));
           }
           throw caught;
         }
@@ -121,7 +121,11 @@ export function LayoutEditorPanel({
       setLayout(state);
       setSelected(null);
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(
+        caught instanceof LocalizedError
+          ? caught.message
+          : describeApiError(caught, t, "layoutEditor.actionFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -155,7 +159,7 @@ export function LayoutEditorPanel({
           : null,
       );
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(describeApiError(caught, t, "layoutEditor.actionFailed"));
     } finally {
       setBusy(null);
     }
@@ -179,7 +183,7 @@ export function LayoutEditorPanel({
       });
       setStatus(t("layoutEditor.saved"));
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(describeApiError(caught, t, "layoutEditor.actionFailed"));
     } finally {
       setBusy(null);
     }

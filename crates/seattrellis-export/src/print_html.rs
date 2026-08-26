@@ -248,11 +248,22 @@ fn html_header(grid: &SeatingGrid, options: &PrintHtmlOptions) -> String {
     if let Some(period) = &options.period_label {
         meta.push(period.clone());
     }
-    meta.push(format!(
-        "{} students / {} seats",
-        grid_student_count(grid),
-        grid.cells.len()
-    ));
+    // Mirror the SVG/HTML subtitle wording so every format shows the same
+    // language for the same locale (render.rs `is_zh_locale`).
+    let counts = if crate::render::is_zh_locale(&options.locale) {
+        format!(
+            "{} 名学生 · {} 个座位",
+            grid_student_count(grid),
+            grid.cells.len()
+        )
+    } else {
+        format!(
+            "{} students / {} seats",
+            grid_student_count(grid),
+            grid.cells.len()
+        )
+    };
+    meta.push(counts);
     format!(
         r#"<div class="print-header"><span class="cls">{title} 座位表</span>
 <span class="meta">{meta}</span></div>"#,

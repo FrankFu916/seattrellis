@@ -17,11 +17,10 @@ use crate::repair::{
     parse_snapshot_assignments, HistoryStudentAccumulator, PAIR_REPORT_RECENT_LOOKBACK,
     REPORT_PAIR_RELATIONS, REPORT_POSITION_CATEGORIES,
 };
-use crate::solver::CoreSolveRequest;
+use crate::solver::parse_core_solve_request;
 
 pub fn history_report_json(request_json: &str, snapshots_json: &str) -> Result<String, String> {
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
     let students = effective_students(&request);
     let layout = effective_layout(&request);
@@ -249,8 +248,7 @@ pub fn pair_report_json(
     if within_distance <= 0 {
         return Err("invalid within_distance: expected a positive value".to_string());
     }
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
     let students = effective_students(&request);
     let student_names: HashMap<&str, Option<String>> = students

@@ -4,7 +4,7 @@
 //! `_minimum_cost_bipartite_pairs`, plus the adjacency helpers
 //! (`build_adjacency_edges`, `normalize_edge`) and `student_pair_key`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::models::*;
 
@@ -39,7 +39,10 @@ pub struct SoftObjectiveContext {
 #[derive(Debug, Clone, Default)]
 pub struct SoftObjectiveEvaluation {
     pub losses: HashMap<String, Option<f64>>,
-    pub weighted_costs: HashMap<String, f64>,
+    /// Key-sorted map: `total_cost` sums f64 values, and floating-point
+    /// addition is order-sensitive, so the summation order must not depend
+    /// on per-instance hash seeds (determinism gate B).
+    pub weighted_costs: BTreeMap<String, f64>,
     pub details: HashMap<String, serde_json::Value>,
     pub warnings: Vec<String>,
 }
@@ -192,14 +195,24 @@ pub fn evaluate_soft_objectives(
     rules: &RuleSet,
 ) -> SoftObjectiveEvaluation {
     let mut losses: HashMap<String, Option<f64>> = HashMap::new();
-    let mut weighted_costs: HashMap<String, f64> = HashMap::new();
+    let mut weighted_costs: BTreeMap<String, f64> = BTreeMap::new();
     let mut details: HashMap<String, serde_json::Value> = HashMap::new();
+
+    // Deterministic traversal (determinism gate B): every per-student
+    // collection below feeds a float mean/RMS, and f64 addition is
+    // order-sensitive, so the assignment is walked in sorted-key order
+    // instead of HashMap order.
+    let mut assigned: Vec<(&str, &str)> = assignment
+        .iter()
+        .map(|(student_key, seat_id)| (student_key.as_str(), seat_id.as_str()))
+        .collect();
+    assigned.sort_unstable();
 
     // --- score_position ----------------------------------------------------
     let position_rule = &rules.soft.score_position;
     if position_rule.enabled && position_rule.weight != 0 {
         let mut errors: Vec<f64> = Vec::new();
-        for (student_key, seat_id) in assignment {
+        for (student_key, seat_id) in assigned.iter().copied() {
             let score_position = context.score_percentiles.get(student_key);
             let row_position = context.seat_row_percentiles.get(seat_id);
             if let (Some(score_position), Some(row_position)) = (score_position, row_position) {
@@ -239,8 +252,10 @@ pub fn evaluate_soft_objectives(
     // --- score_distribution ------------------------------------------------
     let distribution_rule = &rules.soft.score_distribution;
     if distribution_rule.enabled && distribution_rule.weight != 0 {
-        let mut bucket_values: HashMap<String, Vec<f64>> = HashMap::new();
-        for (student_key, seat_id) in assignment {
+        // BTreeMap: the between-bucket RMS and the concatenated mean below
+        // accumulate floats in bucket-iteration order, which must be stable.
+        let mut bucket_values: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        for (student_key, seat_id) in assigned.iter().copied() {
             let percentile = context.score_percentiles.get(student_key);
             let bucket = context.distribution_buckets.get(seat_id);
             if let (Some(percentile), Some(bucket)) = (percentile, bucket) {
@@ -367,7 +382,12 @@ pub fn evaluate_soft_objectives(
     }
 }
 
-fn add_weighted_cost(costs: &mut HashMap<String, f64>, name: &str, loss: Option<f64>, weight: i32) {
+fn add_weighted_cost(
+    costs: &mut BTreeMap<String, f64>,
+    name: &str,
+    loss: Option<f64>,
+    weight: i32,
+) {
     if let Some(loss) = loss {
         costs.insert(name.to_string(), loss * weight as f64 * 100.0);
     }

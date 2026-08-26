@@ -1,11 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { EditorState } from "./api/types";
+import { RosterApiError } from "./api/client";
 import {
   DEFAULT_EXPORT_FORMAT,
   DEFAULT_EXPORT_TEMPLATE,
   editorToPlan,
+  getInitialLocale,
   isEditableTarget,
+  isRevisionConflict,
 } from "./App";
 
 describe("export defaults", () => {
@@ -83,5 +86,63 @@ describe("isEditableTarget (C2: native text undo must win in form controls)", ()
     expect(isEditableTarget(document.createElement("button"))).toBe(false);
     expect(isEditableTarget(document.createElement("svg"))).toBe(false);
     expect(isEditableTarget(null)).toBe(false);
+  });
+});
+
+function stubEnvironment(stored: string | null, language: string) {
+  vi.stubGlobal("localStorage", { getItem: () => stored });
+  vi.stubGlobal("navigator", { language });
+}
+
+describe("getInitialLocale (W2: first start follows the system language)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("prefers an explicit choice recorded in localStorage", () => {
+    stubEnvironment("en", "zh-CN");
+    expect(getInitialLocale()).toBe("en");
+
+    stubEnvironment("zh-CN", "en-US");
+    expect(getInitialLocale()).toBe("zh-CN");
+  });
+
+  it("falls back to the system language when nothing is stored", () => {
+    stubEnvironment(null, "zh-CN");
+    expect(getInitialLocale()).toBe("zh-CN");
+
+    stubEnvironment(null, "zh-TW");
+    expect(getInitialLocale()).toBe("zh-CN");
+
+    stubEnvironment(null, "en-US");
+    expect(getInitialLocale()).toBe("en");
+
+    stubEnvironment(null, "fr");
+    expect(getInitialLocale()).toBe("en");
+  });
+
+  it("ignores an unrecognized stored value and uses the system language", () => {
+    stubEnvironment("fr", "zh-CN");
+    expect(getInitialLocale()).toBe("zh-CN");
+  });
+});
+
+describe("isRevisionConflict (W8: stale editor revision)", () => {
+  it("detects the stable conflict code regardless of status", () => {
+    const error = new RosterApiError(400, "editor_revision_conflict", "stale");
+    expect(isRevisionConflict(error)).toBe(true);
+  });
+
+  it("detects a 409 answer from the editor command endpoint", () => {
+    const error = new RosterApiError(409, "request_failed", "stale revision");
+    expect(isRevisionConflict(error)).toBe(true);
+  });
+
+  it("ignores unrelated API failures", () => {
+    expect(
+      isRevisionConflict(new RosterApiError(400, "bad_request", "nope")),
+    ).toBe(false);
+    expect(isRevisionConflict(new Error("boom"))).toBe(false);
   });
 });

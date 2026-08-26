@@ -57,8 +57,10 @@ impl SplitMix64 {
 
 impl RandInt for SplitMix64 {
     fn randint(&mut self, lo: i32, hi: i32) -> i32 {
-        let range = (hi - lo + 1) as u64;
-        lo + (self.next_u64() % range) as i32
+        // Widen before subtracting: `hi - lo + 1` overflows i32 when the
+        // bounds span the full range (e.g. lo = i32::MIN, hi = i32::MAX).
+        let range = i64::from(hi) - i64::from(lo) + 1;
+        (i64::from(lo) + (self.next_u64() % range as u64) as i64) as i32
     }
 }
 
@@ -196,6 +198,18 @@ mod tests {
         let mut sm = SplitMix64::new(0);
         let got: Vec<i32> = (0..12).map(|_| sm.randint(0, 100)).collect();
         assert_eq!(got, vec![67, 26, 88, 12, 14, 87, 73, 81, 18, 89, 100, 32]);
+    }
+
+    #[test]
+    fn splitmix64_randint_survives_full_i32_range() {
+        // (hi - lo + 1) used to overflow i32 for the full span (gate L-2).
+        let mut sm = SplitMix64::new(0);
+        let values: Vec<i32> = (0..256).map(|_| sm.randint(i32::MIN, i32::MAX)).collect();
+        assert!(values.iter().any(|&value| value < 0));
+        assert!(values.iter().any(|&value| value >= 0));
+        assert_eq!(sm.randint(-5, -5), -5);
+        assert_eq!(sm.randint(i32::MIN, i32::MIN), i32::MIN);
+        assert_eq!(sm.randint(i32::MAX, i32::MAX), i32::MAX);
     }
 
     #[test]

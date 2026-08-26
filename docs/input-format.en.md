@@ -20,6 +20,18 @@ seattrellis_cli project-validate --project my-class/seattrellis.project.json
 
 Save legacy `.xls` files as `.xlsx` or CSV first.
 
+### Excel (.xlsx / .xlsm) import boundaries
+
+Excel import reads the workbook's **first worksheet** under these bounds:
+
+- Supported cell values: shared strings, inline strings, formula cached results
+  (`str`), numbers, and booleans (with cached values); a formula cell
+  **without a cached value is an error**;
+- Text cells are read as text, so leading zeros such as `001` are preserved;
+- Limits: files up to 20 MiB (decompressed XML parts are capped the same way),
+  up to 10,000 data rows, and up to 256 columns; oversized or encrypted
+  workbooks fail with an explicit error.
+
 At least one of `student_id` or `name` is required. Other fields are optional:
 
 | Field | Description |
@@ -191,3 +203,12 @@ performs scenario data-missing checks (history/score/height/vision warnings)
 only; it does not merge preset rules.
 
 See [rules.en.md](rules.en.md) for rules and preset behavior.
+
+Note: the native solve path consumes only the **top-level index-pair form** of
+hard constraints — `fixed_seats` / `must_be_adjacent` / `cannot_be_adjacent` /
+`min_distance`, with students referenced by list index (see the problem.json
+example in the [quick start](quickstart.en.md)). The string-reference form in
+`rules.hard` is not consumed by the native path; a non-empty `rules.hard`
+block is rejected with an explicit error pointing at the top-level form. The
+workbench/server resolves the string form into top-level index pairs before
+generating a problem.

@@ -196,6 +196,16 @@ pub struct ProjectArgs {
     /// `project-export` only: candidate ID for a candidate-set snapshot
     /// (oracle `--candidate`; default: the project's `default_candidate`).
     pub candidate: Option<String>,
+    /// `project-export` only: `teacher` (default; real names, ids and detail
+    /// fields) or `public` (anonymized wall copy: no names, no student ids,
+    /// no height/vision). J+V1: the wall-print path must be able to opt out
+    /// of full PII.
+    pub template: Option<String>,
+    /// `project-export` only: `portrait` | `landscape` | `auto` (default).
+    /// `auto` omits the field entirely so the export layer applies its
+    /// frozen per-format default (print-html → landscape A4, everything
+    /// else portrait).
+    pub orientation: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -786,6 +796,14 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
             takes_value: true,
         },
         Flag {
+            name: "--template",
+            takes_value: true,
+        },
+        Flag {
+            name: "--orientation",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -821,6 +839,24 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
     };
     let report = flag_value(&parsed, "--report")?.map(PathBuf::from);
     let candidate = flag_value(&parsed, "--candidate")?.map(str::to_string);
+    // project-export only (J+V1): template + page orientation. Validated at
+    // the parser boundary so usage errors keep the frozen exit 2.
+    let template = flag_value(&parsed, "--template")?.map(str::to_string);
+    if let Some(raw) = &template {
+        if raw != "teacher" && raw != "public" {
+            return Err(format!(
+                "unknown export template '{raw}' (expected public or teacher)"
+            ));
+        }
+    }
+    let orientation = flag_value(&parsed, "--orientation")?.map(str::to_string);
+    if let Some(raw) = &orientation {
+        if raw != "portrait" && raw != "landscape" && raw != "auto" {
+            return Err(format!(
+                "unknown export orientation '{raw}' (expected portrait, landscape or auto)"
+            ));
+        }
+    }
     let args = ProjectArgs {
         project: PathBuf::from(project),
         seed,
@@ -831,6 +867,8 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
         candidates,
         report,
         candidate,
+        template,
+        orientation,
     };
     Ok(match command {
         "project-info" => Command::ProjectInfo(args),
@@ -1526,6 +1564,27 @@ fn exit_code_for(status: SolveStatus) -> u8 {
     }
 }
 
+/// CLI-side error classification for every command that can end in a
+/// proven-infeasible domain outcome (H: exit codes must not drift per
+/// command). Core's [`classify_solve_error`] only knows input vs internal
+/// faults; these stable message tokens mark outcomes the engine *proved*
+/// infeasible (rotation over all periods / candidate generation with zero
+/// feasible plans) and must map to ProvenInfeasible → exit 3 everywhere.
+fn classify_cli_error(message: &str) -> SolveStatus {
+    const PROVEN_INFEASIBLE_TOKENS: [&str; 2] = [
+        "no feasible rotation plan",
+        "candidate generation did not produce any feasible plan",
+    ];
+    let lowered = message.to_ascii_lowercase();
+    if PROVEN_INFEASIBLE_TOKENS
+        .iter()
+        .any(|token| lowered.contains(token))
+    {
+        return SolveStatus::ProvenInfeasible;
+    }
+    classify_solve_error(message)
+}
+
 fn run_command(command: Command) -> ExitCode {
     match command {
         Command::Help => {
@@ -1565,7 +1624,9 @@ fn run_command(command: Command) -> ExitCode {
             Err(message) => {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::from(2)
+                // Zero feasible candidates is a proven-infeasible outcome
+                // (frozen 3), not invalid input.
+                ExitCode::from(exit_code_for(classify_cli_error(&message)))
             }
         },
         Command::Audit(args) => match commands::run_audit(&args) {
@@ -1699,7 +1760,7 @@ fn run_command(command: Command) -> ExitCode {
             Err(message) => {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::from(exit_code_for(classify_solve_error(&message)))
+                ExitCode::from(exit_code_for(classify_cli_error(&message)))
             }
         },
         Command::ProjectExport(args) => match commands::run_project_export(&args) {
@@ -1715,7 +1776,9 @@ fn run_command(command: Command) -> ExitCode {
             Err(message) => {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::from(2)
+                // "no feasible rotation plan" is a proven-infeasible domain
+                // outcome (frozen 3), not invalid input (2).
+                ExitCode::from(exit_code_for(classify_cli_error(&message)))
             }
         },
         Command::ProjectEdit(args) => match commands::run_project_edit(&args) {
@@ -1763,7 +1826,7 @@ fn run_command(command: Command) -> ExitCode {
             Err(message) => {
                 let styler = Styler::stderr();
                 eprintln!("{}: {message}", styler.red("error"));
-                ExitCode::from(exit_code_for(classify_solve_error(&message)))
+                ExitCode::from(exit_code_for(classify_cli_error(&message)))
             }
         },
         Command::Export(args) => match commands::run_export(&args) {
@@ -2309,6 +2372,117 @@ mod tests {
         );
     }
 
+    #[test]
+    fn proven_infeasible_domain_tokens_exit_3_on_every_command() {
+        // H: the stable infeasibility tokens from project-rotate and
+        // candidates must map to ProvenInfeasible (frozen 3), never 2/70.
+        assert_eq!(
+            exit_code_for(classify_cli_error(
+                "no feasible rotation plan (status ProvenInfeasible, period 1)"
+            )),
+            3
+        );
+        assert_eq!(
+            exit_code_for(classify_cli_error(
+                "candidate generation failed: candidate generation did not produce any feasible plan"
+            )),
+            3
+        );
+        // The input/internal classification underneath stays intact.
+        assert_eq!(
+            exit_code_for(classify_cli_error("cannot read 'x': no such file")),
+            2
+        );
+        assert_eq!(exit_code_for(classify_cli_error("solver panicked")), 70);
+    }
+
+    #[test]
+    fn infeasible_inputs_exit_proven_infeasible_across_commands() {
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-infeasible-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // A valid but provably infeasible instance: two students, two
+        // adjacent seats, and a hard rule forbidding them to sit together.
+        let problem = dir.join("problem.json");
+        std::fs::write(
+            &problem,
+            r#"{"api_version":2,"student_count":2,"seat_positions":[[0.0,0.0],[1.0,0.0]],"edges":[[0,1]],"fixed_seats":[],"must_be_adjacent":[],"cannot_be_adjacent":[[0,1]],"min_distance":[],"seed":7,"students":[{"key":"1"},{"key":"2"}],"layout":{"layout_id":"l","name":"Room","seats":[{"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},{"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true}],"adjacency":{"edges":[["R1C1","R1C2"]]}}}"#,
+        )
+        .unwrap();
+
+        // candidates: zero feasible plans -> the stable token -> exit 3.
+        let error = commands::run_candidates(&CandidatesArgs {
+            problem: problem.clone(),
+            count: 5,
+            latest_snapshot: None,
+        })
+        .expect_err("an infeasible problem cannot yield candidates");
+        assert!(
+            error.contains("candidate generation did not produce any feasible plan"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(exit_code_for(classify_cli_error(&error)), 3);
+
+        // The same instance as a project workspace.
+        std::fs::write(dir.join("students.csv"), "id,name\n1,A\n2,B\n").unwrap();
+        std::fs::write(
+            dir.join("layout.json"),
+            r#"{"layout_id":"l","name":"Room","seats":[
+                {"seat_id":"R1C1","row":1,"col":1,"x":0.0,"y":0.0,"enabled":true},
+                {"seat_id":"R1C2","row":1,"col":2,"x":1.0,"y":0.0,"enabled":true}
+            ],"adjacency":{"edges":[["R1C1","R1C2"]]}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("rules.json"),
+            r#"{"seed":7,"hard":{"cannot_be_adjacent":[["1","2"]]}}"#,
+        )
+        .unwrap();
+        commands::run_project_init(&ProjectInitArgs { dir: dir.clone() }).unwrap();
+        let project = dir.join("seattrellis.project.json");
+
+        // project-solve reports the frozen status directly (already 3).
+        let status = commands::run_project_solve(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: None,
+            output: None,
+            snapshot: None,
+            strict: false,
+            candidates: Some(1),
+            report: None,
+            candidate: None,
+            template: None,
+            orientation: None,
+        })
+        .expect("project-solve returns the domain status");
+        assert_eq!(status, SolveStatus::ProvenInfeasible);
+        assert_eq!(exit_code_for(status), 3);
+
+        // project-rotate turns the same outcome into an Err; the token must
+        // classify as ProvenInfeasible (previously drifted to exit 2).
+        let error = commands::run_project_rotate(&ProjectRotateArgs {
+            project,
+            periods: 2,
+            seed: None,
+            output: Some(dir.join("rotation.json")),
+        })
+        .expect_err("rotation over an infeasible plan must fail");
+        assert!(
+            error.contains("no feasible rotation plan"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(exit_code_for(classify_cli_error(&error)), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // ------------------------------------------------------------------
     // Plan §5.5: project lifecycle (solve saves a snapshot, export renders
     // the SAVED plan and never re-solves)
@@ -2408,6 +2582,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .expect("project-solve should succeed");
         assert_eq!(status, SolveStatus::Solved);
@@ -2424,6 +2600,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .expect("project-export should succeed");
         let rendered = std::fs::read_to_string(&output).unwrap();
@@ -2441,6 +2619,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .expect_err("project-export without --snapshot must refuse to re-solve");
         assert!(
@@ -2466,11 +2646,116 @@ mod tests {
             candidates: None,
             report: None,
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .expect_err("a snapshot that double-occupies a seat must be refused");
         assert!(
             error.contains("not valid") || error.contains("more than once"),
             "unexpected error: {error}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn project_export_public_template_hides_pii_and_orientation_flags_apply() {
+        // J+V1: wall-posting exports must be able to avoid full PII and must
+        // honour the frozen A4-landscape print default.
+        let dir = std::env::temp_dir().join(format!(
+            "seattrellis-cli-pubexport-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = write_project_workspace(&dir);
+        let snapshot = dir.join("snapshot.json");
+        commands::run_project_solve(&ProjectArgs {
+            project: project.clone(),
+            seed: None,
+            format: None,
+            output: Some(snapshot.clone()),
+            snapshot: None,
+            strict: false,
+            candidates: None,
+            report: None,
+            candidate: None,
+            template: None,
+            orientation: None,
+        })
+        .expect("project-solve should succeed");
+
+        let export_args =
+            |format: &str, template: Option<&str>, orientation: Option<&str>| ProjectArgs {
+                project: project.clone(),
+                seed: None,
+                format: Some(format.to_string()),
+                output: Some(dir.join(format!("out.{format}"))),
+                snapshot: Some(snapshot.clone()),
+                strict: false,
+                candidates: None,
+                report: None,
+                candidate: None,
+                template: template.map(str::to_string),
+                orientation: orientation.map(str::to_string),
+            };
+
+        // --template public: neither svg nor print-html may carry a real
+        // name, a student id span, or the height/vision detail fields.
+        for format in ["svg", "html", "print-html"] {
+            commands::run_project_export(&export_args(format, Some("public"), None))
+                .unwrap_or_else(|error| panic!("public {format} export should succeed: {error}"));
+            let rendered = std::fs::read_to_string(dir.join(format!("out.{format}"))).unwrap();
+            for name in ["Alice", "Bob", "Carol", "Dan"] {
+                assert!(
+                    !rendered.contains(name),
+                    "public {format} must not leak the name {name}"
+                );
+            }
+            assert!(
+                !rendered.contains(r#"class="sid""#),
+                "public {format} must not render student id spans"
+            );
+            assert!(
+                rendered.contains("学生"),
+                "public {format} renders the anonymized placeholder"
+            );
+        }
+
+        // Default (auto) orientation: print-html prints landscape A4; an
+        // explicit landscape matches it, portrait flips the page.
+        let landscape_page = "@page { size: 297mm 210mm";
+        let portrait_page = "@page { size: 210mm 297mm";
+        commands::run_project_export(&export_args("print-html", None, None))
+            .expect("default auto export should succeed");
+        assert!(
+            std::fs::read_to_string(dir.join("out.print-html"))
+                .unwrap()
+                .contains(landscape_page),
+            "--orientation auto defaults print-html to landscape A4"
+        );
+        commands::run_project_export(&export_args("print-html", None, Some("landscape")))
+            .expect("explicit landscape export should succeed");
+        assert!(std::fs::read_to_string(dir.join("out.print-html"))
+            .unwrap()
+            .contains(landscape_page));
+        commands::run_project_export(&export_args("print-html", None, Some("portrait")))
+            .expect("explicit portrait export should succeed");
+        assert!(
+            std::fs::read_to_string(dir.join("out.print-html"))
+                .unwrap()
+                .contains(portrait_page),
+            "explicit portrait must override the format default"
+        );
+
+        // Teacher stays the default: real names still render.
+        commands::run_project_export(&export_args("svg", None, None)).expect("teacher export");
+        assert!(
+            std::fs::read_to_string(dir.join("out.svg"))
+                .unwrap()
+                .contains("Alice"),
+            "the teacher default keeps real names"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2519,6 +2804,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .unwrap();
         // privacy: fail-closed verdict on a teacher project
@@ -2606,6 +2893,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .unwrap();
         assert!(snapshot.is_file());
@@ -2867,6 +3156,65 @@ mod tests {
     }
 
     #[test]
+    fn parse_project_export_template_and_orientation_flags() {
+        // J+V1: --template/--orientation parse for project-export; defaults
+        // stay None (resolved to teacher/auto at run time).
+        let Command::ProjectExport(args) = parse_args(&args_of(&[
+            "project-export",
+            "--project",
+            "p.json",
+            "--snapshot",
+            "s.json",
+            "--template=public",
+            "--orientation=landscape",
+            "--format=print-html",
+            "--output=o.html",
+        ]))
+        .unwrap() else {
+            panic!("expected a project-export command");
+        };
+        assert_eq!(args.template.as_deref(), Some("public"));
+        assert_eq!(args.orientation.as_deref(), Some("landscape"));
+
+        let Command::ProjectExport(args) =
+            parse_args(&args_of(&["project-export", "--project", "p.json"])).unwrap()
+        else {
+            panic!("expected a project-export command");
+        };
+        assert_eq!(args.template.as_deref(), None, "template default");
+        assert_eq!(args.orientation.as_deref(), None, "orientation default");
+
+        for raw in ["bogus", "report"] {
+            let error = parse_args(&args_of(&[
+                "project-export",
+                "--project",
+                "p.json",
+                "--template",
+                raw,
+            ]))
+            .unwrap_err();
+            assert!(
+                error.contains(&format!("unknown export template '{raw}'"))
+                    && error.contains("expected public or teacher"),
+                "unexpected error: {error}"
+            );
+        }
+        let error = parse_args(&args_of(&[
+            "project-export",
+            "--project",
+            "p.json",
+            "--orientation",
+            "square",
+        ]))
+        .unwrap_err();
+        assert!(
+            error.contains("unknown export orientation 'square'")
+                && error.contains("expected portrait, landscape or auto"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn project_solve_candidates_must_be_between_1_and_20() {
         for raw in ["0", "21", "abc"] {
             let error = parse_args(&args_of(&[
@@ -3019,6 +3367,8 @@ mod tests {
             candidates: Some(3),
             report: Some(report_out.clone()),
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .expect("project-solve --candidates 3 should succeed");
         assert_eq!(status, SolveStatus::Solved);
@@ -3050,6 +3400,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: Some(recommended.clone()),
+            template: None,
+            orientation: None,
         })
         .expect("project-export --candidate should succeed");
         let rendered = std::fs::read_to_string(&svg).unwrap();
@@ -3067,6 +3419,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: Some("candidate_99".to_string()),
+            template: None,
+            orientation: None,
         })
         .expect_err("unknown candidate ids must be refused");
         assert!(
@@ -3086,6 +3440,8 @@ mod tests {
             candidates: Some(1),
             report: None,
             candidate: None,
+            template: None,
+            orientation: None,
         })
         .expect("project-solve --candidates 1 stays a single snapshot");
         let error = commands::run_project_export(&ProjectArgs {
@@ -3098,6 +3454,8 @@ mod tests {
             candidates: None,
             report: None,
             candidate: Some("candidate_01".to_string()),
+            template: None,
+            orientation: None,
         })
         .expect_err("--candidate on a plain snapshot must be refused");
         assert!(

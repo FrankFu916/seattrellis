@@ -305,6 +305,66 @@ fn normalized_overlay(data: &Value, kind: ArtifactKind) -> Value {
     Value::Object(out)
 }
 
+/// Parse a schema version into dotted integer components: the JSON number
+/// `1` or the strings `"1.0"` / `"0.2.2"` become `[1]` / `[1, 0]` / `[0, 2, 2]`.
+/// Returns `None` for anything that is not purely numeric-dotted (including
+/// empty parts), so unknown version shapes are left untouched.
+fn version_components(value: &Value) -> Option<Vec<u64>> {
+    let text = match value {
+        Value::Number(number) => number.to_string(),
+        Value::String(text) => text.trim().to_string(),
+        _ => return None,
+    };
+    if text.is_empty() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for part in text.split('.') {
+        if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        parts.push(part.parse::<u64>().ok()?);
+    }
+    Some(parts)
+}
+
+/// Whether dotted version `left` is strictly newer than `right`
+/// (missing components count as zero: `1.0.1` > `1.0`).
+fn version_is_newer(left: &[u64], right: &[u64]) -> bool {
+    for index in 0..left.len().max(right.len()) {
+        let left_part = left.get(index).copied().unwrap_or(0);
+        let right_part = right.get(index).copied().unwrap_or(0);
+        if left_part != right_part {
+            return left_part > right_part;
+        }
+    }
+    false
+}
+
+/// Refuse to migrate artifacts produced by a *newer* schema: normalization
+/// would silently overwrite their `schema_version` with the supported one,
+/// disguising a downgrade as a migration. Versions that cannot be compared
+/// (non-numeric shapes) keep the previous behavior — deliberately narrow.
+fn reject_schema_downgrade(data: &Value, kind: ArtifactKind, source: &str) -> Result<(), String> {
+    let existing = match data.get("schema_version") {
+        Some(value) => value,
+        None => return Ok(()),
+    };
+    let target = artifact_schema_version(kind);
+    let (Some(existing_parts), Some(target_parts)) =
+        (version_components(existing), version_components(&target))
+    else {
+        return Ok(());
+    };
+    if version_is_newer(&existing_parts, &target_parts) {
+        return Err(format!(
+            "Cannot migrate {source}: artifact schema_version {existing} is newer than \
+             supported {target}; refusing to downgrade."
+        ));
+    }
+    Ok(())
+}
+
 /// Overlay `normalized` values onto `original`, retaining unknown extension
 /// fields and recursing into matching dict/list shapes.
 fn merge_normalized(original: &Value, normalized: &Value) -> Value {
@@ -820,6 +880,7 @@ fn migrate_internal(
     }
     let original = read_json_file(source)?;
     let kind = detect_artifact(&original, &source.display().to_string())?;
+    reject_schema_downgrade(&original, kind, &source.display().to_string())?;
     let overlay = normalized_overlay(&original, kind);
     let merged = merge_normalized(&original, &overlay);
     let (change_count, changes) = change_summary(&original, &merged);
@@ -1034,6 +1095,7 @@ fn migrate_contents(source: &Path, in_place: bool) -> Result<ComputedMigration, 
     }
     let original = read_json_file(source)?;
     let kind = detect_artifact(&original, &source.display().to_string())?;
+    reject_schema_downgrade(&original, kind, &source.display().to_string())?;
     let overlay = normalized_overlay(&original, kind);
     let merged = merge_normalized(&original, &overlay);
     let (change_count, changes) = change_summary(&original, &merged);
@@ -1271,6 +1333,78 @@ mod tests {
         let _ = fs::create_dir_all(dir.path().join("history"));
         let _ = fs::create_dir_all(dir.path().join("outputs"));
         dir.write(name, PROJECT_FIXTURE)
+    }
+
+    #[test]
+    fn migration_refuses_newer_schema_versions() {
+        let dir = TestDir::new("downgrade");
+        dir.write("students.csv", "id,name\n");
+        dir.write("layout.json", r#"{"rows": []}"#);
+        dir.write("rules.json", r#"{"seed": 1}"#);
+
+        // A string version newer than the project target (1).
+        let newer = dir.write(
+            "newer.json",
+            r#"{"kind":"seattrellis_project","schema_version":"9.9","students":"students.csv","layout":"layout.json","rules":"rules.json"}"#,
+        );
+        let error = migration_preview_json(&newer.display().to_string()).unwrap_err();
+        assert!(
+            error.contains("refusing to downgrade"),
+            "unexpected: {error}"
+        );
+        assert!(error.contains("9.9"), "unexpected: {error}");
+        assert!(migration_apply_json(&newer.display().to_string(), false).is_err());
+
+        // Numeric versions compare the same way.
+        let numeric = dir.write(
+            "numeric.json",
+            r#"{"kind":"seattrellis_project","schema_version":99,"students":"students.csv","layout":"layout.json","rules":"rules.json"}"#,
+        );
+        assert!(migration_preview_json(&numeric.display().to_string()).is_err());
+
+        // Other artifact kinds are protected against their own targets.
+        let candidate = dir.write(
+            "candidate.json",
+            r#"{"kind":"candidate_set","schema_version":"9.9"}"#,
+        );
+        let error = migration_preview_json(&candidate.display().to_string()).unwrap_err();
+        assert!(
+            error.contains("refusing to downgrade"),
+            "unexpected: {error}"
+        );
+
+        let snapshot = dir.write(
+            "snapshot.json",
+            r#"{"schema_version":"2.0","students":[],"layout":{"seats":[]},"rules":{},"assignments":[]}"#,
+        );
+        assert!(migration_preview_json(&snapshot.display().to_string()).is_err());
+    }
+
+    #[test]
+    fn migration_accepts_legacy_and_unparseable_versions() {
+        let dir = TestDir::new("downgrade-ok");
+        dir.write("students.csv", "id,name\n");
+        dir.write("layout.json", r#"{"rows": []}"#);
+        dir.write("rules.json", r#"{"seed": 1}"#);
+
+        // A legacy v1 project still migrates normally.
+        let legacy = dir.write(
+            "legacy.json",
+            r#"{"schema_version":"0.9","students":"students.csv","layout":"layout.json","rules":"rules.json"}"#,
+        );
+        let json = migration_preview_json(&legacy.display().to_string()).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["artifact"], "project");
+        assert_eq!(value["schema_version"], 1);
+
+        // Non-numeric version shapes keep the previous forward-safe behavior.
+        let odd = dir.write(
+            "odd.json",
+            r#"{"schema_version":"9.a","students":"students.csv","layout":"layout.json","rules":"rules.json"}"#,
+        );
+        let json = migration_preview_json(&odd.display().to_string()).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["schema_version"], 1);
     }
 
     #[test]

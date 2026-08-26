@@ -1,6 +1,6 @@
 [package]
 name = "seattrellis-server"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -11,12 +11,12 @@ keywords = ["seating", "classroom", "education", "solver"]
 categories = ["command-line-utilities", "science"]
 
 [dependencies]
-seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0-rc.2" }
-seattrellis-domain = { path = "../seattrellis-domain", version = "2.0.0-rc.2" }
-seattrellis-export = { path = "../seattrellis-export", version = "2.0.0-rc.2" }
-seattrellis-application = { path = "../seattrellis-application", version = "2.0.0-rc.2" }
-seattrellis-io = { path = "../seattrellis-io", version = "2.0.0-rc.2" }
-seattrellis-rules = { path = "../seattrellis-rules", version = "2.0.0-rc.2" }
+seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0" }
+seattrellis-domain = { path = "../seattrellis-domain", version = "2.0.0" }
+seattrellis-export = { path = "../seattrellis-export", version = "2.0.0" }
+seattrellis-application = { path = "../seattrellis-application", version = "2.0.0" }
+seattrellis-io = { path = "../seattrellis-io", version = "2.0.0" }
+seattrellis-rules = { path = "../seattrellis-rules", version = "2.0.0" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 tower = { version = "0.5", features = ["limit", "util"] }
@@ -24,3 +24,6 @@ getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+
+[dev-dependencies]
+jsonschema = "0.30"

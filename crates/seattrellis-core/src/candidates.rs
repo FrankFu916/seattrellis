@@ -11,7 +11,8 @@ use serde_json::{json, Value};
 use crate::engine::validate_solve_request;
 use crate::scoring::score_assignment_json;
 use crate::solver::{
-    solve_problem_internal, validate_solve_response, CoreSolveRequest, SolveControl, SolveStatus,
+    parse_core_solve_request, solve_problem_internal, validate_solve_response, SolveControl,
+    SolveStatus,
 };
 /// `candidate_count` caps the set (1..=20); `attempt_limit` bounds the
 /// generation loop. Mirrors the Python `candidates.generate_candidate_set`
@@ -68,8 +69,7 @@ pub fn generate_candidates_json_with_latest_snapshot(
             "invalid candidate_count {candidate_count}: expected a value between 1 and 20"
         ));
     }
-    let mut request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let mut request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
     let base_seed = request.seed;
     let attempt_limit = candidate_count * 12 + 8;

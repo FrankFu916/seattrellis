@@ -35,7 +35,7 @@
 //! writes go through a same-directory temp file renamed into place.
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
@@ -727,36 +727,35 @@ fn parse_seat_id(seat_id: &str) -> Option<(i64, i64)> {
     Some((row, column))
 }
 
-/// Group already-sorted members into contiguous runs by row.
+/// Group already-sorted members by row (one group per distinct row).
 fn group_by_row(members: &[RegisterMember]) -> Vec<MemberGroup> {
     group_by_key(members, |member| member.row)
 }
 
-/// Group already-sorted members into contiguous runs by column.
+/// Group already-sorted members by column (one group per distinct column).
+/// Members of the same column are not adjacent in `(row, col)` order, so the
+/// grouping must aggregate by key instead of merging contiguous runs.
 fn group_by_column(members: &[RegisterMember]) -> Vec<MemberGroup> {
     group_by_key(members, |member| member.column)
 }
 
-/// Contiguous-run grouping over a sorted member list using a key extractor,
-/// with groups ordered by key (seated first, unseated `None` last).
+/// Aggregate a sorted member list into one group per distinct key using a key
+/// extractor, preserving member order within each group. Groups are ordered by
+/// key (seated first, unseated `None` last).
 fn group_by_key(
     members: &[RegisterMember],
     key: impl Fn(&RegisterMember) -> Option<i64>,
 ) -> Vec<MemberGroup> {
-    let mut groups: Vec<MemberGroup> = Vec::new();
+    let mut buckets: BTreeMap<Option<i64>, Vec<RegisterMember>> = BTreeMap::new();
     for member in members {
-        let member_key = key(member);
-        if let Some(last) = groups.last_mut() {
-            if last.key == member_key {
-                last.members.push(member.clone());
-                continue;
-            }
-        }
-        groups.push(MemberGroup {
-            key: member_key,
-            members: vec![member.clone()],
-        });
+        buckets.entry(key(member)).or_default().push(member.clone());
     }
+    let mut groups: Vec<MemberGroup> = buckets
+        .into_iter()
+        .map(|(key, members)| MemberGroup { key, members })
+        .collect();
+    // BTreeMap orders `None` first; registers show seated rows/columns before
+    // the unseated tail.
     groups.sort_by(|a, b| match (a.key, b.key) {
         (Some(left), Some(right)) => left.cmp(&right),
         (Some(_), None) => Ordering::Less,
@@ -980,7 +979,11 @@ fn resolve_outputs_dir(root: &Path, project: &Value) -> Result<PathBuf, String> 
 /// Resolve a not-yet-existing path against the project root: canonicalize the
 /// nearest existing ancestor, re-append the missing components, then verify the
 /// result stays inside `root`.
-fn resolve_lexically_inside(candidate: &Path, root: &Path, label: &str) -> Result<PathBuf, String> {
+pub(crate) fn resolve_lexically_inside(
+    candidate: &Path,
+    root: &Path,
+    label: &str,
+) -> Result<PathBuf, String> {
     let mut tail: Vec<OsString> = Vec::new();
     let mut probe = candidate.to_path_buf();
     while !probe.exists() && !probe.is_symlink() {
@@ -1375,6 +1378,65 @@ mod tests {
         assert_eq!(columns[1]["members"][0]["student_key"], "STU003");
         assert_eq!(columns[2]["column"], 3);
         assert_eq!(columns[2]["members"][0]["student_key"], "STU002");
+    }
+
+    #[test]
+    fn column_grouping_aggregates_members_across_rows() {
+        // A fully occupied 2x3 grid lists members in row-major order, so the
+        // members of one column are never adjacent: grouping must aggregate
+        // by key instead of merging contiguous runs.
+        let root = temp_root("col-groups");
+        let project_file = write_project(&root, "outputs");
+        let mut seats = Vec::new();
+        let mut assignments = Vec::new();
+        for row in 1..=2 {
+            for col in 1..=3 {
+                seats.push(json!({
+                    "seat_id": format!("R{row}C{col}"),
+                    "row": row,
+                    "col": col,
+                    "enabled": true
+                }));
+                assignments.push(json!({
+                    "student_key": format!("S{row}{col}"),
+                    "student_name": format!("S{row}{col}"),
+                    "seat_id": format!("R{row}C{col}")
+                }));
+            }
+        }
+        let plan = json!({
+            "kind": "rotation_plan",
+            "name": "Grid",
+            "periods": [{
+                "period": 1,
+                "label": "Week 1",
+                "snapshot": {
+                    "solver_status": "FEASIBLE",
+                    "assignments": assignments,
+                    "layout": {"seats": seats}
+                }
+            }]
+        });
+        rotation_save_json(project_file.to_str().unwrap(), &plan_json(&plan)).unwrap();
+
+        let json = group_register_preview_json(project_file.to_str().unwrap(), 1).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+
+        let columns = value["column_groups"].as_array().unwrap();
+        assert_eq!(columns.len(), 3, "one group per column, got {columns:?}");
+        for (index, group) in columns.iter().enumerate() {
+            assert_eq!(group["column"], index as i64 + 1);
+            assert_eq!(group["member_count"], 2, "column group {index}: {group:?}");
+        }
+        assert_eq!(columns[0]["members"][0]["student_key"], "S11");
+        assert_eq!(columns[0]["members"][1]["student_key"], "S21");
+        // Row grouping semantics are unchanged by aggregation.
+        let rows = value["row_groups"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["member_count"], 3);
+        assert_eq!(rows[1]["member_count"], 3);
+        assert_eq!(rows[0]["members"][0]["student_key"], "S11");
+        assert_eq!(rows[0]["members"][2]["student_key"], "S13");
     }
 
     #[test]

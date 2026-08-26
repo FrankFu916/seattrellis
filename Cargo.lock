@@ -2999,7 +2999,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "seattrellis-application"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "seattrellis-domain",
  "seattrellis-export",
@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis-domain"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "proptest",
  "seattrellis_core",
@@ -3020,7 +3020,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis-export"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "flate2",
  "fontdue",
@@ -3035,7 +3035,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis-io"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "proptest",
  "seattrellis-schema",
@@ -3048,7 +3048,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis-rules"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "jsonschema",
  "schemars 1.2.2",
@@ -3058,7 +3058,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis-schema"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "jsonschema",
  "proptest",
@@ -3070,11 +3070,12 @@ dependencies = [
 
 [[package]]
 name = "seattrellis-server"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
  "getrandom 0.3.4",
+ "jsonschema",
  "seattrellis-application",
  "seattrellis-domain",
  "seattrellis-export",
@@ -3089,7 +3090,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis_app"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "seattrellis-domain",
  "seattrellis-io",
@@ -3098,7 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis_cli"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "png 0.17.16",
  "seattrellis-application",
@@ -3112,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis_core"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "proptest",
  "serde",
@@ -3121,7 +3122,7 @@ dependencies = [
 
 [[package]]
 name = "seattrellis_desktop"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "seattrellis-server",
  "serde",
@@ -5196,7 +5197,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "2.0.0-rc.2"
+version = "2.0.0"
 dependencies = [
  "jsonschema",
  "schemars 1.2.2",

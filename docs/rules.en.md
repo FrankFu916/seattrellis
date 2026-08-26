@@ -49,7 +49,7 @@ If the solver cannot find a feasible plan, the CLI prints the student count, ena
 
 ## soft Rules
 
-Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and a non-negative integer `weight`. Negative weights fail validation, and unknown soft-rule names are reported as errors.
+Soft rules are preferences. They are not guaranteed. Each rule has `enabled` and a non-negative integer `weight` (range 0–1,000,000). Negative weights fail validation, weights above 1,000,000 are rejected as well, and unknown soft-rule names are reported as errors.
 
 ```json
 {

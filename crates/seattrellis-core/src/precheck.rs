@@ -9,12 +9,11 @@ use serde_json::{json, Value};
 
 use crate::engine::{build_candidate_domains, maximum_candidate_matching, validate_solve_request};
 use crate::evaluation::{build_graph_distance_matrix, build_index_adjacency};
-use crate::solver::{resolve_group_rules, CoreSolveRequest};
+use crate::solver::{parse_core_solve_request, resolve_group_rules};
 use crate::NATIVE_API_VERSION;
 
 pub fn precheck_report_json(request_json: &str) -> Result<String, String> {
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
     let resolved = resolve_group_rules(&request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);

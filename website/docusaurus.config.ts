@@ -40,7 +40,12 @@ const config: Config = {
           path: '../docs',
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/FrankFu916/seattrellis/edit/main/',
+          // Docs live at the repository-root docs/ directory (outside this
+          // site dir), so the edit URL must be computed from the doc path
+          // relative to docs/ — a plain editUrl prefix would produce
+          // `edit/main/../docs/...` URLs that normalize to a 404 on GitHub.
+          editUrl: ({ docPath }) =>
+            `https://github.com/FrankFu916/seattrellis/edit/main/docs/${docPath}`,
         },
         blog: false,
         theme: {
@@ -51,6 +56,23 @@ const config: Config = {
   ],
 
   plugins: ['./plugins/schemas-publish.mjs'],
+
+  themes: [
+    [
+      // Local, offline-capable search (parity with the MkDocs `search`
+      // plugin): the index is built at site-build time and queried fully
+      // client-side — no external service, matching the privacy-first and
+      // offline-by-default boundary. The optional `open-ask-ai` peer is
+      // intentionally NOT installed (no AI features in the product UI).
+      '@easyops-cn/docusaurus-search-local',
+      {
+        hashed: true,
+        language: ['en', 'zh'],
+        docsRouteBasePath: ['/'],
+        indexBlog: false,
+      },
+    ],
+  ],
 
   themeConfig: {
     image: 'assets/demo-seating.png',

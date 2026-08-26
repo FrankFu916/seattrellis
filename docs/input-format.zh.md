@@ -17,6 +17,16 @@ seattrellis_cli project-validate --project my-class/seattrellis.project.json
 
 旧版 `.xls` 请先另存为 `.xlsx` 或 CSV。
 
+### Excel（.xlsx / .xlsm）导入边界
+
+Excel 导入读取工作簿的**第一个工作表**，并遵守以下边界：
+
+- 支持的单元格取值：共享字符串、内联字符串、公式缓存值（`str`）、数字与布尔
+  （带缓存结果）；**没有缓存值的公式单元格会报错**；
+- 文本单元格按文本读取，`001` 这类前导零编号不会丢失；
+- 上限：文件不超过 20 MiB（解压后的 XML 部件同样受限）、数据行不超过
+  10,000、列数不超过 256；超限或加密工作簿会明确报错。
+
 至少需要提供 `student_id` 或 `name` 之一。其他字段都是可选字段：
 
 | 字段 | 说明 |
@@ -182,3 +192,10 @@ v1 时代的 candidate set（`kind: "candidate_set"`，`schema_version: "0.2.2"`
 `rules` 路径引用。v2 的 `validate --preset <name>` 只做场景数据缺失检查
 （history/score/height/vision warning），不合并 preset 规则。完整规则与预设
 说明见 [rules.zh.md](rules.zh.md)。
+
+注意：problem JSON 的原生求解路径只消费**顶层索引对形式**的 hard 约束——
+`fixed_seats` / `must_be_adjacent` / `cannot_be_adjacent` / `min_distance`
+（学生用列表下标引用，见[快速开始](quickstart.zh.md)的 problem.json 示例）。
+`rules.hard` 中的字符串引用形式不会被原生路径消费；非空的 `rules.hard`
+会在 solve 请求中被明确拒绝并给出上述指引。字符串形式由工作台/服务端在生成
+problem 之前解析合并为顶层索引对。

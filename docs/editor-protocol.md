@@ -7,7 +7,9 @@
 当前协议版本为 `"1.0"`，包含两个公开文档：
 
 - `EditorCommandEnvelope`：前端发出的 apply、undo 或 redo 命令；
-- `EditorStateEnvelope`：服务端返回的座位、锁定和 hard constraint 状态。
+- `EditorStateEnvelope`：服务端返回的座位和锁定状态。命令响应会在状态之外
+  额外携带一个独立的 `validation` 校验对象（结构登记在
+  `schemas/editor-state.schema.json` 中）；获取状态的 GET 接口不返回该对象。
 
 对应 JSON Schema 为 `schemas/editor-command.schema.json` 和
 `schemas/editor-state.schema.json`。
@@ -87,8 +89,11 @@ redo 命令只把 revision 增加 1，即使 apply 内含多个 operation。撤�
 
 - 学生 key、显示名称、当前座位和锁定状态；
 - 座位 key、行列、启用状态、当前学生 key 和锁定状态；
-- undo/redo 深度；
-- hard constraint 是否满足、检查数量和纯文本诊断。
+- undo/redo 深度。
+
+hard constraint 的复核结果不进入状态本身：apply/undo/redo 命令的响应会附带
+`validation` 对象（`valid`、`hard_constraints_satisfied`、`violations`），
+而 `GET .../editing/drafts/{id}` 返回的状态不含该对象。
 
 成绩、备注、特殊需求、身高、视力、标签和任意扩展属性不会进入状态协议。座位不再
 重复携带学生姓名，客户端应通过 `student_key` 关联学生列表。

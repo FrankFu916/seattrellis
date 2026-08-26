@@ -9,8 +9,14 @@
 //!
 //! Deterministic by design: the chain order is fixed; only *which* font
 //! exists is environment-dependent (same as any system-font reference).
+//! The parsed font is cached process-wide (R3/L1): a system TTC weighs
+//! ~80-100 MB, and re-reading + re-parsing it on every export is wasted
+//! work — the font inventory cannot change mid-process. A final "no usable
+//! font" outcome surfaces as an export warning instead of silently
+//! producing textless PNG/PDF pages.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// Quality band of the discovered font (drives the export warning).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -150,12 +156,51 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 /// Load the discovered CJK font for PNG/PDF export-time rasterization.
-/// Returns `None` when no supported CJK font file is available.
-pub fn load_cjk_font() -> Option<fontdue::Font> {
-    let font = find_system_cjk_font();
-    let file = font.file?;
-    let bytes = std::fs::read(&file).ok()?;
+/// Returns `None` when no supported CJK font file is available (read or
+/// parse failure included — the previous silent `None` left textless output
+/// with no explanation, so callers must pair this with
+/// [`font_unavailable_warning`]).
+///
+/// The parsed font is cached process-wide: the first call pays the read +
+/// parse cost, every later export reuses it.
+pub fn load_cjk_font() -> Option<&'static fontdue::Font> {
+    static FONT_CACHE: OnceLock<Option<fontdue::Font>> = OnceLock::new();
+    FONT_CACHE
+        .get_or_init(|| load_cjk_font_from(find_system_cjk_font))
+        .as_ref()
+}
+
+/// Injectable core of [`load_cjk_font`] (test seam): resolve any font source
+/// and try to parse it, returning `None` on any failure.
+fn load_cjk_font_from(find: impl FnOnce() -> SystemCjkFont) -> Option<fontdue::Font> {
+    let file = find().file?;
+    let bytes = std::fs::read(file).ok()?;
     fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
+}
+
+/// The export warning carried when PNG/PDF rasterization ends up without a
+/// usable system font. The documents are still produced (the renderers
+/// degrade to textless pages); the warning explains the missing text.
+pub const NO_USABLE_FONT_WARNING: &str = "no usable system font found; PNG/PDF text was omitted";
+
+/// The warning for the real system lookup: `Some` exactly when
+/// [`load_cjk_font`] yields nothing usable. Non-rasterized formats never
+/// need a system font and must not warn.
+pub fn font_unavailable_warning() -> Option<String> {
+    (!is_usable_font_available()).then(|| NO_USABLE_FONT_WARNING.to_string())
+}
+
+fn is_usable_font_available() -> bool {
+    load_cjk_font().is_some()
+}
+
+/// Injectable variant of [`font_unavailable_warning`] (tests): judge any
+/// discovery function instead of the real system chain.
+pub fn font_warning_with(find: impl FnOnce() -> SystemCjkFont) -> Option<String> {
+    match load_cjk_font_from(find) {
+        Some(_) => None,
+        None => Some(NO_USABLE_FONT_WARNING.to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +244,50 @@ mod tests {
         // Ord follows declaration order (derive).
         assert!(a < b && b < c && c < d);
         let _ = Ordering::Equal;
+    }
+
+    #[test]
+    fn unusable_font_sources_surface_the_export_warning() {
+        // No candidate file at all...
+        let warning =
+            font_warning_with(|| SystemCjkFont::synthetic("Helvetica", FontQuality::None));
+        assert_eq!(
+            warning.as_deref(),
+            Some(NO_USABLE_FONT_WARNING),
+            "fontless discovery must warn"
+        );
+        // ...and a candidate whose file cannot be read/parsed is equally
+        // unusable (the R3 bug: silent None with textless PNG/PDF output).
+        let warning = font_warning_with(|| SystemCjkFont {
+            pdf_name: "Ghost".to_string(),
+            file: Some(PathBuf::from(
+                "/nonexistent/seattrellis-should-not-exist.ttc",
+            )),
+            quality: FontQuality::Preferred,
+        });
+        assert_eq!(warning.as_deref(), Some(NO_USABLE_FONT_WARNING));
+    }
+
+    #[test]
+    fn font_cache_returns_one_parse_for_the_whole_process() {
+        // Whatever the machine has, repeated loads must reuse the same
+        // parsed font instead of re-reading ~100 MB per export.
+        let first = load_cjk_font();
+        let second = load_cjk_font();
+        assert_eq!(
+            first.map(|font| font as *const fontdue::Font),
+            second.map(|font| font as *const fontdue::Font),
+            "the process-level cache must hand back the same font"
+        );
+    }
+
+    #[test]
+    fn real_lookup_warning_agrees_with_load_outcome() {
+        let warning = font_unavailable_warning();
+        assert_eq!(
+            warning.is_some(),
+            load_cjk_font().is_none(),
+            "warning must fire exactly when no usable font exists"
+        );
     }
 }

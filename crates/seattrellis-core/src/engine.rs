@@ -50,8 +50,7 @@ pub(crate) fn assignment_by_key(
 /// records, and hard-rule references, but it does not claim that a feasible
 /// assignment exists; use [`solve_problem_json`] for that check.
 pub fn validate_solve_request_json(request_json: &str) -> Result<(), String> {
-    let request: CoreSolveRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("invalid native solve request: {error}"))?;
+    let request = crate::solver::parse_core_solve_request(request_json)?;
     validate_solve_request(&request)
 }
 
@@ -1412,6 +1411,73 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
     }
     // Resolving groups surfaces unknown-member references, mirroring strict
     // rule compilation; the derived pairs are validated by the caller.
+    // Soft-weight gate: negative weights are a documented input error and
+    // oversized weights overflow the integer cost arithmetic downstream.
+    if let Some(rules) = &request.rules {
+        const MAX_SOFT_RULE_WEIGHT: i32 = 1_000_000;
+        let soft = &rules.soft;
+        let weighted_rules = [
+            (
+                "vision_front",
+                soft.vision_front.enabled,
+                soft.vision_front.weight,
+            ),
+            (
+                "height_back",
+                soft.height_back.enabled,
+                soft.height_back.weight,
+            ),
+            ("randomize", soft.randomize.enabled, soft.randomize.weight),
+            (
+                "score_balance",
+                soft.score_balance.enabled,
+                soft.score_balance.weight,
+            ),
+            (
+                "score_position",
+                soft.score_position.enabled,
+                soft.score_position.weight,
+            ),
+            (
+                "score_distribution",
+                soft.score_distribution.enabled,
+                soft.score_distribution.weight,
+            ),
+            (
+                "mentor_pairing",
+                soft.mentor_pairing.enabled,
+                soft.mentor_pairing.weight,
+            ),
+            (
+                "fair_rotation",
+                soft.fair_rotation.enabled,
+                soft.fair_rotation.weight,
+            ),
+            (
+                "avoid_recent_neighbors",
+                soft.avoid_recent_neighbors.enabled,
+                soft.avoid_recent_neighbors.weight,
+            ),
+            ("cooling", soft.cooling.enabled, soft.cooling.weight),
+        ];
+        for (name, enabled, weight) in weighted_rules {
+            if !enabled {
+                continue;
+            }
+            if weight < 0 {
+                return Err(format!(
+                    "invalid soft rule {name}: weight must be a non-negative integer, \
+                     got {weight}"
+                ));
+            }
+            if weight > MAX_SOFT_RULE_WEIGHT {
+                return Err(format!(
+                    "invalid soft rule {name}: weight {weight} exceeds the supported \
+                     maximum of {MAX_SOFT_RULE_WEIGHT}"
+                ));
+            }
+        }
+    }
     resolve_group_rules(request)?;
     Ok(())
 }
