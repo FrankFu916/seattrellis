@@ -7,9 +7,9 @@ license.workspace = true
 description = "SeatTrellis local web workbench: loopback HTTP server + native solve, no Python/Node."
 
 [dependencies]
-seattrellis-server = { path = "../crates/seattrellis-server" }
-seattrellis-domain = { path = "../crates/seattrellis-domain" }
-seattrellis-io = { path = "../crates/seattrellis-io" }
+seattrellis-server = { path = "../crates/seattrellis-server", version = "2.0.0" }
+seattrellis-domain = { path = "../crates/seattrellis-domain", version = "2.0.0" }
+seattrellis-io = { path = "../crates/seattrellis-io", version = "2.0.0" }
 
 [lib]
 name = "seattrellis_web"

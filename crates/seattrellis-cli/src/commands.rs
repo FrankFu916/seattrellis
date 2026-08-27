@@ -1230,24 +1230,24 @@ pub fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
         }
         "project" => Ok(include_str!("../schemas/project.v2.schema.json").to_string()),
         "project_bundle_manifest" | "bundle_manifest" => {
-            Ok(include_str!("../../../schemas/project-bundle-manifest.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/project-bundle-manifest.v2.schema.json").to_string())
         }
         "candidate_set" | "candidates" => {
-            Ok(include_str!("../../../schemas/candidate-set.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/candidate-set.v2.schema.json").to_string())
         }
         "plan_comparison" | "plancomparison" | "plan-comparison" => {
-            Ok(include_str!("../../../schemas/plan-comparison-report.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/plan-comparison-report.v2.schema.json").to_string())
         }
         // All 12 registry kinds now have a typed DTO and a generated .v2.
         // schema (xtask `contract schemas`, drift-checked).
         "rotation_plan" | "rotation" => {
-            Ok(include_str!("../../../schemas/rotation-plan.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/rotation-plan.v2.schema.json").to_string())
         }
         "history_archive" | "historyarchive" => {
-            Ok(include_str!("../../../schemas/history-archive.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/history-archive.v2.schema.json").to_string())
         }
         "editing_operation_log" | "editingoperationlog" => {
-            Ok(include_str!("../../../schemas/editing-operation-log.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/editing-operation-log.v2.schema.json").to_string())
         }
         "export_preset" | "exportpreset" => {
             Ok(include_str!("../schemas/export-preset.v2.schema.json").to_string())

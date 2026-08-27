@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://frankfu916.github.io/seattrellis/schemas/editor-state.schema.json",
+  "title": "SeatTrellis Editor State",
+  "description": "The editor state the server returns for a draft. Fetched states (`GET /api/v1/editing/drafts/{id}`) and command responses (`POST .../commands`) share this shape; command responses additionally carry the optional `validation` object registered below.",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "seattrellis_editor_state",
+      "title": "Kind",
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": "1.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "draft_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Draft Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "candidate_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Id"
+    },
+    "undo_depth": {
+      "minimum": 0,
+      "title": "Undo Depth",
+      "type": "integer"
+    },
+    "redo_depth": {
+      "minimum": 0,
+      "title": "Redo Depth",
+      "type": "integer"
+    },
+    "students": {
+      "items": {
+        "$ref": "#/definitions/EditorStudentState"
+      },
+      "title": "Students",
+      "type": "array"
+    },
+    "seats": {
+      "items": {
+        "$ref": "#/definitions/EditorSeatState"
+      },
+      "title": "Seats",
+      "type": "array"
+    },
+    "validation": {
+      "description": "Independent hard-rule re-validation of the resulting assignment. Attached only to editor command responses (never to fetched state); see the server's `editor_validation_report`.",
+      "properties": {
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "hard_constraints_satisfied": {
+          "title": "Hard Constraints Satisfied",
+          "type": "boolean"
+        },
+        "violations": {
+          "items": {
+            "$ref": "#/definitions/EditorViolation"
+          },
+          "title": "Violations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "valid",
+        "hard_constraints_satisfied",
+        "violations"
+      ],
+      "title": "Validation",
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "protocol_version",
+    "draft_id",
+    "revision",
+    "undo_depth",
+    "redo_depth",
+    "students",
+    "seats"
+  ],
+  "type": "object",
+  "definitions": {
+    "EditorViolation": {
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "entity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Entity"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "witness": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Witness"
+        },
+        "suggested_action": {
+          "title": "Suggested Action",
+          "type": "string"
+        },
+        "message_key": {
+          "title": "Message Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "entity",
+        "reason",
+        "witness",
+        "suggested_action",
+        "message_key"
+      ],
+      "title": "EditorViolation",
+      "type": "object"
+    },
+    "EditorSeatState": {
+      "additionalProperties": false,
+      "properties": {
+        "seat_id": {
+          "minLength": 1,
+          "title": "Seat Id",
+          "type": "string"
+        },
+        "row": {
+          "minimum": 1,
+          "title": "Row",
+          "type": "integer"
+        },
+        "col": {
+          "minimum": 1,
+          "title": "Col",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "student_key": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Student Key"
+        },
+        "locked": {
+          "default": false,
+          "title": "Locked",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "seat_id",
+        "row",
+        "col",
+        "enabled"
+      ],
+      "title": "EditorSeatState",
+      "type": "object"
+    },
+    "EditorStudentState": {
+      "additionalProperties": false,
+      "properties": {
+        "student_key": {
+          "minLength": 1,
+          "title": "Student Key",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "seat_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seat Id"
+        },
+        "locked": {
+          "default": false,
+          "title": "Locked",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "student_key",
+        "display_name"
+      ],
+      "title": "EditorStudentState",
+      "type": "object"
+    }
+  },
+  "x-seattrellis-artifact": "editor-state",
+  "x-seattrellis-schema-version": "1.0"
+}
