@@ -12,11 +12,11 @@
   [![Rust](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml)
   [![Release](https://img.shields.io/github/v/release/FrankFu916/seattrellis)](https://github.com/FrankFu916/seattrellis/releases)
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-  [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](releases)
+  [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/FrankFu916/seattrellis/releases)
 
-  [下载桌面版](releases) · `cargo install seattrellis_cli`
+  [下载桌面版](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis_cli`
 
-  [下载最新版](releases) · [快速开始](docs/quickstart.zh.md) · [规则手册](docs/rules.zh.md) · [English](README.md)
+  [下载最新版](https://github.com/FrankFu916/seattrellis/releases) · [快速开始](docs/quickstart.zh.md) · [规则手册](docs/rules.zh.md) · [English](README.md)
 </div>
 
 ---
@@ -45,7 +45,7 @@
 
 ### 桌面版（推荐给老师）
 
-从 [Releases](releases) 下载对应平台安装包：
+从 [Releases](https://github.com/FrankFu916/seattrellis/releases) 下载对应平台安装包：
 
 | 平台 | 格式 |
 |---|---|

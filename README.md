@@ -13,11 +13,11 @@
   [![Rust](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml)
   [![Release](https://img.shields.io/github/v/release/FrankFu916/seattrellis)](https://github.com/FrankFu916/seattrellis/releases)
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-  [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](releases)
+  [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/FrankFu916/seattrellis/releases)
 
-  [Download the desktop app](releases) · `cargo install seattrellis_cli`
+  [Download the desktop app](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis_cli`
 
-  [Latest release](releases) · [Quick start](docs/quickstart.en.md) · [Rules](docs/rules.en.md) · [简体中文](README.zh-CN.md)
+  [Latest release](https://github.com/FrankFu916/seattrellis/releases) · [Quick start](docs/quickstart.en.md) · [Rules](docs/rules.en.md) · [简体中文](README.zh-CN.md)
 </div>
 
 ---
@@ -48,7 +48,7 @@ explains, and keeps the record.
 
 ### Desktop (for teachers)
 
-Grab an installer from [Releases](releases):
+Grab an installer from [Releases](https://github.com/FrankFu916/seattrellis/releases):
 
 | Platform | Format |
 |---|---|
