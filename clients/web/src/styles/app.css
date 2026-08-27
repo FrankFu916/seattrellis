@@ -66,11 +66,8 @@ input:focus-visible,
   height: 35px;
   padding: 2px;
   color: var(--accent);
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.2;
+  fill: currentColor;
+  stroke: none;
 }
 
 .brand-lockup > span {

@@ -604,7 +604,7 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
             "show_height": !public, "show_vision": !public
         },
         "page_scale": 1.0,
-        "locale": "zh",
+        "locale": args.locale.as_deref().unwrap_or("en"),
         "show_student_ids": !public,
         "request": request_value,
         "response": serde_json::to_value(&response)

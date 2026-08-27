@@ -7,8 +7,37 @@ use crate::style::Styler;
 
 pub fn render_usage(styler: &Styler) -> String {
     let mut out = String::new();
-    out.push_str(&styler.bold("SeatTrellis CLI"));
-    out.push_str(" — standalone solve + export tool.\n\n");
+
+    // ASCII mark of the SeatTrellis brand: a ring of seat tiles with one
+    // empty (dashed) seat that the rotation arrow points into. Plain ASCII
+    // only, so it survives every terminal font; color is applied through the
+    // styler and only on a TTY.
+    let accent = |text: &str| styler.cyan(text);
+    let dim = |text: &str| styler.yellow(text);
+    let seat = |text: &str| styler.bold(text);
+    let mut mark = String::new();
+    // top row: three filled seats
+    mark.push_str(&format!("  {} {} {}\n", accent("+--+ +--+ +--+"), "", ""));
+    mark.push_str(&format!("  {} {} {}\n", accent("|##| |##| |##|"), "", ""));
+    // middle: arc down the right side, arrow pointing to the empty seat
+    mark.push_str(&format!("  {}      {}\n", accent("+--+"), accent("\\")));
+    mark.push_str(&format!(
+        "  {}       {}   {}\n",
+        seat("+--+"),
+        accent("o"),
+        accent("\\")
+    ));
+    mark.push_str(&format!(
+        "  {} {}    {}\n",
+        seat("|##|"),
+        dim("+--+ +--+"),
+        accent("/")
+    ));
+    mark.push_str(&format!("  {} {}\n", seat("+--+"), dim("|..| |..|")));
+    mark.push_str(&format!("     {}\n", dim("+--+ +--+")));
+    out.push_str(&mark);
+    out.push_str(&styler.bold("  S e a t T r e l l i s"));
+    out.push_str("\n     classroom seating, solved — not negotiated\n\n");
 
     out.push_str(&styler.bold("USAGE:"));
     out.push_str("\n    ");
@@ -272,6 +301,9 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str(" <o> project-export only: portrait|landscape|auto\n      ");
     out.push_str("        (default auto: print-html prints landscape A4, other\n      ");
     out.push_str("        formats portrait).\n      ");
+    out.push_str(&styler.bold("--locale"));
+    out.push_str(" <l>    project-export only: export text language, en (default)\n      ");
+    out.push_str("        or zh.\n      ");
     out.push_str(&styler.bold("--candidate"));
     out.push_str(" <id>   project-export only: candidate ID for a candidate-set\n      ");
     out.push_str("        snapshot (default: recommended).\n      ");

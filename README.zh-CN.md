@@ -14,7 +14,7 @@
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](releases)
 
-  `下载桌面版` · `cargo install seattrellis_cli` · 纯 Rust，零 Python 依赖
+  [下载桌面版](releases) · `cargo install seattrellis_cli`
 
   [下载最新版](releases) · [快速开始](docs/quickstart.zh.md) · [规则手册](docs/rules.zh.md) · [English](README.md)
 </div>

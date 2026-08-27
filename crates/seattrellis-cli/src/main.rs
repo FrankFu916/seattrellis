@@ -206,6 +206,8 @@ pub struct ProjectArgs {
     /// frozen per-format default (print-html → landscape A4, everything
     /// else portrait).
     pub orientation: Option<String>,
+    /// `project-export` only: export text language, `en` (default) or `zh`.
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -804,6 +806,10 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
             takes_value: true,
         },
         Flag {
+            name: "--locale",
+            takes_value: true,
+        },
+        Flag {
             name: "--help",
             takes_value: false,
         },
@@ -857,6 +863,12 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
             ));
         }
     }
+    let locale = flag_value(&parsed, "--locale")?.map(str::to_string);
+    if let Some(raw) = &locale {
+        if raw != "en" && raw != "zh" {
+            return Err(format!("unknown export locale '{raw}' (expected en or zh)"));
+        }
+    }
     let args = ProjectArgs {
         project: PathBuf::from(project),
         seed,
@@ -869,6 +881,7 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
         candidate,
         template,
         orientation,
+        locale,
     };
     Ok(match command {
         "project-info" => Command::ProjectInfo(args),
@@ -2461,6 +2474,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect("project-solve returns the domain status");
         assert_eq!(status, SolveStatus::ProvenInfeasible);
@@ -2584,6 +2598,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect("project-solve should succeed");
         assert_eq!(status, SolveStatus::Solved);
@@ -2602,6 +2617,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect("project-export should succeed");
         let rendered = std::fs::read_to_string(&output).unwrap();
@@ -2621,6 +2637,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect_err("project-export without --snapshot must refuse to re-solve");
         assert!(
@@ -2648,6 +2665,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect_err("a snapshot that double-occupies a seat must be refused");
         assert!(
@@ -2683,6 +2701,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect("project-solve should succeed");
 
@@ -2699,6 +2718,7 @@ mod tests {
                 candidate: None,
                 template: template.map(str::to_string),
                 orientation: orientation.map(str::to_string),
+                locale: None,
             };
 
         // --template public: neither svg nor print-html may carry a real
@@ -2718,7 +2738,7 @@ mod tests {
                 "public {format} must not render student id spans"
             );
             assert!(
-                rendered.contains("学生"),
+                rendered.contains("student") || rendered.contains("学生"),
                 "public {format} renders the anonymized placeholder"
             );
         }
@@ -2806,6 +2826,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .unwrap();
         // privacy: fail-closed verdict on a teacher project
@@ -2895,6 +2916,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .unwrap();
         assert!(snapshot.is_file());
@@ -3369,6 +3391,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect("project-solve --candidates 3 should succeed");
         assert_eq!(status, SolveStatus::Solved);
@@ -3402,6 +3425,7 @@ mod tests {
             candidate: Some(recommended.clone()),
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect("project-export --candidate should succeed");
         let rendered = std::fs::read_to_string(&svg).unwrap();
@@ -3421,6 +3445,7 @@ mod tests {
             candidate: Some("candidate_99".to_string()),
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect_err("unknown candidate ids must be refused");
         assert!(
@@ -3442,6 +3467,7 @@ mod tests {
             candidate: None,
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect("project-solve --candidates 1 stays a single snapshot");
         let error = commands::run_project_export(&ProjectArgs {
@@ -3456,6 +3482,7 @@ mod tests {
             candidate: Some("candidate_01".to_string()),
             template: None,
             orientation: None,
+            locale: None,
         })
         .expect_err("--candidate on a plain snapshot must be refused");
         assert!(
