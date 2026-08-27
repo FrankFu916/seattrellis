@@ -1,6 +1,11 @@
 # Quick Start
 
-This document covers installation and CLI usage for SeatTrellis v2 (the Rust-only line). For a brief project overview, see the [documentation home](index.md).
+[English](quickstart.md) / [简体中文](quickstart.zh.md)
+
+This legacy filename is retained for existing links. The canonical English
+document is [Quick Start](quickstart.md).
+
+This document covers installation and CLI usage for SeatTrellis v2.0.0 (the Rust-only line). For a brief project overview, see the [documentation home](index.md).
 
 ## Installation
 
@@ -96,7 +101,7 @@ The repository's `examples/` directory carries fictional data only: `students.cs
 seattrellis_cli validate --problem problem.json --preset daily --history-dir examples/history
 ```
 
-`--strict` turns warnings into failures. Presets are a convenience layer over rule JSON; see [Rules](rules.en.md) for the full rule reference.
+`--strict` turns warnings into failures. Presets are a convenience layer over rule JSON; see [Rules](rules.md) for the full rule reference.
 
 ## Solving
 
@@ -203,7 +208,7 @@ seattrellis_cli project-restore --bundle my-class.seattrellis.zip --output-dir r
 seattrellis_cli project-privacy --project my-class/seattrellis.project.json
 ```
 
-`project-edit` / `project-repair` reuse the same semantics as `edit` / `repair`. See [Project workflow details](project.zh.md) for more.
+`project-edit` / `project-repair` reuse the same semantics as `edit` / `repair`. See [Project workflow details](project.md) for more.
 
 ## Schema tooling
 
@@ -229,8 +234,8 @@ Only three kinds currently provide a v1→v2 migration step: rosters (`student_r
 ## Next Steps
 
 - [CLI reference](cli.md)
-- [Input Formats](input-format.en.md)
-- [Rules](rules.en.md)
-- [Web UI Guide](web.en.md)
-- [Project Workflow Details](project.zh.md)
-- [Export Formats](export.zh.md)
+- [Input Formats](input-format.md)
+- [Rules](rules.md)
+- [Web UI Guide](web.md)
+- [Project Workflow Details](project.md)
+- [Export Formats](export.md)

@@ -1,66 +1,73 @@
-# 性能基准
+# Benchmarks
 
-SeatTrellis 的大班级性能用固定合成数据集跟踪。数据集名为
-`synthetic-classroom`，当前版本为 `synthetic-v1`。所有学生、座位和指标均为
-虚构数据，不包含真实班级信息。
+SeatTrellis tracks large-class performance with fixed synthetic data. The
+dataset is `synthetic-classroom` / `synthetic-v1`; all students, seats, and
+metrics are fictional.
 
-## 性能回归门槛（CI 常跑）
+## Solver regression gate
 
-`solver-baseline.json`（`benchmarks/`）记录了 40/50/60/80 人 planted-feasible
-实例的 release 模式墙钟基线。CI 的 release job 运行：
+`benchmarks/solver-baseline.json` records release-mode wall-clock medians for
+planted-feasible 40-, 50-, 60-, and 80-student instances. The current CI gate is:
 
 ```bash
 cargo build --release --locked -p seattrellis_cli
 python3 scripts/bench_solver.py --check
 ```
 
-门槛是基线 ×1.10（容忍 CI 硬件噪声）+ 绝对交互上限（40 人 1.5s、50 人 2.5s、
-60 人 3.5s、80 人 6s）。真实算法回退会大幅突破这两个界限，普通 CI 噪声不会。
-需要重新校准基线时运行 `python3 scripts/bench_solver.py --record`，并把新的
-`benchmarks/solver-baseline.json` 提交入库。
+The Python program only times and checks the Rust CLI. It is not an oracle,
+parity comparison, or differential test. A run must stay within 1.10 times the
+committed baseline and the absolute interactive bounds:
 
-## 求解质量：与 OR-Tools oracle 的 regret
+| Students | Absolute bound |
+| ---: | ---: |
+| 40 | 1.5 s |
+| 50 | 2.5 s |
+| 60 | 3.5 s |
+| 80 | 6 s |
 
-`scripts/measure_rust_quality.py` 在相同编译问题上比较 Rust 求解器与 Python
-OR-Tools oracle 的归一化 regret：
+The tolerance absorbs normal CI hardware noise while the absolute bound catches
+a major algorithmic regression. Baselines are recorded on comparable runners;
+Apple Silicon local runs are expected to be faster. Updating a baseline is a
+reviewed release-maintenance operation, not an ordinary documentation change.
 
-```text
-regret = (rust_total_cost - ortools_total_cost) / |ortools_total_cost|
+## Long-run quality gates
+
+Rust CI also runs release-mode candidate and rotation gates:
+
+```bash
+cargo test --release --locked -p seattrellis_core \
+  --test candidates_gate --test long_run_gate -- --ignored
+cargo test --release --locked -p seattrellis-application \
+  --test rotation_gate -- --ignored
 ```
 
-门槛：标准基准集上 median regret ≤ 5%、P95 ≤ 15%。regret 为正表示 Rust 方案
-更贵（更差），为负表示更优。两侧求解同一个编译问题：OR-Tools 走 Python
-backend，Rust 侧用 release CLI 求解由同一编译问题构造的 `CoreSolveRequest`。
+These gates exercise candidate generation, planted feasibility, cancellation,
+resource stability, and 1/3/5/10/20-period rotation behavior. The v2 quality
+contract is Rust tests plus committed fixtures and baselines.
 
-## Oracle 差分
+## Retired migration-era gates
 
-固定 corpus 的 Python↔Rust 差分（`scripts/rust_python_diff.py --fixtures`）
-覆盖 41 个 case（34 合法 + 7 invalid），使用确定性预算 `--time-limit 1800`
-（墙钟截止的 solve 不稳定，短预算会产出不可重放的 golden；对截止命中的运行
-显式 SKIP）。任何 Python error 都不能记为 INFEASIBLE，mismatch 必须非零退出。
+The migration previously included an OR-Tools quality comparison and a
+cross-implementation corpus comparison against the frozen Python line. Both
+depended on the v1 oracle and were removed after v2.0.0. They are historical
+evidence only and are not runnable v2 gates.
 
-## 数据集
+## Dataset shape
 
-固定长期矩阵是 40/50/60 人、`light`/`dense` 两种约束 profile，以及 1/5/20
-个候选；性能回归门槛额外覆盖 80 人。`light` 使用选定 preset，不增加硬约束；
-`dense` 在相同虚构数据上增加确定性的 fixed-seat、cannot-adjacent 和
-graph-distance 规则。两者都不会读取真实学生数据。
+The planted-feasible performance cases use deterministic synthetic rosters and
+seat grids. Long-running quality tests additionally vary candidate counts and
+rotation periods. No case reads real student data.
 
-| 人数 | 布局 | case id |
-|---:|---|---|
-| 40 | 5×8 | `synthetic-v1-40-students-5x8` |
-| 50 | 5×10 | `synthetic-v1-50-students-5x10` |
-| 60 | 6×10 | `synthetic-v1-60-students-6x10` |
+If the synthetic data construction changes, create a new dataset version rather
+than changing `synthetic-v1`; historical reports must remain comparable.
 
-如需修改合成数据逻辑，应创建新的 dataset version，而不是直接改变
-`synthetic-v1`，这样历史性能报告仍可比较。
+## Reports and historical baseline
 
-## 报告与归档
+The long-run gates run on the main and pull-request paths. Regression review
+compares like-for-like runners and also watches feasibility rate, candidate
+yield, and candidate diversity; ordinary CI does not fail on an arbitrary fixed
+number of seconds.
 
-release job 归档基准 JSON/Markdown 报告并写入 workflow summary；普通 PR CI
-不运行完整矩阵。回退判断比较同类 runner 上的相对变化，并单独观察可行率、
-候选产出率和候选多样性，不按绝对秒数失败。
-
-v1.4 时代的首份实测结果与预算校准见
-[`benchmark-baseline-v1.4.md`](benchmark-baseline-v1.4.md)（历史记录；v2 的
-Rust 求解器质量与性能以本节描述的自动化门槛为准）。
+[v1.4 performance baseline](benchmark-baseline-v1.4.md) is retained as a
+historical Python/OR-Tools measurement record. v2.0.0 quality and performance
+are governed by the Rust gates described here.

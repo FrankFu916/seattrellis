@@ -1,12 +1,18 @@
 # Input Formats
 
+[English](input-format.md) / [简体中文](input-format.zh.md)
+
+This legacy filename is retained for existing links. The canonical English
+document is [Input Formats](input-format.md).
+
 SeatTrellis reads a student list, a classroom layout, and a rules file. A local project file can store their relative paths and common defaults. Files in `examples/` are fictional only.
 
-In v2 these files are consumed through the project workflow (`project-*`
+In v2.0.0 these files are consumed through the project workflow (`project-*`
 commands, the workbench's project panel); the standalone CLI instead embeds
 students, seats, and rules in one problem JSON (`CoreSolveRequest`) — see the
-[quick start](quickstart.en.md). v1-era file formats remain readable and are
-migrated automatically.
+[quick start](quickstart.md). Supported v1 roster, layout, and project files
+have explicit migration steps; legacy history snapshots remain readable where
+the history tools support them.
 
 ## Student List
 
@@ -202,12 +208,12 @@ referenced by the project's `rules` path. In v2, `validate --preset <name>`
 performs scenario data-missing checks (history/score/height/vision warnings)
 only; it does not merge preset rules.
 
-See [rules.en.md](rules.en.md) for rules and preset behavior.
+See [rules.md](rules.md) for rules and preset behavior.
 
 Note: the native solve path consumes only the **top-level index-pair form** of
 hard constraints — `fixed_seats` / `must_be_adjacent` / `cannot_be_adjacent` /
 `min_distance`, with students referenced by list index (see the problem.json
-example in the [quick start](quickstart.en.md)). The string-reference form in
+example in the [quick start](quickstart.md)). The string-reference form in
 `rules.hard` is not consumed by the native path; a non-empty `rules.hard`
 block is rejected with an explicit error pointing at the top-level form. The
 workbench/server resolves the string form into top-level index pairs before

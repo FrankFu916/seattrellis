@@ -1,8 +1,10 @@
 # 导出格式说明
 
+[English](export.md) / [简体中文](export.zh.md)
+
 ## 支持的格式
 
-v2 的所有导出格式都由本地 Rust 渲染器生成，不需要任何可选安装包：
+v2.0.0 的所有导出格式都由本地 Rust 渲染器生成，不需要任何可选安装包：
 
 | 格式 | 说明 |
 |------|------|
@@ -10,7 +12,7 @@ v2 的所有导出格式都由本地 Rust 渲染器生成，不需要任何可�
 | 打印 HTML | `print-html`，A4 打印友好模板，默认 A4 横向（通过 `project-export` 使用） |
 | SVG | 自包含矢量座位图，便于继续编辑 |
 | PNG | 座位图图片 |
-| PDF | 打印文件，系统字体智能引用 |
+| PDF | 单页打印文件，本机系统字体光栅化 |
 | XLSX | 表格文件 |
 | DOCX | 可继续编辑的 Word 文档 |
 | PPTX | 单页 16:9 可编辑幻灯片 |
@@ -79,7 +81,7 @@ seattrellis_cli project-export \
 ## 模板与隐私
 
 导出 API 支持三种模板（`POST /api/v1/exports`）：`public`（班级公示版，只展示
-座位与姓名）、`teacher`（教师内部版，可包含学生字段、规则和 warnings）、
+座位与匿名标签）、`teacher`（教师内部版，可包含学生字段、规则和 warnings）、
 `report`（解释报告版，包含候选评分和 hard constraint 摘要）。CLI 的
 `--template` 接受 `public` 与 `teacher`。
 
@@ -95,12 +97,18 @@ SVG 和 PPTX 使用固定的 16:9 画布，输出与打印 HTML、PDF、Word 相
 隐私控制。SVG 是自包含矢量图（不含脚本或外部引用），PPTX 是单页 16:9 幻灯片，
 形状均为原生可编辑对象。画布格式不接受 A4 页面方向、缩放或页边距参数。
 
-## PDF 字体
+## PDF 与 PNG 字体
 
-PDF 渲染器不嵌入字体，也不依赖 WeasyPrint 或 Pango：它按固定的质量优先级链
-（PingFang SC → Noto Sans CJK SC → Microsoft YaHei → SimSun → 其他 CJK 字体）
-在常见平台字体目录中查找系统 CJK 字体，并在 PDF 中按名字引用，由查看器替换。
-字体质量低于"推荐"档时会给出导出 warning。具体见[字体策略](font-strategy.zh.md)。
+PDF 和 PNG 都在导出时从本机加载系统字体，并使用本地光栅化器绘制文字。PDF
+保存的是压缩后的页面图像，文字已经绘制在图像中，不依赖查看器选择匹配字体。
+找不到可用字体时文件仍会生成，但文字会被省略并给出 warning。
+具体见[字体策略](font-strategy.zh.md)。
+
+## 发布文件完整性
+
+v2.0.0 桌面安装包按维护者发布策略为未签名构建。下载后请用 `SHA256SUMS` 和
+`DESKTOP-SHA256SUMS` 校验；macOS 可能需要在右键菜单选择“打开”，Windows 可能显示
+SmartScreen 提示。
 
 ## 已知限制
 

@@ -1,64 +1,64 @@
 # Development Guide
 
-SeatTrellis v2 is a Rust-only workspace: `crates/` holds the layered crates
-(schema, rules, domain, application, io, export, server, core, cli), `app/`
-is a thin server facade, `app/src-tauri/` is the Tauri 2 desktop shell, and
-`clients/web/` is the React 19 workbench. There is no Python runtime in the
-v2 tree.
+SeatTrellis v2.0.0 is a Rust-first workspace. `crates/` contains the layered
+schema, rules, domain, application, I/O, export, server, core, and CLI crates;
+`app/` is a thin server facade; `app/src-tauri/` is the Tauri 2 desktop shell;
+and `clients/web/` is the React 19 workbench. Python is used only by selected
+development or performance tooling, not as a v2 application runtime.
 
-## Build & Test
+## Build and test
+
+The App server embeds `clients/web/dist`, so build the frontend before a
+workspace-level Cargo command that compiles the server:
 
 ```bash
-# The server build script embeds clients/web/dist (the React build) — build
-# the frontend before any workspace-level cargo command:
 cd clients/web && npm ci && npm run build && cd ../..
 
 cargo test --locked -p seattrellis_core
 cargo test --locked -p seattrellis_cli
 cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
 
-# Rust app server
 cargo test --locked -p seattrellis_app
 cargo clippy --all-targets -p seattrellis_app -- -D warnings
 
-# Tauri shell (requires the 1.88 toolchain)
+# Tauri shell; the workspace pins Rust 1.88 as its MSRV
 cargo build --locked -p seattrellis_desktop
 
-# React workbench
 cd clients/web && npm test && npm run typecheck && npm run build
 
-# Contract drift check (generated schemas / OpenAPI / TS client)
+# Generated schemas, OpenAPI, and TypeScript client contract
 cargo run -p xtask -- contract check
 ```
 
-## Architecture Rules
+## Architecture rules
 
-- Rust is the single source of truth: rule compilation, legality, the editing
-  state machine, migration, privacy and solver status are decided in Rust.
-  The React layer renders and edits; it must not re-derive domain truth.
-- Transport/UI code must not reach back into domain/rules/solver internals.
-  `serde_json::Value` appears only at migration, extension namespaces and
-  transport boundaries.
-- Every solve/edit/repair/rotation/export artifact passes an independent
-  validator before it is accepted — no hardcoded `feasible = true`.
-- Solver status vocabulary (frozen): `Solved / ProvenInfeasible / Timeout /
-  Unknown / InvalidInput / Cancelled / InternalError`. Heuristic exhaustion is
-  `Unknown`, never a fake `ProvenInfeasible`.
-- CLI exit codes (frozen): 0 / 2 / 3 / 4 / 5 / 70 / 130.
-- The loopback HTTP boundary (M1-05) is mandatory: `/api/*` requires the
-  bearer token, Host must be a loopback name + bound port, Origin is checked
-  when present, and responses carry CSP / X-Frame-Options / Referrer-Policy.
-  New write paths must not bypass these middleware checks.
+- Rust is the single source of truth for rule compilation, legality, editing
+  state, migration, privacy, and solver status. React renders and edits through
+  DTOs; it must not re-derive domain truth.
+- Transport and UI code must not reach into domain, rules, or solver internals.
+  `serde_json::Value` is for migration, extension namespaces, and transport
+  boundaries.
+- Every solve, edit, repair, rotation, and export artifact passes an independent
+  validator before acceptance. No path may hard-code `feasible=true`.
+- Solver statuses are frozen as `Solved`, `ProvenInfeasible`, `Timeout`,
+  `Unknown`, `InvalidInput`, `Cancelled`, and `InternalError`. Heuristic
+  exhaustion is `Unknown`, never a false `ProvenInfeasible`.
+- CLI exit codes are frozen as `0 / 2 / 3 / 4 / 5 / 70 / 130`.
+- Every `/api/*` write uses the loopback host/origin checks and bearer session
+  token. New write paths must not bypass the server middleware.
 
-## Oracle Differentials
+## Retired migration tooling
 
-The parity corpus and the Rust↔Python differential harness compare the Rust
-implementation against the frozen v1.9.0 oracle (installed from the
-`v1.9.0` tag):
+During the v1-to-v2 migration, Rust behavior was compared with the frozen
+Python 1.9.0 line. That oracle, its differential harness, fixture generators,
+and related CI jobs were removed after v2.0.0. There is no oracle installation
+or regeneration workflow.
 
-```bash
-python -m venv .oracle-venv
-.oracle-venv/bin/pip install "seattrellis[all] @ git+https://github.com/FrankFu916/seattrellis@v1.9.0"
-.oracle-venv/bin/python scripts/rust_python_diff.py --fixtures   # 41-case seven-state diff
-.oracle-venv/bin/python scripts/rust_python_diff.py --cli-golden # 38-command golden diff
-```
+Current regression coverage comes from the Rust test suite, committed CLI
+goldens, browser E2E, fuzz targets, and the Rust solver performance gate. The
+Python performance runner measures the Rust binary only; it is not a Python
+oracle or a parity test. Frozen inputs and their ownership are documented in
+`fixtures/README.md`.
+
+See [Testing](testing.md), [Architecture](architecture.md), and
+[Rust migration](rust-migration.md) for the current boundaries.

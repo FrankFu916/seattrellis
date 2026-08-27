@@ -1,70 +1,87 @@
-# 架构
+# Architecture
 
-SeatTrellis v2 是纯 Rust 工程。领域逻辑按分层 crate 组织，React 只是展示层；
-规则编译、合法性、编辑状态机、migration、隐私和求解状态只由 Rust 决定，前端
-不得复制领域规则。
+SeatTrellis v2.0.0 is a Rust-only product. Domain logic is split into layered
+crates while React remains a presentation and interaction layer. Rust owns rule
+compilation, legality, editing state, migration, privacy, and solver statuses;
+the frontend must not duplicate those rules.
 
-## 分层结构
+## Layers
 
-| crate | 职责 |
-|---|---|
-| `seattrellis-schema` | 版本化 JSON 契约与产物注册表 |
-| `seattrellis-rules` | 规则 DSL / registry（goal rules、preset 场景） |
-| `seattrellis-domain` | 编辑状态机、layout 草稿、轮换与分组领域模型 |
-| `seattrellis-application` | 用例编排（生成、导出请求、草稿审计） |
-| `seattrellis-io` | roster CSV/Excel 导入、migration、rotation、roster 草稿 |
-| `seattrellis-export` | 八种格式渲染器（svg/html/print-html/png/pdf/xlsx/docx/pptx） |
-| `seattrellis-server` | loopback HTTP 传输层（axum），嵌入 React 工作台资源 |
-| `seattrellis-core` | 求解器宿主：hard search、local search、candidates、audit、evaluator、validator |
-| `seattrellis-cli` | 28 个子命令的 CLI 适配器 |
+| Crate | Responsibility |
+| --- | --- |
+| `seattrellis-schema` | Versioned JSON contracts and the artifact registry |
+| `seattrellis-rules` | Rule DSL and registry for goals and presets |
+| `seattrellis-domain` | Editing state, layout drafts, rotation, and group models |
+| `seattrellis-application` | Use-case orchestration for generation, export, and audits |
+| `seattrellis-io` | CSV/Excel import, migration, projects, rotation, and roster drafts |
+| `seattrellis-export` | Eight renderers: SVG, HTML, print HTML, PNG, PDF, XLSX, DOCX, PPTX |
+| `seattrellis-server` | Loopback HTTP transport and embedded workbench assets |
+| `seattrellis-core` | Hard-rule search, local search, candidates, scoring, audit, and validation |
+| `seattrellis-cli` | The command-line adapter with 27 operational commands plus help |
 
-`app/` 是薄 facade（`seattrellis_app`），复用 `seattrellis-server` 启动本地
-服务；`app/src-tauri/` 是 Tauri 2 壳，只负责窗口生命周期，不承载第二套排座规则。
+`app/` is the thin `seattrellis_app` facade over the server. `app/src-tauri/` is
+the Tauri 2 shell; it owns the window lifecycle and does not contain a second
+seating-rule implementation.
 
-## 运行时形态
+## Runtime shape
 
 ```text
-React 工作台（clients/web）
-          │
-seattrellis_app（loopback HTTP，127.0.0.1:8765）/ Tauri 2 壳
-          │
-seattrellis-server → seattrellis-application → seattrellis-core（求解/校验/审计）
-          │
-本地 project 与 export I/O（seattrellis-io / seattrellis-export）
+React workbench (clients/web)
+          |
+seattrellis_app (loopback HTTP, 127.0.0.1:8765) / Tauri 2 shell
+          |
+seattrellis-server -> seattrellis-application -> seattrellis-core
+          |
+local project and export I/O (seattrellis-io / seattrellis-export)
 ```
 
-`seattrellis_core` 与 App 使用版本化、粗粒度的 JSON DTO（`CoreSolveRequest` /
-`CoreSolveResponse`）；前端不会逐座位调用底层求解器。App 构建时把 React 工作台
-的生产资源嵌入二进制，开发时可用 `SEATTRELLIS_WEB_STATIC` 覆盖资源目录。
+`seattrellis_core` and the App use coarse, versioned JSON DTOs
+(`CoreSolveRequest` and `CoreSolveResponse`). The frontend does not call the
+solver one seat at a time. Production frontend assets are embedded in the App
+binary; `SEATTRELLIS_WEB_STATIC` is a development-only asset override.
 
-## 跨界面编辑协议
+## Editing protocol
 
-跨界面编辑使用版本化的 `EditorCommandEnvelope` 和 `EditorStateEnvelope`
-（`protocol_version: "1.0"`，实现在 `seattrellis-domain::editing`）。每份草稿
-有独立 `draft_id` 和单调递增 revision；命令还带有唯一 `command_id`。服务端会
-在写入前拒绝错误草稿、重复命令和旧 revision，并把同一命令中的多项操作作为
-一个原子撤销批次。状态协议只包含姓名、学生/座位关联、锁和约束诊断，不携带
-成绩、备注、特殊需求、身高或视力。具体格式见[编辑器协议](editor-protocol.md)。
+Cross-surface editing uses versioned `EditorCommandEnvelope` and
+`EditorStateEnvelope` messages with `protocol_version: "1.0"`, implemented in
+`seattrellis-domain::editing`. Every draft has a unique `draft_id` and monotonic
+revision; every command has a unique `command_id`. The server rejects the wrong
+draft, duplicate commands, and stale revisions before writing, and treats all
+operations in one command as one atomic undo batch. See
+[Editor protocol](editor-protocol.md).
 
-## 求解器
+The state protocol is deliberately minimal: student names and student/seat
+relationships, lock state, and constraint diagnostics. It excludes scores,
+notes, special needs, height, vision, tags, and extension attributes.
 
-- hard 约束（fixed seats、must/cannot adjacency、min distance、groups）先做
-  静态冲突校验，再进入候选域构建与匹配搜索；
-- 求解状态词汇表冻结为 `Solved / ProvenInfeasible / Timeout / Unknown /
-  InvalidInput / Cancelled / InternalError`；启发式耗尽只能是 `Unknown`，
-  绝不伪装成 `ProvenInfeasible`，有合法 incumbent 时即使超时也是 `Solved`；
-- 所有 solve/edit/repair/rotation/export 产物必须经独立 validator 复核，
-  禁止硬编码 `feasible=true`。
+## Solver boundary
 
-## HTTP 与安全边界
+- Hard constraints (fixed seats, required/forbidden adjacency, minimum distance,
+  and groups) are checked for static conflicts before candidate-domain and
+  matching search.
+- Solver status vocabulary is frozen: `Solved`, `ProvenInfeasible`, `Timeout`,
+  `Unknown`, `InvalidInput`, `Cancelled`, and `InternalError`.
+- Heuristic exhaustion is `Unknown`, never a fabricated `ProvenInfeasible`. A
+  valid incumbent remains `Solved` even when a time limit fires.
+- Every solve, edit, repair, rotation, and export artifact is independently
+  validated before it is accepted. No path may hard-code `feasible=true`.
 
-`/api/*` 全部要求 `Authorization: Bearer <token>`（`/api/v1/session` 引导端点
-除外）；Host 必须为 loopback 名 + 绑定端口（防 DNS rebinding）；Origin 存在时
-必须同源（防 CSRF）；响应含 CSP / X-Frame-Options: DENY / Referrer-Policy:
-no-referrer。token 由 Server 启动时生成（256-bit），Tauri 用
-initialization_script 注入 `window.__SEATTRELLIS_SESSION__`，浏览器工作台经
-`GET /api/v1/session` 引导获取。body 限制、并发上限和优雅停机在
-`seattrellis-server` 中统一实施，新写路径不得绕过。
+## HTTP and security boundary
 
-所有文件操作默认发生在本机，不包含遥测或云同步。v1（Python）行冻结在
-1.9.0（`v1.x-maintenance` 分支），只作为行为基准的 oracle，不在 v2 树中。
+Every `/api/*` endpoint except `GET /api/v1/session` requires
+`Authorization: Bearer <token>`. The `Host` header must identify the loopback
+address and bound port to prevent DNS rebinding. When present, `Origin` must be
+same-origin to prevent CSRF. Responses include CSP, `X-Frame-Options: DENY`, and
+`Referrer-Policy: no-referrer`.
+
+The server generates a 256-bit token at startup. Tauri injects it through an
+initialization script; the browser workbench obtains it through the session
+bootstrap endpoint. Body limits, concurrency limits, and graceful shutdown are
+enforced in `seattrellis-server`, and new write paths must use the same boundary.
+The stable side-effect-free solver endpoint is `POST /api/v2/solve`; see the
+[API reference](api.md).
+
+All file operations are local by default. The product has no cloud sync or
+telemetry. The Python v1 line is frozen at 1.9.0 on `v1.x-maintenance` and is a
+legacy package only; its migration-era oracle/differential infrastructure was
+removed after v2.0.0 and is not part of the v2 tree.

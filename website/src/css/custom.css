@@ -1,6 +1,6 @@
 /**
- * SeatTrellis docs site — minimal theme, deferring to Docusaurus defaults.
- * Accent colour echoes the product's clay/terracotta brand token (#c6613f).
+ * SeatTrellis docs site. Keep the Docusaurus layout familiar, with a quiet
+ * navy/terracotta palette and a little more structure around navigation.
  */
 :root {
   --ifm-color-primary: #c6613f;
@@ -11,4 +11,107 @@
   --ifm-color-primary-lighter: #d17b5f;
   --ifm-color-primary-lightest: #dd9b85;
   --ifm-code-font-size: 95%;
+  --seat-ink: #17243d;
+  --seat-muted: #5d687b;
+  --seat-line: rgba(23, 36, 61, 0.12);
+  --seat-panel: #f6f8fb;
+  --ifm-navbar-height: 4.25rem;
+}
+
+[data-theme='dark'] {
+  --seat-ink: #f2f5fb;
+  --seat-muted: #b7c0d0;
+  --seat-line: rgba(242, 245, 251, 0.14);
+  --seat-panel: #20283a;
+}
+
+.navbar {
+  border-bottom: 1px solid var(--seat-line);
+  box-shadow: 0 0.35rem 1.5rem rgba(23, 36, 61, 0.06);
+}
+
+.navbar__brand {
+  gap: 0.65rem;
+  color: var(--seat-ink);
+  letter-spacing: -0.01em;
+}
+
+.navbar__logo {
+  border-radius: 0.6rem;
+}
+
+.navbar__title {
+  font-weight: 700;
+}
+
+.navbar-language .navbar__link {
+  border: 1px solid var(--seat-line);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.navbar-language .navbar__link:hover,
+.navbar-language .navbar__link:focus-visible {
+  background: var(--seat-panel);
+}
+
+.navbar-language .dropdown__menu {
+  min-width: 10.5rem;
+  padding: 0.4rem;
+  border: 1px solid var(--seat-line);
+  border-radius: 0.75rem;
+  box-shadow: 0 0.8rem 2rem rgba(23, 36, 61, 0.14);
+}
+
+.navbar-language .dropdown__link {
+  border-radius: 0.45rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.navbar-language .dropdown__link:hover,
+.navbar-language .dropdown__link:focus-visible,
+.navbar-language .dropdown__link--active {
+  background: var(--seat-panel);
+}
+
+.docs-doc-id-index .theme-doc-markdown {
+  max-width: 64rem;
+}
+
+.docs-doc-id-index .theme-doc-markdown > h1:first-child {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 1.75rem;
+  padding: clamp(2.25rem, 6vw, 4.5rem) clamp(1.5rem, 6vw, 4.5rem);
+  border: 1px solid rgba(198, 97, 63, 0.18);
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(198, 97, 63, 0.2), transparent 34%),
+    linear-gradient(135deg, var(--seat-panel), rgba(255, 255, 255, 0.55));
+  color: var(--seat-ink);
+  font-size: clamp(2.1rem, 5vw, 4rem);
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+  box-shadow: 0 1rem 2.5rem rgba(23, 36, 61, 0.08);
+}
+
+[data-theme='dark'] .docs-doc-id-index .theme-doc-markdown > h1:first-child {
+  background:
+    radial-gradient(circle at 90% 10%, rgba(198, 97, 63, 0.28), transparent 34%),
+    linear-gradient(135deg, var(--seat-panel), rgba(32, 40, 58, 0.72));
+}
+
+.docs-doc-id-index .theme-doc-markdown > h1:first-child + p {
+  max-width: 48rem;
+  color: var(--seat-muted);
+  font-size: 1.12rem;
+  line-height: 1.75;
+}
+
+@media screen and (max-width: 640px) {
+  .navbar-language .navbar__link {
+    border: 0;
+  }
 }

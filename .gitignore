@@ -53,3 +53,6 @@ docs-internal/
 website/.docusaurus/
 website/node_modules/
 /release-v2.0.0/
+
+# fuzz corpus is generated locally, never committed
+fuzz/corpus/

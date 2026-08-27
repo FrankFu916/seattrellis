@@ -1,6 +1,12 @@
 # Rules
 
+[English](rules.md) / [简体中文](rules.zh.md)
+
+This legacy filename is retained for existing links. The canonical English
+document is [Rules](rules.md).
+
 Rule files are JSON and separate `hard` constraints from `soft` preferences.
+This page documents the v2.0.0 rule contract.
 
 ## hard Rules
 

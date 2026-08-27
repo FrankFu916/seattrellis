@@ -1,10 +1,13 @@
 # 输入格式
 
-SeatTrellis 使用学生名单、教室布局和规则文件，也可以用一个本地 project 文件保存这些文件的相对路径和常用默认值。示例文件都在 `examples/`，只包含虚构数据。
+[English](input-format.md) / [简体中文](input-format.zh.md)
 
-v2 中这些文件通过 project 工作流（`project-*` 命令、工作台的班级项目面板）消费；
+SeatTrellis v2.0.0 使用学生名单、教室布局和规则文件，也可以用一个本地 project 文件保存这些文件的相对路径和常用默认值。示例文件都在 `examples/`，只包含虚构数据。
+
+v2.0.0 中这些文件通过 project 工作流（`project-*` 命令、工作台的班级项目面板）消费；
 独立 CLI 命令则把学生、座位和规则内联到一份 problem JSON（`CoreSolveRequest`）
-中求解，见[快速开始](quickstart.zh.md)。v1 时代的文件格式继续可读并自动迁移。
+中求解，见[快速开始](quickstart.zh.md)。v1 的名单、布局和 project 文件有明确的
+迁移步骤；历史工具在支持的范围内仍可读取旧 snapshot，但并非所有产物都能自动迁移。
 
 ## 学生名单
 
@@ -157,7 +160,7 @@ seattrellis_cli validate --problem problem.json --history-dir examples/history -
 
 ## Candidate set JSON
 
-v2 的多方案生成使用 `candidates` 命令，输出 `api_version: 2` 的候选报告（每个
+v2.0.0 的多方案生成使用 `candidates` 命令，输出 `api_version: 2` 的候选报告（每个
 候选带 `candidate_id`、assignment、plan score 明细和 hard-constraint 摘要），
 推荐方案是加权总分最高的 hard-valid 候选：
 
@@ -189,7 +192,7 @@ v1 时代的 candidate set（`kind: "candidate_set"`，`schema_version: "0.2.2"`
 ## 规则 JSON
 
 规则 JSON（`RuleSet`）内联在 problem JSON 的 `rules` 字段中，或由 project 的
-`rules` 路径引用。v2 的 `validate --preset <name>` 只做场景数据缺失检查
+`rules` 路径引用。v2.0.0 的 `validate --preset <name>` 只做场景数据缺失检查
 （history/score/height/vision warning），不合并 preset 规则。完整规则与预设
 说明见 [rules.zh.md](rules.zh.md)。
 

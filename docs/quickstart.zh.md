@@ -1,6 +1,8 @@
 # 快速开始
 
-本文档提供 SeatTrellis v2（纯 Rust 版本）的安装与命令行使用指南。如果你只想快速了解项目概况，请阅读[文档首页](index.md)。
+[English](quickstart.md) / [简体中文](quickstart.zh.md)
+
+本文档提供 SeatTrellis v2.0.0（纯 Rust 版本）的安装与命令行使用指南。如果你只想快速了解项目概况，请阅读[文档首页](index.zh.md)。
 
 ## 安装
 

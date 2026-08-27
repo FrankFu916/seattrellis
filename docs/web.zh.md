@@ -1,8 +1,12 @@
 # Web 端使用指南
 
+[English](web.md) / [简体中文](web.zh.md)
+
+SeatTrellis v2.0.0 的 Web 工作台由纯 Rust 的本地服务提供。
+
 ## 启动工作台
 
-v2 的网页工作台由纯 Rust 的 `seattrellis_app` 本地服务提供。它只绑定本机回环
+v2.0.0 的网页工作台由纯 Rust 的 `seattrellis_app` 本地服务提供。它只绑定本机回环
 地址（默认 `127.0.0.1:8765`），启动时生成 256-bit 会话 token，并自动在浏览器
 中打开 React 工作台：
 

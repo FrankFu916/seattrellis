@@ -1,6 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: pip
+  # Rust workspace (single root workspace since M1-01).
+  - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
@@ -8,24 +9,27 @@ updates:
     labels:
       - dependencies
 
+  # React workbench.
+  - package-ecosystem: npm
+    directory: /clients/web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+
+  # Documentation site.
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+
+  # CI actions.
   - package-ecosystem: github-actions
     directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-
-  - package-ecosystem: cargo
-    directory: /native
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-
-  - package-ecosystem: pip
-    directory: /native/seattrellis_native
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

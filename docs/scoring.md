@@ -1,16 +1,25 @@
-# 评分维度
+# Scoring
 
-SeatTrellis 使用 0–100 分的可解释维度比较候选方案：
+**SeatTrellis v2.0.0 is released.**
 
-- 公平轮换；
-- 近期同桌/邻座回避；
-- 成绩搭配；
-- 身高偏好；
-- 视力偏好；
-- 候选多样性；
-- 相对最近历史的稳定性。
+SeatTrellis compares candidate plans with explainable dimensions on a 0-100
+scale. Higher is better for an available dimension.
 
-总分是所有可用维度按规则权重计算的加权平均。规则未启用、缺少历史或缺少字段时，该维度为 `not_available`，不作为零分参与平均。
+- fair seat-category rotation;
+- recent desk-mate and neighbor avoidance;
+- score mixing or score placement;
+- height preference;
+- vision/front-seat preference;
+- candidate diversity;
+- stability relative to the latest history snapshot.
 
-评分是启发式比较工具，不代表全局最优，也不会覆盖 hard constraints。
+The total is a weighted average of dimensions whose status is
+`available`. Disabled objectives, missing history, and missing student fields
+produce `not_available`; they are not silently treated as zero scores.
 
+Scoring is a heuristic comparison tool. It does not prove a global optimum and
+never overrides hard constraints. A plan that fails hard-rule verification is
+not a valid candidate, regardless of its score.
+
+See [Rules](rules.md) for objective fields and [Candidates](candidates.md) for
+recommendation behavior.

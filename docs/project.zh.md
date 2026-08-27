@@ -1,8 +1,10 @@
 # Project 工作流详解
 
+[English](project.md) / [简体中文](project.zh.md)
+
 ## 概述
 
-Project 文件是轻量的本地 JSON 配置文件，用于保存排座工作流的路径和默认设置。它不嵌入学生名单或座位数据，只保存相对路径和默认配置。
+Project 文件是 SeatTrellis v2.0.0 使用的轻量本地 JSON 配置文件，用于保存排座工作流的路径和默认设置。它不嵌入学生名单或座位数据，只保存相对路径和默认配置。
 
 ## 命令
 
@@ -29,6 +31,7 @@ seattrellis_cli project-restore   # 从 bundle 恢复
 
 ```json
 {
+  "kind": "seattrellis_project",
   "schema_version": 1,
   "name": "Demo Class",
   "students": "students.csv",

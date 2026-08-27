@@ -1,7 +1,10 @@
-# 公平轮换历史
+# Fair-Rotation History
 
-`history-report` 读取历史 snapshot，统计每名学生使用前排、后排、侧边、角落、
-靠窗、靠门、讲台侧和空调侧等类别的次数。
+**SeatTrellis v2.0.0 is released.**
+
+`history-report` reads historical seating snapshots and counts each student's
+front, back, middle, side, corner, near-window, near-door, near-platform, and
+near-AC categories.
 
 ```bash
 seattrellis_cli history-report \
@@ -10,7 +13,14 @@ seattrellis_cli history-report \
   --output outputs/history-report.json
 ```
 
-`fair_rotation` soft rule 使用最近 `lookback` 次历史减少重复类别。历史缺失不会
-导致求解失败，只会使该评分维度不可用。
+The `fair_rotation` soft objective uses recent snapshots to reduce repeated seat
+categories. Missing history does not make a solve fail; it makes the affected
+dimension `not_available` and records the reason in the report.
 
-历史 snapshot 应与当前学生稳定 ID 和 layout seat ID 保持一致。
+Snapshots are interpreted using the current roster's stable student keys and the
+current layout's seat IDs, rows, columns, zones, and landmark flags. Unknown
+students or seats produce warnings rather than silently changing the current
+layout.
+
+Keep real historical records de-identified and outside the repository. The
+history under `examples/` is fictional.

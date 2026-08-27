@@ -1,44 +1,70 @@
-# 故障排除
+# Troubleshooting
 
-## 先运行诊断
+**SeatTrellis v2.0.0 is released.**
+
+## Run diagnostics first
 
 ```bash
 seattrellis_cli doctor
 ```
 
-`doctor` 会打印二进制名、版本、core API 版本并探测临时目录是否可写（不可写时
-以退出码 2 失败）。`seattrellis_cli --version` 可单独查看版本。
+`doctor` prints the binary name, version, core API version, and a temporary
+directory writability check. It exits with code `2` when the temporary directory
+cannot be written. `seattrellis_cli --version` prints only the version.
 
-## 常见问题
+## Common problems
 
-### 规则不可行
+### The rules are infeasible
 
-先运行 `validate`（或 project 的 `project-validate`），检查 fixed seats、
-must/cannot adjacency、minimum distance、禁用座位和座位数量。Soft rules 不会
-导致 hard-rule 校验失败。注意退出码 `3` 表示确认不可行，`5` 表示未知
-（启发式未找到方案），两者含义不同。
+Run `validate` or `project-validate` and inspect fixed seats,
+must/cannot-adjacent pairs, minimum distances, disabled seats, and the enabled
+seat count. Soft objectives do not make a hard-rule validation fail. Exit code
+`3` means `ProvenInfeasible`; exit code `5` means `Unknown` because the heuristic
+search did not establish a result. They are not interchangeable.
 
-### Excel 无法读取
+### Excel cannot be read
 
-只支持 `.xlsx` 和 `.xlsm`；旧 `.xls` 请另存为 `.xlsx` 或 CSV。
+Only `.xlsx` and `.xlsm` are supported. Save legacy `.xls` files as `.xlsx` or
+CSV first. Excel import reads the first worksheet and rejects oversized,
+encrypted, or formula-without-cached-value workbooks.
 
-### PDF 中文显示方块
+### Chinese text is missing in PDF or PNG
 
-v2 的 PDF 渲染器按名字引用系统 CJK 字体，由查看器替换。如果系统中没有 CJK
-字体（常见于精简 Linux/服务器环境），请安装 `fonts-noto-cjk`（Debian/Ubuntu）
-或 `google-noto-sans-cjk-fonts`（CentOS/RHEL），并参考[字体策略](font-strategy.zh.md)。
+PDF and PNG rasterize text with a locally discovered system font. If no usable
+CJK font can be loaded, the file is still produced but text is omitted and a
+warning is emitted. Install a CJK font, for example:
 
-### Web 工作台无法启动
+```bash
+# Debian/Ubuntu
+sudo apt-get install fonts-noto-cjk
 
-`seattrellis_app` 默认绑定 `127.0.0.1:8765`。端口被占用时换一个端口：
+# CentOS/RHEL
+sudo yum install google-noto-sans-cjk-fonts
+```
+
+See [Font strategy](font-strategy.md). HTML and print HTML use browser font
+fallback instead.
+
+### The web workbench will not start
+
+`seattrellis_app` binds to `127.0.0.1:8765` by default. If that port is in use,
+choose another local port:
 
 ```bash
 seattrellis_app --port 8766 --open-browser
 ```
 
-工作台需要嵌入的前端资源；开发构建时先执行 `cd clients/web && npm ci && npm run build`。
+When running from a source checkout, build the embedded frontend first:
 
-### 迁移报错
+```bash
+cd clients/web && npm ci && npm run build
+```
 
-v1 时代的文件由 `schema-migrate` 或项目面板迁移，迁移前自动创建 `.bak` 备份。
-未知版本会给出明确的迁移提示；失败时不会破坏原文件。
+Do not expose the service to a LAN or an untrusted network.
+
+### Migration fails
+
+Use `schema-migrate` or the Project panel for supported v1 roster, layout, and
+project inputs. A preview validates before writing, and replacement creates a
+backup. Unknown artifact kinds or newer schema versions are rejected; the
+original file is not silently changed.

@@ -1,7 +1,10 @@
-# 同桌与邻座历史
+# Desk-Mate and Neighbor History
 
-`pair-report` 汇总任意两名学生在历史中的同桌、横向、纵向、斜向、任意相邻和
-指定距离内出现次数。
+**SeatTrellis v2.0.0 is released.**
+
+`pair-report` counts how often two students were desk mates, horizontally
+adjacent, vertically adjacent, diagonally adjacent, adjacent by any current
+graph relation, or within a configured distance in historical snapshots.
 
 ```bash
 seattrellis_cli pair-report \
@@ -10,7 +13,16 @@ seattrellis_cli pair-report \
   --top 10
 ```
 
-`avoid_recent_neighbors` soft rule 可使用这些记录降低近期重复关系。`cooling` 是
-更严格的关系冷却目标，会在配置的历史期数内惩罚再次出现的同桌或邻座关系；它们
-共用同一套 pair history。历史规则不会放松 fixed seats、adjacency 或
-minimum-distance hard rules。
+The `avoid_recent_neighbors` soft objective uses these counts to reduce recent
+repetition. `cooling` is stricter: it penalizes a relationship seen in any of a
+configured number of recent snapshots. Both objectives use the same pair-history
+calculation and never relax fixed seats, adjacency, or minimum-distance hard
+constraints.
+
+The `within_distance` relation uses row/column Chebyshev distance and defaults
+to a threshold of `2`. Irregular layouts are evaluated as their actual seat
+nodes; the solver does not fill missing cells into a rectangular matrix.
+
+Unknown historical students and seats produce warnings. A disabled historical
+seat remains unavailable for a new solve, but its relationship can be counted
+from coordinates when possible.

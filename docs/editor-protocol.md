@@ -1,22 +1,29 @@
-# 编辑器协议
+# Editor Protocol
 
-编辑器协议是 React 工作台、loopback 服务（`seattrellis_app`）和桌面端之间的传输
-边界。领域规则只由 Rust（`seattrellis-domain::editing`）执行；前端只提交命令并
-渲染服务端返回的最小状态。CLI 的 `edit` / `repair` 命令复用同一套编辑语义。
+**SeatTrellis v2.0.0 is released.** The current editor protocol version is
+`"1.0"`.
 
-当前协议版本为 `"1.0"`，包含两个公开文档：
+The editor protocol is the transport boundary between the React workbench, the
+loopback `seattrellis_app` server, and the desktop shell. Rust
+(`seattrellis-domain::editing`) enforces domain rules; clients submit commands
+and render the minimal state returned by the server. The CLI `edit` and `repair`
+commands reuse the same editing semantics.
 
-- `EditorCommandEnvelope`：前端发出的 apply、undo 或 redo 命令；
-- `EditorStateEnvelope`：服务端返回的座位和锁定状态。命令响应会在状态之外
-  额外携带一个独立的 `validation` 校验对象（结构登记在
-  `schemas/editor-state.schema.json` 中）；获取状态的 GET 接口不返回该对象。
+The current protocol version is `"1.0"` and exposes two documents:
 
-对应 JSON Schema 为 `schemas/editor-command.schema.json` 和
-`schemas/editor-state.schema.json`。
+- `EditorCommandEnvelope`: an apply, undo, or redo command from a client;
+- `EditorStateEnvelope`: the current seats and lock state returned by the server.
+  A command response also carries a separate `validation` object registered in
+  `schemas/editor-state.schema.json`; the state `GET` endpoint does not include
+  that object.
 
-## 命令格式
+The JSON Schemas are `schemas/editor-command.schema.json` and
+`schemas/editor-state.schema.json`.
 
-每个命令都必须显式携带类型、协议版本、命令 ID、草稿 ID 和基础 revision：
+## Command format
+
+Every command explicitly carries its type, protocol version, command ID, draft
+ID, and base revision:
 
 ```json
 {
@@ -38,7 +45,7 @@
 }
 ```
 
-`action="undo"` 或 `"redo"` 时不得包含 operations：
+An `action` of `"undo"` or `"redo"` must not include `operations`:
 
 ```json
 {
@@ -51,10 +58,10 @@
 }
 ```
 
-支持的 operation 如下：
+Supported operations are:
 
-| kind | payload |
-|---|---|
+| Kind | Payload |
+| --- | --- |
 | `swap_students` | `first_student`, `second_student` |
 | `move_student` | `student_key`, `seat_id` |
 | `batch_move` | `moves: [{student_key, seat_id}]` |
@@ -63,56 +70,65 @@
 | `lock_student` / `unlock_student` | `student_key` |
 | `lock_seat` / `unlock_seat` | `seat_id` |
 
-一个命令最多展开为 100 项操作。`batch_move` 中的每个映射计为一项，学生和目标座位
-必须各自唯一。整个命令先完成验证和重放，再写入草稿文件；任一操作失败都不会提交
-部分结果。
+One command expands to at most 100 operations. Each mapping in `batch_move`
+counts as one operation, and students and target seats must each be unique. The
+server validates and replays the complete command before writing the draft; a
+failure never commits a partial result.
 
-## Revision 与冲突
+## Revisions and conflicts
 
-新草稿使用不可复用的 `draft_id`，revision 从 0 开始。每个成功的 apply、undo 或
-redo 命令只把 revision 增加 1，即使 apply 内含多个 operation。撤销和重做以整个
-命令批次为单位。
+A new draft receives a non-reusable `draft_id` and starts at revision 0. Each
+successful apply, undo, or redo increments revision exactly once, even when an
+apply contains several operations. Undo and redo operate on whole command
+batches.
 
-服务端在写入前依次检查：
+Before writing, the server checks:
 
-1. `draft_id` 是否属于当前草稿；
-2. `command_id` 是否已经处理；
-3. `base_revision` 是否等于当前 revision。
+1. whether `draft_id` belongs to the current draft;
+2. whether `command_id` has already been processed;
+3. whether `base_revision` equals the current revision.
 
-任一检查失败都会抛出 `EditorProtocolConflictError`，不修改草稿或输出文件。客户端
-收到冲突后应重新读取最新 `EditorStateEnvelope`，再根据用户意图构造新命令；不要
-悄悄覆盖新状态。
+Any failure raises `EditorProtocolConflictError` without changing the draft or
+output files. After a conflict, a client must fetch the latest
+`EditorStateEnvelope` and construct a new command from the user's intent; it
+must not silently overwrite newer state.
 
-## 状态格式
+## State format
 
-状态只提供编辑器实际需要的数据：
+State contains only what the editor needs:
 
-- 学生 key、显示名称、当前座位和锁定状态；
-- 座位 key、行列、启用状态、当前学生 key 和锁定状态；
-- undo/redo 深度。
+- student key, display name, current seat, and lock state;
+- seat key, row, column, enabled state, current student key, and lock state;
+- undo and redo depths.
 
-hard constraint 的复核结果不进入状态本身：apply/undo/redo 命令的响应会附带
-`validation` 对象（`valid`、`hard_constraints_satisfied`、`violations`），
-而 `GET .../editing/drafts/{id}` 返回的状态不含该对象。
+Hard-constraint results are not part of the state itself. Apply/undo/redo
+responses carry `validation` (`valid`, `hard_constraints_satisfied`, and
+`violations`), while `GET .../editing/drafts/{id}` returns state without it.
 
-成绩、备注、特殊需求、身高、视力、标签和任意扩展属性不会进入状态协议。座位不再
-重复携带学生姓名，客户端应通过 `student_key` 关联学生列表。
+Scores, notes, special needs, height, vision, tags, and extension attributes do
+not enter the state protocol. Seats do not repeat student names; clients join
+them to the student list through `student_key`.
 
-这份状态是数据最小化结果，不是匿名数据。姓名、稳定 student key 和约束诊断仍可能
-识别学生。不得把状态或命令写入远程遥测和公开日志；诊断字符串应按不可信纯文本转义，
-也不能作为稳定的机器可读错误码。
+This is data minimization, not anonymization. Names, stable student keys, and
+constraint diagnostics may still identify students. Do not send state or
+commands to remote telemetry or public logs. Escape diagnostic strings as
+untrusted plain text and do not treat them as stable machine-readable codes.
 
-`draft_id` 只用于并发检查，不是授权令牌。如果未来通过 HTTP 或 WebSocket 暴露协议，
-还必须验证会话所有权，并提供 CSRF、Origin 和访问控制保护。
+`draft_id` is only a concurrency identifier, not an authorization token. Any
+future HTTP or WebSocket exposure must also verify session ownership and provide
+CSRF, Origin, and access-control protection.
 
-## 校验边界
+## Validation boundary
 
-JSON Schema 可验证字段类型、必填项、operation 结构和基础数量限制。以下跨字段或
-领域约束仍以服务端 Rust 模型和编辑状态机为准：
+JSON Schema validates field types, required fields, operation shapes, and basic
+size limits. These cross-field and domain constraints remain owned by the Rust
+server model and editing state machine:
 
-- apply 必须含 operation，undo/redo 不得含 operation；
-- 展开后的操作总数不得超过 100；
-- batch source/target 不得重复；
-- 学生、座位、锁和占用关系必须在当前草稿中有效。
+- apply must contain operations, while undo/redo must not;
+- the expanded operation count must not exceed 100;
+- batch sources and targets must not repeat;
+- students, seats, locks, and occupancy relationships must be valid in the
+  current draft.
 
-客户端可以先用 Schema 提供即时提示，但不能跳过服务端校验。
+Clients may use the Schema for immediate feedback, but cannot skip server
+validation.

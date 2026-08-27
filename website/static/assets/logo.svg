@@ -9,26 +9,19 @@
       <stop offset="1" stop-color="#2b9fd8"/>
     </linearGradient>
   </defs>
-  <!-- squircle background -->
   <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
-  <!-- subtle top light -->
   <rect x="16" y="16" width="480" height="240" rx="112" fill="#ffffff" opacity="0.04"/>
-  <!-- seat grid: 3 columns x 3 rows, trellis of seats -->
   <g>
-    <!-- row 1 -->
-    <rect x="88"  y="104" width="96" height="76" rx="20" fill="#31406b"/>
+    <rect x="88" y="104" width="96" height="76" rx="20" fill="#31406b"/>
     <rect x="208" y="104" width="96" height="76" rx="20" fill="url(#accent)"/>
     <rect x="328" y="104" width="96" height="76" rx="20" fill="#31406b"/>
-    <!-- row 2 -->
-    <rect x="88"  y="218" width="96" height="76" rx="20" fill="#31406b"/>
+    <rect x="88" y="218" width="96" height="76" rx="20" fill="#31406b"/>
     <rect x="208" y="218" width="96" height="76" rx="20" fill="#31406b"/>
     <rect x="328" y="218" width="96" height="76" rx="20" fill="#31406b"/>
-    <!-- row 3 -->
-    <rect x="88"  y="332" width="96" height="76" rx="20" fill="#31406b"/>
+    <rect x="88" y="332" width="96" height="76" rx="20" fill="#31406b"/>
     <rect x="208" y="332" width="96" height="76" rx="20" fill="#31406b"/>
     <rect x="328" y="332" width="96" height="76" rx="20" fill="#31406b"/>
   </g>
-  <!-- ordering line under the chosen seat: seat order made visible -->
   <path d="M136 452 H376" stroke="#4fd1c5" stroke-width="18" stroke-linecap="round" opacity="0.9"/>
   <circle cx="376" cy="452" r="26" fill="#4fd1c5"/>
   <path d="M366 442 l16 10 -16 10 z" fill="#141b30"/>

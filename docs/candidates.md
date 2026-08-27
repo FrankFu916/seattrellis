@@ -1,19 +1,37 @@
-# 候选方案
+# Candidate Plans
 
-`candidates --count N` 使用确定性的 seed 序列生成最多 N 个不同方案。每个候选
-都必须满足 hard constraints，并包含独立 assignment、总分和评分明细。
+**SeatTrellis v2.0.0 is released.**
+
+`candidates --count N` uses the problem's seed and a deterministic sequence of
+attempts to generate up to `N` distinct plans. Every returned candidate must
+satisfy all hard constraints and includes its assignment, total score, and score
+breakdown.
 
 ```bash
-seattrellis_cli candidates --problem problem.json --count 5 > outputs/candidates.json
+seattrellis_cli candidates \
+  --problem problem.json \
+  --count 5 \
+  > outputs/candidates.json
 ```
 
-## 推荐规则
+## Recommendation
 
-1. 排除违反 hard constraints 的候选；
-2. 按可用评分维度的加权总分降序排列；
-3. 同分时按 `candidate_id` 稳定排序。
+1. Exclude candidates that fail hard-constraint verification.
+2. Rank the remaining candidates by weighted total over available score
+   dimensions.
+3. Use `candidate_id` as the stable tie-breaker.
 
-候选空间不足时会返回已经找到的不同方案并记录 warning，不会复制方案凑数。
+If the feasible candidate space is too small, the CLI returns the distinct plans
+it found and records a warning. It does not duplicate a plan to reach the
+requested count.
 
-v2 的候选报告为 `api_version: 2` 格式；v1 时代的 candidate set（每个候选内嵌
-snapshot）继续可读，project 工作流按 `candidate_id` 选择后导出。
+Candidate generation is heuristic. It does not enumerate every feasible plan or
+prove a global optimum. Use `--latest-snapshot` when the stability dimension
+should compare candidates with the latest historical plan.
+
+The v2 report uses `api_version: 2`. Legacy candidate-set artifacts remain
+readable where the project workflow supports them; `project-export --candidate
+<id>` selects a candidate by ID and defaults to the recommended candidate.
+
+See [Scoring](scoring.md) for dimension semantics and [Rules](rules.md) for the
+objectives used during generation.

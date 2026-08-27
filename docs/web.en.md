@@ -1,8 +1,13 @@
 # Web UI Guide
 
+[English](web.md) / [简体中文](web.zh.md)
+
+This legacy filename is retained for existing links. The canonical English
+document is [Web Workbench Guide](web.md).
+
 ## Starting the workbench
 
-The v2 web workbench is served by the pure-Rust `seattrellis_app` local server.
+The v2.0.0 web workbench is served by the pure-Rust `seattrellis_app` local server.
 It binds the loopback address only (default `127.0.0.1:8765`), generates a
 256-bit session token at startup, and opens the React workbench in your
 browser:
@@ -248,6 +253,6 @@ repository.
 
 ## Related documents
 
-- [Quick start](quickstart.en.md)
-- [Project workflow details](project.zh.md)
-- [Export formats](export.zh.md)
+- [Quick start](quickstart.md)
+- [Project workflow details](project.md)
+- [Export formats](export.md)

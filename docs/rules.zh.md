@@ -1,6 +1,8 @@
 # 规则说明
 
-规则文件是 JSON，分为 `hard` 和 `soft`。
+[English](rules.md) / [简体中文](rules.zh.md)
+
+SeatTrellis v2.0.0 的规则文件是 JSON，分为 `hard` 和 `soft`。
 
 ## hard 规则
 

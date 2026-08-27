@@ -1,28 +1,67 @@
-# SeatTrellis · 席序
+---
+slug: /
+---
 
-SeatTrellis 是一个隐私优先、本地运行的课堂排座工具。v2 是纯 Rust 实现：桌面
-应用（Tauri）、loopback 本地服务 + React 工作台，以及 `seattrellis_cli`
-命令行工具，都不需要 Python 或其他运行时。它将学生名单、教室布局、规则和历史
-座位记录组合成可复现的单方案或多候选方案。
+# SeatTrellis Documentation
 
-## 从这里开始
+[English](index.md) / [简体中文](index.zh.md)
 
-- [快速开始](quickstart.zh.md)：安装（桌面应用 / `cargo install seattrellis_cli`）、
-  校验、求解和导出；
-- Web 端：[中文](web.zh.md) / [English](web.en.md)：分步向导、候选比较和下载；
-- [CLI 命令参考](cli.md)：28 个子命令与退出状态；
-- [输入格式](input-format.zh.md)：学生、layout 和产物格式；
-- [规则](rules.zh.md)：hard constraints、soft preferences 和 presets；
-- [隐私](privacy.md)：真实班级数据的本地处理边界。
+**SeatTrellis v2.0.0 is released.** SeatTrellis is a local-first classroom
+seating planner: import a roster, describe the room and constraints, generate
+one or more plans, adjust them, and export a handout.
 
-v1（Python）版本冻结在 1.9.0，仅作为遗留包（`pip install seattrellis==1.9.0`）。
+## Choose an entry point
 
-## 核心原则
+- **Desktop app:** the recommended Tauri application for teachers. It includes
+  the workbench and runs the local Rust service in a native window.
+- **Web workbench:** the same React workflow in a browser, served by
+  `seattrellis_app` on the loopback interface only.
+- **CLI:** `seattrellis_cli` for automation, reproducible solves, project
+  folders, reports, migrations, and exports.
 
-1. Hard constraints 永远优先于 soft scoring。
-2. seed 固定伪随机序列；未被墙钟时间提前终止的求解应生成稳定结果。
-3. 不可计算的评分维度标记为 `not_available`，不虚构分数。
-4. 默认不采集遥测、不上传学生数据。
-5. `examples/` 中只允许虚构数据。
-6. 求解状态与 CLI 退出码使用冻结语义：启发式耗尽只能是 `Unknown`，
-   绝不能伪装成 `ProvenInfeasible`。
+## Quick links
+
+| Start here | What it covers |
+| --- | --- |
+| [Quick start](quickstart.md) | Install v2.0.0, solve a first problem, and export it |
+| [Web workbench](web.md) | Teacher workflow, editing, projects, and downloads |
+| [CLI reference](cli.md) | Commands, options, statuses, and exit codes |
+| [Input formats](input-format.md) | Rosters, layouts, projects, history, and candidate artifacts |
+| [Rules](rules.md) | Hard constraints, soft objectives, presets, and scoring |
+| [Project workflow](project.md) | Persistent local workspaces and saved plans |
+| [Export formats](export.md) | Eight renderers, templates, privacy, and printing |
+
+Developer documentation starts with [Architecture](architecture.md). See
+[Privacy](privacy.md) before using real student data.
+
+## How plans are evaluated
+
+**Hard constraints** are requirements. Fixed seats, required or forbidden
+adjacency, minimum distances, and group relationships must pass validation; a
+plan that cannot satisfy them is not presented as a valid solution.
+
+**Soft objectives** are weighted preferences. Vision, height, score placement or
+mixing, history-based rotation, and recent-neighbor avoidance improve the score
+when the input supports them, but never override a hard constraint. A missing
+input makes the affected dimension `not_available`, not an invented zero score.
+
+With a fixed seed, the Rust solver is reproducible when it completes its fixed
+search budget. A wall-clock timeout can stop machines after different numbers
+of attempts, so timed-out runs are not promised to be byte-identical.
+
+## Local-first privacy
+
+The v2.0.0 desktop app, browser workbench, and CLI process data on the local
+machine. The app server binds to `127.0.0.1` by default, uses a per-process
+session token, and is not designed to be exposed to a LAN or an untrusted
+network. There are no accounts, cloud sync, or product telemetry.
+
+Public exports fail closed: they anonymize student labels and suppress student
+IDs and sensitive detail fields. Keep real rosters, history, screenshots, and
+exports in private ignored directories; the repository's examples are fictional.
+
+## Legacy v1 line
+
+The Python line is frozen at **1.9.0** on the `v1.x-maintenance` branch. It is a
+legacy compatibility package only (`pip install seattrellis==1.9.0`) and is not
+part of the v2.0.0 runtime or release artifacts.

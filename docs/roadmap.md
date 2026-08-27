@@ -1,414 +1,118 @@
-# 开发路线图
-
-> 状态说明：本文档主体记录 v1.3–v1.8 的公开方向，该 v1（Python）行已随
-> **1.9.0** 冻结（`v1.x-maintenance` 分支，仅遗留维护）。当前主线是
-> **v2（纯 Rust）**：`seattrellis_cli`、loopback App 服务器 + React 工作台、
-> Tauri 桌面壳，无 Python 运行时。v2 的发布与质量门槛见
-> [publishing.md](publishing.md) 与 [benchmarks.md](benchmarks.md)。
-
-本路线图描述 v1.3–v1.8 的公开方向。具体范围以对应 GitHub Milestone 和
-Issue 为准；未进入 Milestone 的构想不构成发布承诺。
-
-SeatTrellis 的求解、验证、历史公平性和导出能力已经具备稳定基础。后续版本的
-首要目标不是增加更多技术选项，而是让第一次使用的教师无需理解 JSON、求解器或
-项目目录，也能顺利完成一整次排座。
-
-| 版本 | 主题 | 主要交付 |
-|---|---|---|
-| [v1.3.0](https://github.com/FrankFu916/seattrellis/milestone/1) | 导出与隐私 | 统一导出请求、CLI/Web 隐私选项、A4 页面设置、中英文导出 |
-| [v1.4.0](https://github.com/FrankFu916/seattrellis/milestone/2) | 内核边界与基准 | 可切换求解后端、候选集报告、40/50/60 人基准、编辑协议和 Rust 原生验证试验 |
-| [v1.5.0](https://github.com/FrankFu916/seattrellis/milestone/3) | 简化教师流程 | 班级向导、标准教室、自然语言排座目标、一键生成和导出 |
-| [v1.6.0](https://github.com/FrankFu916/seattrellis/milestone/4) | React 可视化工作台 | 可视化 layout 编辑器、Excel 字段映射、实时约束诊断 |
-| [v1.7.0](https://github.com/FrankFu916/seattrellis/milestone/5) | 班级与轮换 | 多班级、历史版本、项目包、新规则和未来多期轮换 |
-| [v1.8.0](https://github.com/FrankFu916/seattrellis/milestone/6) | 桌面与正式分发 | 独立安装包、原生文件对话框、SVG/PPTX 和导出预览 |
-
-## v1.8.3 之后的待完成事项
-
-下面是当前仍未完成、并且会影响正式关闭路线图 Issue 的事项。已经合并的基础能力
-不再重复列为待办；例如关系冷却、项目 schema 迁移、历史比较、分期编辑、小组的
-相邻/分离约束和未签名 onedir 构建都已经完成。
-
-### v1.7.0：班级项目工作台（GitHub #16）
-
-- 完整的 RuleSet 可视化编辑器：高级设置现在可以直接编辑 schema 版本、seed、四类
-  hard rule、已实现 soft rule 和命名小组，同时保留原始 JSON 入口；四类常用 hard rule
-  和命名小组也支持按清单批量添加、预览、未知引用提示和去重；规则诊断现在会为每个
-  字段错误给出下一步修复建议。仍需完成 React/桌面端/CLI 的一致性验收；
-- 轮换方案的连续编辑：React 工作台已经可以保存所有期次的 snapshot、锁定状态、
-  来源和操作日志，也可以从项目输出重新创建逐期编辑草稿；历史方案列表现在会显示
-  隐私安全的来源、上一级文件名、操作次数和匿名操作时间线；迁移预览也会检查名单、布局、
-  规则以及历史/输出引用是否仍然可用；历史时间线已记录期次和 UTC 时间，并支持按期次筛选；
-- 小组登记表：HTML/CSV 登记表已经可以根据命名小组和轮换期次生成，并保留空组、名单中
-  不存在的成员和未入座学生；现在也可以在下载前预览各期成员新增/移出、入座状态和名单缺失
-  统计；后续仍可补充更丰富的小组登记字段；
-- 迁移向导收尾：当前已显示字段级变化、迁移前后校验、备份位置和回退提示，并可在
-  React 项目工作台一键恢复原文件；单项目和多项目引用检查均已提供，批量写入和
-  工作台中的多选入口现已提供；批量写入只有在所有项目预检通过后才会执行，失败时
-  会回滚已写入的结果；仍需补充更细的冲突修复建议和 React/桌面端/CLI 一致性验收；
-- 将上述功能纳入 React、桌面端和 CLI 的一致性验收，并在完成后关闭 #16。
-
-### v1.8.0：桌面应用与正式分发（GitHub #17）
-
-- Windows、macOS 安装包和一个有明确安装说明的 Linux 分发形式；Tauri 流水线已经可以
-  将未签名的 `.app`/`.dmg`、`.msi`/NSIS、紧凑 `.deb` 附加到已有 Release，签名版仍待
-  证书和公证配置；Python onedir 压缩包继续作为兼容分发；
-- pywebview 已支持名单原生打开、导出原生另存为和本机最近名单路径；浏览器端保留普通
-  上传/下载回退。浏览器与桌面工作台已经加入未保存修改提示；
-- SVG、单页 16:9 PPTX 和实时导出预览；
-- 统一的跨平台主题 token，同时遵循各平台字体、快捷键、窗口控制和系统明暗色；
-- Windows/macOS 代码签名、公证、干净机器安装/卸载和退出后无残留进程验收；
-- 记录安装包大小、冷启动、离线行为和版本兼容性，并将已验证安装包和校验和附加到
-  GitHub Release；
-- 在三平台桌面 E2E 中覆盖打开班级 → 生成 → 调整 → 导出和主题切换。
-
-### 跨版本工程收尾
-
-- 对 v1.8 范围冻结后运行一次完整发布矩阵：Python 3.11–3.14、Rust/native 差分、
-  Playwright、视觉回归、40/50/60 人性能和打包隐私检查；
-- 将 React 工作台作为默认网页入口，Streamlit 明确标为兼容/高级入口，保持旧 CLI、
-  JSON 和 Project 文件兼容；
-- 在正式桌面发布前完成 README、快速开始、网页指南、桌面文档和 CHANGELOG 的用户
-  可感知变更说明。
-
-### 已确认但不阻塞 v1.8 的后续工作
-
-- layout 的拖拽、框选、多选和批量移动；当前编辑器已经支持点击和工具栏操作，先不
-  把交互编辑器与规则实现分成两套状态机；
-- Rust 原生后端的正式评估：完成 40–60 人基准、Python/Rust 差分、三平台 wheel 和
-  发布体积评估后，才决定是否在 v2.0 将 Rust heuristic backend 设为默认；
-  （该评估已完成，v2 使用单一 Rust 求解器，无 Python/OR-Tools 运行时；）
-- Streamlit 兼容入口至少保留到 v2.0，之后再根据使用数据决定是否停止新增功能或
-  逐步移除；C/C++ 仅在必须去掉 Python OR-Tools 运行时且有实证收益时重新评估；
-  （v1 行随 1.9.0 冻结，v2 不再提供 Streamlit 入口，也不引入 C/C++ 内核；）
-- 自动更新、云同步、账号、插件系统和远程 AI 助手暂不进入当前路线图。
-
-## 产品设计原则
-
-### 从教师任务出发
-
-界面围绕一条固定主流程组织：
-
-> 新建或打开班级 → 导入名单 → 设置教室 → 选择排座目标 → 生成 → 手动微调 →
-> 检查问题 → 保存和导出
-
-“快速排座”和“Project 工作区”不再作为两个并列的用户概念。无论临时使用还是
-长期保存，用户面对的都是一个“班级”；Project、snapshot 和配置文件仍可作为
-兼容的底层格式存在。
-
-用户界面使用教师熟悉的表达：
-
-| 技术概念 | 默认界面用语 |
-|---|---|
-| Project | 班级 |
-| preset | 排座目标 |
-| candidate | 其他方案 |
-| snapshot | 历史版本 |
-| hard constraints | 必须满足 |
-| local repair | 只调整相关学生 |
+# Roadmap
 
-### 默认简单，逐步展开
-
-默认界面只显示完成当前任务所需的内容：班级和数据状态、教室预览、一个排座
-目标、必须满足事项摘要、生成按钮、座位图、撤销/重做、保存和打印。
+> **Status:** SeatTrellis v2.0.0 is released. The v1 Python line is frozen at
+> 1.9.0 on `v1.x-maintenance`; it is not an active product roadmap.
 
-设置分为三层：
+This page separates shipped v2.0.0 capabilities from possible future work. A
+future item is not a release commitment until it has an approved milestone.
 
-1. **常用操作**：日常轮换、公平打散、小组协作，锁定座位，调整学生和一键导出；
-2. **更多选项**：指定关系、成绩或小组目标、轮换期数、导出隐私和版面；
-3. **诊断与兼容**：backend、seed、time limit、候选数量、原始规则 JSON、
-   schema 和历史质量明细。
+## v2.0.0 shipped
 
-第三层不会出现在普通流程中。默认由程序选择求解后端、时间预算和候选数量，
-结果页只展示推荐方案，并通过“查看其他方案”按需展开比较信息。
-
-### 一套领域逻辑，多种入口
-
-Python service、CLI、浏览器和桌面端共享同一套规则、求解、验证、编辑命令和导出
-实现。前端只能提交版本化领域命令，不得重新实现约束判断或建立第二套编辑状态。
-CLI 继续服务自动化和高级用户，但普通教师无需使用终端。
-
-## 当前基础：v1.3 与 v1.4
-
-v1.3.0 已完成统一导出契约、隐私模板、A4 页面设置和中英文导出。
-
-v1.4.0 完成了以下基础能力：
-
-- `auto`、`fallback`、`ortools` 和实验性 `native` 后端选择；
-- 共享编译问题边界和明确的超时、未知、无解状态；
-- 40/50/60 人可复现基准工具；
-- 候选方案比较与解释报告；
-- JSON Schema 导出和安全迁移；
-- 与界面无关的编辑会话、锁定、交换、未入座区、批量移动、撤销/重做和局部修复；
-- 可供浏览器和桌面端复用的版本化编辑协议；
-- Rust 原生验证试验，继续与 Python 后端并存，不作为默认求解器；
-- 浏览器级主流程测试、隐私检查和三平台原生构建验证。
-
-这些能力在 v1.5 起主要通过更自然的教师工作流呈现，而不是继续增加表单和技术
-参数。
-
-## v1.5.0：简化教师流程（已完成）
-
-v1.5 消除了首次使用门槛，并把 v1.4 已具备的编辑能力整理成完整工作流。
-现有 Streamlit 页面继续承担兼容入口，新的复杂交互转入 v1.6 React 工作台。
-
-### 主要功能
-
-- 默认页面依次完成学生名单、教室、排座目标、生成、调整和打印；
-- 导入常见 Excel/CSV 时自动识别姓名列，并在不确定时给出明确提示；
-- 提供标准教室生成器，按排数、每排座位和过道生成 layout，无需手写 JSON；
-- 默认提供“日常轮换”“快速打乱”和“同伴互助”目标卡；
-- 在生成前说明名单中缺少的成绩、身高、视力或历史数据；
-- 将锁定、点击换座、未入座、撤销/重做和局部修复集中到座位图附近；
-- 提供“教师打印版”和“公开版”两个安全的一键导出入口；
-- 保留当前高级 Web 和 CLI 能力，避免破坏已有工作流。
-
-### 验收标准
-
-- 只有一份常见格式名单、没有 layout 或 rules 文件的新用户，可以生成并打印
-  座位表；
-- 默认流程不出现 JSON、seed、backend、snapshot 或 candidate 等技术术语；
-- 输入缺失或有冲突时，页面给出明确的下一步操作；
-- 浏览器 E2E 已覆盖“导入名单 → 标准教室 → 生成 → 调整 → 导出”；
-- 旧 CLI、service API、Project 文件和高级 Web 工作流保持兼容。
-
-最近班级、历史浏览、备份恢复和完整 Excel 字段映射分别进入 v1.6 与 v1.7，避免
-在过渡页面中重复实现一套将被替换的工作台。
-
-## v1.6.0：React 可视化工作台
-
-v1.6 建立长期使用的正式浏览器界面。TypeScript/React 前端通过版本化本地 API
-调用 Python application service；Streamlit 转为兼容入口，不再同时维护两套新增
-功能。
-
-### 主要功能
-
-- 中央座位画布、未入座学生区和上下文操作面板；
-- 拖拽交换、框选、多选、批量移动、锁定以及完整撤销/重做；
-- 编辑时实时显示必须满足事项和冲突位置；
-- layout 编辑器支持座位、过道、讲台和空位；
-- 支持插入/删除行列、整体平移、镜像和异形教室；
-- React 工作台已接入上述布局命令、撤销/重做和编译保存；
-- Excel 自动字段识别、手动映射、映射模板和导入差异预览；
-- 支持增量更新和全量覆盖，并允许撤销尚未确认的导入；
-- 建立统一设计 token，为深浅色和后续主题切换提供稳定基础；
-- 扩展浏览器 E2E、键盘操作和视觉回归测试。
-
-### 架构边界
-
-- React 只消费 application DTO 和编辑命令，不直接读取 Pydantic 内部模型；
-- 编辑器沿用 `draft_id`、revision、`command_id` 和原子操作批次；
-- API 只绑定本机地址，错误信息经过结构化转换后再显示；
-- Node.js 只参与前端构建，发布包内包含编译后的静态资源；
-- Streamlit 至少保留到 v2.0，作为兼容和故障排查入口。
-
-### 验收标准
-
-- React 界面可以独立完成导入、生成、拖拽、检查、保存和导出；
-- 同一编辑命令在 React、Streamlit 和 Python service 中得到一致结果；
-- 40–60 人座位图的选择、拖拽和诊断没有明显交互延迟；
-- 关键功能可仅用键盘操作，并在常见桌面和窄屏宽度下保持清晰；
-- 前端不得保存成绩、备注、特殊需求等协议未授权字段。
-
-## v1.7.0：班级管理与未来轮换
-
-v1.7 将单次排座扩展为可长期使用的班级工作台，并补齐原路线中的新规则和
-多期计划。
-
-当前状态：多期轮换、跨期摘要、项目包备份/恢复/隐私扫描和近期项目 CLI 已完成；
-React 工作台已经接入最近班级、历史/生成文件元数据、隐私扫描、备份下载和恢复上传，
-并在普通教室设置中提供网格、走廊、讲台和空位的可视化 layout 编辑，以及名单内的
-学生资料编辑。历史方案比较、从历史创建新 snapshot，以及未来多期轮换的基础入口和
-逐期独立编辑已经完成；React 工作台现在也提供了已实现软规则的详细表单设置，包括
-历史轮换、近期邻座、关系冷却、成绩位置/分布和互助搭档；`groups` 的组内相邻/分离
-语义也已接入统一硬约束编译。高级设置现在提供完整 RuleSet 的结构化编辑和原始 JSON
-双向切换。项目面板现在提供 schema 迁移预览、安全新文件写入和显式原地迁移备份；
-普通设置现在可以编辑命名小组的相邻/分离关系。历史比较已经支持匿名逐项座位变化预览；
-React 工作台可以把当前多期编辑和操作记录保存为新的轮换计划，也可以重新载入轮换
-输出继续编辑；操作时间线现在会保留轮换期次和 UTC 记录时间，并支持按期次筛选。
-
-### 班级工作台
-
-- 最近班级、多班级入口和示例班级；
-- React 工作台中的最近班级、历史文件、隐私检查、项目包备份和恢复；
-- 学生、已实现软规则和 layout 的可视化编辑；
-- 自动保存、历史版本浏览、结构化比较、安全恢复和未来轮换入口；多期编辑结果可
-  保存为新的轮换计划，也可从该计划恢复可编辑草稿；操作历史和来源版本链已经可以
-  脱敏查看，并可按轮换期次筛选、查看记录时间；
-- `.seattrellis.zip` 项目包的备份、恢复、迁移和隐私检查；
-- 文件格式升级时提供预览和可回退的迁移流程；
-- 新手引导只解释当前任务，不要求用户预先理解整个数据模型。
-
-### 排座目标
-
-- 成绩位置偏好：高分靠前或靠后，默认作为软目标；
-- 行/组成绩均衡：减少行间或组间平均水平差异；
-- 师徒结对：自动匹配并控制距离，避免近期重复；
-- 原有 peer mixing 能力保留兼容名称，并在界面中说明实际含义；
-- 新能力作为可组合目标实现，不建立互斥的“算法列表”。
-
-### 未来多期轮换
-
-- 一次生成多个未来时段的安排；
-- 汇总跨期座位公平性、同桌和邻座重复情况；
-- 支持保存每期版本、从项目重新载入编辑草稿，并生成 HTML/CSV 小组登记表；登记表会
-  保留空组、名单中不存在的成员和未入座学生。保存和重新载入、脱敏操作历史、来源版本链
-  按期次筛选、时间标记以及成员差异预览均已完成，后续可补充更丰富的登记字段；
-- 先采用逐期求解和跨期惩罚，不在本阶段引入大型联合模型。
-
-### 验收标准
-
-- 项目包备份和恢复后，学生、布局、规则、历史及引用关系保持一致；
-- 用户无需填写本机文件路径即可创建、打开和迁移班级；
-- 可以生成至少四期轮换，并解释公平性和重复搭档情况；
-- 新规则具备求解、验证、评分、文档和契约测试；关系冷却与近期邻座目标共用历史
-  计算路径，并在普通设置中明确说明其软约束语义；
-- 历史恢复和 schema 迁移失败时不会破坏原文件。
-
-## v1.8.0：桌面应用与正式分发
-
-v1.8 将 React 工作台封装为普通用户可安装的本地桌面应用。首选 pywebview
-承载同一套前端和本地 Python API；只有原型数据证明存在明显问题时，才考虑更换
-桌面壳。
-
-当时的进展：pywebview 共享工作台原型可通过 `seattrellis desktop` 启动，带随机
-本地会话凭据和退出清理；Windows/macOS 安装包、签名、公证和干净机器验收尚未完成
-（该 pywebview 桌面方案随 v1 行冻结在 1.9.0 的 `desktop` extra 中；v2 桌面由
-Tauri 壳提供，不再使用 pywebview）。
-
-### 主要功能
-
-- Windows 和 macOS 独立安装包，以及经过验证的 Linux 分发形式；
-- 无需用户预装 Python、Node.js、Rust 或 Streamlit；
-- 原生打开、另存为和最近文件；
-- SVG 矢量导出、单页 16:9 PPTX 和实时导出预览；
-- 默认清爽主题、系统深浅色跟随和少量可切换主题；
-- 窗口装饰、字体和快捷键尊重平台习惯，核心布局和操作逻辑保持一致；
-- 关闭窗口后清理本地服务、子进程和临时文件；
-- 安装包签名、公证、构建溯源和发布产物校验。
-
-### 验收标准
-
-- 在干净机器上安装后，可离线完成“打开班级 → 生成 → 调整 → 导出”；
-- 本地服务仅绑定 `127.0.0.1`，使用不可预测的会话凭据，并拒绝其他来源访问；
-- Windows、macOS 和 Linux 构建使用同一套领域及前端测试；
-- 应用退出后没有残留进程，未保存内容会获得明确提示；
-- 桌面端与浏览器端生成的文件保持兼容。
-
-## 技术栈与兼容策略
-
-### Python
-
-- v1.x 的源码包继续以 Python 3.11 为最低版本；
-- CI 覆盖 Python 3.11、3.12、3.13 和 3.14，发布安装验证覆盖兼容范围的
-  3.11 与 3.14 两端；
-- 不仅运行最小依赖测试，也分别验证 Web、OR-Tools、Excel、PDF、DOCX 和桌面构建；
-- 某个可选依赖尚未提供新版本 Python wheel 时，清楚标记受影响功能，不因此立即
-  提高最低 Python 版本或破坏核心安装；
-- 桌面安装包可以固定一个经过完整验证的内置 Python 版本，源码包的兼容范围不受
-  该选择影响。
-
-### Rust-first 重写（已完成，v2 当前状态）
-
-为达到"解压后 5–20MB 的小体积桌面工具"，项目把 Rust 作为唯一运行时，React
-前端保持共享。该迁移已完成：当前交付如下：
-
-- **`crates/seattrellis-core`**：版本化 JSON 契约（`CoreSolveRequest` /
-  `CoreSolveResponse`）、图距离、硬约束验证、成本评分、candidate 生成、audit
-  与七状态求解语义；覆盖全部已实现规则；
-- **CLI 版**（`crates/seattrellis-cli`）：`seattrellis_cli`，28 个子命令——
-  `doctor`、`validate`、`precheck`、`audit`、`score`、`candidates`、
-  `history-report`、`pair-report`、`repair`、`edit`、完整 `project-*` 生命周期、
-  `schema-*` 工具、`solve` 与 `export`（svg/html/print-html/png/pdf/xlsx/docx/pptx）；
-- **App 版**（`app/`）：loopback 纯 Rust 服务（默认 `127.0.0.1:8765`），提供
-  名单、生成、调整、导出、布局、项目、迁移、轮换和分组接口；React 生产资源
-  嵌入二进制；Tauri 2 壳在 `app/src-tauri/`；
-- **CI 以 Rust 为主**（`.github/workflows/rust.yml`）：core/CLI/app/Tauri 在
-  3 OS 测试 + clippy、MSRV 1.88、fuzz、长跑门槛与 release 二进制构建；
-  `.github/workflows/tauri.yml` 负责把跨平台桌面安装包附加到 Release；
-- **分发**：CLI 通过 crates.io（`cargo install seattrellis_cli`）与 GitHub
-  Release 预编译二进制分发，桌面安装包通过 GitHub Release + SHA256SUMS；
-- v2 求解质量与性能由自动门槛验收：41-case oracle 差分、OR-Tools regret 门槛
-  （median ≤ 5% / P95 ≤ 15%）、committed baseline 性能回归门槛和 planted
-  feasible corpus 100% solved，见 [benchmarks.md](benchmarks.md)。
-
-#### 已完成的验证（2026-08）
-
-- **40/50/60 人 Python/Rust 差分**（`scripts/rust_python_diff.py`，完整学生+规则数据）：
-  可行性全部匹配、硬约束全部满足；Rust 求解器找到的成本 ≤ Python（40 人 59807 vs 60431、
-  50 人 73177 vs 73727、60 人 102924 vs 103075），耗时相当或更短。结论：成本函数奇偶已确认，
-  Rust 求解质量持平或更优。
-  （差分 harness 使用七状态语义：Python error 一律不再记为 INFEASIBLE、mismatch
-  非零退出。fixtures 模式 `--fixtures` 覆盖 41 个 corpus case：34 个合法 case
-  两侧均为 SOLVED；7 个 invalid case 中 Python 全部拒绝，Rust 侧拒绝一致。）
-- **规则能力审计**：Rust core 支持全部 10 类软规则（vision/height/randomize/score_balance/
-  score_position/score_distribution/mentor_pairing/fair_rotation/avoid_recent_neighbors/cooling）
-  与 4 类硬约束（fixed_seats/must_be_adjacent/cannot_be_adjacent/min_distance），
-  以及 `groups`（separate/together）成对约束展开，与 Python 逐对奇偶验证一致。
-- **修复**：`validate_solve_request` 的硬规则校验曾把 fixed_seats 的第二个元素
-  误当学生索引，导致「学生数 < 座位数」时固定到高序号座位被误拒绝；已修复并加
-  回归测试。
-- **App 服务端接线**：`rules_overlay` 深合并（软规则覆盖 + 分组）、`hard_rules`
-  （固定座位/必须相邻/禁止相邻/最小距离，由学生 key 与 seat_id 解析为索引对）、
-  `custom` 目标（custom_rules 全量规则）、以及 `draft.room.layout` 自定义教室
-  布局。均以 HTTP 集成测试 + 真实浏览器验证。
-- **桌面端端到端**：从 main 构建的 App 服务器经真实浏览器验证——名单导入、
-  生成（含 demo 与导入名单）、交换调整、SVG/PNG/PDF/HTML 导出全部可用，
-  无 console/page 错误。
-- **历史快照转发**：单次 generate 的 `history_snapshots` 在服务端转为 core 的
-  `history`（每生 fair_rotation 的座位分类计数/记录）与 `pair_history`（近邻
-  重复惩罚的成对关系记录），与 Python `build_seat_history` /
-  `build_pair_history` 语义一致。
-
-迁移阶段、发布门槛和当前测量方法见 [Rust-first migration](rust-migration.md)。
-
-### Pydantic 迁移与 Starlette 升级（已完成）
-
-- v1.8.1 把约 20 个共享模型从 pydantic v1 兼容 API 迁移到原生 v2 API，并升级
-  FastAPI 到 0.138+、Starlette 到 1.3.x；
-- 这解除了 FastAPI 0.128 移除 pydantic v1 支持带来的 Python 3.14 阻塞
-  （此前 v1 模型 + FastAPI 在 Python 3.14 上无法解析请求体），也让 Starlette
-  1.x 的安全修复生效，安全审计不再需要任何排除；
-- 跟踪 Issue：[#36 Migrate API models from pydantic v1 to v2 to unblock
-  FastAPI upgrade](https://github.com/FrankFu916/seattrellis/issues/36) 已随
-  v1.8.1 落地。
-
-### Rust
-
-- workspace 的最低支持 Rust 版本（MSRV）固定为 1.88，CI 验证三平台最低版本
-  兼容性，并用当前 stable 构建 release 二进制；
-- 提高 MSRV 必须有依赖或安全原因，并记录在 changelog 和发布说明中；
-- PyO3 临时兼容扩展（`seattrellis_native`）已随迁移完成退役并移除；
-- Rust 是唯一运行时：Python fallback/OR-Tools 只存在于冻结的 v1 oracle 中，
-  用于差分与质量门槛，不进入 v2 的构建、运行或分发。
-
-### TypeScript 与 Node.js
-
-- React 前端使用 TypeScript，构建环境以 Node.js 24 LTS 为基线；
-- 锁定包管理器和依赖解析结果，在 CI 中执行类型检查、lint、单元测试和生产构建；
-- Node.js 只用于开发和构建，crates 和桌面安装包直接携带构建后的静态资源；
-- 浏览器和桌面端共享同一前端产物，避免产生两套主题、组件和交互行为；
-- Node.js 基线升级按 LTS 周期进行，不影响已发布桌面应用的离线运行。
-
-### C/C++
-
-C/C++ 不参与通用领域规则、评分或历史统计。v2 不需要 C/C++ 适配层：Rust
-求解器已是唯一求解路径，没有需要桥接的第二套内核。
-
-## 跨版本工程要求
-
-- v1.x 保持既有 CLI、service API、Project 文件和版本化编辑协议兼容（v1 行
-  冻结在 1.9.0）；
-- RuleSet 和其他公开 JSON 产物必须有明确 schema version 和可回退迁移；
-- Rust 实现与冻结的 Python oracle 通过统一契约与差分测试；
-- 求解质量与性能门槛由 40/50/60（含 80）人基准和结果质量数据支持，CI 常跑；
-- public 导出、项目包和前端协议持续执行敏感字段检查；
-- 每个版本发布前统一运行三平台单元、浏览器 E2E、视觉、性能、安装和包内容检查；
-- 日常提交运行与改动直接相关的快速测试，完整矩阵集中在版本验收阶段；
-- React 与桌面工作可并行开展，但同一功能只在共享 Rust application 层实现一次。
-
-v1 行的后续开发顺序曾经是：
-
-> 简化教师流程 → 建立 React 工作台 → 完善班级与轮换 → 发布桌面应用。
-
-该顺序已随 v1.9.0 完成并冻结；v2 的发布与质量门槛见 [publishing.md](publishing.md)
-与 [benchmarks.md](benchmarks.md)。
+The released Rust line includes:
+
+- a native `seattrellis_cli` for solving, validation, scoring, candidates,
+  reports, manual edits, repair, projects, schema migration, and export;
+- a loopback-only `seattrellis_app` server with a React workbench and a Tauri 2
+  desktop shell;
+- one Rust implementation of rule compilation, hard-rule validation, scoring,
+  editing, migration, privacy, and solver status semantics;
+- teacher workflows for roster import, room templates, custom layouts, common
+  goals, detailed rules, candidate comparison, history, rotation, and manual
+  adjustment;
+- eight local export formats: SVG, HTML, `print-html`, PNG, PDF, XLSX, DOCX,
+  and PPTX;
+- public and teacher export templates with fail-closed privacy defaults;
+- project backup, restore, privacy scanning, artifact comparison, and explicit
+  migration previews;
+- committed Rust fixtures, CLI goldens, browser E2E, fuzz targets, candidate
+  and rotation gates, and a Rust solver performance regression gate.
+
+See [Architecture](architecture.md), [Testing](testing.md), and
+[Publishing](publishing.md) for the implementation and release boundaries.
+
+## Possible post-v2 work
+
+These are intentionally small, user-facing follow-ups rather than a promise to
+add a second solver or a second domain model:
+
+- drag-and-drop, box selection, and richer batch layout editing;
+- more detailed visual diffs for plans and history comparisons;
+- additional group-register fields and classroom reporting options;
+- signed desktop bundles, notarization, and a clean-machine installation matrix;
+- continued accessibility, keyboard, narrow-screen, and export-layout polish;
+- performance tuning based on the committed Rust baseline and real workloads.
+
+Any such work must preserve the local-first boundary, shared Rust semantics,
+independent artifact validation, and the seven-state solver contract.
+
+## Frozen v1 roadmap (historical)
+
+The former public roadmap covered v1.3 through v1.8. Those entries describe the
+sequence that led to v2 and are retained for context only:
+
+| Version | Historical focus | Outcome |
+| --- | --- | --- |
+| v1.3.0 | Export privacy, A4 settings, and bilingual output | Superseded by the v2 export layer |
+| v1.4.0 | Backend boundary, candidates, benchmarks, and editor protocol | Superseded by the native Rust core |
+| v1.5.0 | Simplified teacher workflow and standard rooms | Superseded by the React workbench |
+| v1.6.0 | React visual editor and import mapping | Superseded by the v2 workbench |
+| v1.7.0 | Projects, history, groups, and future rotation | Shipped in the v2 project workflow |
+| v1.8.0 | Desktop packaging and formal distribution | Shipped as the v2 Tauri distribution |
+| v1.9.0 | Maintenance baseline | Frozen legacy line |
+
+The Python service, Streamlit entry point, Python fallback solver, OR-Tools
+integration, and PyO3 compatibility extension are not v2 components. The
+migration-era comparison infrastructure was removed after v2.0.0; the current
+regression contract is Rust tests and frozen inputs, not a live Python oracle.
+
+## Product principles
+
+### Start from the teacher's task
+
+The default flow is:
+
+> Open a class -> import a roster -> set up the room -> choose a goal ->
+> generate -> adjust -> review -> save and export
+
+The UI presents a class as the main user concept. Project files, snapshots, and
+JSON remain available as compatible technical artifacts without requiring every
+teacher to understand them.
+
+### Simple by default, detailed on demand
+
+The ordinary flow shows class and data status, a room preview, one goal, a
+hard-constraint summary, generate, the seating map, undo/redo, save, and export.
+Advanced settings expose candidate count, seed, time limit, history quality,
+raw rules JSON, schema details, and export privacy controls.
+
+### One domain model, multiple surfaces
+
+The CLI, browser, and desktop shell share Rust application services and export
+renderers. React submits versioned commands and DTOs; it does not implement a
+second set of constraint checks or an independent editing state machine.
+
+### Hard requirements before preferences
+
+Hard constraints always take priority over soft objectives. Missing data makes a
+soft dimension `not_available`; it does not invent a score. Every accepted solve,
+edit, repair, rotation, and export artifact is independently validated.
+
+## Current maintenance boundary
+
+v2.0.0 uses Rust as its only application runtime. Node.js is needed to build the
+React frontend but is not needed by a release binary. The Python 1.9.0 package is
+maintained only on `v1.x-maintenance` and receives no v2 feature work.
+
+The current quality boundary is:
+
+- Rust unit, integration, property-style, and fuzz tests;
+- committed CLI output goldens and fixture inputs;
+- browser E2E for import, generation, editing, privacy, projects, and export;
+- release-mode candidate/rotation gates and the committed solver baseline;
+- no live Python oracle, parity harness, or differential command.
+
+## Not on the roadmap
+
+Accounts, cloud synchronization, telemetry, plugins, and a remote AI assistant
+are outside the current product boundary. Any future proposal must first preserve
+offline use and the rule that real student data stays on the user's machine.

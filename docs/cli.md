@@ -1,242 +1,260 @@
-# CLI 命令参考
+# CLI Reference
 
-运行 `seattrellis_cli --help` 查看当前安装版本的完整参数；`seattrellis_cli doctor`
-检查环境（二进制/版本/临时目录）。
+**SeatTrellis v2.0.0 is released.** Run `seattrellis_cli --help` for the
+options supported by the installed binary. `seattrellis_cli doctor` checks the
+binary, version, core API version, and temporary-directory writability.
 
-## 命令总览
+The CLI exposes 27 operational commands plus `help` (28 command entries):
 
-| 命令 | 用途 |
-|------|------|
-| `doctor` | 检查环境（二进制名、版本、core API 版本、临时目录可写性） |
-| `validate` | 校验 solve-request JSON（`CoreSolveRequest`），不运行求解 |
-| `precheck` | 报告候选座位域和不可行原因 |
-| `audit` | 审计已求解方案：hard 规则状态 + soft 评分明细 |
-| `score` | 对固定 assignment 输出 PlanScore 明细 |
-| `candidates` | 生成多样化的候选方案集 |
-| `history-report` | 汇总历史座位类别 |
-| `pair-report` | 汇总同桌和邻座历史 |
-| `repair` | 保留锁定座位的前提下重新求解 snapshot |
-| `edit` | 对 snapshot 或候选集执行人工调整命令 |
-| `project-init` | 在已有 students/layout/rules 的目录创建 project 文件 |
-| `project-list` | 列出根目录下的最近项目 |
-| `project-info` | 显示 project 工作区摘要 |
-| `project-validate` | 校验 project 及其文件 |
-| `project-solve` | 求解 project 工作区 |
-| `project-export` | 导出已保存的 project 方案（不会重新求解） |
-| `project-rotate` | 为 project 生成未来排座时段 |
-| `project-edit` | 对 project 座位产物执行人工调整 |
-| `project-repair` | 保留锚点重新求解 project 产物 |
-| `project-privacy` | 扫描 project 中的敏感字段 |
-| `project-pack` | 把 project 备份为 `.seattrellis.zip` |
-| `project-restore` | 从 bundle 恢复 project |
-| `schema-list` | 列出 v2 产物注册表（kind + version + 是否可迁移） |
-| `schema-export` | 导出某类产物的 JSON Schema |
-| `schema-migrate` | 校验并重写带版本号的 JSON 产物 |
-| `solve` | 求解排座问题并打印结果摘要 |
-| `export` | 把已求解方案渲染为 SVG/HTML/PNG/PDF/XLSX/DOCX/PPTX |
-| `help` | 显示帮助 |
+| Command | Purpose |
+| --- | --- |
+| `doctor` | Check the local CLI environment |
+| `validate` | Validate a `CoreSolveRequest` without searching |
+| `precheck` | Report candidate seat domains and infeasibility causes |
+| `audit` | Audit hard rules and the soft-score breakdown |
+| `score` | Score a fixed assignment with the PlanScore breakdown |
+| `candidates` | Generate a diverse candidate set |
+| `history-report` | Summarize historical seat categories |
+| `pair-report` | Summarize historical desk-mate and neighbor pairs |
+| `repair` | Re-solve a snapshot while preserving anchors |
+| `edit` | Apply manual operations to a snapshot or candidate set |
+| `project-init` | Create a project file in an existing workspace |
+| `project-list` | List recent projects under a root |
+| `project-info` | Show project configuration and path status |
+| `project-validate` | Validate a project and its referenced files |
+| `project-solve` | Solve a project workspace |
+| `project-export` | Render a saved project plan; never re-solves |
+| `project-rotate` | Generate future seating periods |
+| `project-edit` | Apply edits to a project artifact |
+| `project-repair` | Re-solve a project artifact while preserving anchors |
+| `project-privacy` | Scan a project for sensitive fields |
+| `project-pack` | Back up a project as `.seattrellis.zip` |
+| `project-restore` | Restore a project bundle |
+| `schema-list` | List the v2 artifact registry |
+| `schema-export` | Write a JSON Schema for one artifact kind |
+| `schema-migrate` | Validate and rewrite a supported legacy artifact |
+| `solve` | Solve a problem and print a result summary |
+| `export` | Render a saved result as SVG/HTML/PNG/PDF/XLSX/DOCX/PPTX |
+| `help` | Show command help |
 
-`--version` / `-V` 显示版本。所有命令都支持内联 `--help`。
+`--version` / `-V` prints the CLI version. Each command accepts `--help`.
 
-## 退出状态（冻结表）
+## Exit statuses
 
-- `0`：成功（`Solved`）；
-- `2`：无效输入或参数（`InvalidInput`）；
-- `3`：确认不可行（`ProvenInfeasible`）；
-- `4`：超时（`Timeout`）；
-- `5`：未知（`Unknown`，启发式耗尽等）；
-- `70`：内部错误（`InternalError`）；
-- `130`：用户取消（`Cancelled`）。
+The v2 status and exit table is frozen:
 
-启发式耗尽只能报告 `Unknown`（5），绝不能伪装成 `ProvenInfeasible`（3）；有合法
-方案时即使超时也报告 `Solved`（0）。确认不可行（3）与输入无效（2）的判定在
-`solve` / `candidates` / `project-rotate` / `project-solve` 上保持一致。`export`
-失败按内部错误（70）处理。已知边界：进程发生 Rust panic 时按语言默认行为退出
-101，该码不在上表冻结范围内。
+| Exit code | Status | Meaning |
+| ---: | --- | --- |
+| `0` | `Solved` | A valid plan was produced |
+| `2` | `InvalidInput` | Input or command arguments are invalid |
+| `3` | `ProvenInfeasible` | Infeasibility was established |
+| `4` | `Timeout` | The time limit ended the search without a valid incumbent |
+| `5` | `Unknown` | The search ended without proving infeasibility or producing a plan |
+| `70` | `InternalError` | An unexpected internal failure occurred |
+| `130` | `Cancelled` | The process was cancelled |
 
-## 求解
+Heuristic exhaustion is `Unknown`, never a false `ProvenInfeasible`. If a valid
+incumbent exists when a time limit fires, the result is `Solved` (`0`). The
+`solve`, `candidates`, `project-solve`, and `project-rotate` paths use the same
+infeasibility classification. A Rust panic may still use the language default
+exit code `101`; that code is outside the frozen application table.
+
+## Solve
 
 ```bash
-seattrellis_cli solve --problem problem.json [--seed <n>] [--time-limit <sec>] [--output <result.json>]
+seattrellis_cli solve \
+  --problem problem.json \
+  [--seed <n>] \
+  [--time-limit <seconds>] \
+  [--output <result.json>]
 ```
 
-`--seed` 覆盖问题文件中的 seed；`--time-limit` 是墙钟预算，预算耗尽且没有完整
-状态空间扫描时报告 `Timeout`。结果摘要打印到 stdout，`--output` 同时写出完整
-`CoreSolveResponse` JSON。相同输入和 seed 会得到稳定结果。
+`--seed` overrides the problem seed. `--time-limit` is a wall-clock budget.
+The summary goes to stdout; `--output` also writes the complete
+`CoreSolveResponse` JSON.
 
-## 校验与检查
+## Validate, precheck, audit, and score
 
 ```bash
-seattrellis_cli validate --problem problem.json [--preset <name>] [--history <snapshot.json>]... [--history-dir <dir>] [--strict]
+seattrellis_cli validate \
+  --problem problem.json \
+  [--preset <name>] \
+  [--history <snapshot.json>]... \
+  [--history-dir <directory>] \
+  [--strict]
 seattrellis_cli precheck --problem problem.json
 seattrellis_cli audit --problem problem.json --solution result.json
-seattrellis_cli score --problem problem.json --assignment <json> [--latest-snapshot <file>] [--diversity <f>]
+seattrellis_cli score \
+  --problem problem.json \
+  --assignment <json> \
+  [--latest-snapshot <file>] \
+  [--diversity <number>]
 ```
 
-- `validate` 只检查输入与明显冲突，不生成座位表；`--preset` 附带场景数据缺失
-  warning（如 `daily` 缺少 history/score/height/vision）；`--strict` 把 warning
-  当作失败。`validate` 只评判输入，失败一律退出码 2。
-- `precheck` 报告每名学生的候选座位域与不可行原因。
-- `audit` 输出 hard 规则状态、soft 评分明细和主要贡献项。
-- `score` 的 `--assignment` 是内联 `[[student, seat], ...]` 索引对 JSON。
+`validate` checks input shape and obvious conflicts without generating a plan.
+`--preset` adds missing-data warnings; it does not merge preset rules. With
+`--strict`, warnings fail validation. `precheck` reports each student's
+candidate seats and infeasibility causes. `audit` rechecks hard rules and
+prints soft contributions. `--assignment` is an inline JSON array of
+`[student_index, seat_index]` pairs.
 
-## 候选方案
+## Candidates
 
 ```bash
-seattrellis_cli candidates --problem problem.json [--count <n>] [--latest-snapshot <file>]
+seattrellis_cli candidates \
+  --problem problem.json \
+  [--count <n>] \
+  [--latest-snapshot <file>]
 ```
 
-`--count` 为 1–20（默认 5）。每个候选必须满足全部 hard 约束，并带独立 snapshot、
-总分和评分明细；推荐方案是加权总分最高的 hard-valid 候选。候选空间不足时保留已
-找到的方案并给出 warning。
+`--count` accepts 1-20 and defaults to 5. Every returned candidate is
+hard-valid and carries an assignment, total score, and breakdown. The
+recommendation is the highest weighted-total hard-valid candidate. If the
+candidate space is too small, the CLI returns the distinct plans it found and
+records a warning rather than duplicating a plan.
 
-## 历史报告
+## History reports
 
 ```bash
-seattrellis_cli history-report --problem problem.json [--history <snapshot.json>]... [--history-dir <dir>] [--output <file>]
-seattrellis_cli pair-report --problem problem.json [--history <snapshot.json>]... [--history-dir <dir>] [--top <n>] [--within-distance <n>]
+seattrellis_cli history-report \
+  --problem problem.json \
+  [--history <snapshot.json>]... \
+  [--history-dir <directory>] \
+  [--output <file>]
+seattrellis_cli pair-report \
+  --problem problem.json \
+  [--history <snapshot.json>]... \
+  [--history-dir <directory>] \
+  [--top <n>] \
+  [--within-distance <n>]
 ```
 
-`--history` 可重复传入；`--history-dir` 扫描目录中的 `*.snapshot.json` 文件并加入
-`--history`。`history-report --output` 写出 JSON 报告；`pair-report` 的 `--top`
-限制高频学生对展示数量（默认 10），`--within-distance` 是 Chebyshev 距离阈值
-（默认 2）。
+`--history` is repeatable. `--history-dir` adds sorted `*.snapshot.json` files.
+`history-report --output` writes a JSON report. `pair-report --top` defaults to
+10 pairs, and `--within-distance` uses a Chebyshev threshold of 2 by default.
 
-## 人工调整
+## Manual edits
 
-`edit` 对普通 snapshot 或 candidate set 中的某个候选执行按顺序排列的人工操作，
-并写出新的草稿 snapshot：
+`edit` applies ordered operations to a snapshot or a selected candidate:
 
 ```bash
 seattrellis_cli edit \
-  --snapshot outputs/neighbor-aware.snapshot.json \
+  --snapshot outputs/plan.json \
   --operation swap:STU001:STU002 \
   --operation lock-seat:R4C3 \
-  --output outputs/neighbor-aware-edited.snapshot.json
+  --output outputs/edited.json
 ```
 
-输入 candidate set 时默认编辑 recommended candidate，也可以用 `--candidate` 指定。
+Supported string operations include `swap:<student>:<student>`,
+`move:<student>:<seat>`, `batch-move:<student>=<seat>,...`,
+`seat:<student>:<seat>`, `unseat:<student>`, `lock-student:<student>`,
+`unlock-student:<student>`, `lock-seat:<seat>`, and `unlock-seat:<seat>`.
+Use `--candidate <id>` for a candidate set; the default is the recommended
+candidate. Use `--operations-file <file>` for a JSON operation log; file
+operations run before inline `--operation` values.
 
-支持的 operation 格式：
+By default, an edit writes a draft and reports hard-rule violations. `--strict`
+fails without writing when the edited plan is invalid. Batch moves are atomic:
+students and targets must be unique, and an occupied target's current occupant
+must also be in the batch. Lock state is recorded in `metadata.lock_state`.
 
-- `swap:STU001:STU002`
-- `move:STU003:R2C2`
-- `batch-move:STU001=R1C2,STU002=R1C1`
-- `seat:STU003:R2C2`
-- `unseat:STU004`
-- `lock-student:STU001`
-- `unlock-student:STU001`
-- `lock-seat:R1C1`
-- `unlock-seat:R1C1`
-
-多次 `--operation` 按命令行顺序执行。默认即使调整后违反 hard 约束也会写出草稿
-并列出违反项；加 `--strict` 后违反 hard 约束则命令失败且不写出 snapshot。锁定
-状态记录在 `metadata.lock_state`，后续 `repair` 默认继承。
-
-可复用、可审计的调整记录用 `--operations-file` 读取 JSON 文件（操作对象数组，
-或包含 `operations` 数组的对象）；文件操作先执行，再执行命令行中的 `--operation`：
-
-```json
-{
-  "operations": [
-    {
-      "kind": "swap_students",
-      "payload": {"first_student": "STU001", "second_student": "STU002"}
-    },
-    {
-      "kind": "lock_seat",
-      "payload": {"seat_id": "R4C3"}
-    }
-  ]
-}
-```
-
-`batch_move` 是单条原子操作：学生和目标座位不得重复；目标座位若已占用，其占用者
-也必须包含在同一批次中。任一映射未知、锁定或冲突时整个批次失败，不留下部分修改。
-
-## 锁定后重排与局部修复
-
-`repair` 把编辑草稿交回求解器处理，输出 snapshot 在 `metadata.repair` 中记录
-锁定、可变学生、实际变化学生和历史数量：
+## Repair
 
 ```bash
 seattrellis_cli repair \
   --problem problem.json \
-  --snapshot outputs/neighbor-aware-edited.snapshot.json \
-  --affected STU001 \
-  --affected STU002 \
-  --lock-seat R4C3 \
-  --output outputs/neighbor-aware-repaired.snapshot.json
+  --snapshot outputs/edited.json \
+  [--affected <student>]... \
+  [--lock-student <student>]... \
+  [--lock-seat <seat>]... \
+  [--ignore-saved-locks] \
+  [--output <file>]
 ```
 
-提供 `--affected` 时，程序自动加入与其存在 hard rule 或座位相邻关系的一阶学生，
-其余当前已入座学生会固定在草稿位置。未提供时所有未锁定学生都可重新安排。
-`--lock-student` 保留该学生当前座位；`--lock-seat` 保留当前座位上的学生，空座则
-临时预留为空座。默认继承 `metadata.lock_state` 中的锁；`--ignore-saved-locks`
-可忽略它们。`--history` 与 `--history-dir` 可传入历史方案，保证公平轮换和近期
-邻座规则在局部修复时仍生效。
+`--affected` bounds the re-solve. Related students may be added automatically
+when they share a hard rule or current-seat adjacency; other seated students
+are temporarily fixed. Without `--affected`, all unlocked students can move.
+Saved locks are reused by default. `--ignore-saved-locks` disables that reuse.
+History options can be supplied when history-dependent objectives must remain
+active during repair.
 
-## Project 工作流
+## Project commands
 
 ```bash
 seattrellis_cli project-init --dir <directory>
-seattrellis_cli project-list [--root <dir>] [--limit <n>]
-seattrellis_cli project-info|project-validate|project-solve|project-export --project <project.json>
-seattrellis_cli project-rotate --project <project.json> [--periods <n>]
-seattrellis_cli project-edit --project <project.json> [--snapshot <file>] --operation <op>...
-seattrellis_cli project-repair --project <project.json> [--snapshot <file>] [--affected <key>]...
+seattrellis_cli project-list [--root <directory>] [--limit <n>]
+seattrellis_cli project-info --project <project.json>
+seattrellis_cli project-validate --project <project.json> [--strict]
+seattrellis_cli project-solve --project <project.json> \
+  [--candidates <n>] [--report <file>] [--seed <n>] [--output <file>]
+seattrellis_cli project-export --project <project.json> \
+  --snapshot <saved-plan.json> [--candidate <id>] \
+  [--format <format>] [--template <teacher|public>] \
+  [--orientation <portrait|landscape|auto>] --output <file>
+seattrellis_cli project-rotate --project <project.json> \
+  [--periods <n>] [--seed <n>] [--output <file>]
+seattrellis_cli project-edit --project <project.json> \
+  [--snapshot <file>] --operation <op>... [--output <file>]
+seattrellis_cli project-repair --project <project.json> \
+  [--snapshot <file>] [--affected <student>]... [--output <file>]
 seattrellis_cli project-privacy --project <project.json> [--no-include-outputs]
 seattrellis_cli project-pack --project <project.json> --output <bundle.zip> [--force]
-seattrellis_cli project-restore --bundle <bundle.zip> --output-dir <dir> [--force]
+seattrellis_cli project-restore --bundle <bundle.zip> \
+  --output-dir <directory> [--force]
 ```
 
-`project-init` 在已经包含 `students.csv` / `layout.json` / `rules.json` 的目录中
-创建 `seattrellis.project.json`。`project-solve` 支持 `--candidates <n>` 与
-`--report <file>`（方案比较报告）；`project-export` 渲染的是 `project-solve
---output` 保存的方案，**导出永远不会重新求解**，并支持
-`svg|html|print-html|png|pdf|xlsx|docx|pptx` 格式（默认使用 project 的
-`default_export_format`）。`project-export` 还接受 `--template
-<teacher|public>`（默认 `teacher`；`public` 强制匿名，隐藏姓名、学号与明细字段）
-和 `--orientation <portrait|landscape|auto>`（默认 `auto`：`print-html` 使用 A4
-横向，其余格式纵向）。`project-rotate` 的 `--periods` 为 1–20（默认 4）。
-`project-validate --strict` 把 warning 当作失败。
+`project-init` creates a manifest in a directory that already contains the
+referenced roster, layout, and rules. `project-solve` accepts 1-20 candidates;
+`project-rotate --periods` accepts 1-20 periods and defaults to 4.
+`project-export` renders exactly the saved plan supplied with `--snapshot` and
+never runs the solver again. It accepts `svg|html|print-html|png|pdf|xlsx|docx|pptx`.
+`--template public` forces anonymization and suppresses identifying details;
+`--orientation auto` uses A4 landscape for `print-html` and portrait for other
+document formats. See [Project workflow](project.md).
 
-## Schema 工具
+## Schema commands
 
 ```bash
 seattrellis_cli schema-list
 seattrellis_cli schema-export --kind <kind> --output <file>
-seattrellis_cli schema-migrate --input <file> [--output <file> | --in-place] [--dry-run]
+seattrellis_cli schema-migrate \
+  --input <file> \
+  [--output <file> | --in-place] \
+  [--dry-run]
 ```
 
-`schema-list` 列出 12 类 v2 产物（studentroster、classroomlayout、ruleset、
-seatingsnapshot、candidateset、plancomparison、historyarchive、rotationplan、
-editingoperationlog、project、projectbundlemanifest、exportpreset），版本均为
-`v2`。`schema-export --kind` 写出对应 JSON Schema，`--output` 为必填。
-`schema-migrate` 校验并重写带版本号的 JSON 产物；`--dry-run` 只验证不写盘；
-`--in-place` 覆盖原文件前先创建一个隐藏事务备份
-（如 `.my.json.seattrellis-backup-<事务ID>-<步骤>.bak`），备份名包含唯一事务 ID，
-重复运行不会互相覆盖。
+The registry contains 12 v2 kinds: `student_roster`, `classroom_layout`,
+`rule_set`, `seating_snapshot`, `candidate_set`, `plan_comparison`,
+`history_archive`, `rotation_plan`, `editing_operation_log`, `project`,
+`project_bundle_manifest`, and `export_preset`. `schema-export` requires an
+output path. `schema-migrate --dry-run` validates without writing;
+`--in-place` creates a unique hidden transaction backup before replacement.
 
-迁移覆盖是显式的：目前只有 roster（`student_roster`）、layout
-（`classroom_layout`）、project（`seattrellis_project`）三类提供 v1→v2 迁移
-步骤；snapshot、candidate set、ruleset 等暂无迁移步骤，传入会明确报错。
-`schema_version` 高于支持版本的文件会被拒绝迁移（防降级）。
+Migration coverage is explicit: current v1-to-v2 transforms cover student
+rosters, classroom layouts, and project files. Snapshots, candidate sets, and
+rulesets without a registered transform are rejected. Newer schema versions are
+never downgraded.
 
-## 导出
+## Export
 
 ```bash
-seattrellis_cli export --problem problem.json --solution result.json \
-  --format <svg|html|png|pdf|xlsx|docx|pptx> --output <file> [--template <public|teacher>]
+seattrellis_cli export \
+  --problem problem.json \
+  --solution result.json \
+  --format <svg|html|png|pdf|xlsx|docx|pptx> \
+  --output <file> \
+  [--template <public|teacher>]
 ```
 
-`--solution` 是 `solve --output` 写出的结果 JSON；导出前会用独立 validator 复核
-方案，绝不会导出无效方案。所有格式都经过共享的隐私过滤层：默认隐藏成绩、备注、
-特殊需求、身高和视力字段；`--template` 接受 `teacher`（默认）与 `public`，
-`public` 额外匿名化姓名。`print-html` 不在 `export` 的格式面内，通过
-`project-export` 使用（渲染已保存方案）。
+The solution must be a `solve --output` response. An independent validator runs
+before every export, and invalid plans are refused. The standalone command has
+seven formats; `print-html` is available through `project-export`.
 
-## 相关文档
+## Related documents
 
-命令示例见[快速开始](quickstart.zh.md)，退出状态与求解状态语义见
-[版本策略](versioning.md)。
+- [Quick start](quickstart.md)
+- [Input formats](input-format.md)
+- [Rules](rules.md)
+- [Project workflow](project.md)
+- [Export formats](export.md)
+- [Versioning](versioning.md)

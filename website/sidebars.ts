@@ -1,105 +1,71 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
 /**
- * Documentation sidebar, mirroring the mkdocs.yml navigation. Internal
- * decision evidence (product-decisions, ADRs, audits, prototypes, ui-themes)
- * is intentionally NOT listed here — it lives in docs-internal/ and is never
- * published.
+ * The sidebar is the public English navigation contract. IDs intentionally
+ * have no language suffix. During the docs rename, the source check lets the
+ * site omit a section until its English canonical source exists; once the
+ * docs agent uses names such as `quickstart.md`, the same IDs are selected.
  */
+type DocsSection = {
+  type: 'category';
+  label: string;
+  collapsible: true;
+  items: string[];
+};
+
+const docsRoot = path.resolve(__dirname, '../docs');
+
+function hasEnglishSource(id: string): boolean {
+  return ['.md', '.mdx'].some((extension) =>
+    [id, `${id}.en`].some((stem) =>
+      existsSync(path.join(docsRoot, `${stem}${extension}`)),
+    ),
+  );
+}
+
+function availableEnglishDocs(ids: readonly string[]): string[] {
+  return ids.filter(hasEnglishSource);
+}
+
+function section(label: string, ids: readonly string[]): DocsSection | undefined {
+  const items = availableEnglishDocs(ids);
+  return items.length > 0
+    ? { type: 'category', label, collapsible: true, items }
+    : undefined;
+}
+
+const docsSidebar: (string | DocsSection)[] = [
+  ...availableEnglishDocs(['index']),
+  section('Getting Started', ['quickstart']),
+  section('CLI', ['cli', 'versioning']),
+  section('Web Workbench', ['web']),
+  section('Input & Rules', ['input-format', 'rules', 'presets']),
+  section('Project Workflow', ['project']),
+  section('Candidates & Scoring', ['candidates', 'scoring']),
+  section('Export', ['export', 'font-strategy']),
+  section('History & Rotation', ['history', 'pair-history']),
+  section('Privacy', ['privacy']),
+  section('Troubleshooting', ['troubleshooting']),
+  section('Developer Reference', [
+    'architecture',
+    'roadmap',
+    'testing',
+    'benchmarks',
+    'benchmark-baseline-v1.4',
+    'native-core',
+    'editor-protocol',
+    'api',
+    'publishing',
+    'release-checklist',
+    'development',
+    'rust-migration',
+  ]),
+].filter((item): item is string | DocsSection => item !== undefined);
+
 const sidebars: SidebarsConfig = {
-  docs: [
-    {
-      type: 'category',
-      label: '快速开始',
-      collapsible: true,
-      items: ['quickstart.zh', 'quickstart.en'],
-    },
-    {
-      type: 'category',
-      label: 'CLI',
-      collapsible: true,
-      items: ['cli', 'versioning'],
-    },
-    {
-      type: 'category',
-      label: 'Web 端',
-      collapsible: true,
-      items: ['web.zh', 'web.en'],
-    },
-    {
-      type: 'category',
-      label: '输入格式',
-      collapsible: true,
-      items: ['input-format.zh', 'input-format.en'],
-    },
-    {
-      type: 'category',
-      label: '规则',
-      collapsible: true,
-      items: ['rules.zh', 'rules.en'],
-    },
-    {
-      type: 'category',
-      label: 'Presets',
-      collapsible: true,
-      items: ['presets'],
-    },
-    {
-      type: 'category',
-      label: 'Project 工作流',
-      collapsible: true,
-      items: ['project.zh'],
-    },
-    {
-      type: 'category',
-      label: '多方案与评分',
-      collapsible: true,
-      items: ['candidates', 'scoring'],
-    },
-    {
-      type: 'category',
-      label: '导出',
-      collapsible: true,
-      items: ['export.zh', 'font-strategy.zh'],
-    },
-    {
-      type: 'category',
-      label: '历史分析',
-      collapsible: true,
-      items: ['history', 'pair-history'],
-    },
-    {
-      type: 'category',
-      label: '隐私',
-      collapsible: true,
-      items: ['privacy'],
-    },
-    {
-      type: 'category',
-      label: '故障排除',
-      collapsible: true,
-      items: ['troubleshooting'],
-    },
-    {
-      type: 'category',
-      label: '开发者',
-      collapsible: true,
-      items: [
-        'architecture',
-        'roadmap',
-        'testing',
-        'benchmarks',
-        'benchmark-baseline-v1.4',
-        'native-core',
-        'editor-protocol',
-        'api',
-        'publishing',
-        'release-checklist',
-        'development',
-        'rust-migration',
-      ],
-    },
-  ],
+  docs: docsSidebar,
 };
 
 export default sidebars;
