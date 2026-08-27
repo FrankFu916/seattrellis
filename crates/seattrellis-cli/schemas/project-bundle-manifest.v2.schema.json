@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "BundleFileEntry": {
+      "additionalProperties": false,
+      "description": "One bundle entry: path + integrity + (optional) artifact identity.",
+      "properties": {
+        "kind": {
+          "description": "Recognized artifact kind, when the file is a SeatTrellis artifact.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "POSIX relative path inside the bundle (must be safe to join).",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "Lowercase hex SHA-256 of the file contents.",
+          "type": "string"
+        },
+        "size": {
+          "description": "Exact byte size of the file.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "version": {
+          "description": "Artifact schema version, when `kind` is set.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "ProjectBundleManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "description": "Every file in the bundle with its integrity record.",
+          "items": {
+            "$ref": "#/$defs/BundleFileEntry"
+          },
+          "type": "array"
+        },
+        "include_outputs": {
+          "default": false,
+          "type": "boolean"
+        },
+        "project_file": {
+          "description": "The bundle-relative path of the project file itself.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_file",
+        "files"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/ProjectBundleManifest",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: ProjectBundleManifest",
+  "type": "object"
+}

@@ -1,0 +1,222 @@
+{
+  "$defs": {
+    "AdjacencyConfig": {
+      "additionalProperties": false,
+      "description": "Adjacency derivation rules (v1 `AdjacencyConfig`).",
+      "properties": {
+        "custom_edges": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "include_diagonal": {
+          "default": false,
+          "type": "boolean"
+        },
+        "include_horizontal": {
+          "default": true,
+          "type": "boolean"
+        },
+        "include_vertical": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_col_delta": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        },
+        "max_distance": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max_row_delta": {
+          "default": 1,
+          "format": "int32",
+          "type": "integer"
+        },
+        "use_xy_distance": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "ClassroomLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "adjacency": {
+          "$ref": "#/$defs/AdjacencyConfig",
+          "default": {
+            "include_diagonal": false,
+            "include_horizontal": true,
+            "include_vertical": false,
+            "max_col_delta": 1,
+            "max_row_delta": 1,
+            "use_xy_distance": true
+          }
+        },
+        "layout_id": {
+          "default": "",
+          "type": "string"
+        },
+        "metadata": {
+          "default": null
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "seats": {
+          "items": {
+            "$ref": "#/$defs/SeatNode"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "seats"
+      ],
+      "type": "object"
+    },
+    "SeatNode": {
+      "additionalProperties": false,
+      "description": "A seat node (v1 `SeatNode`).",
+      "properties": {
+        "attributes": true,
+        "col": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "group_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "near_ac": {
+          "default": false,
+          "type": "boolean"
+        },
+        "near_door": {
+          "default": false,
+          "type": "boolean"
+        },
+        "near_platform": {
+          "default": false,
+          "type": "boolean"
+        },
+        "near_window": {
+          "default": false,
+          "type": "boolean"
+        },
+        "row": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "seat_id": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "x": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "y": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "zone": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "seat_id",
+        "row",
+        "col"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/ClassroomLayout",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: ClassroomLayout",
+  "type": "object"
+}

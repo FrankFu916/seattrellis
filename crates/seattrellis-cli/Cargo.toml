@@ -8,6 +8,7 @@ description = "Native command-line solver and exporter for SeatTrellis classroom
 repository = "https://github.com/FrankFu916/seattrellis"
 homepage = "https://github.com/FrankFu916/seattrellis"
 readme = "README.md"
+include = ["src/**", "Cargo.toml", "README.md", "schemas/**"]
 keywords = ["seating", "classroom", "cli", "solver", "education"]
 categories = ["command-line-utilities", "mathematics"]
 

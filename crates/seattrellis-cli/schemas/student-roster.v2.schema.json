@@ -1,0 +1,137 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "description": "Stable artifact identifiers (plan §四.3). Serialized as snake_case.",
+      "enum": [
+        "student_roster",
+        "classroom_layout",
+        "rule_set",
+        "seating_snapshot",
+        "candidate_set",
+        "plan_comparison",
+        "history_archive",
+        "rotation_plan",
+        "editing_operation_log",
+        "project",
+        "project_bundle_manifest",
+        "export_preset"
+      ],
+      "type": "string"
+    },
+    "RosterStudent": {
+      "additionalProperties": false,
+      "description": "A single student record (v1 fields, v2 typing).",
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "description": "Project-specific columns; namespaced by convention.",
+          "type": "object"
+        },
+        "gender": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "height_cm": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "score": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "student_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "vision": {
+          "description": "String rendering of `str | float | None` (e.g. \"0.8\" or \"poor\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "StudentRoster": {
+      "additionalProperties": false,
+      "properties": {
+        "students": {
+          "items": {
+            "$ref": "#/$defs/RosterStudent"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "students"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The v2 durable artifact envelope. `T` is the typed payload for the kind.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/StudentRoster",
+      "description": "The typed payload."
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Optional namespaced extension fields; unknown top-level fields are\nrejected instead of being silently dropped.",
+      "type": "object"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind",
+      "description": "Stable artifact identifier (see [`ArtifactKind`])."
+    },
+    "schema_version": {
+      "description": "Artifact schema version; 2 for all v2 artifacts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "data"
+  ],
+  "title": "SeatTrellis v2 artifact: StudentRoster",
+  "type": "object"
+}

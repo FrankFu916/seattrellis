@@ -1217,18 +1217,18 @@ fn edited_snapshot_document(
 pub fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
     match kind.trim().to_ascii_lowercase().as_str() {
         "student_roster" | "studentroster" | "roster" => {
-            Ok(include_str!("../../../schemas/student-roster.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/student-roster.v2.schema.json").to_string())
         }
         "classroom_layout" | "classroomlayout" | "layout" => {
-            Ok(include_str!("../../../schemas/classroom-layout.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/classroom-layout.v2.schema.json").to_string())
         }
         "ruleset" | "rule_set" | "rules" => {
-            Ok(include_str!("../../../schemas/ruleset.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/ruleset.v2.schema.json").to_string())
         }
         "seating_snapshot" | "seatingsnapshot" | "snapshot" => {
-            Ok(include_str!("../../../schemas/snapshot.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/snapshot.v2.schema.json").to_string())
         }
-        "project" => Ok(include_str!("../../../schemas/project.v2.schema.json").to_string()),
+        "project" => Ok(include_str!("../schemas/project.v2.schema.json").to_string()),
         "project_bundle_manifest" | "bundle_manifest" => {
             Ok(include_str!("../../../schemas/project-bundle-manifest.v2.schema.json").to_string())
         }
@@ -1250,7 +1250,7 @@ pub fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
             Ok(include_str!("../../../schemas/editing-operation-log.v2.schema.json").to_string())
         }
         "export_preset" | "exportpreset" => {
-            Ok(include_str!("../../../schemas/export-preset.v2.schema.json").to_string())
+            Ok(include_str!("../schemas/export-preset.v2.schema.json").to_string())
         }
         other => Err(format!(
             "no v2 JSON Schema embedded for kind {other:?} (known: student_roster, \
