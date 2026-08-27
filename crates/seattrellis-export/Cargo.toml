@@ -21,4 +21,4 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 proptest = "1"
-quick-xml = "0.41"
+quick-xml = "0.42"
