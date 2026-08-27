@@ -14,7 +14,7 @@ Create a tag `v<version>` on the reviewed commit and publish the release. The
 Rust workflow then:
 
 1. builds the React workbench and embeds it in the App server;
-2. builds `seattrellis_cli` and `seattrellis_app` for Linux, Windows, and macOS;
+2. builds `seattrellis` and `seattrellis_web` for Linux, Windows, and macOS;
 3. collects six CLI/App binaries and attaches their `SHA256SUMS`;
 4. runs long-run quality gates and the no-Python-runtime scan for release
    artifacts.
@@ -34,17 +34,17 @@ may show a SmartScreen prompt.
 ### crates.io
 
 ```bash
-cargo publish -p seattrellis_cli
+cargo publish -p seattrellis
 ```
 
-`cargo install seattrellis_cli` installs the CLI from crates.io. Before
+`cargo install seattrellis` installs the CLI from crates.io. Before
 publishing, make sure the crate version and GitHub tag match, and verify a clean
 installation in an isolated environment.
 
 ## Required access
 
 - The publisher must have a verified crates.io account and permission for
-  `seattrellis_cli` and its release dependencies.
+  `seattrellis` and its release dependencies.
 - The GitHub publisher needs release permission; the desktop workflow requires
   `contents: write`.
 
@@ -58,10 +58,10 @@ final release.
 Local preflight:
 
 ```bash
-seattrellis_cli --version
-seattrellis_cli doctor
-seattrellis_cli validate --problem problem.json
-seattrellis_cli solve --problem problem.json --output plan.json
+seattrellis --version
+seattrellis doctor
+seattrellis validate --problem problem.json
+seattrellis solve --problem problem.json --output plan.json
 ```
 
 ## Failure and rollback

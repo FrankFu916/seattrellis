@@ -10,7 +10,7 @@ metrics are fictional.
 planted-feasible 40-, 50-, 60-, and 80-student instances. The current CI gate is:
 
 ```bash
-cargo build --release --locked -p seattrellis_cli
+cargo build --release --locked -p seattrellis
 python3 scripts/bench_solver.py --check
 ```
 

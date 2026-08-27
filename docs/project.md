@@ -9,18 +9,18 @@ roster or seating data.
 ## Commands
 
 ```bash
-seattrellis_cli project-init       # create a manifest in an existing workspace
-seattrellis_cli project-list       # list recent projects under a root
-seattrellis_cli project-info       # show configuration and path status
-seattrellis_cli project-validate   # validate the manifest and referenced files
-seattrellis_cli project-solve      # solve, optionally with candidates/report
-seattrellis_cli project-rotate     # generate future seating periods
-seattrellis_cli project-edit       # apply manual edit operations
-seattrellis_cli project-repair     # re-solve while preserving anchors
-seattrellis_cli project-export     # render a saved plan; never re-solves
-seattrellis_cli project-privacy    # scan for sensitive fields
-seattrellis_cli project-pack       # create a .seattrellis.zip backup
-seattrellis_cli project-restore    # restore a bundle into a directory
+seattrellis project-init       # create a manifest in an existing workspace
+seattrellis project-list       # list recent projects under a root
+seattrellis project-info       # show configuration and path status
+seattrellis project-validate   # validate the manifest and referenced files
+seattrellis project-solve      # solve, optionally with candidates/report
+seattrellis project-rotate     # generate future seating periods
+seattrellis project-edit       # apply manual edit operations
+seattrellis project-repair     # re-solve while preserving anchors
+seattrellis project-export     # render a saved plan; never re-solves
+seattrellis project-privacy    # scan for sensitive fields
+seattrellis project-pack       # create a .seattrellis.zip backup
+seattrellis project-restore    # restore a bundle into a directory
 ```
 
 `project-init --dir <directory>` expects `students.csv`, `layout.json`, and
@@ -82,12 +82,12 @@ passed through `--snapshot`, selects the requested candidate when needed, and
 renders it without running the solver again:
 
 ```bash
-seattrellis_cli project-solve \
+seattrellis project-solve \
   --project my-class/seattrellis.project.json \
   --candidates 3 \
   --output outputs/candidates.json
 
-seattrellis_cli project-export \
+seattrellis project-export \
   --project my-class/seattrellis.project.json \
   --snapshot outputs/candidates.json \
   --candidate candidate_02 \

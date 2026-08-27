@@ -29,7 +29,7 @@ rendering and sharing details.
 
 ## Local server boundary
 
-`seattrellis_app` binds to `127.0.0.1` by default and requires a per-process
+`seattrellis_web` binds to `127.0.0.1` by default and requires a per-process
 session token for API requests. Do not expose it to a LAN or an untrusted
 network. Project path mode reads the local path explicitly entered by the user;
 an uploaded project manifest alone does not grant the browser access to its

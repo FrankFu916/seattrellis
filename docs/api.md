@@ -1,6 +1,6 @@
 # API Reference
 
-SeatTrellis v2.0.0 exposes a loopback HTTP API through `seattrellis_app` and
+SeatTrellis v2.0.0 exposes a loopback HTTP API through `seattrellis_web` and
 `seattrellis-server`. The complete OpenAPI contract is
 [`api-v1-openapi.json`](api-v1-openapi.json).
 

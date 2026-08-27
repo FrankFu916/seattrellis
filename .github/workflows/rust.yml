@@ -144,7 +144,7 @@ jobs:
         run: cargo test --release --locked -p seattrellis-application --test rotation_gate -- --ignored
       - name: Solver performance regression gate
         run: |
-          cargo build --release --locked -p seattrellis_cli
+          cargo build --release --locked -p seattrellis
           python3 scripts/bench_solver.py --check
 
   fuzz-targets:
@@ -184,12 +184,12 @@ jobs:
         working-directory: clients/web
       - name: Build the CLI and App server
         run: |
-          cargo build --release --locked -p seattrellis_cli
-          cargo build --release --locked -p seattrellis_app
+          cargo build --release --locked -p seattrellis
+          cargo build --release --locked -p seattrellis_web
       - name: Scan the production tree and the release binaries
         run: |
           python3 scripts/check_no_python_runtime.py --tree --expect-retired
-          python3 scripts/check_no_python_runtime.py --binary target/release/seattrellis_cli target/release/seattrellis_app
+          python3 scripts/check_no_python_runtime.py --binary target/release/seattrellis target/release/seattrellis_web
 
   build-binaries:
     name: Build release binaries / ${{ matrix.os }}
@@ -213,24 +213,24 @@ jobs:
           npm run build
         working-directory: clients/web
       - name: Build the CLI
-        run: cargo build --release --locked -p seattrellis_cli
+        run: cargo build --release --locked -p seattrellis
       - name: Build the App server
-        run: cargo build --release --locked -p seattrellis_app
+        run: cargo build --release --locked -p seattrellis_web
       - name: Upload CLI binary
         uses: actions/upload-artifact@v7
         with:
           name: seattrellis-cli-${{ matrix.os }}
           path: |
-            target/release/seattrellis_cli
-            target/release/seattrellis_cli.exe
+            target/release/seattrellis
+            target/release/seattrellis.exe
           if-no-files-found: error
       - name: Upload App server binary
         uses: actions/upload-artifact@v7
         with:
           name: seattrellis-app-${{ matrix.os }}
           path: |
-            target/release/seattrellis_app
-            target/release/seattrellis_app.exe
+            target/release/seattrellis_web
+            target/release/seattrellis_web.exe
           if-no-files-found: error
 
   publish-assets:

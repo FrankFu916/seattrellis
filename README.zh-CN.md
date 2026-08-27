@@ -14,7 +14,7 @@
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/FrankFu916/seattrellis/releases)
 
-  [下载桌面版](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis_cli`
+  [下载桌面版](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
 
   [下载最新版](https://github.com/FrankFu916/seattrellis/releases) · [快速开始](docs/quickstart.zh.md) · [规则手册](docs/rules.zh.md) · [English](README.md)
 </div>
@@ -59,11 +59,11 @@ macOS 首次打开需右键 →「打开」，Windows 可能出现 SmartScreen �
 ### 命令行（推荐给自动化）
 
 ```bash
-cargo install seattrellis_cli
+cargo install seattrellis
 
-seattrellis_cli validate --problem problem.json   # 预检规则与数据
-seattrellis_cli solve    --problem problem.json --output plan.json
-seattrellis_cli export   --problem problem.json --solution plan.json --format png --output plan.png
+seattrellis validate --problem problem.json   # 预检规则与数据
+seattrellis solve    --problem problem.json --output plan.json
+seattrellis export   --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
 ### 三条规则看懂配置
@@ -90,7 +90,7 @@ seattrellis_cli export   --problem problem.json --solution plan.json --format pn
 
 ## 从 v1 升级
 
-v1（Python）项目文件由 `seattrellis_cli schema-migrate` 或工作台迁移流程
+v1（Python）项目文件由 `seattrellis schema-migrate` 或工作台迁移流程
 自动升级，迁移前自动备份。Python 包冻结在 1.9.0，仅作维护线
 （`pip install seattrellis==1.9.0`），不再有 v2 依赖。详见
 [从 v1 迁移](docs/rust-migration.md)。

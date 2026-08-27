@@ -30,22 +30,22 @@ generated documents.
 Install the CLI from crates.io or use a release binary:
 
 ```bash
-cargo install seattrellis_cli
+cargo install seattrellis
 ```
 
-Run `seattrellis_cli --help` for the complete command list and
-`seattrellis_cli doctor` to check the binary version, core API version, and
+Run `seattrellis --help` for the complete command list and
+`seattrellis doctor` to check the binary version, core API version, and
 temporary-directory writability.
 
 ### Browser workbench
 
-`seattrellis_app` starts a local server bound to the loopback address
+`seattrellis_web` starts a local server bound to the loopback address
 (`127.0.0.1:8765` by default) and opens the React workbench in a browser:
 
 ```bash
-seattrellis_app --open-browser
+seattrellis_web --open-browser
 # or, from a source checkout:
-cargo run -p seattrellis_app -- --open-browser
+cargo run -p seattrellis_web -- --open-browser
 ```
 
 The desktop app starts the same server and loads the workbench in a native
@@ -90,13 +90,13 @@ Validate, solve, and render the saved result:
 
 ```bash
 # Validate without running the search
-seattrellis_cli validate --problem problem.json
+seattrellis validate --problem problem.json
 
 # Solve and write the complete response
-seattrellis_cli solve --problem problem.json --output plan.json
+seattrellis solve --problem problem.json --output plan.json
 
 # Render the saved response as a PNG
-seattrellis_cli export \
+seattrellis export \
   --problem problem.json \
   --solution plan.json \
   --format png \
@@ -128,7 +128,7 @@ not merge preset rules in the standalone CLI. The built-in scenario names are
 `vision-friendly`:
 
 ```bash
-seattrellis_cli validate \
+seattrellis validate \
   --problem problem.json \
   --preset daily \
   --history-dir examples/history
@@ -141,13 +141,13 @@ layer over a `RuleSet`; see [Rules](rules.md) for the full behavior.
 
 ```bash
 # A fixed seed makes a completed fixed-budget run reproducible
-seattrellis_cli solve \
+seattrellis solve \
   --problem problem.json \
   --seed 42 \
   --output outputs/latest.snapshot.json
 
 # A wall-clock budget may stop the search; a valid incumbent is still Solved
-seattrellis_cli solve \
+seattrellis solve \
   --problem problem.json \
   --time-limit 3 \
   --output outputs/latest.snapshot.json
@@ -156,10 +156,10 @@ seattrellis_cli solve \
 ## Validation and inspection
 
 ```bash
-seattrellis_cli validate --problem problem.json
-seattrellis_cli precheck --problem problem.json
-seattrellis_cli audit --problem problem.json --solution plan.json
-seattrellis_cli score \
+seattrellis validate --problem problem.json
+seattrellis precheck --problem problem.json
+seattrellis audit --problem problem.json --solution plan.json
+seattrellis score \
   --problem problem.json \
   --assignment '[[0,0],[1,1],[2,2],[3,3]]'
 ```
@@ -172,7 +172,7 @@ index-pair assignment without running a search.
 ## Multiple candidates
 
 ```bash
-seattrellis_cli candidates \
+seattrellis candidates \
   --problem problem.json \
   --count 5 \
   > outputs/candidates.json
@@ -192,12 +192,12 @@ summarizes desk-mate, horizontal, vertical, diagonal, any-adjacent, and
 within-distance relationships:
 
 ```bash
-seattrellis_cli history-report \
+seattrellis history-report \
   --problem problem.json \
   --history-dir examples/history \
   --output outputs/history-report.json
 
-seattrellis_cli pair-report \
+seattrellis pair-report \
   --problem problem.json \
   --history-dir examples/history \
   --top 10
@@ -212,7 +212,7 @@ fail; it makes history-dependent dimensions such as `fair_rotation`
 `edit` applies command-style changes to a saved snapshot or candidate set:
 
 ```bash
-seattrellis_cli edit \
+seattrellis edit \
   --snapshot outputs/latest.snapshot.json \
   --operation swap:STU001:STU002 \
   --operation lock-seat:R1C1 \
@@ -230,7 +230,7 @@ instead fails without writing. An operation log can be supplied through
 `repair` re-solves a bounded group while preserving locks:
 
 ```bash
-seattrellis_cli repair \
+seattrellis repair \
   --problem problem.json \
   --snapshot outputs/edited.snapshot.json \
   --lock-student STU001 \
@@ -249,28 +249,28 @@ A project file keeps relative paths and defaults for a roster, layout, rules,
 history directory, and outputs. It is useful for repeatable local work:
 
 ```bash
-seattrellis_cli project-init --dir my-class
-seattrellis_cli project-info --project my-class/seattrellis.project.json
-seattrellis_cli project-validate --project my-class/seattrellis.project.json
-seattrellis_cli project-solve \
+seattrellis project-init --dir my-class
+seattrellis project-info --project my-class/seattrellis.project.json
+seattrellis project-validate --project my-class/seattrellis.project.json
+seattrellis project-solve \
   --project my-class/seattrellis.project.json \
   --candidates 3 \
   --output outputs/project.plan.json
-seattrellis_cli project-export \
+seattrellis project-export \
   --project my-class/seattrellis.project.json \
   --snapshot outputs/project.plan.json \
   --format html \
   --output outputs/project.html
-seattrellis_cli project-rotate \
+seattrellis project-rotate \
   --project my-class/seattrellis.project.json \
   --periods 4
-seattrellis_cli project-pack \
+seattrellis project-pack \
   --project my-class/seattrellis.project.json \
   --output my-class.seattrellis.zip
-seattrellis_cli project-restore \
+seattrellis project-restore \
   --bundle my-class.seattrellis.zip \
   --output-dir restored/
-seattrellis_cli project-privacy --project my-class/seattrellis.project.json
+seattrellis project-privacy --project my-class/seattrellis.project.json
 ```
 
 `project-init` expects the directory to contain the referenced roster, layout,
@@ -283,11 +283,11 @@ Long-lived v2 artifacts carry a schema version. List the registry, write a JSON
 Schema, or migrate a supported legacy input:
 
 ```bash
-seattrellis_cli schema-list
-seattrellis_cli schema-export \
+seattrellis schema-list
+seattrellis schema-export \
   --kind seatingsnapshot \
   --output seating-snapshot.v2.schema.json
-seattrellis_cli schema-migrate \
+seattrellis schema-migrate \
   --input roster-v1.json \
   --output roster-v2.json
 ```

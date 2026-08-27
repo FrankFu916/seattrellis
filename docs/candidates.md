@@ -8,7 +8,7 @@ satisfy all hard constraints and includes its assignment, total score, and score
 breakdown.
 
 ```bash
-seattrellis_cli candidates \
+seattrellis candidates \
   --problem problem.json \
   --count 5 \
   > outputs/candidates.json

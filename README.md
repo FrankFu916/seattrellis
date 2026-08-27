@@ -15,7 +15,7 @@
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/FrankFu916/seattrellis/releases)
 
-  [Download the desktop app](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis_cli`
+  [Download the desktop app](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
 
   [Latest release](https://github.com/FrankFu916/seattrellis/releases) · [Quick start](docs/quickstart.en.md) · [Rules](docs/rules.en.md) · [简体中文](README.zh-CN.md)
 </div>
@@ -63,11 +63,11 @@ Windows may show a SmartScreen prompt.
 ### Command line (for automation)
 
 ```bash
-cargo install seattrellis_cli
+cargo install seattrellis
 
-seattrellis_cli validate --problem problem.json   # precheck rules & data
-seattrellis_cli solve    --problem problem.json --output plan.json
-seattrellis_cli export   --problem problem.json --solution plan.json --format png --output plan.png
+seattrellis validate --problem problem.json   # precheck rules & data
+seattrellis solve    --problem problem.json --output plan.json
+seattrellis export   --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
 ### Rules in 30 seconds
@@ -96,7 +96,7 @@ Full reference: [input format](docs/input-format.en.md) and
 ## Upgrading from v1
 
 v1 (Python) project files are migrated automatically — with a backup — by
-`seattrellis_cli schema-migrate` or the workbench migration flow. The Python
+`seattrellis schema-migrate` or the workbench migration flow. The Python
 package is frozen at 1.9.0 on the maintenance line
 (`pip install seattrellis==1.9.0`); nothing in v2 depends on it. See
 [migrating from v1](docs/rust-migration.md).

@@ -7,15 +7,15 @@ document is [Web Workbench Guide](web.md).
 
 ## Starting the workbench
 
-The v2.0.0 web workbench is served by the pure-Rust `seattrellis_app` local server.
+The v2.0.0 web workbench is served by the pure-Rust `seattrellis_web` local server.
 It binds the loopback address only (default `127.0.0.1:8765`), generates a
 256-bit session token at startup, and opens the React workbench in your
 browser:
 
 ```bash
-seattrellis_app --open-browser
+seattrellis_web --open-browser
 # or
-cargo run -p seattrellis_app -- --open-browser
+cargo run -p seattrellis_web -- --open-browser
 ```
 
 The desktop app (Tauri shell) starts the same server and loads the workbench in

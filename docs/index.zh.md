@@ -6,7 +6,7 @@ title: SeatTrellis · 席序
 # SeatTrellis · 席序
 
 席序（SeatTrellis）是一个隐私优先、本地运行的课堂排座工具。v2 是纯 Rust 实现：
-桌面应用（Tauri）、loopback 本地服务 + React 工作台，以及 `seattrellis_cli`
+桌面应用（Tauri）、loopback 本地服务 + React 工作台，以及 `seattrellis`
 命令行工具，都不需要 Python 或其他运行时。
 
 > English documentation: switch via the **Language** menu in the navbar, or see
@@ -14,7 +14,7 @@ title: SeatTrellis · 席序
 
 ## 中文文档
 
-- [快速开始](quickstart.zh.md)：安装（桌面应用 / `cargo install seattrellis_cli`）、校验、求解和导出；
+- [快速开始](quickstart.zh.md)：安装（桌面应用 / `cargo install seattrellis`）、校验、求解和导出；
 - [Web 工作台](web.zh.md)：分步向导、候选比较和下载；
 - [输入格式](input-format.zh.md)：学生、layout 和产物格式；
 - [规则手册](rules.zh.md)：hard 约束、soft 偏好与预设；

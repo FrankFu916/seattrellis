@@ -15,7 +15,18 @@ fn main() {
     let manifest_dir = PathBuf::from(
         env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo"),
     );
-    let web_root = manifest_dir.join("../../clients/web/dist");
+    // Two layouts are supported:
+    // 1. repository checkout: the frontend lives at clients/web/dist
+    // 2. published crate (crates.io): the built frontend is vendored into
+    //    the package as web-dist/ before `cargo publish` (see the release
+    //    checklist); the workspace checkout never carries that copy.
+    let vendored = manifest_dir.join("web-dist");
+    let checkout = manifest_dir.join("../../clients/web/dist");
+    let web_root = if vendored.is_dir() {
+        vendored
+    } else {
+        checkout
+    };
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
 
     let mut files = Vec::new();

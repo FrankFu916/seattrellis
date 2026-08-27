@@ -1,6 +1,6 @@
 //! SeatTrellis desktop shell.
 //!
-//! The shell starts the loopback Rust backend (`seattrellis_app::server`) on an
+//! The shell starts the loopback Rust backend (`seattrellis_web::server`) on an
 //! OS-assigned free port and opens a WebView window pointed at it. The React
 //! workbench talks to the backend over plain loopback HTTP — the same origin
 //! and endpoints as the browser workspace — with no Python and no Node.

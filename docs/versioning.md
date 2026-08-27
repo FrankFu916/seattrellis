@@ -33,7 +33,7 @@ rejected when no typed migration step exists.
 Schemas are stored under `schemas/` and can be exported with:
 
 ```bash
-seattrellis_cli schema-export \
+seattrellis schema-export \
   --kind seating_snapshot \
   --output seating-snapshot.v2.schema.json
 ```
@@ -41,9 +41,9 @@ seattrellis_cli schema-export \
 Migration validates and rewrites supported legacy inputs:
 
 ```bash
-seattrellis_cli schema-migrate --input roster-v1.json --dry-run
-seattrellis_cli schema-migrate --input roster-v1.json --output roster-v2.json
-seattrellis_cli schema-migrate --input project-v1.json --in-place
+seattrellis schema-migrate --input roster-v1.json --dry-run
+seattrellis schema-migrate --input roster-v1.json --output roster-v2.json
+seattrellis schema-migrate --input project-v1.json --in-place
 ```
 
 `--dry-run` validates without writing. In-place or destination replacement
@@ -57,10 +57,10 @@ versions are rejected before execution.
 
 ## CLI compatibility
 
-Run `seattrellis_cli --help` for the installed binary's exact options. The core
+Run `seattrellis --help` for the installed binary's exact options. The core
 v2 surface keeps these names stable:
 
-- `seattrellis_cli solve`, `validate`, and `export`;
+- `seattrellis solve`, `validate`, and `export`;
 - `--problem`, `--solution`, `--output`, `--seed`, and `--time-limit`;
 - exit codes `0 / 2 / 3 / 4 / 5 / 70 / 130`.
 
@@ -69,7 +69,7 @@ The detailed meanings are in the [CLI reference](cli.md).
 ## Deprecation policy
 
 The v1 CLI and Python API exist only in the frozen legacy package. The v2 CLI
-uses `seattrellis_cli`; migration support is explicit rather than inferred.
+uses `seattrellis`; migration support is explicit rather than inferred.
 When a future v2 feature is deprecated, documentation will identify it and the
 runtime will provide a warning before removal in a later MAJOR line.
 

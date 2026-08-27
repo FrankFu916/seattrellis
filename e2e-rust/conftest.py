@@ -1,6 +1,6 @@
 """Browser fixtures for the NO_PYTHON_RUNTIME workbench E2E (M2 §5.7 item 2).
 
-The server under test is the compiled Rust binary (`seattrellis_app`); the web
+The server under test is the compiled Rust binary (`seattrellis_web`); the web
 root is the compiled React workbench. No Python process participates in
 serving or solving. The job that runs these tests must not install the Python
 package at all - that absence, plus the binary checks below, is the evidence
@@ -28,7 +28,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 @dataclass(frozen=True)
 class RustServer:
-    """A running `seattrellis_app` process used by a browser test session."""
+    """A running `seattrellis_web` process used by a browser test session."""
 
     url: str
     health_url: str
@@ -41,7 +41,7 @@ class RustServer:
         return_code = self.process.poll()
         if return_code is not None:
             pytest.fail(
-                f"seattrellis_app exited with code {return_code}.\n"
+                f"seattrellis_web exited with code {return_code}.\n"
                 f"{_log_tail(self.log_path)}"
             )
         try:
@@ -59,8 +59,8 @@ class RustServer:
         exe = _process_executable(pid)
         exe_name = Path(exe).name if exe else ""
         assert exe, f"cannot resolve executable of pid {pid}"
-        assert "seattrellis_app" in exe_name, (
-            f"expected the Rust seattrellis_app binary, got {exe!r}"
+        assert "seattrellis_web" in exe_name, (
+            f"expected the Rust seattrellis_web binary, got {exe!r}"
         )
         assert "python" not in exe_name.lower(), (
             f"server process must not be a Python interpreter, got {exe!r}"
@@ -179,14 +179,14 @@ def _locate_server_binary() -> Path:
             return path
         pytest.fail(f"SEATTRELLIS_E2E_RUST_SERVER does not exist: {override}")
     for candidate in (
-        REPOSITORY_ROOT / "target" / "debug" / "seattrellis_app",
-        REPOSITORY_ROOT / "target" / "release" / "seattrellis_app",
+        REPOSITORY_ROOT / "target" / "debug" / "seattrellis_web",
+        REPOSITORY_ROOT / "target" / "release" / "seattrellis_web",
     ):
         if candidate.is_file():
             return candidate
     pytest.fail(
-        "no seattrellis_app binary found; build it with "
-        "`cargo build -p seattrellis_app` or set SEATTRELLIS_E2E_RUST_SERVER"
+        "no seattrellis_web binary found; build it with "
+        "`cargo build -p seattrellis_web` or set SEATTRELLIS_E2E_RUST_SERVER"
     )
 
 
@@ -222,7 +222,7 @@ def browser_context_args(
 
 @pytest.fixture
 def rust_server(request: pytest.FixtureRequest) -> RustServer:
-    """Start an isolated `seattrellis_app` process and retain its log."""
+    """Start an isolated `seattrellis_web` process and retain its log."""
 
     results_dir = Path(
         os.environ.get("SEATTRELLIS_E2E_RESULTS", "test-results-rust")

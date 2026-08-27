@@ -21,14 +21,14 @@ v2.0.0 的所有导出格式都由本地 Rust 渲染器生成，不需要任何�
 
 ```bash
 # 渲染 solve --output 保存的方案
-seattrellis_cli export \
+seattrellis export \
   --problem problem.json \
   --solution plan.json \
   --format png \
   --output outputs/plan.png
 
 # 教师内部版（默认）或公示版
-seattrellis_cli export \
+seattrellis export \
   --problem problem.json \
   --solution plan.json \
   --format html \
@@ -46,12 +46,12 @@ validator 复核方案，绝不会导出无效方案。
 指定：
 
 ```bash
-seattrellis_cli project-solve \
+seattrellis project-solve \
   --project my-class/seattrellis.project.json \
   --candidates 3 \
   --output outputs/candidates.json
 
-seattrellis_cli project-export \
+seattrellis project-export \
   --project my-class/seattrellis.project.json \
   --snapshot outputs/candidates.json \
   --candidate candidate_02 \
@@ -69,7 +69,7 @@ project 的 `default_export_format`。它还接受两个版式选项：
   `landscape` 则覆盖该默认。
 
 ```bash
-seattrellis_cli project-export \
+seattrellis project-export \
   --project my-class/seattrellis.project.json \
   --snapshot outputs/candidates.json \
   --format print-html \

@@ -7,7 +7,7 @@ adjacent, vertically adjacent, diagonally adjacent, adjacent by any current
 graph relation, or within a configured distance in historical snapshots.
 
 ```bash
-seattrellis_cli pair-report \
+seattrellis pair-report \
   --problem problem.json \
   --history-dir examples/history \
   --top 10

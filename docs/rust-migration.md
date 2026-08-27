@@ -16,7 +16,7 @@ that oracle/differential infrastructure was removed after v2.0.0.
 ```text
 React/TypeScript workbench (clients/web)
           |
-Rust loopback App server (seattrellis_app) / Tauri 2 shell (app/src-tauri)
+Rust loopback App server (seattrellis_web) / Tauri 2 shell (app/src-tauri)
           |
 seattrellis_core (versioned DTOs, hard-rule validation, scoring,
                   heuristic solve, candidates, audit, reports)
@@ -36,7 +36,7 @@ source checkout or a separate frontend installation.
   and reports;
 - `seattrellis-cli`: the solve, validation, report, edit/repair, project,
   schema, and export command surfaces;
-- `seattrellis_app`: local roster, generation, editing, layout, project,
+- `seattrellis_web`: local roster, generation, editing, layout, project,
   migration, rotation, group-register, and export APIs;
 - `app/src-tauri/`: the Tauri 2 desktop shell over the App server;
 - Rust CI for core, CLI, App, and desktop builds on Linux, Windows, and macOS,
@@ -65,10 +65,10 @@ The solver reports `Solved`, `ProvenInfeasible`, `Timeout`, `Unknown`,
 cd clients/web && npm ci && npm run build && cd ../..
 
 cargo test --locked -p seattrellis_core
-cargo test --locked -p seattrellis_cli
-cargo test --locked -p seattrellis_app
-cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
-cargo clippy --all-targets -p seattrellis_app -- -D warnings
+cargo test --locked -p seattrellis
+cargo test --locked -p seattrellis_web
+cargo clippy --all-targets -p seattrellis_core -p seattrellis -- -D warnings
+cargo clippy --all-targets -p seattrellis_web -- -D warnings
 cargo build --locked -p seattrellis_desktop
 ```
 

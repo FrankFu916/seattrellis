@@ -2,7 +2,7 @@
 //!
 //! v0 shell: starts the loopback-only HTTP backend, prints the URL, and (only
 //! when asked) opens the system browser. A Tauri shell can call
-//! `seattrellis_app::server` directly and load the printed URL in a WebView,
+//! `seattrellis_web::server` directly and load the printed URL in a WebView,
 //! replacing the browser entirely.
 
 use std::process::ExitCode;
@@ -16,7 +16,7 @@ fn print_usage() {
     eprintln!(
         "SeatTrellis desktop backend (v{})
 USAGE:
-  seattrellis_app [OPTIONS]
+  seattrellis_web [OPTIONS]
 
 OPTIONS:
   --port <PORT>          Bind to PORT (default {DEFAULT_PORT}, env SEATTRELLIS_PORT)
@@ -39,7 +39,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             "--version" | "-V" => {
-                println!("seattrellis_app {}", env!("CARGO_PKG_VERSION"));
+                println!("seattrellis_web {}", env!("CARGO_PKG_VERSION"));
                 return ExitCode::SUCCESS;
             }
             "--open-browser" => open_browser = true,

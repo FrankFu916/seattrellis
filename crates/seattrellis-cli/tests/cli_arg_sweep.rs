@@ -1,6 +1,6 @@
 //! Exhaustive-ish argument-combination sweep for the hand-written CLI parser
 //! (alpha.2 gap: "CLI 参数组合全量枚举"). Spawns the real binary via
-//! `CARGO_BIN_EXE_seattrellis_cli` for every command and asserts:
+//! `CARGO_BIN_EXE_seattrellis` for every command and asserts:
 //!
 //! * usage/argument errors are graceful: frozen exit code 2 (M1-03 table
 //!   0/2/3/4/5/70/130; usage errors are InvalidInput), an `error:` message
@@ -16,7 +16,7 @@
 use std::process::{Command, Output};
 use std::sync::OnceLock;
 
-const BIN: &str = env!("CARGO_BIN_EXE_seattrellis_cli");
+const BIN: &str = env!("CARGO_BIN_EXE_seattrellis");
 
 /// Frozen v2 CLI exit codes (M1-03): 0 success, 2 InvalidInput (and usage
 /// errors), 3 ProvenInfeasible, 4 Timeout, 5 Unknown, 70 InternalError,

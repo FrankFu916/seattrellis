@@ -20,8 +20,8 @@ CSV and Excel `.xlsx` / `.xlsm` are both handled by the local Rust importer —
 no optional installs are needed:
 
 ```bash
-seattrellis_cli project-init --dir my-class   # create a project in a directory with students.csv
-seattrellis_cli project-validate --project my-class/seattrellis.project.json
+seattrellis project-init --dir my-class   # create a project in a directory with students.csv
+seattrellis project-validate --project my-class/seattrellis.project.json
 ```
 
 Save legacy `.xls` files as `.xlsx` or CSV first.
@@ -64,10 +64,10 @@ The importer validates:
 - students without `student_id` use `name` as their stable internal ID and produce a `validate` warning.
 
 Run a lightweight preflight before solving (through the project workflow, or
-inline the data in a problem JSON and run `seattrellis_cli validate --problem`):
+inline the data in a problem JSON and run `seattrellis validate --problem`):
 
 ```bash
-seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
+seattrellis project-validate --project my-class/seattrellis.project.json --strict
 ```
 
 `project-validate` checks inputs and obvious conflicts only; it does not generate a seating plan. With `--strict`, warnings also fail the command.
@@ -133,10 +133,10 @@ A project file is the configuration entry point for a local file-based workflow.
 `students`, `layout`, and `rules` are required. `history_dir` may be omitted, and the remaining fields have defaults. Every path must be relative and is resolved from the directory containing the project file, not from the package installation directory. `project-solve` creates `outputs_dir` when needed, but it never creates or invents student, layout, rules, or history inputs.
 
 ```bash
-seattrellis_cli project-info --project examples/project.seattrellis.json
-seattrellis_cli project-validate --project examples/project.seattrellis.json
-seattrellis_cli project-solve --project examples/project.seattrellis.json
-seattrellis_cli project-export --project examples/project.seattrellis.json
+seattrellis project-info --project examples/project.seattrellis.json
+seattrellis project-validate --project examples/project.seattrellis.json
+seattrellis project-solve --project examples/project.seattrellis.json
+seattrellis project-export --project examples/project.seattrellis.json
 ```
 
 The project file stores paths and defaults only. It does not contain student lists, grades, notes, seating preferences, or snapshot contents. Keep real inputs and outputs under private ignored directories; a shareable project file does not make the private data it references safe to commit.
@@ -149,9 +149,9 @@ Historical analysis depends only on JSON snapshots. It does not require Excel,
 PNG, Streamlit, SQLite, or any database.
 
 ```bash
-seattrellis_cli history-report --problem problem.json --history-dir examples/history
-seattrellis_cli pair-report --problem problem.json --history-dir examples/history
-seattrellis_cli validate --problem problem.json --history-dir examples/history --preset daily
+seattrellis history-report --problem problem.json --history-dir examples/history
+seattrellis pair-report --problem problem.json --history-dir examples/history
+seattrellis validate --problem problem.json --history-dir examples/history --preset daily
 ```
 
 Historical snapshots are interpreted against the current student list and current layout:
@@ -175,7 +175,7 @@ assignment, a plan-score breakdown, and a hard-constraint summary; the
 recommended plan is the highest-scoring hard-valid candidate:
 
 ```bash
-seattrellis_cli candidates --problem problem.json --count 5 > outputs/candidates.json
+seattrellis candidates --problem problem.json --count 5 > outputs/candidates.json
 ```
 
 v1-era candidate sets (`kind: "candidate_set"`, `schema_version: "0.2.2"`, each

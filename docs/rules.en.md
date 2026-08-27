@@ -47,8 +47,8 @@ Current validation checks:
 Preflight command:
 
 ```bash
-seattrellis_cli validate --problem problem.json
-seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
+seattrellis validate --problem problem.json
+seattrellis project-validate --project my-class/seattrellis.project.json --strict
 ```
 
 If the solver cannot find a feasible plan, the CLI prints the student count, enabled-seat count, hard-rule count, and possible causes such as fixed seats, dense cannot-adjacent rules, minimum distances, or disabled seats.
@@ -116,7 +116,7 @@ Built-in presets are:
 | `vision-friendly` | Front seats for students with vision or front-seat needs |
 
 ```bash
-seattrellis_cli validate --problem problem.json --preset daily --history-dir examples/history
+seattrellis validate --problem problem.json --preset daily --history-dir examples/history
 ```
 
 Preset overlays happen in the workbench/server path: SeatTrellis first generates
@@ -258,7 +258,7 @@ and recommendation are heuristic and do not guarantee enumeration of every
 feasible plan or a global optimum.
 
 ```bash
-seattrellis_cli candidates \
+seattrellis candidates \
   --problem problem.json \
   --count 5 \
   > outputs/candidates.json

@@ -1607,11 +1607,7 @@ fn run_command(command: Command) -> ExitCode {
         }
         Command::Version => {
             let styler = Styler::stdout();
-            println!(
-                "{} {}",
-                styler.bold("seattrellis_cli"),
-                styler.cyan(VERSION)
-            );
+            println!("{} {}", styler.bold("seattrellis"), styler.cyan(VERSION));
             ExitCode::SUCCESS
         }
         Command::Validate(args) => match commands::run_validate(&args) {
@@ -1862,7 +1858,7 @@ fn main() -> ExitCode {
         Err(message) => {
             let styler = Styler::stderr();
             eprintln!("{}: {message}", styler.red("error"));
-            eprintln!("run '{} --help' for usage", styler.cyan("seattrellis_cli"));
+            eprintln!("run '{} --help' for usage", styler.cyan("seattrellis"));
             // Usage/argument errors are InvalidInput per the frozen exit
             // table (M1-03): 2, never the generic 1.
             ExitCode::from(2)

@@ -22,10 +22,10 @@ crates.io files cannot be replaced.
 Run this gate after the version scope is frozen:
 
 - [ ] `cargo test --locked -p seattrellis_core`
-- [ ] `cargo test --locked -p seattrellis_cli`
-- [ ] `cargo test --locked -p seattrellis_app`
-- [ ] `cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings`
-- [ ] `cargo clippy --all-targets -p seattrellis_app -- -D warnings`
+- [ ] `cargo test --locked -p seattrellis`
+- [ ] `cargo test --locked -p seattrellis_web`
+- [ ] `cargo clippy --all-targets -p seattrellis_core -p seattrellis -- -D warnings`
+- [ ] `cargo clippy --all-targets -p seattrellis_web -- -D warnings`
 - [ ] `cargo build --locked -p seattrellis_desktop` with the pinned 1.88 toolchain
 - [ ] `cd clients/web && npm test && npm run typecheck && npm run build`
 - [ ] `cargo test --locked --workspace` against the frozen fixtures in
@@ -35,7 +35,7 @@ Run this gate after the version scope is frozen:
       must not be reintroduced.
 - [ ] Run browser E2E acceptance from a clean build, including the
       `web-e2e-rust` job where Python is only the test runner.
-- [ ] Launch `seattrellis_app` on `127.0.0.1` and complete import -> solve ->
+- [ ] Launch `seattrellis_web` on `127.0.0.1` and complete import -> solve ->
       adjust -> export in the React workbench.
 - [ ] Confirm GitHub Actions passes on Linux, Windows, and macOS.
 

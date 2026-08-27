@@ -49,7 +49,7 @@ jobs:
     # reopen workflow runs against the compiled Rust server and the compiled
     # React workbench in a real Chromium. This job deliberately installs NO
     # Python package: Python is only the pytest/Playwright runner, and the
-    # fixture asserts the serving process is the native `seattrellis_app`
+    # fixture asserts the serving process is the native `seattrellis_web`
     # binary (ELF/Mach-O), not a Python interpreter.
     name: Web E2E (Rust backend) / Ubuntu / Chromium
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
@@ -70,7 +70,7 @@ jobs:
         working-directory: clients/web
       - uses: dtolnay/rust-toolchain@1.88
       - name: Build the Rust server and CLI (release)
-        run: cargo build --locked --release -p seattrellis_app -p seattrellis_cli
+        run: cargo build --locked --release -p seattrellis_web -p seattrellis
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -85,8 +85,8 @@ jobs:
       - name: Run NO_PYTHON_RUNTIME workbench E2E
         env:
           SEATTRELLIS_E2E_RESULTS: test-results-rust
-          SEATTRELLIS_E2E_RUST_SERVER: ${{ github.workspace }}/target/release/seattrellis_app
-          SEATTRELLIS_E2E_RUST_CLI: ${{ github.workspace }}/target/release/seattrellis_cli
+          SEATTRELLIS_E2E_RUST_SERVER: ${{ github.workspace }}/target/release/seattrellis_web
+          SEATTRELLIS_E2E_RUST_CLI: ${{ github.workspace }}/target/release/seattrellis
           SEATTRELLIS_WEB_STATIC: ${{ github.workspace }}/clients/web/dist
         run: >-
           python -m pytest e2e-rust

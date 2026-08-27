@@ -4,7 +4,7 @@
 `"1.0"`.
 
 The editor protocol is the transport boundary between the React workbench, the
-loopback `seattrellis_app` server, and the desktop shell. Rust
+loopback `seattrellis_web` server, and the desktop shell. Rust
 (`seattrellis-domain::editing`) enforces domain rules; clients submit commands
 and render the minimal state returned by the server. The CLI `edit` and `repair`
 commands reuse the same editing semantics.

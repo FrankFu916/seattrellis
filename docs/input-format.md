@@ -20,8 +20,8 @@ The local Rust importer handles CSV and Excel `.xlsx` / `.xlsm` files without
 optional packages:
 
 ```bash
-seattrellis_cli project-init --dir my-class
-seattrellis_cli project-validate --project my-class/seattrellis.project.json
+seattrellis project-init --dir my-class
+seattrellis project-validate --project my-class/seattrellis.project.json
 ```
 
 Save legacy `.xls` files as `.xlsx` or CSV first.
@@ -67,7 +67,7 @@ The importer checks that:
 Run a lightweight preflight before solving:
 
 ```bash
-seattrellis_cli project-validate \
+seattrellis project-validate \
   --project my-class/seattrellis.project.json \
   --strict
 ```
@@ -146,10 +146,10 @@ traversal, and references that escape the project root. `project-solve` creates
 inputs.
 
 ```bash
-seattrellis_cli project-info --project examples/project.seattrellis.json
-seattrellis_cli project-validate --project examples/project.seattrellis.json
-seattrellis_cli project-solve --project examples/project.seattrellis.json
-seattrellis_cli project-export \
+seattrellis project-info --project examples/project.seattrellis.json
+seattrellis project-validate --project examples/project.seattrellis.json
+seattrellis project-solve --project examples/project.seattrellis.json
+seattrellis project-export \
   --project examples/project.seattrellis.json \
   --snapshot outputs/plan.json \
   --output outputs/plan.html
@@ -167,13 +167,13 @@ JSON snapshots. Historical analysis uses JSON snapshots only; it does not need
 Excel, PNG, Streamlit, SQLite, or a database.
 
 ```bash
-seattrellis_cli history-report \
+seattrellis history-report \
   --problem problem.json \
   --history-dir examples/history
-seattrellis_cli pair-report \
+seattrellis pair-report \
   --problem problem.json \
   --history-dir examples/history
-seattrellis_cli validate \
+seattrellis validate \
   --problem problem.json \
   --history-dir examples/history \
   --preset daily
@@ -204,7 +204,7 @@ hard-constraint summary; the recommended plan is the highest-scoring hard-valid
 candidate:
 
 ```bash
-seattrellis_cli candidates \
+seattrellis candidates \
   --problem problem.json \
   --count 5 \
   > outputs/candidates.json

@@ -1,4 +1,4 @@
-# seattrellis_cli
+# seattrellis
 
 Native command-line solver and exporter for [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序) classroom seating. The release binary is dependency-free and works offline.
 
@@ -16,15 +16,15 @@ Exit codes follow the frozen contract: 0 solved, 2 invalid input, 3 proven infea
 ## Install
 
 ```bash
-cargo install seattrellis_cli
+cargo install seattrellis
 # or use the prebuilt binaries from GitHub Releases
 ```
 
 ## Example
 
 ```bash
-seattrellis_cli solve --problem problem.json --output plan.json
-seattrellis_cli export --problem problem.json --snapshot plan.json --format png --output plan.png
+seattrellis solve --problem problem.json --output plan.json
+seattrellis export --problem problem.json --snapshot plan.json --format png --output plan.png
 ```
 
 License: Apache-2.0.

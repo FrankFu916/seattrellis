@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Loopback HTTP transport for SeatTrellis: routes, adapter and embedded workbench assets."
+include = ["src/**", "build.rs", "Cargo.toml", "README.md", "web-dist/**"]
 repository = "https://github.com/FrankFu916/seattrellis"
 homepage = "https://github.com/FrankFu916/seattrellis"
 keywords = ["seating", "classroom", "education", "solver"]

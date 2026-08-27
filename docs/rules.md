@@ -39,8 +39,8 @@ assignments, contradictory pair rules, obvious distance/adjacency conflicts,
 fixed assignments that already violate a rule, and unknown rule fields.
 
 ```bash
-seattrellis_cli validate --problem problem.json
-seattrellis_cli project-validate \
+seattrellis validate --problem problem.json
+seattrellis project-validate \
   --project my-class/seattrellis.project.json \
   --strict
 ```
@@ -120,7 +120,7 @@ uses `validate --preset <name>` only for missing-data warnings.
 | `vision-friendly` | Front seats for vision or front-seat needs |
 
 ```bash
-seattrellis_cli validate \
+seattrellis validate \
   --problem problem.json \
   --preset daily \
   --history-dir examples/history

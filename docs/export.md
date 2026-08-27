@@ -34,11 +34,11 @@ revalidates the complete assignment, including hard constraints, before
 rendering; an invalid or non-solved response is refused.
 
 ```bash
-seattrellis_cli solve \
+seattrellis solve \
   --problem problem.json \
   --output outputs/plan.json
 
-seattrellis_cli export \
+seattrellis export \
   --problem problem.json \
   --solution outputs/plan.json \
   --format png \
@@ -58,12 +58,12 @@ re-solves**. For a candidate set, it selects the project's recommended
 candidate unless `--candidate <id>` is supplied.
 
 ```bash
-seattrellis_cli project-solve \
+seattrellis project-solve \
   --project my-class/seattrellis.project.json \
   --candidates 3 \
   --output outputs/candidates.json
 
-seattrellis_cli project-export \
+seattrellis project-export \
   --project my-class/seattrellis.project.json \
   --snapshot outputs/candidates.json \
   --candidate candidate_02 \

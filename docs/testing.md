@@ -14,11 +14,11 @@ workspace-level commands that compile the server:
 cd clients/web && npm ci && npm run build && cd ../..
 
 cargo test --locked -p seattrellis_core
-cargo test --locked -p seattrellis_cli
-cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
+cargo test --locked -p seattrellis
+cargo clippy --all-targets -p seattrellis_core -p seattrellis -- -D warnings
 
-cargo test --locked -p seattrellis_app
-cargo clippy --all-targets -p seattrellis_app -- -D warnings
+cargo test --locked -p seattrellis_web
+cargo clippy --all-targets -p seattrellis_web -- -D warnings
 
 # Tauri shell
 cargo build --locked -p seattrellis_desktop
@@ -105,7 +105,7 @@ The current performance gate measures the Rust release CLI on planted-feasible
 40-, 50-, 60-, and 80-student instances:
 
 ```bash
-cargo build --release --locked -p seattrellis_cli
+cargo build --release --locked -p seattrellis
 python3 scripts/bench_solver.py --check
 ```
 
@@ -128,15 +128,15 @@ cargo test --release --locked -p seattrellis-application \
 Before publishing, exercise the CLI against fictional data:
 
 ```bash
-seattrellis_cli doctor
-seattrellis_cli validate --problem problem.json
-seattrellis_cli solve --problem problem.json --output plan.json
-seattrellis_cli candidates --problem problem.json --count 5
-seattrellis_cli history-report --problem problem.json --history-dir examples/history
-seattrellis_cli pair-report --problem problem.json --history-dir examples/history
-seattrellis_cli project-info --project examples/project.seattrellis.json
-seattrellis_cli project-validate --project examples/project.seattrellis.json
-seattrellis_cli export \
+seattrellis doctor
+seattrellis validate --problem problem.json
+seattrellis solve --problem problem.json --output plan.json
+seattrellis candidates --problem problem.json --count 5
+seattrellis history-report --problem problem.json --history-dir examples/history
+seattrellis pair-report --problem problem.json --history-dir examples/history
+seattrellis project-info --project examples/project.seattrellis.json
+seattrellis project-validate --project examples/project.seattrellis.json
+seattrellis export \
   --problem problem.json \
   --solution plan.json \
   --format png \

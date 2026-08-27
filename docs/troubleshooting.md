@@ -5,12 +5,12 @@
 ## Run diagnostics first
 
 ```bash
-seattrellis_cli doctor
+seattrellis doctor
 ```
 
 `doctor` prints the binary name, version, core API version, and a temporary
 directory writability check. It exits with code `2` when the temporary directory
-cannot be written. `seattrellis_cli --version` prints only the version.
+cannot be written. `seattrellis --version` prints only the version.
 
 ## Common problems
 
@@ -47,11 +47,11 @@ fallback instead.
 
 ### The web workbench will not start
 
-`seattrellis_app` binds to `127.0.0.1:8765` by default. If that port is in use,
+`seattrellis_web` binds to `127.0.0.1:8765` by default. If that port is in use,
 choose another local port:
 
 ```bash
-seattrellis_app --port 8766 --open-browser
+seattrellis_web --port 8766 --open-browser
 ```
 
 When running from a source checkout, build the embedded frontend first:

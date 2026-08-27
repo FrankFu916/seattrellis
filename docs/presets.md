@@ -28,7 +28,7 @@ Missing preferred data disables only the affected soft preference and produces a
 warning. Hard constraints are never relaxed automatically.
 
 ```bash
-seattrellis_cli validate \
+seattrellis validate \
   --problem problem.json \
   --preset daily \
   --history-dir examples/history

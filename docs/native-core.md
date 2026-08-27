@@ -10,9 +10,9 @@ core rather than maintaining separate seating logic.
 
 The v2 runtime has no Python, Node.js, or OR-Tools dependency:
 
-- `seattrellis_cli` is the standalone solve, report, project, migration, and
+- `seattrellis` is the standalone solve, report, project, migration, and
   export tool;
-- `seattrellis_app` is the loopback HTTP server at `127.0.0.1` by default and
+- `seattrellis_web` is the loopback HTTP server at `127.0.0.1` by default and
   embeds the React workbench assets;
 - `app/src-tauri/` is the Tauri 2 desktop shell.
 
@@ -24,8 +24,8 @@ not part of the v2 source tree or release artifacts.
 
 ```bash
 cargo test --locked -p seattrellis_core
-cargo test --locked -p seattrellis_cli
-cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
+cargo test --locked -p seattrellis
+cargo clippy --all-targets -p seattrellis_core -p seattrellis -- -D warnings
 ```
 
 The Python line remains frozen at 1.9.0 on `v1.x-maintenance` as a legacy

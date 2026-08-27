@@ -19,7 +19,7 @@ the frontend must not duplicate those rules.
 | `seattrellis-core` | Hard-rule search, local search, candidates, scoring, audit, and validation |
 | `seattrellis-cli` | The command-line adapter with 27 operational commands plus help |
 
-`app/` is the thin `seattrellis_app` facade over the server. `app/src-tauri/` is
+`app/` is the thin `seattrellis_web` facade over the server. `app/src-tauri/` is
 the Tauri 2 shell; it owns the window lifecycle and does not contain a second
 seating-rule implementation.
 
@@ -28,7 +28,7 @@ seating-rule implementation.
 ```text
 React workbench (clients/web)
           |
-seattrellis_app (loopback HTTP, 127.0.0.1:8765) / Tauri 2 shell
+seattrellis_web (loopback HTTP, 127.0.0.1:8765) / Tauri 2 shell
           |
 seattrellis-server -> seattrellis-application -> seattrellis-core
           |

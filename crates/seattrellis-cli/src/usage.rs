@@ -41,9 +41,9 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("USAGE:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push_str(" <COMMAND> [OPTIONS]\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push_str(" --version\n\n");
 
     out.push_str(&styler.bold("COMMANDS:"));
@@ -108,14 +108,14 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("DOCTOR:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("doctor"));
     out.push_str("\n\n      Prints the binary name, version, core API version and a\n      temp-dir writability probe (fails with exit 2 when not writable).\n\n");
 
     out.push_str(&styler.bold("EDIT:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("edit"));
     out.push_str(" --snapshot <snapshot.json> --operation <op>... [--candidate <id>]\n");
@@ -140,7 +140,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("VALIDATE:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("validate"));
     out.push_str(" --problem <problem.json> [--preset <name>] [--history <snapshot.json>]...\n");
@@ -159,7 +159,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("PRECHECK:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("precheck"));
     out.push_str(" --problem <problem.json>\n\n");
@@ -169,7 +169,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("AUDIT:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("audit"));
     out.push_str(" --problem <problem.json> --solution <result.json>\n\n");
@@ -181,7 +181,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("SCORE:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("score"));
     out.push_str(" --problem <problem.json> --assignment <json> [--latest-snapshot <file>] [--diversity <f>]\n\n");
@@ -197,7 +197,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("CANDIDATES:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("candidates"));
     out.push_str(" --problem <problem.json> [--count <n>]\n\n");
@@ -209,7 +209,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("HISTORY-REPORT:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("history-report"));
     out.push_str(" --problem <problem.json> [--history <snapshot.json>]... [--history-dir <dir>] [--output <file>]\n\n");
@@ -225,7 +225,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("PAIR-REPORT:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("pair-report"));
     out.push_str(
@@ -246,7 +246,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("REPAIR:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("repair"));
     out.push_str(" --problem <problem.json> --snapshot <snapshot.json>\n");
@@ -272,7 +272,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("PROJECT:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push_str(
         " project-info|project-validate|project-solve|project-export --project <project.json>\n",
     );
@@ -316,7 +316,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("solve"));
     out.push_str(
@@ -334,7 +334,7 @@ pub fn render_usage(styler: &Styler) -> String {
 
     out.push_str(&styler.bold("EXPORT:"));
     out.push_str("\n    ");
-    out.push_str(&styler.cyan("seattrellis_cli"));
+    out.push_str(&styler.cyan("seattrellis"));
     out.push(' ');
     out.push_str(&styler.cyan("export"));
     out.push_str(" --problem <problem.json> --solution <result.json> \\\n                           --format <svg|html|png|pdf|xlsx|docx|pptx> --output <file>\n\n");

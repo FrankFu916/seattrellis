@@ -1,7 +1,7 @@
 # CLI Reference
 
-**SeatTrellis v2.0.0 is released.** Run `seattrellis_cli --help` for the
-options supported by the installed binary. `seattrellis_cli doctor` checks the
+**SeatTrellis v2.0.0 is released.** Run `seattrellis --help` for the
+options supported by the installed binary. `seattrellis doctor` checks the
 binary, version, core API version, and temporary-directory writability.
 
 The CLI exposes 27 operational commands plus `help` (28 command entries):
@@ -62,7 +62,7 @@ exit code `101`; that code is outside the frozen application table.
 ## Solve
 
 ```bash
-seattrellis_cli solve \
+seattrellis solve \
   --problem problem.json \
   [--seed <n>] \
   [--time-limit <seconds>] \
@@ -76,15 +76,15 @@ The summary goes to stdout; `--output` also writes the complete
 ## Validate, precheck, audit, and score
 
 ```bash
-seattrellis_cli validate \
+seattrellis validate \
   --problem problem.json \
   [--preset <name>] \
   [--history <snapshot.json>]... \
   [--history-dir <directory>] \
   [--strict]
-seattrellis_cli precheck --problem problem.json
-seattrellis_cli audit --problem problem.json --solution result.json
-seattrellis_cli score \
+seattrellis precheck --problem problem.json
+seattrellis audit --problem problem.json --solution result.json
+seattrellis score \
   --problem problem.json \
   --assignment <json> \
   [--latest-snapshot <file>] \
@@ -101,7 +101,7 @@ prints soft contributions. `--assignment` is an inline JSON array of
 ## Candidates
 
 ```bash
-seattrellis_cli candidates \
+seattrellis candidates \
   --problem problem.json \
   [--count <n>] \
   [--latest-snapshot <file>]
@@ -116,12 +116,12 @@ records a warning rather than duplicating a plan.
 ## History reports
 
 ```bash
-seattrellis_cli history-report \
+seattrellis history-report \
   --problem problem.json \
   [--history <snapshot.json>]... \
   [--history-dir <directory>] \
   [--output <file>]
-seattrellis_cli pair-report \
+seattrellis pair-report \
   --problem problem.json \
   [--history <snapshot.json>]... \
   [--history-dir <directory>] \
@@ -138,7 +138,7 @@ seattrellis_cli pair-report \
 `edit` applies ordered operations to a snapshot or a selected candidate:
 
 ```bash
-seattrellis_cli edit \
+seattrellis edit \
   --snapshot outputs/plan.json \
   --operation swap:STU001:STU002 \
   --operation lock-seat:R4C3 \
@@ -161,7 +161,7 @@ must also be in the batch. Lock state is recorded in `metadata.lock_state`.
 ## Repair
 
 ```bash
-seattrellis_cli repair \
+seattrellis repair \
   --problem problem.json \
   --snapshot outputs/edited.json \
   [--affected <student>]... \
@@ -181,25 +181,25 @@ active during repair.
 ## Project commands
 
 ```bash
-seattrellis_cli project-init --dir <directory>
-seattrellis_cli project-list [--root <directory>] [--limit <n>]
-seattrellis_cli project-info --project <project.json>
-seattrellis_cli project-validate --project <project.json> [--strict]
-seattrellis_cli project-solve --project <project.json> \
+seattrellis project-init --dir <directory>
+seattrellis project-list [--root <directory>] [--limit <n>]
+seattrellis project-info --project <project.json>
+seattrellis project-validate --project <project.json> [--strict]
+seattrellis project-solve --project <project.json> \
   [--candidates <n>] [--report <file>] [--seed <n>] [--output <file>]
-seattrellis_cli project-export --project <project.json> \
+seattrellis project-export --project <project.json> \
   --snapshot <saved-plan.json> [--candidate <id>] \
   [--format <format>] [--template <teacher|public>] \
   [--orientation <portrait|landscape|auto>] --output <file>
-seattrellis_cli project-rotate --project <project.json> \
+seattrellis project-rotate --project <project.json> \
   [--periods <n>] [--seed <n>] [--output <file>]
-seattrellis_cli project-edit --project <project.json> \
+seattrellis project-edit --project <project.json> \
   [--snapshot <file>] --operation <op>... [--output <file>]
-seattrellis_cli project-repair --project <project.json> \
+seattrellis project-repair --project <project.json> \
   [--snapshot <file>] [--affected <student>]... [--output <file>]
-seattrellis_cli project-privacy --project <project.json> [--no-include-outputs]
-seattrellis_cli project-pack --project <project.json> --output <bundle.zip> [--force]
-seattrellis_cli project-restore --bundle <bundle.zip> \
+seattrellis project-privacy --project <project.json> [--no-include-outputs]
+seattrellis project-pack --project <project.json> --output <bundle.zip> [--force]
+seattrellis project-restore --bundle <bundle.zip> \
   --output-dir <directory> [--force]
 ```
 
@@ -215,9 +215,9 @@ document formats. See [Project workflow](project.md).
 ## Schema commands
 
 ```bash
-seattrellis_cli schema-list
-seattrellis_cli schema-export --kind <kind> --output <file>
-seattrellis_cli schema-migrate \
+seattrellis schema-list
+seattrellis schema-export --kind <kind> --output <file>
+seattrellis schema-migrate \
   --input <file> \
   [--output <file> | --in-place] \
   [--dry-run]
@@ -238,7 +238,7 @@ never downgraded.
 ## Export
 
 ```bash
-seattrellis_cli export \
+seattrellis export \
   --problem problem.json \
   --solution result.json \
   --format <svg|html|png|pdf|xlsx|docx|pptx> \

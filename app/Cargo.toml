@@ -1,10 +1,10 @@
 [package]
-name = "seattrellis_app"
+name = "seattrellis_web"
 version = "2.0.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SeatTrellis desktop backend: thin facade over the split crates (M1-02), loopback HTTP server + native solve, no Python/Node."
+description = "SeatTrellis local web workbench: loopback HTTP server + native solve, no Python/Node."
 
 [dependencies]
 seattrellis-server = { path = "../crates/seattrellis-server" }
@@ -12,9 +12,9 @@ seattrellis-domain = { path = "../crates/seattrellis-domain" }
 seattrellis-io = { path = "../crates/seattrellis-io" }
 
 [lib]
-name = "seattrellis_app"
+name = "seattrellis_web"
 path = "src/lib.rs"
 
 [[bin]]
-name = "seattrellis_app"
+name = "seattrellis_web"
 path = "src/main.rs"

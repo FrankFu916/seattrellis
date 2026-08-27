@@ -1,7 +1,7 @@
 """NO_PYTHON_RUNTIME workbench E2E against the Rust server (M2 §5.7 item 2).
 
 Every test in this module drives the compiled React workbench in a real
-Chromium and talks only to the Rust `seattrellis_app` backend. The CI job
+Chromium and talks only to the Rust `seattrellis_web` backend. The CI job
 that runs these tests installs no Python package and starts no Python
 process; the `rust_server` fixture additionally asserts the serving binary is
 a native executable (ELF/Mach-O), not a Python interpreter.
@@ -392,10 +392,10 @@ def _make_project_workspace(root: Path, name: str) -> Path:
     shutil.copyfile(FIXTURES / "rules.json", project / "rules.json")
     cli = (
         os.environ.get("SEATTRELLIS_E2E_RUST_CLI")
-        or REPOSITORY_ROOT / "target" / "debug" / "seattrellis_cli"
+        or REPOSITORY_ROOT / "target" / "debug" / "seattrellis"
     )
     if not Path(cli).is_file():
-        cli = REPOSITORY_ROOT / "target" / "release" / "seattrellis_cli"
+        cli = REPOSITORY_ROOT / "target" / "release" / "seattrellis"
     result = subprocess.run(
         [str(cli), "project-init", "--dir", str(project)],
         check=False,
@@ -404,7 +404,7 @@ def _make_project_workspace(root: Path, name: str) -> Path:
         cwd=REPOSITORY_ROOT,
     )
     assert result.returncode == 0, (
-        f"seattrellis_cli project-init failed: {result.stderr}"
+        f"seattrellis project-init failed: {result.stderr}"
     )
     return project
 

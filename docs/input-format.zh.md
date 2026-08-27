@@ -14,8 +14,8 @@ v2.0.0 中这些文件通过 project 工作流（`project-*` 命令、工作台�
 CSV 和 Excel `.xlsx` / `.xlsm` 都由本地 Rust 导入器原生支持，无需安装任何 extra：
 
 ```bash
-seattrellis_cli project-init --dir my-class   # 在已有 students.csv 的目录创建 project
-seattrellis_cli project-validate --project my-class/seattrellis.project.json
+seattrellis project-init --dir my-class   # 在已有 students.csv 的目录创建 project
+seattrellis project-validate --project my-class/seattrellis.project.json
 ```
 
 旧版 `.xls` 请先另存为 `.xlsx` 或 CSV。
@@ -56,10 +56,10 @@ Excel 导入读取工作簿的**第一个工作表**，并遵守以下边界：
 - 没有 `student_id` 的学生会使用 `name` 作为稳定内部 ID，并在 `validate` 中给出 warning。
 
 可以先运行轻量预检（通过 project 工作流，或把数据内联进 problem JSON 后运行
-`seattrellis_cli validate --problem`）：
+`seattrellis validate --problem`）：
 
 ```bash
-seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
+seattrellis project-validate --project my-class/seattrellis.project.json --strict
 ```
 
 `project-validate` 只检查输入和明显冲突，不生成座位表。加 `--strict` 时，warning 也会导致命令失败。
@@ -125,10 +125,10 @@ project 文件是本地文件型工作流的配置入口，推荐命名为 `seat
 `students`、`layout`、`rules` 必填；`history_dir` 可省略；其余字段有默认值。所有路径必须是相对路径，并相对于 project 文件所在目录解析，而不是相对于安装目录。`project-solve` 会在需要时创建 `outputs_dir`，但不会自动创建或伪造学生、layout、rules、history 输入。
 
 ```bash
-seattrellis_cli project-info --project examples/project.seattrellis.json
-seattrellis_cli project-validate --project examples/project.seattrellis.json
-seattrellis_cli project-solve --project examples/project.seattrellis.json
-seattrellis_cli project-export --project examples/project.seattrellis.json
+seattrellis project-info --project examples/project.seattrellis.json
+seattrellis project-validate --project examples/project.seattrellis.json
+seattrellis project-solve --project examples/project.seattrellis.json
+seattrellis project-export --project examples/project.seattrellis.json
 ```
 
 project 文件只保存路径和默认配置，不保存学生名单、成绩、备注、座位偏好或 snapshot 内容。真实输入和输出仍应放在 `.gitignore` 覆盖的私有目录中；不要因为 project 文件本身可分享，就误把它引用的真实数据一并提交。
@@ -140,9 +140,9 @@ SeatTrellis JSON snapshot（v1 时代的 snapshot 由迁移路径自动处理）
 依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
 
 ```bash
-seattrellis_cli history-report --problem problem.json --history-dir examples/history
-seattrellis_cli pair-report --problem problem.json --history-dir examples/history
-seattrellis_cli validate --problem problem.json --history-dir examples/history --preset daily
+seattrellis history-report --problem problem.json --history-dir examples/history
+seattrellis pair-report --problem problem.json --history-dir examples/history
+seattrellis validate --problem problem.json --history-dir examples/history --preset daily
 ```
 
 历史 snapshot 会用当前学生名单和当前 layout 解释：
@@ -165,7 +165,7 @@ v2.0.0 的多方案生成使用 `candidates` 命令，输出 `api_version: 2` �
 推荐方案是加权总分最高的 hard-valid 候选：
 
 ```bash
-seattrellis_cli candidates --problem problem.json --count 5 > outputs/candidates.json
+seattrellis candidates --problem problem.json --count 5 > outputs/candidates.json
 ```
 
 v1 时代的 candidate set（`kind: "candidate_set"`，`schema_version: "0.2.2"`，

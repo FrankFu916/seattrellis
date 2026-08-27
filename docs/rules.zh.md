@@ -43,8 +43,8 @@ hard 规则必须满足，否则求解失败。
 预检命令：
 
 ```bash
-seattrellis_cli validate --problem problem.json
-seattrellis_cli project-validate --project my-class/seattrellis.project.json --strict
+seattrellis validate --problem problem.json
+seattrellis project-validate --project my-class/seattrellis.project.json --strict
 ```
 
 如果求解器没有找到可行解，CLI 会输出学生人数、可用座位数、hard 规则数量，并提示可能需要检查固定座位、禁止相邻、最小距离和 disabled 座位。
@@ -112,7 +112,7 @@ JSON 内联到 problem 的 `rules` 字段（或由 project 引用）即应用该
 | `vision-friendly` | 优先有视力/靠前需求的学生 |
 
 ```bash
-seattrellis_cli validate --problem problem.json --preset daily --history-dir examples/history
+seattrellis validate --problem problem.json --preset daily --history-dir examples/history
 ```
 
 preset 与用户 rules 的叠加发生在工作台/服务端：先生成 preset 的完整标准 rules，
@@ -242,7 +242,7 @@ assignment"的约束继续求解。hard constraints 始终绝对优先；候选�
 都是启发式，不保证找到全部可行方案或全局最优方案。
 
 ```bash
-seattrellis_cli candidates \
+seattrellis candidates \
   --problem problem.json \
   --count 5 \
   > outputs/candidates.json

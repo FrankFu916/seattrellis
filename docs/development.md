@@ -15,11 +15,11 @@ workspace-level Cargo command that compiles the server:
 cd clients/web && npm ci && npm run build && cd ../..
 
 cargo test --locked -p seattrellis_core
-cargo test --locked -p seattrellis_cli
-cargo clippy --all-targets -p seattrellis_core -p seattrellis_cli -- -D warnings
+cargo test --locked -p seattrellis
+cargo clippy --all-targets -p seattrellis_core -p seattrellis -- -D warnings
 
-cargo test --locked -p seattrellis_app
-cargo clippy --all-targets -p seattrellis_app -- -D warnings
+cargo test --locked -p seattrellis_web
+cargo clippy --all-targets -p seattrellis_web -- -D warnings
 
 # Tauri shell; the workspace pins Rust 1.88 as its MSRV
 cargo build --locked -p seattrellis_desktop

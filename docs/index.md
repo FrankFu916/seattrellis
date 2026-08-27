@@ -15,8 +15,8 @@ one or more plans, adjust them, and export a handout.
 - **Desktop app:** the recommended Tauri application for teachers. It includes
   the workbench and runs the local Rust service in a native window.
 - **Web workbench:** the same React workflow in a browser, served by
-  `seattrellis_app` on the loopback interface only.
-- **CLI:** `seattrellis_cli` for automation, reproducible solves, project
+  `seattrellis_web` on the loopback interface only.
+- **CLI:** `seattrellis` for automation, reproducible solves, project
   folders, reports, migrations, and exports.
 
 ## Quick links

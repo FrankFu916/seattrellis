@@ -7,7 +7,7 @@ front, back, middle, side, corner, near-window, near-door, near-platform, and
 near-AC categories.
 
 ```bash
-seattrellis_cli history-report \
+seattrellis history-report \
   --problem problem.json \
   --history-dir examples/history \
   --output outputs/history-report.json

@@ -10,9 +10,9 @@ future item is not a release commitment until it has an approved milestone.
 
 The released Rust line includes:
 
-- a native `seattrellis_cli` for solving, validation, scoring, candidates,
+- a native `seattrellis` for solving, validation, scoring, candidates,
   reports, manual edits, repair, projects, schema migration, and export;
-- a loopback-only `seattrellis_app` server with a React workbench and a Tauri 2
+- a loopback-only `seattrellis_web` server with a React workbench and a Tauri 2
   desktop shell;
 - one Rust implementation of rule compilation, hard-rule validation, scoring,
   editing, migration, privacy, and solver status semantics;

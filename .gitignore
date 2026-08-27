@@ -56,3 +56,6 @@ website/node_modules/
 
 # fuzz corpus is generated locally, never committed
 fuzz/corpus/
+
+# vendored frontend copy used only during crate publication
+crates/seattrellis-server/web-dist/

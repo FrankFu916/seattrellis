@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASELINE = ROOT / "benchmarks" / "solver-baseline.json"
-CLI = ROOT / "target" / "release" / "seattrellis_cli"
+CLI = ROOT / "target" / "release" / "seattrellis"
 SIZES = (40, 50, 60, 80)
 RUNS_PER_SIZE = 3
 # Absolute interactive bounds (ms): a solver that exceeds these on CI-class
@@ -163,7 +163,7 @@ def main() -> int:
     if args.record == args.check:
         parser.error("exactly one of --record / --check is required")
     if not CLI.exists():
-        raise SystemExit(f"release CLI not found: {CLI}; build it with cargo build --release -p seattrellis_cli")
+        raise SystemExit(f"release CLI not found: {CLI}; build it with cargo build --release -p seattrellis")
 
     measured = measure_all()
 
