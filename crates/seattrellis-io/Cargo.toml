@@ -15,7 +15,7 @@ seattrellis_core = { path = "../../crates/seattrellis-core", version = "2.0.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 seattrellis-schema = { path = "../seattrellis-schema", version = "2.0.0" }
-sha2 = "0.10"
+sha2 = "0.11"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
