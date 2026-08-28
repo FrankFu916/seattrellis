@@ -11,13 +11,14 @@
 
   [![Tests](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml)
   [![Rust](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml)
+  [![Documentation](https://github.com/FrankFu916/seattrellis/actions/workflows/docs.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/docs.yml)
   [![Release](https://img.shields.io/github/v/release/FrankFu916/seattrellis)](https://github.com/FrankFu916/seattrellis/releases)
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/FrankFu916/seattrellis/releases)
 
   [Download the desktop app](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
 
-  [Latest release](https://github.com/FrankFu916/seattrellis/releases) · [Quick start](docs/quickstart.en.md) · [Rules](docs/rules.en.md) · [简体中文](README.zh-CN.md)
+  [Latest release](https://github.com/FrankFu916/seattrellis/releases) · [Documentation](https://frankfu916.github.io/seattrellis/) · [Quick start](docs/quickstart.en.md) · [Rules](docs/rules.en.md) · [简体中文](README.zh-CN.md)
 </div>
 
 ---
@@ -102,6 +103,9 @@ package is frozen at 1.9.0 on the maintenance line
 [migrating from v1](docs/rust-migration.md).
 
 ## Documentation
+
+Browse the full, searchable site at
+[frankfu916.github.io/seattrellis](https://frankfu916.github.io/seattrellis/).
 
 | | | |
 |---|---|---|
