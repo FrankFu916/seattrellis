@@ -42,7 +42,11 @@ impl Drop for FaultGuard {
 fn sha256_bytes(contents: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(contents);
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn sha256_file(path: &Path) -> String {
