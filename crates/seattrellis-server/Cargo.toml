@@ -27,4 +27,4 @@ serde_json = "1"
 base64 = "0.23"
 
 [dev-dependencies]
-jsonschema = "0.30"
+jsonschema = "0.51"
