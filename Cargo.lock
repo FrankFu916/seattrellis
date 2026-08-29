@@ -3050,7 +3050,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "seattrellis"
 version = "2.0.0"
 dependencies = [
- "png 0.17.16",
+ "png 0.18.1",
  "seattrellis-application",
  "seattrellis-domain",
  "seattrellis-export",
@@ -3087,7 +3087,7 @@ version = "2.0.0"
 dependencies = [
  "flate2",
  "fontdue",
- "png 0.17.16",
+ "png 0.18.1",
  "proptest",
  "quick-xml 0.42.0",
  "seattrellis_core",
