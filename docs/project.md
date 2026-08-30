@@ -112,6 +112,6 @@ seattrellis project-pack --project my-class/seattrellis.project.json --output cl
 
 ## 📖 Related Documentation
 
-- [Quick Start Guide](quickstart.en.md)
+- [Quick Start Guide](quickstart.md)
 - [Export Formats Guide](export.md)
 - [Web & Desktop Workbench Guide](web.md)

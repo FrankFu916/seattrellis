@@ -34,16 +34,16 @@ graph LR
 ## 📚 Documentation Sitemap
 
 ### 1. Getting Started & User Guides
-- **[Quick Start Guide](quickstart.en.md)**: Install, validate, solve your first seating problem, and export the chart in 5 minutes.
-- **[Web & Desktop Workbench Guide](web.en.md)**: Master roster imports, classroom layout design, drag-and-drop swaps, locking, and undo/redo.
-- **[Export & Printing Guide](export.zh.md)**: 8 export formats (PDF, PNG, Word, Excel, etc.), print layout optimization, and student privacy redaction.
-- **[Class Project Workflow](project.zh.md)**: Long-term class records, multi-term rotation schedules, packaging, and backup restoration.
+- **[Quick Start Guide](quickstart.md)**: Install, validate, solve your first seating problem, and export the chart in 5 minutes.
+- **[Web & Desktop Workbench Guide](web.md)**: Master roster imports, classroom layout design, drag-and-drop swaps, locking, and undo/redo.
+- **[Export & Printing Guide](export.md)**: 8 export formats (PDF, PNG, Word, Excel, etc.), print layout optimization, and student privacy redaction.
+- **[Class Project Workflow](project.md)**: Long-term class records, multi-term rotation schedules, packaging, and backup restoration.
 
 ### 2. Rules & Data Specifications
-- **[Rule Handbook](rules.en.md)**: In-depth reference for hard constraints (fixed seats, required/forbidden pairs) and soft preferences (vision, height, academic mixing, fair rotation, neighbor avoidance).
-- **[Input Formats & Schemas](input-format.en.md)**: Specifications for student rosters (CSV), classroom layouts (JSON), snapshots, and historical records.
+- **[Rule Handbook](rules.md)**: In-depth reference for hard constraints (fixed seats, required/forbidden pairs) and soft preferences (vision, height, academic mixing, fair rotation, neighbor avoidance).
+- **[Input Formats & Schemas](input-format.md)**: Specifications for student rosters (CSV), classroom layouts (JSON), snapshots, and historical records.
 - **[Scenario Presets Reference](presets.md)**: 14 out-of-the-box classroom templates (daily teaching, exams, study pairs, etc.).
-- **[Font Rendering Strategy](font-strategy.zh.md)**: Cross-platform font fallback mechanisms for consistent typography.
+- **[Font Rendering Strategy](font-strategy.md)**: Cross-platform font fallback mechanisms for consistent typography.
 
 ### 3. Advanced References & Internals
 - **[CLI Reference Manual](cli.md)**: Complete coverage of all 27 subcommands, options, and frozen exit codes.
@@ -57,6 +57,7 @@ graph LR
 - **[Privacy & Local Security](privacy.md)**: Local processing boundaries, zero-telemetry policy, and sensitive data protection.
 - **[Upgrading from v1 (Python)](rust-migration.md)**: Smooth migration steps for legacy project files.
 - **[Developer & Testing Guide](development.md)**: Local build instructions, test suites, and performance benchmark gates.
+- **[Product Roadmap](roadmap.md)**: Planned product work, web deployment options, and the privacy boundary for browser-local versus hosted computation.
 
 ---
 

@@ -51,4 +51,4 @@ To use a custom licensed institutional font (e.g., custom KaiTi or branded corpo
 ## 📖 Related References
 
 - [Export Formats Guide](export.md)
-- [Quick Start Guide](quickstart.en.md)
+- [Quick Start Guide](quickstart.md)

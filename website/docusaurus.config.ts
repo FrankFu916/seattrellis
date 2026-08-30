@@ -4,50 +4,9 @@
 // (referenced by README/CHANGELOG relative links); this site config points the
 // classic docs preset at that directory via `path: '../docs'`.
 
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import { themes as prismThemes } from 'prism-react-renderer';
-import type { Config, ParseFrontMatter } from '@docusaurus/types';
+import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
-
-/**
- * Keep the site compatible while the repository docs are normalized from
- * `*.en.md` to canonical filenames. Docusaurus derives an ID from the filename
- * unless front matter provides one, so this is the smallest site-only bridge
- * for the transition. Once the canonical file exists, the old file keeps its
- * legacy ID and is not selected by the canonical sidebar.
- */
-const normalizeEnglishDocFrontMatter: ParseFrontMatter = async ({
-  filePath,
-  fileContent,
-  defaultParseFrontMatter,
-}) => {
-  const parsed = await defaultParseFrontMatter({filePath, fileContent});
-  const extension = path.extname(filePath);
-  const stem = path.basename(filePath, extension);
-
-  if (!stem.endsWith('.en')) {
-    return parsed;
-  }
-
-  const canonicalStem = stem.slice(0, -'.en'.length);
-  const directory = path.dirname(filePath);
-  const canonicalFileExists = ['.md', '.mdx'].some((canonicalExtension) =>
-    existsSync(path.join(directory, `${canonicalStem}${canonicalExtension}`)),
-  );
-
-  if (canonicalFileExists || !canonicalStem) {
-    return parsed;
-  }
-
-  return {
-    ...parsed,
-    frontMatter: {
-      ...parsed.frontMatter,
-      id: parsed.frontMatter.id ?? canonicalStem,
-    },
-  };
-};
 
 const config: Config = {
   title: 'SeatTrellis Documentation',
@@ -66,7 +25,6 @@ const config: Config = {
       onBrokenMarkdownLinks: 'warn',
     },
     mermaid: false,
-    parseFrontMatter: normalizeEnglishDocFrontMatter,
   },
 
   i18n: {
