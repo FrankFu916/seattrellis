@@ -1719,9 +1719,12 @@ mod tests {
     // output otherwise (no panic on fontless machines).
 
     fn decode_png(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
-        let decoder = png::Decoder::new(bytes);
+        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
         let mut reader = decoder.read_info().expect("png info");
-        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let output_size = reader
+            .output_buffer_size()
+            .expect("png output buffer size fits usize");
+        let mut buf = vec![0u8; output_size];
         let info = reader.next_frame(&mut buf).expect("png frame");
         (info.width, info.height, buf)
     }
