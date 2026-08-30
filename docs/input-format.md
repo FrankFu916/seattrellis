@@ -121,6 +121,6 @@ Historical snapshots enable multi-term fairness and desk-mate variation algorith
 
 ## 📖 Related Documentation
 
-- [Rule Handbook](rules.en.md)
-- [Quick Start Guide](quickstart.en.md)
+- [Rule Handbook](rules.md)
+- [Quick Start Guide](quickstart.md)
 - [Class Project Workflow](project.md)

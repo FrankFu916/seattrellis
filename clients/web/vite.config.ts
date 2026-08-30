@@ -12,6 +12,21 @@ export default defineConfig({
     // No source maps in production bundles; `vite dev` and vitest are
     // unaffected.
     sourcemap: false,
+    // Keep the stable React runtime separate from the application code. This
+    // removes the single-chunk size warning and lets browsers reuse the vendor
+    // chunk across application-only updates.
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
+            },
+          ],
+        },
+      },
+    },
   },
   server: {
     proxy: {
@@ -39,4 +54,3 @@ export default defineConfig({
     css: true,
   },
 });
-

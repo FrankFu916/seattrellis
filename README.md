@@ -17,7 +17,7 @@
 
   [📥 Download Desktop App](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
 
-  [Latest Release](https://github.com/FrankFu916/seattrellis/releases) · [Quick Start](docs/quickstart.en.md) · [Rule Reference](docs/rules.en.md) · [简体中文](README.zh-CN.md)
+  [Latest Release](https://github.com/FrankFu916/seattrellis/releases) · [Quick Start](docs/quickstart.md) · [Rule Reference](docs/rules.md) · [简体中文](README.zh-CN.md)
 </div>
 
 ---
@@ -96,7 +96,7 @@ Seating rules are defined in a clean JSON format, clearly separating mandatory h
 }
 ```
 
-- Schema & field definitions: [Input Format Guide](docs/input-format.en.md) and [Rule Handbook](docs/rules.en.md).
+- Schema & field definitions: [Input Format Guide](docs/input-format.md) and [Rule Handbook](docs/rules.md).
 - 14 built-in classroom scenarios (exam mode, daily balanced, rotation, etc.): [Presets Reference](docs/presets.md).
 
 ---
@@ -113,8 +113,8 @@ The legacy Python package is frozen at `1.9.0` for maintenance (`pip install sea
 
 | Guides & Usage | Specifications | Deep Dives & Dev |
 | :--- | :--- | :--- |
-| 📖 [Quick Start Guide](docs/quickstart.en.md) | 📐 [Rule Handbook](docs/rules.en.md) | 🏗️ [Architecture Overview](docs/architecture.md) |
-| 🖥️ [Web & Desktop Workbench](docs/web.en.md) | 📄 [Input Format Reference](docs/input-format.en.md) | ⚙️ [CLI Reference (27 commands)](docs/cli.md) |
+| 📖 [Quick Start Guide](docs/quickstart.md) | 📐 [Rule Handbook](docs/rules.md) | 🏗️ [Architecture Overview](docs/architecture.md) |
+| 🖥️ [Web & Desktop Workbench](docs/web.md) | 📄 [Input Format Reference](docs/input-format.md) | ⚙️ [CLI Reference (27 commands)](docs/cli.md) |
 | 🖨️ [Export & Printing Guide](docs/export.zh.md) | 🎒 [Class Project Workflow](docs/project.zh.md) | 🔒 [Privacy & Local Boundaries](docs/privacy.md) |
 
 ---

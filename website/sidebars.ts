@@ -2,12 +2,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
-/**
- * The sidebar is the public English navigation contract. IDs intentionally
- * have no language suffix. During the docs rename, the source check lets the
- * site omit a section until its English canonical source exists; once the
- * docs agent uses names such as `quickstart.md`, the same IDs are selected.
- */
+/** The sidebar is the public English navigation contract. */
 type DocsSection = {
   type: 'category';
   label: string;
@@ -19,9 +14,7 @@ const docsRoot = path.resolve(__dirname, '../docs');
 
 function hasEnglishSource(id: string): boolean {
   return ['.md', '.mdx'].some((extension) =>
-    [id, `${id}.en`].some((stem) =>
-      existsSync(path.join(docsRoot, `${stem}${extension}`)),
-    ),
+    existsSync(path.join(docsRoot, `${id}${extension}`)),
   );
 }
 

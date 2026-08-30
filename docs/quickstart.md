@@ -206,7 +206,7 @@ seattrellis project-restore --bundle my-class.seattrellis.zip --output-dir resto
 
 ## 📖 Deep Dives
 
-- 📐 **[Rule Handbook](rules.en.md)**: Explore hard constraints, weighted soft preferences, and solver mechanics.
-- 🖥️ **[Web Workbench Guide](web.en.md)**: Visual classroom editing, seat swapping, and export options.
-- 📄 **[Input Formats Reference](input-format.en.md)**: JSON and CSV schemas for rosters, layouts, and snapshots.
+- 📐 **[Rule Handbook](rules.md)**: Explore hard constraints, weighted soft preferences, and solver mechanics.
+- 🖥️ **[Web Workbench Guide](web.md)**: Visual classroom editing, seat swapping, and export options.
+- 📄 **[Input Formats Reference](input-format.md)**: JSON and CSV schemas for rosters, layouts, and snapshots.
 - ⚙️ **[CLI Reference Manual](cli.md)**: Comprehensive reference for all 27 subcommands and exit codes.
