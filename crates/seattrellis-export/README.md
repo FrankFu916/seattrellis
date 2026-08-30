@@ -1,7 +1,17 @@
 # seattrellis-export
 
-Export and render primitives for SeatTrellis: solved plans to SVG / HTML / print-HTML / PNG / PDF / XLSX / DOCX / PPTX.
+Multi-format rendering engine for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis).
 
-Part of [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序), a local-first classroom seating tool. See the [workspace README](https://github.com/FrankFu916/seattrellis) for the crate overview and build instructions.
+---
 
-License: Apache-2.0.
+## 🖨️ Supported Formats
+
+- **Vector & Web**: `svg`, `html`, `print-html` (A4 landscape fit-to-page)
+- **High-Resolution Images & Documents**: `png`, `pdf` (local OS font rasterization via `fontdue`)
+- **Office Documents**: `xlsx` (Excel), `docx` (Word), `pptx` (PowerPoint 16:9)
+
+---
+
+## 📄 License
+
+Licensed under [Apache-2.0](../../LICENSE).

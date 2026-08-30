@@ -1,12 +1,13 @@
 <div align="center">
-  <img src="docs/assets/logo.svg" width="128" alt="席序 SeatTrellis logo" />
+  <img src="docs/assets/logo.svg" width="128" alt="席序 SeatTrellis 标志" />
 
   # **席序 SeatTrellis**
 
-  **把排座这件事，交给一台不讲人情的机器。**
+  **让班级排座回归简单、科学与公正。**
 
-  本地优先的课堂排座工具 —— 导入名单、生成座位表、手工微调、导出打印。
-  无账号、无云同步，学生数据永不出电脑。
+  一款专注于隐私保护与本地计算的智能课堂排座工具。<br />
+  导入名单、配置规则、一键求解、交互微调、导出打印。<br />
+  **无须注册账号，无需云端同步，学生数据全流程留在您的电脑本地。**
 
   [![Tests](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml)
   [![Rust](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml)
@@ -14,61 +15,71 @@
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/FrankFu916/seattrellis/releases)
 
-  [下载桌面版](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
+  [📥 下载桌面版](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
 
-  [下载最新版](https://github.com/FrankFu916/seattrellis/releases) · [快速开始](docs/quickstart.zh.md) · [规则手册](docs/rules.zh.md) · [English](README.md)
+  [最新发布](https://github.com/FrankFu916/seattrellis/releases) · [快速上手](docs/quickstart.zh.md) · [规则手册](docs/rules.zh.md) · [English](README.md)
 </div>
 
 ---
 
-每个班总有一些座位是"敏感位"：近视的要靠前，高个子得靠后，有两个孩子
-不能坐在一起，还有家长拜托"多照顾一下"。手工排一次要一个下午，换学期
-重排又是一个下午，还说不出一句"为什么这么排"。
+排座位是每位班主任和任课老师每学期都要面对的难题：
+- 视力不好的孩子需要靠前，个子高的同学不能挡住后排；
+- 某些同学之间需要互相学习，某些同学在一起容易讲小话；
+- 既要兼顾平时表现与成绩互助，又要定期轮换保持机会均等；
+- 每次手工排座耗费大半天，排完还难以向学生和家长解释排座依据。
 
-**席序把这件事变成一次点击**：你定规则，它求解、解释、留档。
+**席序（SeatTrellis）为您化繁为简**：只需设定教学需求与偏好，内置算法即可秒级求解、给出清晰的评分依据，并完整记录历史轮换轨迹。
 
 ![座位表示例](docs/assets/demo-seating.png)
 
-## 它能做什么
+## ✨ 核心特色
 
-| | |
-|---|---|
-| 🧩 **硬约束，保证满足** | 固定座位、必须相邻、禁止相邻、最小距离、小组同座/隔离——任何标记"已解决"的方案都经过独立校验器复核，绝不违反 |
-| 🎯 **软偏好，可解释** | 视力靠前、身高靠后、成绩均衡、公平轮换、近期邻座回避……每条规则有独立评分，方案能回答"为什么他坐这里" |
-| 🔀 **候选与复现** | 一次生成多个候选方案对比推荐；固定 seed 任何一天重跑，结果一字不差 |
-| ✋ **手工微调** | 拖拽、交换、锁定、撤销/重做、违规修复——改完自动过约束校验 |
-| 📅 **多学期轮换** | 公平轮换计划 + 邻座重复摘要，长期班级一键滚动 |
-| 🖨️ **八种导出** | SVG / HTML / 打印 HTML / PNG / PDF / XLSX / DOCX / PPTX，教师版与公开匿名版一键切换 |
-| 🔒 **本地优先** | 全部计算在本机完成，无账号、无遥测、无云同步；公开导出自动匿名化姓名与学号 |
+| 功能模块 | 详细说明 |
+| :--- | :--- |
+| 🧩 **严守硬性底线（Hard Constraints）** | 支持指定固定座位、必须相邻、禁止相邻、最小间隔距离、小组捆绑或隔离等要求。所有标记“已解决”的方案均经过独立校验器二次复核，确保**零违规**。 |
+| 🎯 **兼顾柔性偏好（Soft Preferences）** | 智能权衡视力照顾、身高梯度、成绩互助、公平轮换、近期同桌回避等诉求。每一项规则均有独立评分明细，清晰回答“为什么这样排”。 |
+| 🔀 **多候选对比与精确复现** | 一键生成多个高质量候选方案供老师挑选；固定随机种子（Seed）后，随时重新计算均可获得 100% 一致的结果。 |
+| ✋ **直观的交互式微调** | 支持鼠标拖拽、座位互换、位置锁定、撤销/重做以及智能局部修复。任何手动调整都会实时触发规则合规性检查。 |
+| 📅 **多学期公平轮换** | 自动追踪历史排座记录，生成跨周期轮换方案与同桌重复分析报告，告别长期坐角落或单一搭档。 |
+| 🖨️ **8 种主流格式导出** | 支持一键导出 SVG、HTML、打印专用 HTML、PNG 图片、PDF、Excel（XLSX）、Word（DOCX）及 PowerPoint（PPTX），教师版与学生公示版随心切换。 |
+| 🔒 **本地优先，隐私安全** | 全流程纯本地离线运算，无遥测、无数据上报；公开版导出自动对姓名和学号进行脱敏处理。 |
 
-## 快速开始
+---
 
-### 桌面版（推荐给老师）
+## 🚀 快速上手
 
-从 [Releases](https://github.com/FrankFu916/seattrellis/releases) 下载对应平台安装包：
+### 1. 桌面端应用（推荐教师使用）
 
-| 平台 | 格式 |
-|---|---|
-| macOS (Apple Silicon) | `.dmg` / `.app.tar.gz` |
-| Windows (x64) | `.msi` / NSIS `.exe` |
-| Linux (amd64) | `.deb` |
+直接从 [GitHub Releases](https://github.com/FrankFu916/seattrellis/releases) 下载适用于您系统的安装包：
 
-安装包未签名，完整性请对照 `SHA256SUMS` / `DESKTOP-SHA256SUMS` 校验；
-macOS 首次打开需右键 →「打开」，Windows 可能出现 SmartScreen 提示。
+| 操作系统 | 推荐安装格式 |
+| :--- | :--- |
+| **macOS** (Apple Silicon) | `.dmg` 安装镜像 或 `.app.tar.gz` |
+| **Windows** (x64) | `.msi` 安装包 或 NSIS `.exe` 安装引导 |
+| **Linux** (amd64) | `.deb` 安装包 |
 
-### 命令行（推荐给自动化）
+> 💡 **提示**：安装包默认未经商业证书签名。macOS 首次打开时如遇提示，可右键点击应用图标并选择“打开”；Windows 若弹出 SmartScreen 保护，点击“仍要运行”即可。
+
+### 2. 命令行工具（推荐自动化与开发者使用）
+
+通过 Rust 包管理器快速安装：
 
 ```bash
 cargo install seattrellis
 
-seattrellis validate --problem problem.json   # 预检规则与数据
-seattrellis solve    --problem problem.json --output plan.json
-seattrellis export   --problem problem.json --solution plan.json --format png --output plan.png
+# 1. 预检数据与规则完整性
+seattrellis validate --problem problem.json
+
+# 2. 求解并生成排座方案
+seattrellis solve --problem problem.json --output plan.json
+
+# 3. 导出为高保真图片或文档
+seattrellis export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
-### 三条规则看懂配置
+### 3. 三分钟读懂规则配置
 
-规则是一个 JSON 文件，分 `hard`（必须满足）与 `soft`（加权偏好）：
+规则文件采用直观的 JSON 格式，清晰划分为**必须满足的硬约束**与**加权优化的软偏好**：
 
 ```json
 {
@@ -85,45 +96,53 @@ seattrellis export   --problem problem.json --solution plan.json --format png --
 }
 ```
 
-完整字段见 [输入格式](docs/input-format.zh.md) 与 [规则手册](docs/rules.zh.md)；
-14 个内置场景预设（考试、日常、轮换……）见 [预设](docs/presets.md)。
+- 完整字段规范与格式参考：[数据格式指南](docs/input-format.zh.md) 与 [排座规则手册](docs/rules.zh.md)。
+- 内置开箱即用的 14 种教学场景（如日常教学、期中期末考试、前后排轮换等）：[场景预设参考](docs/presets.md)。
 
-## 从 v1 升级
+---
 
-v1（Python）项目文件由 `seattrellis schema-migrate` 或工作台迁移流程
-自动升级，迁移前自动备份。Python 包冻结在 1.9.0，仅作维护线
-（`pip install seattrellis==1.9.0`），不再有 v2 依赖。详见
-[从 v1 迁移](docs/rust-migration.md)。
+## 🔄 从 v1 (Python) 版本升级
 
-## 文档
+如果您之前使用的是 Python 开发的 v1 版本，可以通过 `seattrellis schema-migrate` 命令或图形界面中的项目迁移向导将历史数据无缝升级至 v2，系统会在迁移前自动创建备份。
 
-| | | |
-|---|---|---|
-| [快速开始](docs/quickstart.zh.md) | [CLI 参考](docs/cli.md)（27 个子命令） | [输入格式](docs/input-format.zh.md) |
-| [规则手册](docs/rules.zh.md) | [导出](docs/export.zh.md) | [架构](docs/architecture.md) |
-| [工作台（Web）](docs/web.zh.md) | [隐私](docs/privacy.md) | [开发指南](docs/development.md) |
+旧版 Python 包已在 `1.9.0` 版本封存维护（`pip install seattrellis==1.9.0`），v2 版本为独立高效的纯 Rust 实现，不再依赖 Python 环境。详情请参考 [v1 升级指南](docs/rust-migration.md)。
 
-## 隐私
+---
 
-所有数据在本机处理。请勿将真实学生名单、学号、成绩、班级或学校信息提交
-到公开仓库——仓库只包含虚构示例数据。公开导出在单一中心策略层自动匿名化，
-发布流程含敏感字段扫描。
+## 📖 文档导航
 
-## 开发
+| 入门与使用 | 规则与格式 | 架构与进阶 |
+| :--- | :--- | :--- |
+| 📖 [快速上手指南](docs/quickstart.zh.md) | 📐 [排座规则手册](docs/rules.zh.md) | 🏗️ [系统架构解析](docs/architecture.md) |
+| 🖥️ [Web 与桌面工作台指南](docs/web.zh.md) | 📄 [输入数据格式规范](docs/input-format.zh.md) | ⚙️ [CLI 命令行参考 (27个子命令)](docs/cli.md) |
+| 🖨️ [多格式导出与排版](docs/export.zh.md) | 🎒 [班级项目管理工作流](docs/project.zh.md) | 🔒 [本地隐私与安全规范](docs/privacy.md) |
+
+---
+
+## 🛡️ 隐私与数据安全承诺
+
+席序将学生数据隐私置于首位。所有计算、排座与导出均在您本地计算机的内存与硬盘中进行，绝不进行任何形式的云端回传或遥测统计。在公开排座结果时，系统提供一键匿名化功能，防止学生个人敏感信息泄露。
+
+---
+
+## 💻 参与开发与构建
+
+席序采用高性能、类型安全的现代技术栈构建：
+- **后端核心**：Rust 1.88+、9 个模块化分层 Crates
+- **桌面与前端**：Tauri 2、React 19、TypeScript
+- **质量保障**：690+ 项 Rust 单元测试与集成测试、160+ 项前端测试、端到端自动化测试与基准性能测试门禁。
 
 ```bash
-# 前端（server 构建时内嵌 clients/web/dist）
-cd clients/web && npm ci && npm run build && cd ..
+# 1. 前端构建
+cd clients/web && npm ci && npm run build && cd ../..
 
-# Rust 全量测试 + clippy
+# 2. 运行完整 Rust 校验与测试套件
 cargo test --locked --workspace
 cargo clippy --locked --all-targets --workspace -- -D warnings
 ```
 
-技术栈：Rust 1.88（MSRV）· 9 个分层 crate · Tauri 2 · React 19 ·
-698 项 Rust 测试 + 167 项前端测试 + 浏览器 E2E + fuzz + 性能门禁。
-架构见 [docs/architecture.md](docs/architecture.md)。
+---
 
-## 许可
+## 📄 开源许可
 
-Apache-2.0，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
+本项目遵循 [Apache-2.0 开源许可协议](LICENSE)。详情参见 [NOTICE](NOTICE)。

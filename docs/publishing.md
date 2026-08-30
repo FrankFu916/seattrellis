@@ -1,78 +1,37 @@
-# Publishing and Release Integrity
+# 版本发布与完整性保障（Publishing）
 
-SeatTrellis v2.0.0 is released. This page documents the repeatable process for
-subsequent v2 releases. The v2 channels are GitHub Releases for prebuilt CLI/App
-binaries and desktop bundles, and crates.io for the CLI source package. The
-Python 1.9.0 line remains a separate frozen legacy release on
-`v1.x-maintenance`.
+[English](publishing.md) · [简体中文](publishing.md)
 
-## Release assets
+本文档规范了 **席序（SeatTrellis）** 在 GitHub Releases 与 crates.io 上的发布流程与产物完整性校验标准。
 
-### GitHub Release
+---
 
-Create a tag `v<version>` on the reviewed commit and publish the release. The
-Rust workflow then:
+## 📦 1. 发布渠道与产物
 
-1. builds the React workbench and embeds it in the App server;
-2. builds `seattrellis` and `seattrellis_web` for Linux, Windows, and macOS;
-3. collects six CLI/App binaries and attaches their `SHA256SUMS`;
-4. runs long-run quality gates and the no-Python-runtime scan for release
-   artifacts.
+1. **GitHub Releases**：
+   - 提供 macOS（`.dmg` / `.app.tar.gz`）、Windows（`.msi` / `.exe`）与 Linux（`.deb`）桌面安装包；
+   - 提供适用于多平台的独立 CLI 二进制（`seattrellis`）及 Web 服务二进制（`seattrellis_web`）；
+   - 随版本附带 `SHA256SUMS` 与 `DESKTOP-SHA256SUMS` 散列校验清单。
+2. **crates.io 官方源**：
+   - 发布核心 Rust CLI 工具源码包（`cargo publish -p seattrellis`）。
 
-`v1.*` tags are handled by the maintenance line and do not receive Rust
-binaries.
+---
 
-### Desktop bundles
+## 🔒 2. 产物校验与安全性说明
 
-The Tauri workflow builds macOS `.app`/`.dmg`, Windows MSI/NSIS, and Linux `.deb`
-bundles and attaches them to the corresponding release. Desktop bundles are
-**unsigned by the owner's release policy**. The workflow attaches a separate
-`DESKTOP-SHA256SUMS`; verify it in addition to the general `SHA256SUMS` file.
-On first launch, macOS may require **Open** from the context menu and Windows
-may show a SmartScreen prompt.
+- **未签名提示说明**：桌面安装包目前默认未购买商业代码签名证书。用户首次在 macOS 打开时可在“访达”中右键选择“打开”，Windows 出现 SmartScreen 时选择“仍要运行”；
+- **哈希自检**：建议用户在安装前对比官方发布的 SHA256 哈希值确保文件未被篡改。
 
-### crates.io
+---
 
-```bash
-cargo publish -p seattrellis
-```
+## 🔄 3. 发布回滚与补丁策略
 
-`cargo install seattrellis` installs the CLI from crates.io. Before
-publishing, make sure the crate version and GitHub tag match, and verify a clean
-installation in an isolated environment.
+- **标签不可变性**：已发布的 Git Tag 与 crates.io 版本严禁覆盖或重命名；
+- **缺陷修复**：如发现重大缺陷，通过发布自增补丁版本（如 `2.0.1`）进行修复，并在必要时对缺陷版本执行 crates.io yank 废弃操作。
 
-## Required access
+---
 
-- The publisher must have a verified crates.io account and permission for
-  `seattrellis` and its release dependencies.
-- The GitHub publisher needs release permission; the desktop workflow requires
-  `contents: write`.
+## 📖 相关文档
 
-## Release candidate policy
-
-Every release candidate uses a unique pre-release version, such as
-`2.1.0-rc.1`. After approval, restore the final version and run the full gate
-again. Do not reuse a crates.io version or publish a candidate version as the
-final release.
-
-Local preflight:
-
-```bash
-seattrellis --version
-seattrellis doctor
-seattrellis validate --problem problem.json
-seattrellis solve --problem problem.json --output plan.json
-```
-
-## Failure and rollback
-
-- If build, archive, or installation verification fails, do not create the
-  release or reuse its version. Fix the issue and publish a new candidate
-  version.
-- A published GitHub tag is not deleted or rewritten. Release assets may be
-  replaced only before publication and only under the repository's release
-  policy.
-- A crates.io version cannot be overwritten. Yank an affected release when
-  appropriate and publish an incremented patch version.
-- Rollback means publishing a new patch release; it does not remove an existing
-  tag or rewrite an already published artifact.
+- [版本发布核对清单](release-checklist.md)
+- [版本命名与兼容性规范](versioning.md)

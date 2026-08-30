@@ -1,36 +1,42 @@
-# Privacy
+# 本地隐私保护与数据安全白皮书
 
-SeatTrellis v2.0.0 is local-first. The desktop app, browser workbench, and CLI
-process data on the user's machine. There are no accounts, cloud sync, or
-product telemetry.
+[English](privacy.md) · [简体中文](privacy.md)
 
-## Data boundary
+在教育信息化场景中，学生的姓名、学号、学业成绩、视力情况与个人特征属于高度敏感的个人隐私数据。**席序（SeatTrellis）** 从诞生之初就将“**本地优先（Local-First）与隐私自洽**”作为不可妥协的设计底线。
 
-- Do not commit real student rosters, scores, notes, special needs, or history
-  snapshots to a public repository.
-- Keep `outputs/`, `exports/`, `snapshots/`, `private/`, and `data/` in ignored
-  private directories.
-- A project file stores paths and defaults; it does not embed the files it
-  references.
-- Remove names, IDs, school details, and other identifiers before sharing a
-  screenshot, issue, log, or export.
-- `examples/` contains fictional students and classrooms only.
+---
 
-## Public and teacher exports
+## 🔒 1. 核心安全承诺
 
-The `teacher` template is for controlled internal use and may retain real names,
-student IDs, and explicitly enabled detail fields. The `public` template is
-fail-closed: it anonymizes student labels and suppresses student IDs, scores,
-notes, special needs, height, vision, and other identifying details. Export
-options cannot loosen the public safety boundary.
+1. **100% 离线本地计算**：
+   桌面端、Web 工作台与 CLI 命令行工具的所有运算完全发生在本机 CPU/内存中，无需连网，**绝不进行任何云端数据回传**。
+2. **零数据采集与零遥测**：
+   SeatTrellis 不包含任何第三方跟踪脚本、Google Analytics、Sentry 或遥测埋点代码。
+3. **无须注册账号**：
+   无需注册、无需登录、无云端数据库存储，您的数据完全属于您的本地设备。
 
-See [Export formats](export.md) and [Font strategy](font-strategy.md) for
-rendering and sharing details.
+---
 
-## Local server boundary
+## 🛡️ 2. 公示版自动脱敏策略（Fail-Closed Mechanism）
 
-`seattrellis_web` binds to `127.0.0.1` by default and requires a per-process
-session token for API requests. Do not expose it to a LAN or an untrusted
-network. Project path mode reads the local path explicitly entered by the user;
-an uploaded project manifest alone does not grant the browser access to its
-referenced files.
+当您需要将排座结果打印张贴在教室墙壁或发送至家长群时，系统提供了严格的**班级公示版（Public Template）**：
+
+- **强制匿名化**：学生姓名自动转换为代号（如“学生 01”或星号脱敏）；
+- **全面屏蔽敏感字段**：完全剔除学号、身高数据、视力等级、考试成绩与教师内部评语；
+- **安全闭环机制**：公示版模板采用安全闭环逻辑，任何命令行参数或前端选项均无法放宽脱敏限制，杜绝误操作导致的信息泄露。
+
+---
+
+## 🌐 3. 本地服务通信边界
+
+- `seattrellis_web` 默认且严格仅绑定本地回环地址 `127.0.0.1`；
+- 服务启动时动态生成 256 位加密会话令牌（Session Token），API 请求必须携带令牌认证；
+- 防范 DNS 重新绑定（DNS Rebinding）与跨站请求伪造（CSRF），严禁在未经受控的局域网或公网直接暴露服务。
+
+---
+
+## 📁 4. 最佳实践建议
+
+- **私有目录保护**：请将真实的班级名册、历史快照与导出成果存放在被 `.gitignore` 保护的私有目录中（如 `outputs/`、`data/`）；
+- **样例数据虚拟化**：开源仓库及 `examples/` 目录下仅包含完全虚构的示例数据；
+- **公开分享前检查**：在将排座截图或项目文件发送至公共论坛前，可运行 `seattrellis project-privacy --project <path>` 进行敏感字段合规自检。

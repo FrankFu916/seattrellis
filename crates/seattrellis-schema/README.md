@@ -1,7 +1,17 @@
 # seattrellis-schema
 
-SeatTrellis v2 durable artifact contracts: the artifact envelope, the 12-kind registry, typed wire DTOs and v1->v2 migration steps.
+Data contracts, versioned schema definitions, and artifact registry for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis).
 
-Part of [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序), a local-first classroom seating tool. See the [workspace README](https://github.com/FrankFu916/seattrellis) for the crate overview and build instructions.
+---
 
-License: Apache-2.0.
+## 📄 Overview
+
+`seattrellis-schema` houses the canonical data contracts and JSON Schema registry across the SeatTrellis ecosystem:
+- Defines typed enums and structs for all v2 artifacts (`student_roster`, `classroom_layout`, `seating_snapshot`, `candidate_set`, `project`, etc.).
+- Enforces data integrity, forward/backward compatibility bounds, and JSON Schema generation.
+
+---
+
+## 📄 License
+
+Licensed under [Apache-2.0](../../LICENSE).

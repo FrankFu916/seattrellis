@@ -1,25 +1,42 @@
-# Scoring
+# 多维度评分与偏好评估体系
 
-**SeatTrellis v2.0.0 is released.**
+[English](scoring.md) · [简体中文](scoring.md)
 
-SeatTrellis compares candidate plans with explainable dimensions on a 0-100
-scale. Higher is better for an available dimension.
+在 **席序（SeatTrellis）** 中，评估一个排座方案的好坏不是单一维度的黑盒数字，而是一套**透明、可解释、多维度的标准化打分体系**。
 
-- fair seat-category rotation;
-- recent desk-mate and neighbor avoidance;
-- score mixing or score placement;
-- height preference;
-- vision/front-seat preference;
-- candidate diversity;
-- stability relative to the latest history snapshot.
+---
 
-The total is a weighted average of dimensions whose status is
-`available`. Disabled objectives, missing history, and missing student fields
-produce `not_available`; they are not silently treated as zero scores.
+## 🎯 1. 标准化打分机制（0 ~ 100 分）
 
-Scoring is a heuristic comparison tool. It does not prove a global optimum and
-never overrides hard constraints. A plan that fails hard-rule verification is
-not a valid candidate, regardless of its score.
+所有启用的偏好维度均被归一化映射至 `0` 到 `100` 分区间，**分值越高代表该维度优化效果越好**：
 
-See [Rules](rules.md) for objective fields and [Candidates](candidates.md) for
-recommendation behavior.
+| 评估维度 | 核心衡量目标 | 算法计算逻辑简述 |
+| :--- | :--- | :--- |
+| **`vision_preference_score`** | 视力照顾靠前度 | 标记有视力关照需求的学生距离前排中央视角的接近程度。 |
+| **`height_preference_score`** | 身高梯度合理性 | 学生身高与教室前后排梯度的吻合度，惩罚高个遮挡矮个视线的情况。 |
+| **`fair_rotation_score`** | 历史位置轮换公平性 | 对比历史轮换快照，评估学生是否成功避开了上期所处的位置类别。 |
+| **`avoid_recent_neighbors_score`** | 同桌与搭档新鲜度 | 评估当前排座是否有效避免了近期已出现过的同桌或紧邻关系。 |
+| **`score_balance_score`** | 成绩互助均衡度 | 相邻学生或小组内成员的学业成绩梯度是否达到预设互助目标。 |
+| **`diversity_score`** | 候选方案差异度 | 当前方案与同一批次生成的其他候选方案之间的位置变动幅度。 |
+| **`stability_score`** | 跨期调整稳定性 | 相比上一期历史排座，保持原座位不变的学生比例（用于小范围微调）。 |
+
+---
+
+## ⚖️ 2. 加权总分与诚实评分（`not_available`）
+
+### 加权总分公式
+```text
+Total Score = sum(available score_i * weight_i) / sum(available weight_i)
+```
+
+### `not_available` 状态的诚实处理原则
+若当前输入数据缺少计算某个维度所需的支撑字段（例如未提供学生身高、未导入历史快照或未记录成绩），该维度将被严格标记为 `not_available`：
+- **绝不虚构基准分**：系统不会将缺失数据静默替换为 0 分或 60 分；
+- **自适应权重剔除**：未生效的维度不计入总分加权分母，保证总评分客观真实。
+
+---
+
+## 🛡️ 3. 评分与硬约束的边界
+
+> ⚠️ **硬约束永远拥有一票否决权**：
+> 评分机制仅用于在**已经满足所有硬约束的可行解**之间进行优选排序。任何违反固定座位、禁止相邻或最小间距的方案，无论其软偏好得分多高，均判定为非法方案，绝不会进入候选推荐列表。

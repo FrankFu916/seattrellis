@@ -1,50 +1,50 @@
 # SeatTrellis Web Workbench
 
-This directory contains the independent React workbench. It is intentionally
-separate from the current Streamlit application so both experiences can coexist
-during migration.
+This directory contains the interactive React 19 web workbench for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis), designed for classroom seating management, real-time manual fine-tuning, and multi-format exports.
 
-The browser workbench keeps the ordinary teacher flow simple: roster import and
-inline student editing,
-custom or preset room selection, visual classroom editing, combined seating
-preferences and common constraints, generation, manual adjustment, project
-backup, and export. Export uses the shared `public`, `teacher`, and `report`
-templates with field-level privacy controls, anonymization, A4 orientation and
-scaling. The
-Generate step has a collapsed **Advanced settings** section for candidate count,
-seed, time limit, backend selection, and complete custom rules JSON. When a
-complete RuleSet is needed, the same section also provides a structured editor
-for hard rules, soft goals, named groups, schema version, and seed. The
-Streamlit page and CLI remain supported for file-level configuration and
-existing projects.
+---
 
-## Local preview
+## 🚀 Features
 
+- **Step-by-Step Seating Wizard**: Student roster upload (CSV/XLSX), classroom layout designer, rule & preset selection, solving, and exporting.
+- **Interactive Seating Canvas**: Click-to-swap, move to empty desk, lock seats/students, atomic batch moves, and full undo/redo support.
+- **Dual Export Templates**: One-click toggle between Teacher Internal Copy and Public Classroom Posting (with automated fail-closed privacy anonymization).
+- **Multi-Period Rotation**: Schedule and preview future seating rotations with historical zone distribution and desk-mate repetition metrics.
+- **Class Project Management**: Local workspace indexing, plan comparison, and `.seattrellis.zip` backup/restore.
+
+---
+
+## 💻 Local Development
+
+### 1. Install Dependencies
 ```bash
 npm install
-npm run dev
 ```
 
-The development server forwards `/api/v1` to `http://127.0.0.1:8765`. When the
-local SeatTrellis service is not running, the workbench uses a bundled demo
-class automatically. A production build uses relative asset paths and can be
-served from a Python wheel or desktop package:
+### 2. Start Development Server
+```bash
+npm run dev
+```
+The dev server runs at `http://localhost:5173` and proxies API requests to `http://127.0.0.1:8765`. If the backend service is not running, the workbench automatically falls back to an offline demo classroom.
 
+### 3. Build Production Bundle
 ```bash
 npm run build
 npm run preview
 ```
+The compiled assets in `dist/` are embedded directly into the Rust server binary (`seattrellis-server` / `seattrellis_web`) at build time.
 
-The generated `dist/` directory is copied into `src/seattrellis/web_static/`
-when updating the bundled Python and desktop clients.
+---
 
-## Quality checks
+## 🧪 Quality Checks
 
 ```bash
+# Typecheck TypeScript definitions
 npm run typecheck
+
+# Run Vitest test suite
 npm test
 ```
 
-All visible copy lives in `src/i18n/messages.ts`. Themes are CSS-token based and
-live in `src/styles/tokens.css`; components do not contain theme-specific
-styling.
+- **Localization**: UI text strings are managed in `src/i18n/messages.ts` (supporting Simplified Chinese and English).
+- **Design Tokens**: Theme variables and styling rules are centralized in `src/styles/tokens.css`.

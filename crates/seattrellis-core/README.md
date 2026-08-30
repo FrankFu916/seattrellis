@@ -1,22 +1,28 @@
-# seattrellis_core
+# seattrellis-core
 
-Cost-ranked classroom seating solver core for [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序).
+High-performance, constraint-satisfaction seating solver core for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis).
 
-Provides a deterministic, dependency-light solver that assigns students to seats while satisfying hard constraints (fixed seats, must/cannot-be-adjacent, minimum distance) and optimizing soft objectives (score position preference, score distribution balance, mentor pairing, height and vision preferences, fairness and recent-neighbor avoidance). All input and output is plain JSON, so the core is usable from any language with a JSON bridge.
+---
+
+## ⚡ Overview
+
+`seattrellis-core` is the algorithmic engine of SeatTrellis. It provides deterministic, dependency-light solving capabilities that assign students to seats while strictly guaranteeing hard constraints (fixed seats, required/forbidden adjacency, minimum distance) and optimizing multi-dimensional soft preferences (vision accommodation, height ordering, score balancing, historical room-category rotation, and recent-neighbor avoidance).
 
 ```rust
 let response_json = seattrellis_core::solve_problem_json(&request_json)?;
 ```
 
-## Solver status
+---
 
-Seven frozen statuses: `Solved`, `ProvenInfeasible`, `Timeout`, `Unknown`, `InvalidInput`, `Cancelled`, `InternalError`. Heuristic exhaustion reports `Unknown` — never a false proof of infeasibility.
+## 🎯 Key Capabilities
 
-## Features
+- **Deterministic Constraint Engine**: MRV heuristic and backtracking search for hard constraints, paired with local search optimization for weighted soft goals.
+- **Multi-Candidate Generation**: Generates distinct, hard-valid candidate plans with diversity and stability metrics.
+- **Independent Plan Validation**: Every produced plan is verified against all constraints by an independent checker.
+- **Frozen Solver Statuses**: Strictly reports `Solved`, `ProvenInfeasible`, `Timeout`, `Unknown`, `InvalidInput`, `Cancelled`, or `InternalError`.
 
-- Deterministic, seeded search with MRV/backtracking for hard constraints and local search for soft objectives
-- Candidate-set generation with diversity and stability dimensions
-- Independent validator for every produced plan
-- Works for classes up to 10,000 seats (input boundary enforced)
+---
 
-License: Apache-2.0.
+## 📄 License
+
+Licensed under [Apache-2.0](../../LICENSE).

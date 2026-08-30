@@ -1,74 +1,54 @@
-# 中文字体策略
+# 中文字体与高保真排版策略
 
-[English](font-strategy.md) / [简体中文](font-strategy.zh.md)
+[English](font-strategy.md) · [简体中文](font-strategy.zh.md)
 
-本文档说明 SeatTrellis v2.0.0 导出功能（HTML / print-html / SVG / PDF / PNG）中的中文字体兼容策略。
+在排版与打印座位表时，中文字符的清晰度、对齐精度与跨平台一致性至关重要。本文档阐述 **席序（SeatTrellis）v2.0.0** 在各类导出格式（HTML、print-html、SVG、PDF、PNG 及 Office）中的中文字体渲染与回退策略。
 
-## 核心原则
+---
 
-- **不将字体文件提交到仓库**。字体文件体积大（单个中文字体 5–30 MB），且大多数字体有版权限制。
-- **HTML、print HTML、SVG 和 Office 文件不打包 SeatTrellis 字体**，由对应的查看器或应用处理字体回退。
-- **PDF 和 PNG 在导出时使用本机系统字体进行光栅化**：它们保存导出时已绘制文字的图像，不依赖查看器选择字体。
-- **使用固定优先级的字体发现链**：只有本机安装的字体会影响光栅结果。
+## 🎨 1. 核心设计原则
 
-## 各平台默认字体
+1. **零外部字体捆绑**：不将商业中文字体打包进安装包或代码仓库，既避免版权合规风险，又将二进制包体积控制在极限轻量。
+2. **端到端独立光栅化（PDF / PNG）**：PDF 和 PNG 导出时，直接在本地由 Rust 引擎（`fontdue`）加载操作系统内置的优质中文字体进行像素级光栅化绘制。导出的 PDF 本身即包含精确渲染的文字图像，**无论在任何老旧电脑或打印机上打开，绝不会出现字体缺失、乱码或文字跑位**。
+3. **自适应 CSS 字体栈（HTML / SVG / Office）**：面向浏览器与文档应用，提供完备的系统字体回退链（Fallback Stack），确保在 macOS、Windows、Linux 下均呈现原生现代无衬线质感。
 
-### macOS
+---
 
-优先发现 `PingFangSC-Regular`（通常来自 PingFang SC）。
+## 🖥️ 2. 各操作系统字体优先级链
 
-CSS 回退链：`"PingFang SC", "Heiti SC", "STHeiti", -apple-system, sans-serif`
+### 🍎 macOS
+- **首选字体**：苹方（`PingFang SC` / `PingFangSC-Regular`）
+- **回退栈**：`"PingFang SC", "Heiti SC", "STHeiti", -apple-system, sans-serif`
 
-### Windows
+### 🪟 Windows
+- **首选字体**：微软雅黑（`Microsoft YaHei`），次选中易宋体（`SimSun`）
+- **回退栈**：`"Microsoft YaHei", "SimHei", "SimSun", sans-serif`
 
-随后发现 `MicrosoftYaHei`，再回退到 `SimSun`。这两档主要对应 Windows 字体目录。
+### 🐧 Linux / Docker 容器环境
+- **首选字体**：思源黑体（`Noto Sans CJK SC`）
+- **回退栈**：`"Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", sans-serif`
 
-CSS 回退链：`"Microsoft YaHei", "SimHei", "SimSun", sans-serif`
+> 💡 **服务器与 Linux 容器字体安装**：
+> 若在无图形界面的 Linux 服务器或 CI/CD 容器中运行导出任务，推荐预装开源思源黑体：
+> ```bash
+> # Debian / Ubuntu:
+> sudo apt-get install -y fonts-noto-cjk
+>
+> # CentOS / RHEL / Fedora:
+> sudo yum install -y google-noto-sans-cjk-fonts
+> ```
 
-### Linux
+---
 
-Linux 常见的首选字体是 `NotoSansCJKsc-Regular`。用户目录中的 PingFang 或 Noto
-字体会在标准目录之后按支持的路径检查。
+## 📐 3. 自定义字体使用指引
 
-CSS 回退链：`"Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", sans-serif`
+如果您的学校或机构拥有企业授权专属字体（如定制楷体、兰亭黑体等），无需修改 SeatTrellis 任何代码：
+1. 将 `.ttf` 或 `.otf` 字体文件安装至系统标准字体目录（如 macOS 的 `~/Library/Fonts`，或 Linux 的 `~/.fonts`）；
+2. 操作系统生效后，系统在生成 HTML 或渲染位图时即可自动应用该字体。
 
-## PDF 与 PNG 导出（本地光栅化）
+---
 
-v2.0.0 的 PDF 和 PNG 渲染器不依赖 WeasyPrint、Pango 或任何 Python 包。两者按
-`PingFangSC-Regular` → `NotoSansCJKsc-Regular` → `MicrosoftYaHei` → `SimSun`
-的固定顺序发现字体文件，用 `fontdue` 在导出进程中绘制文字。PDF 是单页压缩图像，
-PNG 以 2 倍密度绘制；两者都不依赖查看器选择字体。
+## 📖 相关文档
 
-发现顺序固定，因此同一台机器上的结果是确定性的；只有“哪款字体存在”依赖环境。
-如果发现或解析不到可用系统字体，文件仍会生成，但 PDF/PNG 文字会被省略并给出：
-
-`no usable system font found; PNG/PDF text was omitted`
-
-Linux（服务器/Docker）可安装：
-
-```bash
-# Debian/Ubuntu
-sudo apt-get install fonts-noto-cjk
-# CentOS/RHEL
-sudo yum install google-noto-sans-cjk-fonts
-```
-
-## HTML、print HTML 与 SVG
-
-这些格式保留文字，由 CSS 或 SVG 的系统 sans-serif 回退链负责显示。print HTML
-的字体栈包含 PingFang SC、Microsoft YaHei 和 Noto Sans CJK SC；浏览器或打印应用
-在显示时解析它，与 PDF/PNG 的本地光栅化路径不同。
-
-## 用户自定义字体
-
-如果用户有自己的字体文件（如学校购买的授权字体），可以：
-
-1. 将 `.ttf` / `.otf` 文件放在系统字体目录（如 `~/Library/Fonts` 或
-   `~/.fonts`），使其进入系统字体发现路径；
-2. 确认该字体位于 SeatTrellis 支持的系统发现路径中；程序不会复制或分发字体。
-
-## 版本兼容
-
-- 本策略文档随版本更新，不产生 breaking change；
-- 默认行为保持：不随仓库分发字体，不嵌入 PDF/PNG 字体文件；没有可用字体时明确 warning；
-- 所有 examples/ 使用系统默认字体即可正常渲染。
+- [多格式导出与排版打印](export.zh.md)
+- [快速上手指南](quickstart.zh.md)

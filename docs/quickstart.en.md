@@ -1,60 +1,60 @@
-# Quick Start
+# Quick Start Guide
 
-[English](quickstart.md) / [简体中文](quickstart.zh.md)
+[English](quickstart.md) · [简体中文](quickstart.zh.md)
 
-This legacy filename is retained for existing links. The canonical English
-document is [Quick Start](quickstart.md).
+Welcome to **SeatTrellis v2.0.0**! This guide walks you through installation, problem validation, solving, candidate comparison, and exporting seating charts in under 5 minutes.
 
-This document covers installation and CLI usage for SeatTrellis v2.0.0 (the Rust-only line). For a brief project overview, see the [documentation home](index.md).
+---
 
-## Installation
+## 📦 1. Installation
 
-SeatTrellis v2 is a native Rust tool. It does not require Python, Node.js, or any other runtime.
+SeatTrellis v2 is built in pure Rust and requires no external runtimes (no Python or Node.js needed).
 
-### Desktop app (recommended)
+### Option A: Desktop Application (Recommended for Teachers)
 
-Download the installer for your platform from the [Releases](https://github.com/FrankFu916/seattrellis/releases) page:
+Download the installer for your operating system from [GitHub Releases](https://github.com/FrankFu916/seattrellis/releases):
 
-- **Windows**: MSI or NSIS installer (x64)
-- **macOS**: DMG or app archive (Apple Silicon)
-- **Linux**: DEB package
+- **macOS** (Apple Silicon): `.dmg` image or `.app.tar.gz` archive.
+- **Windows** (x64): `.msi` package or NSIS `.exe` installer.
+- **Linux** (amd64): `.deb` package.
 
-Verify every download against `SHA256SUMS` before installing.
+> 💡 **Operating System Hints**: The release binaries are distributed unsigned. On macOS, right-click the application icon in Finder and select "Open" on first launch. On Windows, if SmartScreen appears, click "More info" followed by "Run anyway".
 
-### CLI
+---
+
+### Option B: Command-Line Tool (CLI)
+
+Install directly via Cargo:
 
 ```bash
 cargo install seattrellis
-# or use the prebuilt binaries from Releases
 ```
 
-After installation, run `seattrellis --help` for the full command list, and `seattrellis doctor` to check the environment (binary version, core API version, writable temp directory).
-
-### Browser workbench
-
-`seattrellis_web` starts a local server bound to the loopback address only (`127.0.0.1:8765`) and opens the React workbench in your browser:
+Verify your installation and environment health:
 
 ```bash
-cargo run -p seattrellis_web -- --open-browser
-# or run the prebuilt binary from Releases
+seattrellis doctor
+```
+> `doctor` checks the binary version, Core API level, and temporary directory read/write permissions.
+
+---
+
+### Option C: Launching the Local Web Workbench
+
+If you prefer browser-based planning, launch the lightweight local server bound exclusively to `127.0.0.1:8765`:
+
+```bash
 seattrellis_web --open-browser
 ```
+This automatically launches the interactive React workbench in your default web browser.
 
-The desktop app (Tauri shell) starts the same server and loads the workbench in a native window.
+---
 
-### v1 Python line (legacy)
+## ⚡ 2. CLI Workflow in 3 Minutes
 
-The v1 (Python) line is frozen at **1.9.0** and maintained on the `v1.x-maintenance` branch. The legacy package is still installable:
+The CLI operates on a structured **problem definition file** (`problem.json`) combining student information, room topology, constraints, and solver settings.
 
-```bash
-pip install seattrellis==1.9.0
-```
-
-New users should use the v2 desktop app or the Rust CLI; v1 exists only as a frozen compatibility package and receives no new features.
-
-## Quick start (CLI)
-
-The v2 CLI works on a single "problem file" (a `CoreSolveRequest` JSON) that holds the students, seats, rules, and solver settings in one place. Example `problem.json`:
+### Example `problem.json`
 
 ```json
 {
@@ -70,88 +70,73 @@ The v2 CLI works on a single "problem file" (a `CoreSolveRequest` JSON) that hol
     {"key": "STU003", "display_name": "Carol"},
     {"key": "STU004", "display_name": "Dave"}
   ],
-  "rules": {"seed": 42, "soft": {"randomize": {"enabled": true, "weight": 1}}}
+  "rules": {
+    "seed": 42,
+    "soft": {
+      "randomize": { "enabled": true, "weight": 1 }
+    }
+  }
 }
 ```
 
-The three core commands:
+### Three Core Commands
 
 ```bash
-# Validate the problem file without running the search
+# 1. Validate problem definition without triggering the solver search
 seattrellis validate --problem problem.json
 
-# Solve and write the full result to plan.json
+# 2. Solve and write the complete seating snapshot to plan.json
 seattrellis solve --problem problem.json --output plan.json
 
-# Render the saved plan as PNG
+# 3. Render and export the saved solution as a high-resolution PNG
 seattrellis export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
-`export` supports seven formats: `svg`, `html`, `png`, `pdf`, `xlsx`, `docx`, and `pptx`; the printable `print-html` format is available through `project-export` only. `solve` uses the frozen v2 exit table: `0` solved, `2` invalid input, `3` proven infeasible, `4` timeout, `5` unknown, `70` internal error, `130` cancelled. The proven-infeasible exit code 3 is consistent across `solve` / `candidates` / `project-rotate` / `project-solve`.
+---
 
-## Demo data
+## 🛠️ 3. Advanced Features & Scenarios
 
-The repository's `examples/` directory carries fictional data only: `students.csv`, `classroom.json`, `rules.json`, `rules_multi_candidate.json`, `rules_neighbor_avoidance.json`, `history/`, and `project.seattrellis.json`. The v2 CLI has no `init-demo` command; grab the sample files from the repository instead.
-
-## Built-in scenario presets
-
-`validate`'s `--preset` flag checks which preferred data (history, score, height, vision) the problem is missing for a scenario and warns accordingly. Built-in presets include `random`, `exam`, `daily`, `fair-rotation`, `neighbor-aware`, `balanced`, `peer-mixing`, `score-high-front`, `score-high-back`, `row-score-balanced`, `group-score-balanced`, `mentor-pairing`, `height-aware`, and `vision-friendly`:
+### 3.1 Deterministic Solving & Time Limits
 
 ```bash
-seattrellis validate --problem problem.json --preset daily --history-dir examples/history
-```
-
-`--strict` turns warnings into failures. Presets are a convenience layer over rule JSON; see [Rules](rules.md) for the full rule reference.
-
-## Solving
-
-```bash
-# Fixed seed for reproducible results
+# Fix the random seed for 100% reproducible results
 seattrellis solve --problem problem.json --seed 42 --output outputs/latest.snapshot.json
 
-# Wall-clock budget; an exhausted budget reports Timeout (exit 4),
-# while a valid incumbent still reports Solved
+# Set a wall-clock search budget (in seconds)
 seattrellis solve --problem problem.json --time-limit 3 --output outputs/latest.snapshot.json
 ```
 
-## Validation and inspection
+---
+
+### 3.2 Audit & Score Breakdown
 
 ```bash
-# Validate the problem (student/seat/rule references, fixed-seat and adjacency conflicts)
-seattrellis validate --problem problem.json
-
-# Precheck: candidate seat domains and infeasibility reasons
+# Inspect candidate seat domains and diagnose infeasibility causes
 seattrellis precheck --problem problem.json
 
-# Audit a solved plan: hard-rule status + soft breakdown
+# Audit a completed plan against all hard constraints and inspect score breakdown
 seattrellis audit --problem problem.json --solution plan.json
 
-# Score a fixed assignment with the PlanScore breakdown
+# Evaluate a specific assignment matrix on demand
 seattrellis score --problem problem.json --assignment '[[0,0],[1,1],[2,2],[3,3]]'
 ```
 
-## Multi-candidate generation
+---
+
+### 3.3 Multi-Candidate Generation
+
+Generate multiple diverse, hard-valid candidate arrangements for comparison:
 
 ```bash
 seattrellis candidates --problem problem.json --count 5 > outputs/candidates.json
 ```
+The solver ranks candidates by weighted preference score, marking the recommended choice while reporting stability and diversity metrics.
 
-`candidates` generates up to N distinct plans (1–20, default 5) that all satisfy every hard constraint. Each candidate carries its own snapshot, total score, and score breakdown; the recommended plan is the highest-scoring hard-valid candidate.
+---
 
-## History analysis
+### 3.4 Interactive Hand-Tuning & Local Repair
 
-`history-report` summarises each student's front, back, side, corner, near-window, near-door, near-platform, and near-AC counts. `pair-report` summarises pair-level desk-mate, horizontal, vertical, diagonal, any-adjacent, and within-distance counts:
-
-```bash
-seattrellis history-report --problem problem.json --history-dir examples/history --output outputs/history-report.json
-seattrellis pair-report --problem problem.json --history-dir examples/history --top 10
-```
-
-History snapshots are `*.snapshot.json` files (for example under `examples/history/`). Missing history never fails a solve; it only makes dimensions such as `fair_rotation` report `not_available`.
-
-## Manual edits and local repair
-
-`edit` applies command-style adjustments to a saved snapshot or candidate set:
+Adjust individual placements with the `edit` command:
 
 ```bash
 seattrellis edit \
@@ -161,81 +146,67 @@ seattrellis edit \
   --output outputs/edited.snapshot.json
 ```
 
-Supported operations: `swap:STU001:STU002`, `move:STU003:R2C2`, `batch-move:STU001=R1C2,STU002=R1C1`, `seat:STU003:R2C2`, `unseat:STU004`, `lock-student:STU001`, `unlock-student:STU001`, `lock-seat:R1C1`, `unlock-seat:R1C1`. By default the command writes a draft and prints hard-constraint diagnostics; with `--strict`, a hard-constraint violation fails the command without writing. Operation groups can also be stored in a JSON file and replayed via `--operations-file`.
+Supported operations:
+- `swap:STU001:STU002`: Swap two students.
+- `move:STU003:R2C2`: Move a student to an empty seat.
+- `lock-student:STU001` / `lock-seat:R1C1`: Lock a student or seat in place.
+- `batch-move:STU001=R1C2,STU002=R1C1`: Atomically execute multiple moves.
 
-`repair` re-solves a small group while preserving locked seats:
+If manual edits cause rule conflicts, use `repair` to intelligently re-solve only affected students while keeping locked seats untouched:
 
 ```bash
 seattrellis repair \
   --problem problem.json \
   --snapshot outputs/edited.snapshot.json \
   --lock-student STU001 \
-  --lock-seat R4C3 \
   --affected STU002 \
   --output outputs/repaired.snapshot.json
 ```
 
-`--affected` bounds the re-solve scope; `--lock-student` / `--lock-seat` keep current seats. Locks saved in the snapshot metadata are reused by default; pass `--ignore-saved-locks` to ignore them.
+---
 
-## Project workflow
-
-A project file organises a local workspace by storing relative paths and defaults for the student list, layout, rules, and history directory. It suits the v1-style file workflow and long-term storage:
+### 3.5 Historical Rotation & Pair Reports
 
 ```bash
-# Create a project file inside a directory that already has students.csv / layout.json / rules.json
+# Generate comprehensive position-distribution statistics for each student
+seattrellis history-report --problem problem.json --history-dir examples/history --output outputs/history-report.json
+
+# Analyze recurring desk-mate and neighbor pairings across terms
+seattrellis pair-report --problem problem.json --history-dir examples/history --top 10
+```
+
+---
+
+## 🎒 4. Class Project Workflow
+
+Manage ongoing classroom files (rosters, layouts, rules, and historical records) in a unified project structure:
+
+```bash
+# 1. Initialize a class workspace from existing data files
 seattrellis project-init --dir my-class
 
-# Inspect configuration and path status
+# 2. Inspect project configuration and file references
 seattrellis project-info --project my-class/seattrellis.project.json
 
-# Validate
-seattrellis project-validate --project my-class/seattrellis.project.json
-
-# Solve and write the saved plan
+# 3. Solve and generate candidate seating charts
 seattrellis project-solve --project my-class/seattrellis.project.json --candidates 3 --output outputs/project.plan.json
 
-# Export the saved plan (never re-solves)
-seattrellis project-export --project my-class/seattrellis.project.json --snapshot outputs/project.plan.json --format html --output outputs/project.html
+# 4. Export the saved seating chart to printable HTML
+seattrellis project-export --project my-class/seattrellis.project.json --snapshot outputs/project.plan.json --format print-html --output outputs/seat.html
 
-# Rotation: generate future periods
+# 5. Generate a fair 4-period rotation plan
 seattrellis project-rotate --project my-class/seattrellis.project.json --periods 4
 
-# Backup and restore
+# 6. Create portable backups and restore them across machines
 seattrellis project-pack --project my-class/seattrellis.project.json --output my-class.seattrellis.zip
 seattrellis project-restore --bundle my-class.seattrellis.zip --output-dir restored/
-
-# Privacy scan
-seattrellis project-privacy --project my-class/seattrellis.project.json
 ```
 
-`project-edit` / `project-repair` reuse the same semantics as `edit` / `repair`. See [Project workflow details](project.md) for more.
+---
 
-## Schema tooling
+## 📖 Deep Dives
 
-Every v2 artifact (snapshot, candidate set, project, rotation plan, ...) carries a `schema_version`. List the registry, export JSON Schemas, and migrate older files:
-
-```bash
-seattrellis schema-list
-seattrellis schema-export --kind seatingsnapshot --output seating-snapshot.v2.schema.json
-
-# Project files carry their kind field natively and migrate to v2 directly:
-seattrellis schema-migrate --input my-class/seattrellis.project.json --output my-class/seattrellis.v2.project.json
-
-# v1 roster / layout documents have no kind field; wrap them in an envelope
-# first, or rewrite them in place with --in-place (a hidden transactional
-# backup is created first, and repeated runs never overwrite each other):
-# {"kind": "student_roster", "schema_version": 1,
-#  "data": {"students": [{"student_id": "STU001", "name": "Alice"}]}}
-seattrellis schema-migrate --input roster-v1.json --in-place
-```
-
-Only three kinds currently provide a v1→v2 migration step: rosters (`student_roster`), layouts (`classroom_layout`), and projects (`seattrellis_project`). Snapshots, candidate sets, and rulesets have no migration step yet and are rejected with an explicit error. Files whose `schema_version` is newer than the supported target are refused (no downgrades).
-
-## Next Steps
-
-- [CLI reference](cli.md)
-- [Input Formats](input-format.md)
-- [Rules](rules.md)
-- [Web UI Guide](web.md)
-- [Project Workflow Details](project.md)
-- [Export Formats](export.md)
+- 📐 **[Rule Handbook](rules.en.md)**: Explore hard constraints, weighted soft preferences, and solver mechanics.
+- 🖥️ **[Web Workbench Guide](web.en.md)**: Visual classroom editing, seat swapping, and export options.
+- 📄 **[Input Formats Reference](input-format.en.md)**: JSON and CSV schemas for rosters, layouts, and snapshots.
+- ⚙️ **[CLI Reference Manual](cli.md)**: Comprehensive reference for all 27 subcommands and exit codes.

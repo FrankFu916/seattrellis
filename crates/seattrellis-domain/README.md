@@ -1,7 +1,17 @@
 # seattrellis-domain
 
-Domain layer for SeatTrellis: the editor state machine (commands, undo, drafts), room templates and goal rules.
+Core domain entities, editor state machines, and seating models for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis).
 
-Part of [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序), a local-first classroom seating tool. See the [workspace README](https://github.com/FrankFu916/seattrellis) for the crate overview and build instructions.
+---
 
-License: Apache-2.0.
+## 🏛️ Domain Concepts
+
+- **Editing State & History**: Manages immutable revision tracking, lock states, and atomic undo/redo operations.
+- **Classroom Topology**: Seat nodes, adjacency graphs, custom edges, and zone definitions.
+- **Rotation Schedules**: Multi-period plan data structures and group rosters.
+
+---
+
+## 📄 License
+
+Licensed under [Apache-2.0](../../LICENSE).

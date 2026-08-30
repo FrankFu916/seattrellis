@@ -1,67 +1,69 @@
 ---
 slug: /
+title: SeatTrellis Documentation
 ---
 
-# SeatTrellis Documentation
+# SeatTrellis Documentation Center
 
-[English](index.md) / [简体中文](index.zh.md)
+[English](index.md) · [简体中文](index.zh.md)
 
-**SeatTrellis v2.0.0 is released.** SeatTrellis is a local-first classroom
-seating planner: import a roster, describe the room and constraints, generate
-one or more plans, adjust them, and export a handout.
+**SeatTrellis** is a privacy-first, local-first intelligent classroom seating planner. Whether for routine semester rotations, academic peer-tutoring, or standardized test layouts, SeatTrellis generates scientifically sound, fair, and fully explainable seating arrangements in seconds.
 
-## Choose an entry point
+Built entirely in Rust, version 2.0.0 delivers a native desktop app, a lightweight local web workbench, and a versatile CLI tool. It runs completely offline without requiring Python, Node.js, or any external runtimes.
 
-- **Desktop app:** the recommended Tauri application for teachers. It includes
-  the workbench and runs the local Rust service in a native window.
-- **Web workbench:** the same React workflow in a browser, served by
-  `seattrellis_web` on the loopback interface only.
-- **CLI:** `seattrellis` for automation, reproducible solves, project
-  folders, reports, migrations, and exports.
+---
 
-## Quick links
+## 🎯 Choose Your Entry Point
 
-| Start here | What it covers |
-| --- | --- |
-| [Quick start](quickstart.md) | Install v2.0.0, solve a first problem, and export it |
-| [Web workbench](web.md) | Teacher workflow, editing, projects, and downloads |
-| [CLI reference](cli.md) | Commands, options, statuses, and exit codes |
-| [Input formats](input-format.md) | Rosters, layouts, projects, history, and candidate artifacts |
-| [Rules](rules.md) | Hard constraints, soft objectives, presets, and scoring |
-| [Project workflow](project.md) | Persistent local workspaces and saved plans |
-| [Export formats](export.md) | Eight renderers, templates, privacy, and printing |
+```mermaid
+graph LR
+    A[Get Started with SeatTrellis] --> B[🖥️ Teachers & Classroom Planning]
+    A --> C[⚙️ Developers & Automation]
+    B --> D[Desktop App / Web Workbench]
+    C --> E[CLI Tool]
+    D --> F[Import Roster ➔ Set Goals ➔ Adjust ➔ Export/Print]
+    E --> G[Scripts ➔ Batch Solves ➔ Automated CI]
+```
 
-Developer documentation starts with [Architecture](architecture.md). See
-[Privacy](privacy.md) before using real student data.
+- **🖥️ Desktop Application (Recommended for Teachers)**: Powered by Tauri 2, providing a native OS window, wizard-guided workflow, and rich interactive seating adjustment tools.
+- **🌐 Web Workbench**: Start a lightweight, loopback-only React workbench in your browser with a single command.
+- **⚙️ CLI Tool (Recommended for Power Users & Automation)**: Offers 27 robust subcommands for batch validation, solving, multi-candidate generation, history analysis, and export pipelines.
 
-## How plans are evaluated
+---
 
-**Hard constraints** are requirements. Fixed seats, required or forbidden
-adjacency, minimum distances, and group relationships must pass validation; a
-plan that cannot satisfy them is not presented as a valid solution.
+## 📚 Documentation Sitemap
 
-**Soft objectives** are weighted preferences. Vision, height, score placement or
-mixing, history-based rotation, and recent-neighbor avoidance improve the score
-when the input supports them, but never override a hard constraint. A missing
-input makes the affected dimension `not_available`, not an invented zero score.
+### 1. Getting Started & User Guides
+- **[Quick Start Guide](quickstart.en.md)**: Install, validate, solve your first seating problem, and export the chart in 5 minutes.
+- **[Web & Desktop Workbench Guide](web.en.md)**: Master roster imports, classroom layout design, drag-and-drop swaps, locking, and undo/redo.
+- **[Export & Printing Guide](export.zh.md)**: 8 export formats (PDF, PNG, Word, Excel, etc.), print layout optimization, and student privacy redaction.
+- **[Class Project Workflow](project.zh.md)**: Long-term class records, multi-term rotation schedules, packaging, and backup restoration.
 
-With a fixed seed, the Rust solver is reproducible when it completes its fixed
-search budget. A wall-clock timeout can stop machines after different numbers
-of attempts, so timed-out runs are not promised to be byte-identical.
+### 2. Rules & Data Specifications
+- **[Rule Handbook](rules.en.md)**: In-depth reference for hard constraints (fixed seats, required/forbidden pairs) and soft preferences (vision, height, academic mixing, fair rotation, neighbor avoidance).
+- **[Input Formats & Schemas](input-format.en.md)**: Specifications for student rosters (CSV), classroom layouts (JSON), snapshots, and historical records.
+- **[Scenario Presets Reference](presets.md)**: 14 out-of-the-box classroom templates (daily teaching, exams, study pairs, etc.).
+- **[Font Rendering Strategy](font-strategy.zh.md)**: Cross-platform font fallback mechanisms for consistent typography.
 
-## Local-first privacy
+### 3. Advanced References & Internals
+- **[CLI Reference Manual](cli.md)**: Complete coverage of all 27 subcommands, options, and frozen exit codes.
+- **[Scoring & Objective Breakdown](scoring.md)**: Multi-dimensional scoring mechanism, `not_available` state handling, and radar metrics.
+- **[Multi-Candidate Generation](candidates.md)**: Generating distinct candidate plans with diversity and stability metrics.
+- **[Historical Rotation](history.md)** & **[Neighbor Avoidance](pair-history.md)**: Long-term fairness algorithms preventing repeated seat types or partner monotony.
+- **[Troubleshooting & FAQ](troubleshooting.md)**: Resolving constraint conflicts, infeasible problems, and diagnosing environments.
 
-The v2.0.0 desktop app, browser workbench, and CLI process data on the local
-machine. The app server binds to `127.0.0.1` by default, uses a per-process
-session token, and is not designed to be exposed to a LAN or an untrusted
-network. There are no accounts, cloud sync, or product telemetry.
+### 4. Architecture, Engineering & Compliance
+- **[System Architecture](architecture.md)**: Layered design across 9 core Rust crates and data flow.
+- **[Privacy & Local Security](privacy.md)**: Local processing boundaries, zero-telemetry policy, and sensitive data protection.
+- **[Upgrading from v1 (Python)](rust-migration.md)**: Smooth migration steps for legacy project files.
+- **[Developer & Testing Guide](development.md)**: Local build instructions, test suites, and performance benchmark gates.
 
-Public exports fail closed: they anonymize student labels and suppress student
-IDs and sensitive detail fields. Keep real rosters, history, screenshots, and
-exports in private ignored directories; the repository's examples are fictional.
+---
 
-## Legacy v1 line
+## ⚖️ Core Engineering Principles
 
-The Python line is frozen at **1.9.0** on the `v1.x-maintenance` branch. It is a
-legacy compatibility package only (`pip install seattrellis==1.9.0`) and is not
-part of the v2.0.0 runtime or release artifacts.
+1. **Hard Constraints Always Prevail**: Any plan marked *Solved* is guaranteed to satisfy all hard constraints. The solver never violates a rule to improve a preference score.
+2. **Deterministic & Reproducible**: With a pinned random seed and no timeout cutoffs, seating solutions are 100% reproducible across machines and runs.
+3. **Honest Scoring**: When required data is missing (e.g., no historical records), the affected scoring dimension is marked `not_available` rather than faking a baseline score.
+4. **Local-First Privacy**: No telemetry, no accounts, and no data uploads. All processing happens entirely within your machine's local memory and disk.
+5. **Rigorous Exit Semantics**: If the search budget is exhausted without mathematical proof of infeasibility, the system reports `Unknown` rather than fabricating an `Infeasible` verdict.

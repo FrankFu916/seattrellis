@@ -3,77 +3,83 @@
 
   # **SeatTrellis**
 
-  **Classroom seating, solved — not negotiated.**
+  **Classroom seating arrangements made scientific, fair, and effortless.**
 
-  A local-first seating planner: import your roster, generate the chart,
-  fine-tune by hand, export or print. No accounts, no cloud sync — student
-  data never leaves the machine.
+  A privacy-focused, local-first intelligent seating arrangement tool.<br />
+  Import rosters, configure rules, solve in seconds, fine-tune interactively, and export or print.<br />
+  **No accounts, no cloud sync — student data stays strictly on your machine.**
 
   [![Tests](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/tests.yml)
   [![Rust](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/rust.yml)
-  [![Documentation](https://github.com/FrankFu916/seattrellis/actions/workflows/docs.yml/badge.svg)](https://github.com/FrankFu916/seattrellis/actions/workflows/docs.yml)
   [![Release](https://img.shields.io/github/v/release/FrankFu916/seattrellis)](https://github.com/FrankFu916/seattrellis/releases)
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/FrankFu916/seattrellis/releases)
 
-  [Download the desktop app](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
+  [📥 Download Desktop App](https://github.com/FrankFu916/seattrellis/releases) · `cargo install seattrellis`
 
-  [Latest release](https://github.com/FrankFu916/seattrellis/releases) · [Documentation](https://frankfu916.github.io/seattrellis/) · [Quick start](docs/quickstart.en.md) · [Rules](docs/rules.en.md) · [简体中文](README.zh-CN.md)
+  [Latest Release](https://github.com/FrankFu916/seattrellis/releases) · [Quick Start](docs/quickstart.en.md) · [Rule Reference](docs/rules.en.md) · [简体中文](README.zh-CN.md)
 </div>
 
 ---
 
-Every class has its sensitive seats: the near-sighted kid up front, the tall
-one in back, two students who cannot sit together, and a parent asking for
-"a little attention". Hand-arranging takes an afternoon — every term, again —
-and nobody can explain why the chart looks the way it does.
+Arranging classroom seating is an intricate, recurring challenge for every teacher:
+- Near-sighted students need front seats; tall students shouldn't block the board.
+- Specific peers benefit from study partnerships, while others distract each other and must be separated.
+- Fair rotation across terms is essential to prevent students from being stuck in corners.
+- Manual planning easily takes hours every term, yet explaining the rationale to parents or administrators remains difficult.
 
-**SeatTrellis turns that into one click**: you set the rules, it solves,
-explains, and keeps the record.
+**SeatTrellis solves this in a single click**: define your educational requirements and preferences, and the solver delivers mathematically verifiable, fully explainable seating plans with multi-term history tracking.
 
-![Seating chart demo](docs/assets/demo-seating.png)
+![Seating Chart Demo](docs/assets/demo-seating.png)
 
-## What it does
+## ✨ Key Features
 
-| | |
-|---|---|
-| 🧩 **Hard constraints, guaranteed** | Fixed seats, must/cannot sit together, minimum distance, group rules — every plan marked *Solved* is re-verified by an independent validator |
-| 🎯 **Soft goals, explainable** | Front seats for poor vision, tall students in back, score balance, fair rotation, recent-neighbor avoidance — per-rule scoring answers "why is this student here?" |
-| 🔀 **Candidates & reproducibility** | Generate several candidates with a recommendation; fix the seed and any rerun, any day, is byte-identical |
-| ✋ **Hand tuning** | Drag, swap, lock, undo/redo, constraint-aware repair — every edit re-checked against your rules |
-| 📅 **Multi-term rotation** | Fair rotation plans with desk-mate repetition summaries for long-running classes |
-| 🖨️ **Eight export formats** | SVG / HTML / print HTML / PNG / PDF / XLSX / DOCX / PPTX, with teacher and anonymized public variants |
-| 🔒 **Local-first** | Everything computes on your machine. No accounts, no telemetry, no cloud sync; public exports anonymize names and IDs automatically |
+| Feature | Description |
+| :--- | :--- |
+| 🧩 **Strict Hard Constraints** | Guarantees satisfaction of mandatory rules: fixed seats, required neighbors, forbidden pairs, minimum distances, and group isolation. Every solved plan is independently validated with zero violations. |
+| 🎯 **Explainable Soft Preferences** | Intelligently balances vision needs, height gradients, academic diversity, fair seat rotations, and recent-neighbor avoidance. Every rule provides explicit scoring breakdowns. |
+| 🔀 **Multi-Candidate Comparison & Determinism** | Generates multiple high-quality candidate plans with clear trade-off metrics. Pinning the random seed ensures 100% reproducible results anytime. |
+| ✋ **Interactive Hand Tuning** | Easily swap seats, drag and drop, lock specific assignments, undo/redo, and apply intelligent constraint-aware repairs with real-time rule validation. |
+| 📅 **Multi-Term Fair Rotation** | Automatically tracks historical seating cycles, generating multi-period rotation schedules and desk-mate repetition summaries for ongoing classes. |
+| 🖨️ **8 Standard Export Formats** | High-fidelity export to SVG, standalone HTML, printable HTML, PNG images, PDF, Excel (XLSX), Word (DOCX), and PowerPoint (PPTX), with one-click toggles for teacher records vs. anonymized student postings. |
+| 🔒 **Local-First & Privacy by Design** | 100% offline computation without accounts, telemetry, or third-party servers. Public exports automatically anonymize sensitive identifiers. |
 
-## Quick start
+---
 
-### Desktop (for teachers)
+## 🚀 Quick Start
 
-Grab an installer from [Releases](https://github.com/FrankFu916/seattrellis/releases):
+### 1. Desktop App (Recommended for Teachers)
+
+Download the installer for your operating system from [GitHub Releases](https://github.com/FrankFu916/seattrellis/releases):
 
 | Platform | Format |
-|---|---|
-| macOS (Apple Silicon) | `.dmg` / `.app.tar.gz` |
-| Windows (x64) | `.msi` / NSIS `.exe` |
-| Linux (amd64) | `.deb` |
+| :--- | :--- |
+| **macOS** (Apple Silicon) | `.dmg` installer or `.app.tar.gz` |
+| **Windows** (x64) | `.msi` package or NSIS `.exe` installer |
+| **Linux** (amd64) | `.deb` package |
 
-Builds ship unsigned by owner decision — verify against `SHA256SUMS` /
-`DESKTOP-SHA256SUMS`. On first launch, macOS needs right-click → Open and
-Windows may show a SmartScreen prompt.
+> 💡 **Tip**: Binaries are distributed unsigned. On macOS, right-click the app and choose "Open" on first launch; on Windows, click "More info" → "Run anyway" if Microsoft SmartScreen prompts.
 
-### Command line (for automation)
+### 2. Command-Line Interface (CLI)
+
+Install directly using Cargo:
 
 ```bash
 cargo install seattrellis
 
-seattrellis validate --problem problem.json   # precheck rules & data
-seattrellis solve    --problem problem.json --output plan.json
-seattrellis export   --problem problem.json --solution plan.json --format png --output plan.png
+# 1. Validate problem input and rule definitions
+seattrellis validate --problem problem.json
+
+# 2. Solve and output the full seating snapshot
+seattrellis solve --problem problem.json --output plan.json
+
+# 3. Export the plan to an image or document
+seattrellis export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
-### Rules in 30 seconds
+### 3. Rules at a Glance
 
-A rules file is JSON with `hard` (must hold) and `soft` (weighted goals):
+Seating rules are defined in a clean JSON format, clearly separating mandatory hard constraints from weighted soft preferences:
 
 ```json
 {
@@ -90,51 +96,53 @@ A rules file is JSON with `hard` (must hold) and `soft` (weighted goals):
 }
 ```
 
-Full reference: [input format](docs/input-format.en.md) and
-[rule handbook](docs/rules.en.md); 14 built-in scenario presets in
-[docs/presets.md](docs/presets.md).
+- Schema & field definitions: [Input Format Guide](docs/input-format.en.md) and [Rule Handbook](docs/rules.en.md).
+- 14 built-in classroom scenarios (exam mode, daily balanced, rotation, etc.): [Presets Reference](docs/presets.md).
 
-## Upgrading from v1
+---
 
-v1 (Python) project files are migrated automatically — with a backup — by
-`seattrellis schema-migrate` or the workbench migration flow. The Python
-package is frozen at 1.9.0 on the maintenance line
-(`pip install seattrellis==1.9.0`); nothing in v2 depends on it. See
-[migrating from v1](docs/rust-migration.md).
+## 🔄 Upgrading from v1 (Python)
 
-## Documentation
+If you are upgrading from legacy v1 (Python), use `seattrellis schema-migrate` or the built-in migration wizard in the web workbench to automatically upgrade your project files. Backups are created automatically before any file changes.
 
-Browse the full, searchable site at
-[frankfu916.github.io/seattrellis](https://frankfu916.github.io/seattrellis/).
+The legacy Python package is frozen at `1.9.0` for maintenance (`pip install seattrellis==1.9.0`). Version 2 is a pure Rust implementation with zero Python dependencies. See [Migration Guide](docs/rust-migration.md).
 
-| | | |
-|---|---|---|
-| [Quick start](docs/quickstart.en.md) | [CLI reference](docs/cli.md) (27 subcommands) | [Input format](docs/input-format.en.md) |
-| [Rules](docs/rules.en.md) | [Exports](docs/export.zh.md) (中文) | [Architecture](docs/architecture.md) |
-| [Web workbench](docs/web.en.md) | [Privacy](docs/privacy.md) | [Development](docs/development.md) |
+---
 
-## Privacy
+## 📖 Documentation
 
-Everything runs locally. No accounts, no telemetry, no cloud sync. Never
-commit real student names, IDs, scores or school details — the repository
-contains fictional examples only. Public exports are anonymized at a single
-central policy layer, with release-time sensitive-field scans.
+| Guides & Usage | Specifications | Deep Dives & Dev |
+| :--- | :--- | :--- |
+| 📖 [Quick Start Guide](docs/quickstart.en.md) | 📐 [Rule Handbook](docs/rules.en.md) | 🏗️ [Architecture Overview](docs/architecture.md) |
+| 🖥️ [Web & Desktop Workbench](docs/web.en.md) | 📄 [Input Format Reference](docs/input-format.en.md) | ⚙️ [CLI Reference (27 commands)](docs/cli.md) |
+| 🖨️ [Export & Printing Guide](docs/export.zh.md) | 🎒 [Class Project Workflow](docs/project.zh.md) | 🔒 [Privacy & Local Boundaries](docs/privacy.md) |
 
-## Development
+---
+
+## 🛡️ Privacy & Confidentiality
+
+SeatTrellis operates strictly under a local-first paradigm. All computation, file operations, and exports run entirely on your local machine. No student rosters, IDs, academic scores, or classroom layouts are ever transmitted over the network.
+
+---
+
+## 💻 Development & Building
+
+Built on a modern, high-performance tech stack:
+- **Core Backend**: Rust 1.88+ with 9 modular crates.
+- **Desktop & UI**: Tauri 2, React 19, and TypeScript.
+- **Verification**: 690+ Rust tests, 160+ UI tests, end-to-end browser workflows, fuzz testing, and strict CI benchmarks.
 
 ```bash
-# Frontend (embedded into the server at build time)
-cd clients/web && npm ci && npm run build && cd ..
+# 1. Build web workbench assets
+cd clients/web && npm ci && npm run build && cd ../..
 
-# Full Rust test suite + clippy
+# 2. Run full Rust verification and linting
 cargo test --locked --workspace
 cargo clippy --locked --all-targets --workspace -- -D warnings
 ```
 
-Stack: Rust 1.88 (MSRV) · 9 layered crates · Tauri 2 · React 19 ·
-698 Rust tests + 167 web tests + browser E2E + fuzzing + performance gates.
-See [docs/architecture.md](docs/architecture.md).
+---
 
-## License
+## 📄 License
 
-Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Distributed under the [Apache-2.0 License](LICENSE). See [NOTICE](NOTICE) for additional details.
