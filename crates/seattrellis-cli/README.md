@@ -1,30 +1,41 @@
-# seattrellis
+# seattrellis (CLI)
 
-Native command-line solver and exporter for [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序) classroom seating. The release binary is dependency-free and works offline.
+Native command-line interface and automation tool for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis). Built in pure Rust with zero runtime dependencies.
 
-## Commands
+---
 
-- `solve` / `validate` / `precheck` / `audit` / `score` / `candidates` — solve a JSON problem, check inputs, diagnose feasibility, audit a plan, score a fixed assignment, generate candidate sets
-- `edit` / `repair` — apply manual operations to a snapshot or repair a constrained plan (saved-lock aware)
-- `history-report` / `pair-report` — summarize historical snapshots
-- `project-*` — project workspace lifecycle: init, list, info, validate, solve, export, rotate, edit, repair, privacy, pack, restore
-- `schema-list` / `schema-export` / `schema-migrate` — the 12-kind v2 artifact registry, generated JSON Schemas, and v1→v2 migration
-- `export` — render a solved plan as SVG / HTML / print-HTML / PNG / PDF / XLSX / DOCX / PPTX
+## 🚀 Key Commands
 
-Exit codes follow the frozen contract: 0 solved, 2 invalid input, 3 proven infeasible, 4 timeout, 5 unknown, 70 internal error, 130 cancelled.
+- **Solving & Auditing**: `solve`, `validate`, `precheck`, `audit`, `score`, `candidates`
+- **Interactive Editing & Repair**: `edit`, `repair` (anchor-aware local solving)
+- **History & Pair Analytics**: `history-report`, `pair-report`
+- **Class Project Lifecycle**: `project-init`, `project-list`, `project-info`, `project-validate`, `project-solve`, `project-export`, `project-rotate`, `project-edit`, `project-repair`, `project-privacy`, `project-pack`, `project-restore`
+- **Schema & Migration**: `schema-list`, `schema-export`, `schema-migrate`
+- **Multi-Format Export**: `export` (SVG, HTML, print-HTML, PNG, PDF, XLSX, DOCX, PPTX)
 
-## Install
+---
+
+## 📦 Installation
 
 ```bash
 cargo install seattrellis
-# or use the prebuilt binaries from GitHub Releases
+# or download prebuilt binaries from GitHub Releases
 ```
 
-## Example
+---
+
+## 💡 Quick Example
 
 ```bash
+# 1. Solve a seating problem
 seattrellis solve --problem problem.json --output plan.json
-seattrellis export --problem problem.json --snapshot plan.json --format png --output plan.png
+
+# 2. Export the chart as a high-resolution PNG
+seattrellis export --problem problem.json --solution plan.json --format png --output plan.png
 ```
 
-License: Apache-2.0.
+---
+
+## 📄 License
+
+Licensed under [Apache-2.0](../../LICENSE).

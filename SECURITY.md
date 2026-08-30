@@ -1,34 +1,31 @@
-# Security Policy
+# Security Policy / 安全策略与漏洞通报
 
-## Reporting Security Issues
+SeatTrellis values the privacy and security of educational data above all else.
 
-Please do not report security or privacy issues by pasting sensitive classroom data into a public GitHub Issue.
+---
 
-If you find a vulnerability or privacy problem, contact the maintainer privately through the repository owner's preferred contact channel. If private contact information is not available yet, open a minimal public Issue that says you need a private security contact, without including sensitive data.
+## 🔒 1. Reporting Security Vulnerabilities
 
-## Sensitive Data
+Please **do not disclose security vulnerabilities or paste sensitive classroom information in public GitHub Issues or Pull Requests**.
 
-Do not include any of the following in public Issues, Pull Requests, screenshots, logs, fixtures, or examples:
+If you discover a security vulnerability, privacy leak, or potential vector of concern, please report it privately to the maintainers via the repository owner's security contact channels. If private contact info is unavailable, open a minimal public issue requesting a private security contact without disclosing vulnerability details.
 
-- real student names or IDs;
-- grades, rankings, vision records, health notes, or seating preferences;
-- class names, school names, teacher names, or parent contact information;
-- JSON snapshots generated from real classroom data;
-- Excel, CSV, PNG, HTML, or other exports generated from real classroom data.
+---
 
-## Local-First Design
+## 🛡️ 2. Strict Prohibition on Real Student Data
 
-SeatTrellis processes data locally by default and does not upload classroom data to a cloud service. Users are responsible for keeping real data in ignored private folders such as `private/`, `data/`, `outputs/`, `exports/`, or `snapshots/`.
+To protect minor and student privacy, **never include real student personal information in any public contributions**:
+- Real student names, student IDs, phone numbers, or addresses;
+- Academic test scores, rankings, vision records, health accommodations, or behavioral notes;
+- Real school, teacher, or parent contact details;
+- Snapshots, CSV/Excel rosters, or export files derived from actual school rosters.
 
-## Automated Checks
+All sample files in `examples/` and test fixtures in `fixtures/` must remain **100% fictional**.
 
-Pull requests and the default branch run:
+---
 
-- dependency vulnerability auditing;
-- secret scanning;
-- tracked-file and package-content hygiene checks;
-- wheel and source-distribution metadata validation.
+## 💻 3. Local-First Security Architecture
 
-These checks reduce accidental disclosure risk but do not prove that a fixture
-is fictional. Contributors must still inspect every example, screenshot, log,
-and generated artifact before publishing it.
+- **Offline Processing**: SeatTrellis operates entirely on the user's local machine and never sends classroom data to remote cloud servers.
+- **Local Network Boundary**: The background web service binds strictly to `127.0.0.1` and requires dynamic 256-bit session token authentication for all API operations.
+- **Private Data Storage**: Keep real rosters, history files, and outputs in `.gitignore`-protected directories (such as `private/`, `data/`, or `outputs/`).

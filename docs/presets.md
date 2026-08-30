@@ -1,31 +1,34 @@
-# Scenario Presets
+# 常用教学场景预设清单（Presets）
 
-**SeatTrellis v2.0.0 is released.**
+[English](presets.md) · [简体中文](presets.md)
 
-SeatTrellis v2.0.0 treats a preset as a standard `RuleSet` base configuration,
-not as a separate solver. In the workbench, a goal starts from a preset and can
-receive an explicit rules overlay. In the standalone CLI,
-`validate --preset <name>` checks for missing preferred data; it does not merge
-rules into the problem.
+**席序（SeatTrellis）** 内置了 14 种专为常见教学活动定制的规则预设。预设是标准 `RuleSet` 的模板，支持开箱即用与叠加覆盖。
 
-| Name | Focus | Preferred data |
-| --- | --- | --- |
-| `random` | Fast reproducible shuffle | None |
-| `exam` | Stronger reproducible variation | None |
-| `daily` | Combined everyday seating goals | History, score, height, vision |
-| `fair-rotation` | Rotate seat categories over time | History |
-| `neighbor-aware` | Reduce repeated desk-mate/neighbor pairs | History |
-| `balanced` / `peer-mixing` | Mix score levels | Score |
-| `score-high-front` | Prefer higher scores toward the front | Score |
-| `score-high-back` | Prefer higher scores toward the back | Score |
-| `row-score-balanced` | Balance scores across rows | Score |
-| `group-score-balanced` | Balance scores across seat groups | Score |
-| `mentor-pairing` | Pair higher and lower score percentiles | Score |
-| `height-aware` | Prefer taller students toward the back | Height |
-| `vision-friendly` | Prefer front seats for vision/front-seat needs | Vision or needs markers |
+---
 
-Missing preferred data disables only the affected soft preference and produces a
-warning. Hard constraints are never relaxed automatically.
+## 📋 1. 场景预设清单
+
+| 预设标识 (`preset`) | 教学场景定位 | 核心偏好与权重侧重 | 依赖学生数据 |
+| :--- | :--- | :--- | :--- |
+| **`daily`** | **日常班级综合排座** | 兼顾视力靠前、高个靠后、成绩混合、公平轮换与同桌回避。 | 历史快照、成绩、身高、视力 |
+| **`exam`** | **标准化考试防作弊** | 强化随机打乱扰动，配合物理间距隔离。 | 无 |
+| **`random`** | **快速活动随机打乱** | 纯粹的可复现随机排列。 | 无 |
+| **`fair-rotation`** | **周期性公平大轮换** | 重点优化历史位置轮换，消除区域偏差。 | 历史快照 |
+| **`neighbor-aware`** | **搭档破冰与社交扩展** | 重点惩罚近期重复同桌，扩大同学互动面。 | 历史快照 |
+| **`balanced`** / **`peer-mixing`** | **分层互助与以优带潜** | 均衡相邻同学的学业成绩层次。 | 学业成绩 |
+| **`score-high-front`** | **关注生与学优生靠前** | 高分或重点关注同学优先排在前排。 | 学业成绩 |
+| **`score-high-back`** | **自主学习靠后布局** | 高分学生排在后排，前排留给需关照学生。 | 学业成绩 |
+| **`row-score-balanced`**| **按排成绩均衡** | 控制每一排的平均学业水平一致。 | 学业成绩 |
+| **`group-score-balanced`**| **合作学习小组均衡** | 控制各学习小组的综合实力均衡。 | 学业成绩、座组绑定 |
+| **`mentor-pairing`** | **结对帮扶同桌模式** | 高分位学生与低分位学生结对同桌。 | 学业成绩 |
+| **`height-aware`** | **严格视线无遮挡** | 严格按身高由矮到高由前至后排布。 | 学生身高 |
+| **`vision-friendly`** | **视力弱势群体关爱** | 确保视力不佳同学位于前排居中位置。 | 视力数据 |
+
+---
+
+## 💻 2. 使用与校验
+
+在执行数据预检时，通过 `--preset` 参数检查当前问题是否缺失所需数据：
 
 ```bash
 seattrellis validate \
@@ -34,5 +37,9 @@ seattrellis validate \
   --history-dir examples/history
 ```
 
-Use `--strict` when those warnings should fail validation. See [Rules](rules.md)
-for the fields and overlay behavior.
+---
+
+## 📖 相关文档
+
+- [排座规则手册](rules.zh.md)
+- [快速上手指南](quickstart.zh.md)

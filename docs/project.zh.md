@@ -1,39 +1,34 @@
-# Project 工作流详解
+# 班级项目（Project）工作流指南
 
-[English](project.md) / [简体中文](project.zh.md)
+[English](project.md) · [简体中文](project.zh.md)
 
-## 概述
+**班级项目（Project）** 是 SeatTrellis 专为长期班级管理设计的本地文件工作流。它使用一个轻量级的 JSON 清单文件（`seattrellis.project.json`），将学生名单、教室布局、排座规则、历史轮换与输出目录统一组织，实现免反复配置、一键求解与全周期轮换。
 
-Project 文件是 SeatTrellis v2.0.0 使用的轻量本地 JSON 配置文件，用于保存排座工作流的路径和默认设置。它不嵌入学生名单或座位数据，只保存相对路径和默认配置。
+---
 
-## 命令
+## 🎒 1. 班级项目目录结构
 
-```bash
-seattrellis project-init    # 在已有 students/layout/rules 的目录创建 project 文件
-seattrellis project-list    # 列出根目录下的最近项目
-seattrellis project-info    # 查看配置和路径状态
-seattrellis project-validate  # 校验输入文件
-seattrellis project-solve     # 求解（--candidates <n>、--report <file>）
-seattrellis project-rotate    # 生成未来多个排座时段（--periods 1-20，默认 4）
-seattrellis project-edit      # 人工微调（复用 edit 语义）
-seattrellis project-repair    # 保留锚点重新求解（复用 repair 语义）
-seattrellis project-export    # 导出已保存方案（不会重新求解）
-seattrellis project-privacy   # 扫描敏感字段
-seattrellis project-pack      # 备份为 .seattrellis.zip
-seattrellis project-restore   # 从 bundle 恢复
+一个典型的班级项目文件夹结构如下：
+
+```text
+my-class/
+├── seattrellis.project.json   # 班级项目清单配置文件
+├── students.csv               # 学生花名册
+├── classroom.json             # 教室网格布局
+├── rules.json                 # 排座规则与偏好
+├── history/                   # 历史排座快照目录
+│   ├── week-01.snapshot.json
+│   └── week-02.snapshot.json
+└── outputs/                   # 求解方案与导出文件输出目录
 ```
 
-`project-init --dir <directory>` 在已经包含 `students.csv` / `layout.json` /
-`rules.json` 的目录中创建 `seattrellis.project.json`；`project-list` 默认扫描
-当前目录并列出最近 20 个项目（`--root` / `--limit` 可调整）。
-
-## Project 文件结构
+### 清单文件示例（`seattrellis.project.json`）
 
 ```json
 {
   "kind": "seattrellis_project",
   "schema_version": 1,
-  "name": "Demo Class",
+  "name": "高一（3）班",
   "students": "students.csv",
   "layout": "classroom.json",
   "rules": "rules.json",
@@ -45,25 +40,78 @@ seattrellis project-restore   # 从 bundle 恢复
 }
 ```
 
-所有路径相对于 project 文件所在目录解析。
+> 🔒 **相对路径与安全性**：
+> 清单中引用的所有路径均严格相对于清单文件所在目录。清单文件不包含学生真实敏感信息，仅记录文件指针，可安全共享配置模板。
 
-## Web 与 CLI
+---
 
-CLI 适合可复现脚本。Web 端既可输入 project 路径，也可上传 project JSON，
-但上传模式只收到这一份 JSON，无法同时取得它引用的相对路径文件。因此上传
-模式适合查看配置；校验、求解和导出应使用路径模式。
+## ⚙️ 2. 项目专属子命令大全
 
-Project 文件不嵌入学生名单、历史 snapshot 或导出结果。移动项目时，需要把
-这些文件和 project JSON 一起移动，并保留相对目录结构。
+SeatTrellis CLI 提供了一套以 `project-*` 为前缀的高效自动化工具链：
 
-## 校验与输出
+| 子命令 | 功能说明 | 典型范例 |
+| :--- | :--- | :--- |
+| `project-init` | 在包含名单和布局的目录中快速初始化项目清单。 | `seattrellis project-init --dir my-class` |
+| `project-list` | 扫描并列出本地指定目录下的所有班级项目。 | `seattrellis project-list --root .` |
+| `project-info` | 检查项目配置完整性与各个关联文件的路径状态。 | `seattrellis project-info --project my-class/seattrellis.project.json` |
+| `project-validate`| 严格校验清单及其引用的所有数据文件与规则冲突。 | `seattrellis project-validate --project my-class/seattrellis.project.json --strict` |
+| `project-solve` | 按照项目配置直接运行求解，生成候选方案集。 | `seattrellis project-solve --project my-class/seattrellis.project.json --candidates 3` |
+| `project-rotate`| 一键推演并生成未来多期公平轮换方案（1~20 期）。 | `seattrellis project-rotate --project my-class/seattrellis.project.json --periods 4` |
+| `project-edit` | 对已生成的项目方案应用交互式调整指令。 | `seattrellis project-edit --project ... --operation swap:STU01:STU02` |
+| `project-repair`| 在锁定关键座位的前提下对冲突人员执行局部重排。 | `seattrellis project-repair --project ... --lock-student STU01` |
+| `project-export`| 将方案渲染为指定格式（直接渲染，不重复求解）。 | `seattrellis project-export --project ... --format print-html` |
+| `project-privacy`| 扫描项目及输出文件中是否存在未脱敏的敏感字段。 | `seattrellis project-privacy --project my-class/seattrellis.project.json` |
+| `project-pack` | 将班级全量数据打包为 `.seattrellis.zip` 归档。 | `seattrellis project-pack --project ... --output class-backup.zip` |
+| `project-restore`| 从 `.zip` 备份包完整还原班级工作区。 | `seattrellis project-restore --bundle class-backup.zip --output-dir restored/` |
 
-`project-info` 显示解析后的路径状态；`project-validate` 检查输入和规则冲突；
-`project-solve` 将结果写入 `outputs_dir`；`project-edit` 可对最新产物或指定
-snapshot/candidate set 执行人工微调；`project-export` 默认使用项目中的候选和导出
-格式设置。命令行参数可以覆盖候选数量、seed、时间限制、候选 ID 和输出路径。
+---
 
-## 相关文档
+## 🚀 3. 典型操作工作流
 
-- [快速开始](quickstart.zh.md)
-- [Web 端使用指南](web.zh.md)
+### 步骤一：创建并校验项目
+```bash
+# 初始化
+seattrellis project-init --dir my-class
+
+# 预检配置与文件依赖
+seattrellis project-validate --project my-class/seattrellis.project.json
+```
+
+### 步骤二：求解与候选方案比对
+```bash
+# 求解并生成 3 个候选方案及比对报告
+seattrellis project-solve \
+  --project my-class/seattrellis.project.json \
+  --candidates 3 \
+  --output outputs/candidates.json \
+  --report outputs/plan-report.json
+```
+
+### 步骤三：渲染导出
+```bash
+# 导出为 A4 横向学生公示版
+seattrellis project-export \
+  --project my-class/seattrellis.project.json \
+  --snapshot outputs/candidates.json \
+  --format print-html \
+  --template public \
+  --orientation landscape \
+  --output outputs/wall-sheet.html
+```
+
+### 步骤四：多学期滚动轮换与归档备份
+```bash
+# 生成未来 4 个轮换周期
+seattrellis project-rotate --project my-class/seattrellis.project.json --periods 4
+
+# 打包备份
+seattrellis project-pack --project my-class/seattrellis.project.json --output class_term1.seattrellis.zip
+```
+
+---
+
+## 📖 相关文档
+
+- [快速上手指南](quickstart.zh.md)
+- [多格式导出与排版打印](export.zh.md)
+- [Web 与桌面工作台指南](web.zh.md)

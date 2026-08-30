@@ -1,40 +1,61 @@
-# Contributing to SeatTrellis
+# Contributing to SeatTrellis / 席序贡献指南
 
-Thank you for helping improve SeatTrellis / 席序.
+Thank you for your interest in improving **SeatTrellis (席序)**! We welcome contributions from developers, designers, educators, and translators.
 
-## Development Setup
+---
 
-SeatTrellis v2 is a Rust workspace with a React workbench. Prerequisites: Rust 1.88+ (MSRV), Node 22.12+ (see `clients/web/package.json` engines).
+## 🛠️ Development Setup
 
+SeatTrellis v2 is structured as a modular Rust workspace paired with a React 19 web workbench.
+
+### Prerequisites
+- **Rust Toolchain**: 1.88+ (MSRV);
+- **Node.js & npm**: Node.js 22.12+, npm 10+ (for building the frontend).
+
+### Clone & Build
 ```bash
 git clone https://github.com/FrankFu916/seattrellis.git
 cd seattrellis
 
-# The server embeds the React workbench, so build it first
+# 1. Build the React workbench (embedded into the server binary)
 cd clients/web && npm ci && npm run build && cd ../..
 
-cargo build
+# 2. Build and run tests
+cargo build --workspace
 cargo test --workspace
 ```
 
-## Running Tests
+---
+
+## 🧪 Testing & Quality Gates
+
+Before submitting a Pull Request, ensure that all local quality checks pass cleanly:
 
 ```bash
-cargo test --workspace                 # all crates
+# 1. Run all Rust unit and integration tests
+cargo test --workspace
+
+# 2. Run Clippy static analysis
 cargo clippy --all-targets --workspace -- -D warnings
-cargo run -p xtask -- contract check   # generated schema/API contract drift check
-cd clients/web && npm test && npm run typecheck
+
+# 3. Check for OpenAPI & TypeScript contract drift
+cargo run -p xtask -- contract check
+
+# 4. Run frontend tests and type checks
+cd clients/web && npm test && npm run typecheck && cd ../..
 ```
 
-Please add or update tests for any new rule, importer, exporter, or CLI behavior. Every fix should carry a regression test.
+---
 
-## Code Style
+## 📐 Code Style & Conventions
 
-- `cargo fmt` before committing; clippy must be clean with `-D warnings`.
-- MSRV is Rust 1.88 — avoid newer std APIs.
-- Comments and commit messages in English; user-facing docs are bilingual (zh/en).
-- Keep the loopback security contract intact: new write paths must not bypass the token / Host / Origin middleware.
+- **Formatting**: Run `cargo fmt` prior to committing.
+- **MSRV**: Maintain compatibility with Rust 1.88 (avoid newer standard library features).
+- **Security Middleware**: Maintain the local-first security boundary. New write endpoints must be protected with bearer token, Host, and Origin checks.
+- **Documentation & Commits**: Write commit messages and code comments in English; user-facing guides are maintained bilingually (English / 简体中文).
 
-## Release Process
+---
 
-See `docs/publishing.md` and `docs/release-checklist.md`. Releases are cut from `main` for the v2 line; the v1 Python line is maintained on `v1.x-maintenance` (frozen at 1.9.0).
+## 🚀 Release Process
+
+For detailed release workflows, see [Publishing Guide](docs/publishing.md) and [Release Checklist](docs/release-checklist.md).

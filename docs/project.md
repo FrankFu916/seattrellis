@@ -1,41 +1,34 @@
-# Project Workflow
+# Class Project Workflow Guide
 
-[English](project.md) / [简体中文](project.zh.md)
+[English](project.md) · [简体中文](project.zh.md)
 
-**SeatTrellis v2.0.0 is released.** A project is a small local JSON manifest
-that keeps the paths and defaults for a seating workspace. It does not embed the
-roster or seating data.
+The **Class Project** workflow is designed for long-term, ongoing classroom management. It utilizes a lightweight JSON manifest (`seattrellis.project.json`) that manages rosters, room layouts, rules, historical snapshots, and output targets with relative paths.
 
-## Commands
+---
 
-```bash
-seattrellis project-init       # create a manifest in an existing workspace
-seattrellis project-list       # list recent projects under a root
-seattrellis project-info       # show configuration and path status
-seattrellis project-validate   # validate the manifest and referenced files
-seattrellis project-solve      # solve, optionally with candidates/report
-seattrellis project-rotate     # generate future seating periods
-seattrellis project-edit       # apply manual edit operations
-seattrellis project-repair     # re-solve while preserving anchors
-seattrellis project-export     # render a saved plan; never re-solves
-seattrellis project-privacy    # scan for sensitive fields
-seattrellis project-pack       # create a .seattrellis.zip backup
-seattrellis project-restore    # restore a bundle into a directory
+## 🎒 1. Workspace Structure
+
+A standard class project directory structure:
+
+```text
+my-class/
+├── seattrellis.project.json   # Class project manifest
+├── students.csv               # Student roster
+├── classroom.json             # Classroom layout
+├── rules.json                 # Seating rules and weights
+├── history/                   # Historical snapshot archives
+│   ├── week-01.snapshot.json
+│   └── week-02.snapshot.json
+└── outputs/                   # Output directory for solutions and exports
 ```
 
-`project-init --dir <directory>` expects `students.csv`, `layout.json`, and
-`rules.json` or equivalent files to already exist. It creates
-`seattrellis.project.json`. `project-list` scans the current directory by
-default and lists the 20 most recent projects; use `--root` and `--limit` to
-change the search.
-
-## Project file
+### Manifest Example (`seattrellis.project.json`)
 
 ```json
 {
   "kind": "seattrellis_project",
   "schema_version": 1,
-  "name": "Demo Class",
+  "name": "Grade 10 Class 3",
   "students": "students.csv",
   "layout": "classroom.json",
   "rules": "rules.json",
@@ -47,70 +40,78 @@ change the search.
 }
 ```
 
-`students`, `layout`, and `rules` are required. `history_dir` is optional;
-`outputs_dir` defaults to `outputs`, `default_candidates` to `5`, and
-`default_candidate` to `recommended`. Project defaults accept `html`, `excel`,
-or `png`; `project-export --format` can explicitly select any of the eight
-export formats described in [Export formats](export.md).
+> 🔒 **Relative Path Security**:
+> All file references resolve relative to the project manifest's directory. Project files contain configuration metadata rather than sensitive student records, making them safe to share as classroom templates.
 
-All references must be relative to the directory containing the project file.
-Absolute paths, traversal, and symlink escapes are rejected. Moving a project
-means moving the manifest and its referenced files while preserving the relative
-directory structure.
+---
 
-## Web and CLI
+## ⚙️ 2. Project Subcommand Reference
 
-The CLI is suited to scripts and repeatable local runs. The web workbench can
-use a project path or accept an uploaded project JSON. An uploaded manifest is
-only one JSON file; the browser cannot access the relative files it names. Use
-path mode for validation, solving, and export.
+SeatTrellis CLI provides a complete suite of `project-*` subcommands:
 
-The project file does not contain the roster, historical snapshots, or exports.
-The Project panel shows metadata and privacy-safe summaries, and can create a
-`.seattrellis.zip` backup or restore one locally.
+| Subcommand | Description | Example Usage |
+| :--- | :--- | :--- |
+| `project-init` | Initialize a project manifest in a directory with existing data files. | `seattrellis project-init --dir my-class` |
+| `project-list` | Discover and list recent class projects in a directory tree. | `seattrellis project-list --root .` |
+| `project-info` | Inspect project configuration and check file path status. | `seattrellis project-info --project my-class/seattrellis.project.json` |
+| `project-validate`| Validate manifest syntax, input file integrity, and rule conflicts. | `seattrellis project-validate --project my-class/seattrellis.project.json --strict` |
+| `project-solve` | Solve the project problem and generate candidate seating sets. | `seattrellis project-solve --project my-class/seattrellis.project.json --candidates 3` |
+| `project-rotate`| Generate multi-period rotation schedules (1–20 terms). | `seattrellis project-rotate --project my-class/seattrellis.project.json --periods 4` |
+| `project-edit` | Apply interactive hand-tuning operations to saved plans. | `seattrellis project-edit --project ... --operation swap:STU01:STU02` |
+| `project-repair`| Re-solve conflicted students while keeping locked seats intact. | `seattrellis project-repair --project ... --lock-student STU01` |
+| `project-export`| Render a saved plan to any format without re-solving. | `seattrellis project-export --project ... --format print-html` |
+| `project-privacy`| Scan project files and outputs for unredacted sensitive fields. | `seattrellis project-privacy --project my-class/seattrellis.project.json` |
+| `project-pack` | Package the entire class workspace into a `.seattrellis.zip` bundle. | `seattrellis project-pack --project ... --output class-backup.zip` |
+| `project-restore`| Restore a packed project bundle into a target directory. | `seattrellis project-restore --bundle class-backup.zip --output-dir restored/` |
 
-## Validation and output
+---
 
-`project-info` displays resolved path status. `project-validate` checks the
-manifest, referenced files, and rule conflicts. `project-solve` writes a saved
-plan or candidate set to `outputs_dir`; `--candidates`, `--seed`, `--report`, and
-output options override project defaults.
+## 🚀 3. End-to-End Walkthrough
 
-`project-edit` adjusts a saved artifact. `project-repair` re-solves while
-preserving saved locks and explicit anchors. `project-export` reads the plan
-passed through `--snapshot`, selects the requested candidate when needed, and
-renders it without running the solver again:
-
+### Step 1: Initialize and Validate
 ```bash
+# Initialize project manifest
+seattrellis project-init --dir my-class
+
+# Preflight check
+seattrellis project-validate --project my-class/seattrellis.project.json
+```
+
+### Step 2: Solve & Compare Candidates
+```bash
+# Generate 3 candidate plans with a comparison report
 seattrellis project-solve \
   --project my-class/seattrellis.project.json \
   --candidates 3 \
-  --output outputs/candidates.json
+  --output outputs/candidates.json \
+  --report outputs/plan-report.json
+```
 
+### Step 3: Export Print-Ready Sheets
+```bash
+# Export the recommended candidate as an A4 landscape public handout
 seattrellis project-export \
   --project my-class/seattrellis.project.json \
   --snapshot outputs/candidates.json \
-  --candidate candidate_02 \
   --format print-html \
   --template public \
-  --output outputs/wall-copy.html
+  --orientation landscape \
+  --output outputs/wall-sheet.html
 ```
 
-`project-rotate --periods N` generates between 1 and 20 sequential periods (4
-by default). `project-pack` and `project-restore` apply manifest, path, and
-bundle safety checks. `project-privacy` scans the project and, by default, its
-outputs before sharing.
+### Step 4: Multi-Term Rotation & Packaging
+```bash
+# Compute a 4-term rotation sequence
+seattrellis project-rotate --project my-class/seattrellis.project.json --periods 4
 
-## Migration
+# Create a portable backup
+seattrellis project-pack --project my-class/seattrellis.project.json --output class_term1.seattrellis.zip
+```
 
-The current artifact registry uses v2 envelopes. `schema-migrate` has explicit
-v1-to-v2 transforms for student rosters, classroom layouts, and project files;
-other artifact kinds are rejected when no typed migration step exists. Migration
-previews and writes create a backup before replacing an existing source.
+---
 
-## Related documents
+## 📖 Related Documentation
 
-- [Quick start](quickstart.md)
-- [Web workbench](web.md)
-- [Input formats](input-format.md)
-- [Export formats](export.md)
+- [Quick Start Guide](quickstart.en.md)
+- [Export Formats Guide](export.md)
+- [Web & Desktop Workbench Guide](web.md)

@@ -1,35 +1,24 @@
-# Editor Protocol
+# 交互式编辑器命令协议（Editor Protocol）
 
-**SeatTrellis v2.0.0 is released.** The current editor protocol version is
-`"1.0"`.
+[English](editor-protocol.md) · [简体中文](editor-protocol.md)
 
-The editor protocol is the transport boundary between the React workbench, the
-loopback `seattrellis_web` server, and the desktop shell. Rust
-(`seattrellis-domain::editing`) enforces domain rules; clients submit commands
-and render the minimal state returned by the server. The CLI `edit` and `repair`
-commands reuse the same editing semantics.
+**席序（SeatTrellis）v2.0.0** 采用统一的 `protocol_version: "1.0"` 交互式编辑协议。该协议定义了 React 前端、Tauri 桌面外壳与 Rust 本地服务之间的通信契约。
 
-The current protocol version is `"1.0"` and exposes two documents:
+---
 
-- `EditorCommandEnvelope`: an apply, undo, or redo command from a client;
-- `EditorStateEnvelope`: the current seats and lock state returned by the server.
-  A command response also carries a separate `validation` object registered in
-  `schemas/editor-state.schema.json`; the state `GET` endpoint does not include
-  that object.
+## 📨 1. 命令与状态信封（Envelopes）
 
-The JSON Schemas are `schemas/editor-command.schema.json` and
-`schemas/editor-state.schema.json`.
+协议包含两类核心数据文档：
+- **`EditorCommandEnvelope`**：前端向服务端发送的操作指令（应用微调、撤销 Undo、重做 Redo）；
+- **`EditorStateEnvelope`**：服务端返回的最新草稿座次、锁定状态与约束诊断结果。
 
-## Command format
-
-Every command explicitly carries its type, protocol version, command ID, draft
-ID, and base revision:
+### 命令示例（`EditorCommandEnvelope`）
 
 ```json
 {
   "kind": "seattrellis_editor_command",
   "protocol_version": "1.0",
-  "command_id": "move-20260718-001",
+  "command_id": "cmd-20260830-001",
   "draft_id": "7b7359c6f9cd4e128df8b9145d012ec1",
   "base_revision": 3,
   "action": "apply",
@@ -37,98 +26,38 @@ ID, and base revision:
     {
       "kind": "swap_students",
       "payload": {
-        "first_student": "S001",
-        "second_student": "S018"
+        "first_student": "STU001",
+        "second_student": "STU018"
       }
     }
   ]
 }
 ```
 
-An `action` of `"undo"` or `"redo"` must not include `operations`:
+---
 
-```json
-{
-  "kind": "seattrellis_editor_command",
-  "protocol_version": "1.0",
-  "command_id": "undo-20260718-001",
-  "draft_id": "7b7359c6f9cd4e128df8b9145d012ec1",
-  "base_revision": 4,
-  "action": "undo"
-}
-```
+## 🛠️ 2. 支持的操作指令集
 
-Supported operations are:
+| 操作类型 (`kind`) | 载荷参数 (`payload`) | 功能描述 |
+| :--- | :--- | :--- |
+| `swap_students` | `first_student`, `second_student` | 互换两名学生的座位。 |
+| `move_student` | `student_key`, `seat_id` | 将指定学生移动到目标空座。 |
+| `batch_move` | `moves: [{student_key, seat_id}]` | 原子化批量移动多名学生（一步可撤销）。 |
+| `seat_student` | `student_key`, `seat_id` | 将未入座学生安排至指定空座。 |
+| `unseat_student` | `student_key` | 将学生移出座位，放入未分配区。 |
+| `lock_student` / `unlock_student` | `student_key` | 锁定/解锁学生的当前座次。 |
+| `lock_seat` / `unlock_seat` | `seat_id` | 锁定/解锁指定座位。 |
 
-| Kind | Payload |
-| --- | --- |
-| `swap_students` | `first_student`, `second_student` |
-| `move_student` | `student_key`, `seat_id` |
-| `batch_move` | `moves: [{student_key, seat_id}]` |
-| `seat_student` | `student_key`, `seat_id` |
-| `unseat_student` | `student_key` |
-| `lock_student` / `unlock_student` | `student_key` |
-| `lock_seat` / `unlock_seat` | `seat_id` |
+---
 
-One command expands to at most 100 operations. Each mapping in `batch_move`
-counts as one operation, and students and target seats must each be unique. The
-server validates and replays the complete command before writing the draft; a
-failure never commits a partial result.
+## 🔒 3. 并发控制与版本一致性
 
-## Revisions and conflicts
+- **单调递增版本号（`revision`）**：每次成功的操作（Apply/Undo/Redo）使草稿版本号精准 +1；
+- **防冲突拦截**：若提交的 `base_revision` 与当前草稿版本不匹配，服务端将返回 `EditorProtocolConflictError` 并拒绝写入，确保多端操作安全。
 
-A new draft receives a non-reusable `draft_id` and starts at revision 0. Each
-successful apply, undo, or redo increments revision exactly once, even when an
-apply contains several operations. Undo and redo operate on whole command
-batches.
+---
 
-Before writing, the server checks:
+## 📖 相关文档
 
-1. whether `draft_id` belongs to the current draft;
-2. whether `command_id` has already been processed;
-3. whether `base_revision` equals the current revision.
-
-Any failure raises `EditorProtocolConflictError` without changing the draft or
-output files. After a conflict, a client must fetch the latest
-`EditorStateEnvelope` and construct a new command from the user's intent; it
-must not silently overwrite newer state.
-
-## State format
-
-State contains only what the editor needs:
-
-- student key, display name, current seat, and lock state;
-- seat key, row, column, enabled state, current student key, and lock state;
-- undo and redo depths.
-
-Hard-constraint results are not part of the state itself. Apply/undo/redo
-responses carry `validation` (`valid`, `hard_constraints_satisfied`, and
-`violations`), while `GET .../editing/drafts/{id}` returns state without it.
-
-Scores, notes, special needs, height, vision, tags, and extension attributes do
-not enter the state protocol. Seats do not repeat student names; clients join
-them to the student list through `student_key`.
-
-This is data minimization, not anonymization. Names, stable student keys, and
-constraint diagnostics may still identify students. Do not send state or
-commands to remote telemetry or public logs. Escape diagnostic strings as
-untrusted plain text and do not treat them as stable machine-readable codes.
-
-`draft_id` is only a concurrency identifier, not an authorization token. Any
-future HTTP or WebSocket exposure must also verify session ownership and provide
-CSRF, Origin, and access-control protection.
-
-## Validation boundary
-
-JSON Schema validates field types, required fields, operation shapes, and basic
-size limits. These cross-field and domain constraints remain owned by the Rust
-server model and editing state machine:
-
-- apply must contain operations, while undo/redo must not;
-- the expanded operation count must not exceed 100;
-- batch sources and targets must not repeat;
-- students, seats, locks, and occupancy relationships must be valid in the
-  current draft.
-
-Clients may use the Schema for immediate feedback, but cannot skip server
-validation.
+- [Web 与桌面工作台指南](web.zh.md)
+- [系统架构解析](architecture.md)

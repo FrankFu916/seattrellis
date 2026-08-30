@@ -1,88 +1,51 @@
-# Input Formats
+# Input Formats & Data Schemas
 
-[English](input-format.md) / [简体中文](input-format.zh.md)
+[English](input-format.md) · [简体中文](input-format.zh.md)
 
-This legacy filename is retained for existing links. The canonical English
-document is [Input Formats](input-format.md).
+**SeatTrellis v2.0.0** operates around three core inputs: the **Student Roster**, the **Classroom Layout**, and the **RuleSet**.
 
-SeatTrellis reads a student list, a classroom layout, and a rules file. A local project file can store their relative paths and common defaults. Files in `examples/` are fictional only.
+Whether managed through a unified project workspace (`*.project.json`) or embedded into a standalone `problem.json` for CLI execution, all inputs undergo strict local schema validation.
 
-In v2.0.0 these files are consumed through the project workflow (`project-*`
-commands, the workbench's project panel); the standalone CLI instead embeds
-students, seats, and rules in one problem JSON (`CoreSolveRequest`) — see the
-[quick start](quickstart.md). Supported v1 roster, layout, and project files
-have explicit migration steps; legacy history snapshots remain readable where
-the history tools support them.
+---
 
-## Student List
+## 👥 1. Student Rosters (CSV / Excel)
 
-CSV and Excel `.xlsx` / `.xlsm` are both handled by the local Rust importer —
-no optional installs are needed:
+SeatTrellis provides native Rust parsers for standard `.csv` and Excel `.xlsx` / `.xlsm` workbooks without external Python or Office dependencies.
 
-```bash
-seattrellis project-init --dir my-class   # create a project in a directory with students.csv
-seattrellis project-validate --project my-class/seattrellis.project.json
-```
+### Field Definitions & Header Mapping
 
-Save legacy `.xls` files as `.xlsx` or CSV first.
+| Field Name | Key | Type | Requirement | Description & Examples |
+| :--- | :--- | :--- | :--- | :--- |
+| **Student ID** | `student_id` | String | Recommended | Stable unique identifier (e.g., `STU001`). If omitted, `name` is used as internal ID. |
+| **Full Name** | `name` | String | Core | Display name of the student (e.g., `Alice Smith`). |
+| **Gender / Group** | `gender` | String | Optional | Grouping or gender marker (e.g., `M` / `F`). |
+| **Height (cm)** | `height_cm` / `height` | Positive Float | Optional | Physical height in cm, used for sightline-based ordering (e.g., `168.5`). |
+| **Academic Score** | `score` | Numeric | Optional | Academic grade or weighted score for peer-mentorship mixing (e.g., `92.0`). |
+| **Vision Needs** | `vision` / `vision_score` | String/Numeric | Optional | Visual accommodation indicators (e.g., `poor`, `0.6`, `needs_front`). |
+| **Custom Tags** | `tags` | String | Optional | Comma/semicolon/pipe-separated tags (e.g., `monitor, team_lead`). |
+| **Special Accommodations**| `needs` | String | Optional | Accommodation notes (e.g., `near_door, front_row`). |
+| **Internal Notes** | `notes` | String | Optional | Teacher reference notes. |
 
-### Excel (.xlsx / .xlsm) import boundaries
+### Excel (.xlsx / .xlsm) Ingestion Boundaries
+- **First Worksheet Only**: Only Sheet 1 is parsed.
+- **Text & Leading Zeros Preserved**: Identifiers like `001` or `042` remain text strings and are never coerced to numbers.
+- **Formula Results**: Cached formula results are supported; formula cells lacking cached values trigger an explicit error.
+- **File Safety Caps**: Maximum file size is 20 MiB, with a cap of 10,000 student rows and 256 columns.
 
-Excel import reads the workbook's **first worksheet** under these bounds:
+---
 
-- Supported cell values: shared strings, inline strings, formula cached results
-  (`str`), numbers, and booleans (with cached values); a formula cell
-  **without a cached value is an error**;
-- Text cells are read as text, so leading zeros such as `001` are preserved;
-- Limits: files up to 20 MiB (decompressed XML parts are capped the same way),
-  up to 10,000 data rows, and up to 256 columns; oversized or encrypted
-  workbooks fail with an explicit error.
+## 🏫 2. Classroom Layout JSON (`layout.json`)
 
-At least one of `student_id` or `name` is required. Other fields are optional:
-
-| Field | Description |
-| --- | --- |
-| `student_id` | Stable student identifier, optional but recommended |
-| `name` | Display name |
-| `gender` | Gender or grouping metadata |
-| `height_cm` | Height, must be positive |
-| `score` | Score, must be a finite number |
-| `vision` | Vision info such as `poor` or `0.8` |
-| `tags` | Tags separated by comma, semicolon, Chinese comma, dunhao, or pipe |
-| `needs` | Special needs using the same separators |
-| `notes` | Notes |
-
-The importer validates:
-
-- the file is not empty;
-- headers include at least one of `student_id` or `name`;
-- each row has `student_id` or `name`;
-- if a `name` column is present, non-empty student rows must not have an empty `name`;
-- `student_id` values are unique;
-- `height_cm` and `score` values are valid numbers, with errors pointing to the column and row when possible;
-- unknown columns are preserved in `attributes`.
-- students without `student_id` use `name` as their stable internal ID and produce a `validate` warning.
-
-Run a lightweight preflight before solving (through the project workflow, or
-inline the data in a problem JSON and run `seattrellis validate --problem`):
-
-```bash
-seattrellis project-validate --project my-class/seattrellis.project.json --strict
-```
-
-`project-validate` checks inputs and obvious conflicts only; it does not generate a seating plan. With `--strict`, warnings also fail the command.
-
-## Classroom Layout JSON
-
-Layouts are seat-node based and do not need to be complete matrices.
+Classrooms are modeled as a flexible topology of discrete seat nodes, supporting irregular, L-shaped, and non-rectangular rooms:
 
 ```json
 {
-  "layout_id": "fictional-room",
-  "name": "Fictional Classroom",
+  "layout_id": "class-room-a",
+  "name": "Classroom 3-B",
   "seats": [
-    {"seat_id": "R1C1", "row": 1, "col": 1, "enabled": true},
-    {"seat_id": "R1C2", "row": 1, "col": 2, "enabled": false, "zone": "aisle"}
+    { "seat_id": "R1C1", "row": 1, "col": 1, "enabled": true },
+    { "seat_id": "R1C2", "row": 1, "col": 2, "enabled": false, "zone": "aisle" },
+    { "seat_id": "R1C3", "row": 1, "col": 3, "enabled": true, "near_window": true }
   ],
   "adjacency": {
     "include_horizontal": true,
@@ -93,35 +56,31 @@ Layouts are seat-node based and do not need to be complete matrices.
 }
 ```
 
-Seat fields:
+### Seat Node Attributes
 
-| Field | Description |
-| --- | --- |
-| `seat_id` | Required unique seat ID |
-| `row` / `col` | Required positive integers |
-| `x` / `y` | Optional coordinates; default to `col` / `row` |
-| `enabled` | Optional; `false` marks an unavailable seat |
-| `zone` | Optional zone label |
-| `near_window` / `near_door` / `near_platform` / `near_ac` | Optional booleans |
-| `tags` | Optional tag list |
-| `attributes` | Optional extension attributes |
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `seat_id` | String | Required. Unique desk code (e.g., `R1C1`, `DESK-12`). |
+| `row` / `col` | Positive Integer | Required. 1-indexed row and column coordinates. |
+| `enabled` | Boolean | Optional. Defaults to `true`; `false` marks aisles, columns, or disabled seats. |
+| `zone` | String | Optional. Zone label (e.g., `front`, `middle`, `back`, `aisle`). |
+| `near_window` / `near_door` / `near_ac` / `near_platform` | Boolean | Optional. Flags proximity to windows, doors, AC units, or the teacher's podium. |
+| `group_id` | String/Integer | Optional. Group affiliation for team-based layouts. |
 
-Layout validation checks empty `seat_id` values, duplicate `seat_id` values, `row` / `col` types, empty layouts, no enabled seats, and `custom_edges` pointing to unknown or disabled seats. Cross-file preflight also checks whether the student count exceeds enabled seats and whether rules fix students to `enabled=false` seats.
+---
 
-Invalid examples include `examples/invalid/duplicate_student_id.csv`, `examples/invalid/duplicate_seat_id.json`, and `examples/invalid/not_enough_seats.json`.
+## 🎒 3. Class Project Workspace (`seattrellis.project.json`)
 
-## Project Workspace JSON
-
-A project file is the configuration entry point for a local file-based workflow. Recommended names include `seattrellis.project.json` and `project.seattrellis.json`:
+Organizes class resources using relative paths for portable, long-term archiving:
 
 ```json
 {
   "kind": "seattrellis_project",
   "schema_version": 1,
-  "name": "Demo Class",
+  "name": "Grade 10 Class 3",
   "students": "students.csv",
   "layout": "classroom.json",
-  "rules": "rules_multi_candidate.json",
+  "rules": "rules.json",
   "history_dir": "history",
   "outputs_dir": "outputs",
   "default_candidates": 5,
@@ -130,91 +89,38 @@ A project file is the configuration entry point for a local file-based workflow.
 }
 ```
 
-`students`, `layout`, and `rules` are required. `history_dir` may be omitted, and the remaining fields have defaults. Every path must be relative and is resolved from the directory containing the project file, not from the package installation directory. `project-solve` creates `outputs_dir` when needed, but it never creates or invents student, layout, rules, or history inputs.
+- **Relative Paths**: Resolved relative to the project file directory for zero-friction sharing.
+- **Privacy by Design**: Project manifests contain file references only, keeping student data safely decoupled.
 
-```bash
-seattrellis project-info --project examples/project.seattrellis.json
-seattrellis project-validate --project examples/project.seattrellis.json
-seattrellis project-solve --project examples/project.seattrellis.json
-seattrellis project-export --project examples/project.seattrellis.json
+---
+
+## 📸 4. Historical Snapshots (`*.snapshot.json`)
+
+Historical snapshots enable multi-term fairness and desk-mate variation algorithms:
+
+```json
+{
+  "schema_version": 2,
+  "snapshot_id": "2026-term1-w01",
+  "timestamp": "2026-09-01T08:00:00Z",
+  "assignment": {
+    "STU001": "R1C1",
+    "STU002": "R1C3"
+  },
+  "metrics": {
+    "solved": true,
+    "score": 92.5
+  }
+}
 ```
 
-The project file stores paths and defaults only. It does not contain student lists, grades, notes, seating preferences, or snapshot contents. Keep real inputs and outputs under private ignored directories; a shareable project file does not make the private data it references safe to commit.
+- Loaded sequentially by timestamp or filename order (`examples/history/*.snapshot.json`).
+- If a student is absent in older snapshots (e.g., newly transferred), the solver skips them gracefully with a diagnostic notice.
 
-## Historical Snapshots
+---
 
-`history-report`, `pair-report`, and `validate --history` / `--history-dir` read
-SeatTrellis JSON snapshots (v1-era snapshots are migrated automatically).
-Historical analysis depends only on JSON snapshots. It does not require Excel,
-PNG, Streamlit, SQLite, or any database.
+## 📖 Related Documentation
 
-```bash
-seattrellis history-report --problem problem.json --history-dir examples/history
-seattrellis pair-report --problem problem.json --history-dir examples/history
-seattrellis validate --problem problem.json --history-dir examples/history --preset daily
-```
-
-Historical snapshots are interpreted against the current student list and current layout:
-
-- multiple snapshots form a history sequence in the order passed, or by sorted file name for `--history-dir`;
-- if a historical snapshot is missing a current student, that student is skipped for that snapshot and a warning is recorded;
-- if a historical snapshot references a seat that does not exist in the current layout, the record is marked `unknown` and a warning is recorded;
-- if a historical snapshot references an `enabled=false` seat in the current layout, the seat record is retained but excluded from position category counts;
-- pair history uses the current layout `row` / `col`, adjacency graph, and custom edges to detect `desk_mate`, `horizontal`, `vertical`, `diagonal`, `adjacent_any`, and `within_distance`;
-- if pair history references an `enabled=false` seat, that seat remains unavailable for new solving, but historical relationships are counted from row/column coordinates when possible and a warning is recorded;
-- `within_distance` uses Chebyshev distance with a default threshold of `2`;
-- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 / v0.2.1 snapshots still load; v0.2.2 does not change the ordinary snapshot schema.
-
-`examples/history/` contains fictional history only. Real historical seating records should be de-identified and stored in ignored directories, not committed to a public repository.
-
-## Candidate Set JSON
-
-v2 multi-candidate generation uses the `candidates` command and writes an
-`api_version: 2` candidate report: each candidate carries a `candidate_id`, an
-assignment, a plan-score breakdown, and a hard-constraint summary; the
-recommended plan is the highest-scoring hard-valid candidate:
-
-```bash
-seattrellis candidates --problem problem.json --count 5 > outputs/candidates.json
-```
-
-v1-era candidate sets (`kind: "candidate_set"`, `schema_version: "0.2.2"`, each
-candidate embedding a full snapshot) remain readable. The project workflow
-(`project-export --candidate <id>`) selects a plan from such an artifact by
-`candidate_id` and exports it, defaulting to `recommended_candidate_id`.
-Unknown IDs produce a friendly error listing available candidates.
-
-The `kind: "plan_comparison_report"` file written by `project-solve --report`
-is a comparison report, not an exportable seating snapshot. Keep real candidate
-sets, reports, and exports under ignored private paths such as `outputs/`; do
-not commit them to a public repository.
-
-## Seat Position Categories
-
-Position categories power `history-report` and `fair_rotation`. Current rules:
-
-- smaller `row` values are closer to the front;
-- if `zone` is explicitly `front`, `middle`, or `back`, that explicit zone wins; otherwise, SeatTrellis infers from enabled-seat rows: minimum row is `front`, maximum row is `back`, other rows are `middle`; a one-row layout is inferred as `middle`;
-- `side` means minimum or maximum enabled-seat `col` in the current layout;
-- `corner` means both a row boundary and a column boundary among enabled seats;
-- `near_window`, `near_door`, `near_platform`, and `near_ac` come only from explicit boolean fields and default to `false` when absent;
-- irregular classrooms are handled as actual seat nodes, not filled into a complete matrix;
-- `enabled=false` seats do not participate in allocation statistics or boundary inference.
-
-## Rules JSON
-
-The rules JSON (`RuleSet`) is embedded in the problem JSON's `rules` field or
-referenced by the project's `rules` path. In v2, `validate --preset <name>`
-performs scenario data-missing checks (history/score/height/vision warnings)
-only; it does not merge preset rules.
-
-See [rules.md](rules.md) for rules and preset behavior.
-
-Note: the native solve path consumes only the **top-level index-pair form** of
-hard constraints — `fixed_seats` / `must_be_adjacent` / `cannot_be_adjacent` /
-`min_distance`, with students referenced by list index (see the problem.json
-example in the [quick start](quickstart.md)). The string-reference form in
-`rules.hard` is not consumed by the native path; a non-empty `rules.hard`
-block is rejected with an explicit error pointing at the top-level form. The
-workbench/server resolves the string form into top-level index pairs before
-generating a problem.
+- [Rule Handbook](rules.en.md)
+- [Quick Start Guide](quickstart.en.md)
+- [Class Project Workflow](project.md)

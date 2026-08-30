@@ -1,132 +1,65 @@
-# API Reference
+# 本地 REST API 接口完全参考
 
-SeatTrellis v2.0.0 exposes a loopback HTTP API through `seattrellis_web` and
-`seattrellis-server`. The complete OpenAPI contract is
-[`api-v1-openapi.json`](api-v1-openapi.json).
+[English](api.md) · [简体中文](api.md)
 
-Every `/api/*` endpoint except `GET /api/v1/session` requires
-`Authorization: Bearer <session-token>`. The request `Host` must be the loopback
-address and bound port. When present, `Origin` must be same-origin. The server
-also sends CSP, `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer`.
+**席序（SeatTrellis）v2.0.0** 通过本地服务（`seattrellis_web` / `seattrellis-server`）暴露了高性能、类型安全的 HTTP API。完整 OpenAPI 规范可参考 [`api-v1-openapi.json`](api-v1-openapi.json)。
 
-The v1 Python APIs (`seattrellis.service` and `seattrellis.service_types`) are
-not part of v2. They remain only in the frozen 1.9.0 legacy package on
-`v1.x-maintenance`.
+---
 
-## Solver responses
+## 🔒 1. 鉴权与安全访问规范
 
-`POST /api/v2/solve` is the stable, side-effect-free solver contract. Valid
-solver outcomes are returned as HTTP 200 domain results with a status of
-`Solved`, `ProvenInfeasible`, `Timeout`, or `Unknown`; malformed input is an
-HTTP error. A valid result is independently checked before it is returned.
+- **监听地址**：严格且默认仅监听 `127.0.0.1:8765` 本地回环地址；
+- **令牌认证**：除 `GET /api/v1/session` 引导端点外，所有 API 必须携带请求头 `Authorization: Bearer <session_token>`；
+- **请求头拦截**：严格校验 `Host: 127.0.0.1:*` 与 `Same-Origin`，阻止 DNS Rebinding 与 CSRF 攻击。
 
-`POST /api/v1/classes/generate` and `POST /api/v1/solve` are workbench adapters.
-They accept either a raw `CoreSolveRequest` or a `GenerateClassRequest` with a
-`draft`, room template/custom layout, and goal. A solved response includes
-candidate summaries and an editable draft; infeasible, timeout, and unknown
-results remain normal domain responses without a draft.
+---
 
-`POST /api/v1/classes/rotation` sequentially generates a multi-period rotation
-plan. Failure for an individual period is represented in the domain response,
-not converted into a successful-looking plan.
+## 📡 2. 核心 API 端点一览
 
-## System and rule endpoints
+### 2.1 求解与算法接口
 
-| Method and path | Purpose |
-| --- | --- |
-| `GET /api/v1/session` | Bootstrap the browser session token; the one unauthenticated API endpoint |
-| `GET /api/v1/health` | Return service health and API version |
-| `GET /api/v1/catalogs` | Return bilingual room, goal, and export catalogs |
-| `GET /api/v1/rules/templates` | Return rule-builder sentence templates |
-| `POST /api/v1/rules/compile` | Compile a filled rule-builder template in Rust |
-| `POST /api/v1/rules/validate` | Validate a custom rules JSON document and return diagnostics |
-| `POST /api/v1/files/read` | Read a relative file under the trusted local root |
-| `GET /api/v1/files/root` | Return the trusted local root |
+| 方法与路径 | 功能描述 | 请求与响应特点 |
+| :--- | :--- | :--- |
+| **`POST /api/v2/solve`** | **核心无副作用求解** | 接收 `CoreSolveRequest`，输出 `Solved`、`ProvenInfeasible`、`Timeout` 或 `Unknown` 状态及完整快照。 |
+| **`POST /api/v1/classes/generate`** | **工作台生成接口** | 支持直接从花名册草稿、教室模板与偏好目标一键求解并创建编辑草稿。 |
+| **`POST /api/v1/classes/rotation`** | **多期轮换求解** | 接收期数参数，生成多期连续排座序列及同桌重复统计。 |
 
-File reads reject absolute paths, traversal, NUL bytes, backslash separators,
-symlink escapes, non-files, and oversized files.
+---
 
-## Roster, layout, and editing endpoints
+### 2.2 花名册与教室草稿接口
 
-| Method and path | Purpose |
-| --- | --- |
-| `POST /api/v1/rosters/drafts` | Upload a CSV/XLSX/XLSM roster draft |
-| `GET /api/v1/rosters/drafts/{draft_id}` | Fetch a parsed roster draft |
-| `POST /api/v1/rosters/drafts/{draft_id}/preview` | Preview an incremental or replacement roster update |
-| `DELETE /api/v1/rosters/drafts/{draft_id}` | Delete a roster draft |
-| `POST /api/v1/layouts/drafts` | Create a layout draft from rows/columns or a template |
-| `GET /api/v1/layouts/drafts/{draft_id}` | Fetch a layout draft |
-| `POST /api/v1/layouts/drafts/{draft_id}/commands` | Apply a revision-checked layout command |
-| `GET /api/v1/layouts/drafts/{draft_id}/compiled` | Compile a layout into a solvable classroom layout |
-| `DELETE /api/v1/layouts/drafts/{draft_id}` | Delete a layout draft |
-| `GET /api/v1/editing/drafts/{draft_id}` | Fetch the current editor state |
-| `POST /api/v1/editing/drafts/{draft_id}/commands` | Apply, undo, or redo an editor command |
-| `GET /api/v1/editing/drafts/{draft_id}/audit` | Audit the current draft and score |
+| 方法与路径 | 功能描述 |
+| :--- | :--- |
+| `POST /api/v1/rosters/drafts` | 上传 CSV/Excel 花名册并创建解析草稿。 |
+| `GET /api/v1/rosters/drafts/{id}` | 获取花名册解析结果与字段映射状态。 |
+| `POST /api/v1/layouts/drafts` | 从排数列数或预设模板创建教室布局草稿。 |
+| `POST /api/v1/layouts/drafts/{id}/commands` | 对教室布局应用增删座位、设置走廊等指令。 |
 
-Editing commands use `EditorCommandEnvelope` and return a minimal
-`EditorStateEnvelope` plus validation for mutations. See
-[Editor protocol](editor-protocol.md).
+---
 
-## Export endpoint
+### 2.3 交互式编辑与微调接口
 
-`POST /api/v1/exports` renders the current editor draft and returns a binary
-attachment. It supports all eight formats: `svg`, `html`, `print-html`, `png`,
-`pdf`, `xlsx`, `docx`, and `pptx`.
+| 方法与路径 | 功能描述 |
+| :--- | :--- |
+| `GET /api/v1/editing/drafts/{id}` | 获取当前排座草稿的实时座次分布与锁定状态。 |
+| `POST /api/v1/editing/drafts/{id}/commands` | 提交微调操作（互换/移动/锁定/撤销/重做），返回版本号与硬约束复核诊断。 |
+| `GET /api/v1/editing/drafts/{id}/audit` | 对当前草稿执行多维度雷达图打分审计。 |
 
-The request supports `template: public | teacher | report`; privacy options can
-hide scores, notes, special needs, height, and vision, and can anonymize labels.
-`orientation`, `paper_size`, `margin_mm`, `page_scale`, `locale`, and
-`show_student_ids` control presentation. The `public` template is fail-closed
-and cannot be used to expose identifiers or sensitive fields. PDF and PNG
-rasterize with a local system font; see [Export formats](export.md).
+---
 
-## Project endpoints
+### 2.4 多格式导出与班级项目接口
 
-| Method and path | Purpose |
-| --- | --- |
-| `GET /api/v1/projects/recent` | List recent projects by local root and limit |
-| `POST /api/v1/projects/history` | Return privacy-safe project artifact metadata |
-| `POST /api/v1/projects/artifacts/compare` | Compare two project artifacts without returning student values |
-| `POST /api/v1/projects/artifacts/restore` | Restore an artifact as a new output snapshot |
-| `POST /api/v1/projects/privacy` | Scan a project for sensitive fields |
-| `POST /api/v1/projects/bundle` | Download a `.seattrellis.zip` bundle |
-| `POST /api/v1/projects/restore` | Restore an uploaded bundle to a local directory |
-| `POST /api/v1/projects/migration/preview` | Preview a project or artifact migration |
-| `POST /api/v1/projects/migration/apply` | Apply a migration with backup and validation |
-| `POST /api/v1/projects/migration/reference-checks` | Check cross-artifact references |
-| `POST /api/v1/projects/migration/batch/preview` | Preview several project migrations |
-| `POST /api/v1/projects/migration/batch/apply` | Apply a validated batch migration |
-| `POST /api/v1/projects/migration/restore` | Restore a migration backup |
-| `POST /api/v1/projects/rotation/save` | Save current period drafts as a rotation plan |
-| `POST /api/v1/projects/rotation/load` | Load a rotation plan into editable drafts |
-| `POST /api/v1/projects/rotation/group-register` | Download an HTML or CSV group register |
-| `POST /api/v1/projects/rotation/group-register/preview` | Preview group sizes and period changes |
-| `POST /api/v1/projects/rotation/group-register/save` | Save group-register assignments |
+| 方法与路径 | 功能描述 |
+| :--- | :--- |
+| `POST /api/v1/exports` | 将当前草稿渲染为二进制附件（支持全部 8 种格式，带隐私脱敏模板选项）。 |
+| `GET /api/v1/projects/recent` | 索引本地指定目录下的所有班级项目清单。 |
+| `POST /api/v1/projects/bundle` | 将班级项目全量打包为 `.seattrellis.zip` 下载。 |
+| `POST /api/v1/projects/restore` | 上传 `.zip` 备份包并恢复至本地文件夹。 |
 
-Project responses expose metadata and anonymous references where possible. Path,
-manifest, bundle, and migration operations reject traversal and unsafe archive
-entries. Migration defaults to a new `*.migrated.json` file; in-place replacement
-creates a backup and validates the result.
+---
 
-## Editor and project privacy
+## 📖 相关文档
 
-Editor state includes student keys, display names, seat relationships, locks,
-undo/redo depth, and constraint diagnostics. It excludes scores, notes, special
-needs, height, vision, tags, and extension attributes. Minimal state is not
-anonymous, so do not send it to remote telemetry or public logs.
-
-Project history, comparison, restore, and rotation endpoints avoid returning
-student records where their contract permits. Uploaded project JSON is only a
-manifest; the browser cannot read the files it references unless the user
-explicitly uses local path mode.
-
-Solver outcomes are domain values, not a reason to change HTTP status. Malformed
-requests, authentication failures, missing drafts, and internal failures still
-use the documented HTTP error responses.
-
-## Related documents
-
-- [Architecture](architecture.md)
-- [Editor protocol](editor-protocol.md)
-- [Project workflow](project.md)
-- [Export formats](export.md)
+- [系统架构设计](architecture.md)
+- [交互式编辑器协议](editor-protocol.md)
+- [多格式导出与排版打印](export.zh.md)

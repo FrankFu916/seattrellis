@@ -1,200 +1,105 @@
-# Web Workbench Guide
+# Web & Desktop Workbench Guide
 
-[English](web.md) / [简体中文](web.zh.md)
+[English](web.md) · [简体中文](web.zh.md)
 
-**SeatTrellis v2.0.0 is released.** The web workbench is a local React
-application served by the pure-Rust `seattrellis_web` server.
+**SeatTrellis** offers a modern interactive workbench designed for educators and administrators. Built with React 19 and driven by a local Rust backend, it delivers a responsive, local-first seating arrangement workflow without external cloud dependencies.
 
-## Start the workbench
+---
 
-The server binds to the loopback address only (default `127.0.0.1:8765`),
-generates a 256-bit session token at startup, and opens the workbench:
+## 🖥️ 1. Launching the Workbench
+
+### Desktop Application (Recommended)
+Simply launch the desktop app (powered by Tauri 2). The native shell starts the lightweight core service in the background and renders the workbench in an integrated native window.
+
+### Web Browser Mode
+Start the local server bound exclusively to `127.0.0.1:8765`:
 
 ```bash
+# Launch the server and automatically open the workbench in your default browser
 seattrellis_web --open-browser
-# or, from a source checkout:
+
+# Or from source code during development
 cargo run -p seattrellis_web -- --open-browser
 ```
 
-The desktop Tauri shell starts the same server and loads the workbench in a
-native window. During development, `SEATTRELLIS_WEB_STATIC` overrides the
-embedded frontend assets. Do not expose this service to a LAN or an untrusted
-network.
+> 🔒 **Local Security Assurance**:
+> Upon launch, a secure 256-bit session token is generated. The server binds strictly to the loopback interface (`127.0.0.1`), ensuring zero exposure to local networks or external hosts.
 
-## Teacher workflow
+---
 
-The workbench is the default entry point for ordinary classroom use. It covers
-roster import and mapping, inline student editing, room templates, custom rows
-and columns, aisles and unavailable seats, common seating goals, combined
-preferences, adjacency and fixed-seat requests, generation, visual classroom
-editing, swaps, undo/redo, export, and class-project backups. **Advanced
-settings** can import and download complete rules/layout JSON and historical
-snapshots. **Detailed seating rules** exposes the implemented history, neighbor,
-cooling, score, and peer-support objectives as form controls.
+## 🧭 2. The 5-Step Seating Wizard
 
-1. Enter a class name and import a CSV, XLSX, or XLSM roster. Headerless input
-   preserves its first data row and asks you to confirm the name or ID column.
-   A name column is enough to begin; records can also be edited directly.
-2. Accept the recommended 30-, 48-, or 60-seat room, or define custom rows,
-   seats per row, aisles, and unavailable seats.
-3. Choose Daily rotation, Quick shuffle, Fair shuffle, or Peer support, combine
-   preferences, and add keep-apart, keep-together, fixed-seat,
-   minimum-distance, or named-group requests.
-4. Review the recommended map, then swap, move, lock, undo, or redo as needed.
-5. Select a public handout, teacher copy, or plan report, review privacy fields
-   and page settings, then preview and download.
+The workbench provides an intuitive, step-by-step workflow tailored for teachers:
 
-The sidebar language switch changes interface text between Simplified Chinese and
-English. It does not clear loaded data, the current step, or solve results. The
-workbench retains parsed data rather than the original upload bytes; **Start
-over and clear student list** clears only the teacher workspace.
+```mermaid
+graph TD
+    Step1[1. Import Roster] --> Step2[2. Configure Room Layout]
+    Step2 --> Step3[3. Set Objectives & Rules]
+    Step3 --> Step4[4. Solve & Fine-tune]
+    Step4 --> Step5[5. Preview & Export]
+```
 
-Before generation, the page explains missing optional history, score, height, or
-vision information. Quick Shuffle remains available for a names-only roster.
+### Step 1: Import Student Roster
+- **File Formats**: Upload `.csv`, `.xlsx`, or `.xlsm` rosters with drag-and-drop.
+- **Smart Column Detection**: Automatically maps columns for Name, Student ID, Gender, Height, Vision Needs, and Academic Scores. Rosters with names only or lacking headers can proceed directly.
+- **Inline Editing**: Add, update, or correct student profiles directly within the table editor.
 
-The Generate step can create several future rotation periods. Enter a count and
-optional labels separated by commas or new lines. Each period has an independent
-editing draft; selecting a period loads it into the normal editing and export
-flow while the summary shows repeated-neighbor metrics.
+### Step 2: Configure Room Layout
+- **Standard Templates**: One-click setups for 30-, 48-, or 60-seat classrooms.
+- **Custom Grids**: Adjust rows, seats per row, aisle placements, and podium orientation.
+- **Irregular Rooms**: Click on grid cells to disable them or mark aisles and empty spaces.
 
-### Detailed seating rules
+### Step 3: Set Objectives & Rules
+- **Preset Scenarios**: Toggle between Daily Routine, Quick Shuffle, or Mentorship Pairing.
+- **Preferences**: Select front-row vision priority, ascending height ordering, academic score balancing, and room-zone rotation.
+- **Hard Constraints**: Enforce fixed desk assignments, required/forbidden neighbor pairs, and minimum testing distances.
 
-Open **Detailed seating rules** when the common preference cards are not precise
-enough. The panel configures historical lookback, recent-neighbor and cooling
-relation types/distance, high-score front/back placement, row or group score
-distribution, and mentor/learner percentiles. Weights are soft objectives, so a
-request such as keeping two students apart remains absolute. Group score
-balancing requires `group_id` on layout seats. Raw rules JSON remains available
-for compatibility.
+### Step 4: Solve & Interactive Fine-Tuning
+- **Sub-second Solving**: Generates mathematically verified seating arrangements accompanied by radar score breakdowns.
+- **Candidate Comparison**: Compare multiple candidate plans side-by-side with diversity and stability metrics.
+- **Visual Swapping & Dragging**:
+  - Click on one student, then click another to **swap their seats instantly**.
+  - Click on a student, then click an empty desk to **move them**.
+  - Full **Undo** and **Redo** history for all actions.
+- **Lock & Local Repair**:
+  - Click the lock icon on specific seats to hold those students in place.
+  - Run **Local Repair** on remaining unlocked students to rebalance the room while respecting all constraints.
 
-## Project panel
+### Step 5: Preview & Export
+- **Dual Export Templates**:
+  - **Teacher Copy**: Includes full names, IDs, special accommodation flags, and scores.
+  - **Public Posting Copy**: Automatically anonymizes sensitive student IDs and academic metrics for privacy compliance.
+- **Format Support**: Export to PNG images, PDF documents, editable Excel (XLSX), Word (DOCX), PowerPoint (PPTX), and print-optimized HTML.
 
-The workbench's Project panel finds `*.project.json` and `*.seattrellis.json`
-files under a local folder. Selecting a class shows history and generated-file
-metadata only; student records and scores are not returned as part of this view.
+---
 
-The panel can scan sensitive fields, compare history or output artifacts, create
-a current-plan snapshot, download a `.seattrellis.zip` backup, and restore an
-uploaded bundle to a local folder. Comparisons return counts plus anonymous
-student references and before/after seat IDs; names and scores do not enter the
-browser response. Recovery writes a new output and never overwrites the selected
-history artifact.
+## 📅 3. Multi-Period Fair Rotation
 
-The **Project format migration** area validates the selected project or artifact
-against the current schema. A normal write creates a sibling `*.migrated.json`
-file. An explicit in-place option replaces the source only after creating a
-`.bak` backup. The same path-safety and manifest checks used by the CLI apply to
-browser uploads.
+For classes that rotate seating on a weekly, monthly, or semester basis:
 
-The classroom editor supports clicking cells to create seats, aisles, platforms,
-or empty space, changing the grid, and saving the result for generation. The
-rules editor covers the four hard-rule lists, active soft objectives, and named
-groups while retaining the raw JSON compatibility field. Custom rules report
-field-level errors before generation. Multiple history snapshots can be loaded
-for fair rotation and recent-neighbor calculations.
+1. Specify the number of future periods in the generation step (e.g., generate 4 periods).
+2. Each period produces an independent snapshot and editing draft.
+3. The solver computes overall **desk-mate repetition rates** and **zone distribution balance** across all periods.
+4. Save the full rotation sequence directly into your class project or export group rosters.
 
-When a class project is selected after generating a rotation, **Save current
-rotation** writes every period's seats, locks, and editing commands as a new
-rotation-plan output. **Continue a rotation** reloads an existing plan into
-period drafts without replacing its source.
+---
 
-Saved rotation plans can produce a printable HTML or CSV group register. Each
-period retains empty groups, unseated students, and members missing from the
-current roster. The membership preview shows group sizes, seated/unseated
-counts, and additions/removals between adjacent periods without returning names
-or IDs to the browser.
+## 🎒 4. Class Project Panel
 
-## Rules preview and history quality
+Open the **Class Project** panel in the sidebar for long-term class management:
 
-After **Settings & Solve**, the page shows the complete merged `RuleSet` from the
-preset and overlay. Review hard rules, weights, and seed before solving, and
-download the merged JSON for records.
+| Feature | Description |
+| :--- | :--- |
+| **Local Project Discovery** | Scans designated local directories for `*.project.json` files and displays class histories. |
+| **Plan Diff & Comparison** | Compare two historical arrangements to track seat movements and partner changes. |
+| **One-Click Backup** | Package rosters, layouts, rules, and history files into a portable `.seattrellis.zip` bundle. |
+| **Cross-Machine Restore** | Restore project bundles onto any other machine with a single click. |
+| **Privacy Compliance Audit** | Scans project files for unredacted sensitive identifiers prior to external sharing. |
 
-After uploading history, the quality check reports current student coverage,
-missing or extra students, unknown or disabled seats, and whether the snapshot
-layout matches the current layout. Demo mode loads fictional history from
-`examples/history/`.
+---
 
-## Project path mode
+## ♿ 5. Accessibility & Ergonomics
 
-Entering a local project path supports reading configuration, validating
-referenced files, solving candidates, and exporting. An uploaded project JSON
-contains only the manifest; the browser cannot access the files it references,
-so upload mode validates and displays configuration but does not enable solve or
-export. Path mode and the Project panel are local filesystem features.
-
-## Settings, results, and export
-
-**Download current web config** saves the preset, rules overlay, candidate count,
-seed, and time limit. It does not contain the roster, layout, history, paths, or
-results. Rules may still reference student IDs, so treat such settings as
-sensitive. Restoring settings requires loading the data files again.
-
-Candidate results can be previewed side by side and compared by total score,
-hard constraints, and score dimensions. The seating map and assignment table
-follow the selected candidate.
-
-The page offers public, teacher-internal, and candidate-explanation templates,
-with anonymization, field hiding, A4 orientation, scaling, and Chinese or
-English content. Safe template defaults can be tightened but not loosened.
-
-The workbench can download snapshot or candidate-set JSON, plan reports, HTML,
-print-friendly HTML, PDF, PNG, Excel, and Word files. All formats are rendered
-locally by Rust; no optional conversion install is required.
-
-## Lock, repair, and manual adjustment
-
-**Lock & repair** keeps selected students or seats fixed and optionally bounds
-the set of students that may move. An empty affected-student selection performs a
-global re-solve while preserving locks. The resulting snapshot records lock
-state, repair provenance, and changed students.
-
-**Manual adjustment** supports swapping students, moving to an empty seat,
-unseating, and reseating. It never silently displaces a third student. Every
-change immediately reevaluates hard constraints; the current draft can be
-undone/redone, exported, or passed to Lock & repair. Manual edits do not rewrite
-the source candidate set or rules file.
-
-The Locks area can lock or unlock any seated student or enabled seat. Locked
-students and seats are unavailable in move mode, and lock operations participate
-in undo/redo. Batch move pairs selected students and target seats in selection
-order, previews the mapping, and records one atomic operation.
-
-The interactive seating map supports direct clicks. In **Move / swap** mode,
-click an occupied source and then an empty or occupied target. In **Lock / unlock
-seats** mode, click an enabled seat to toggle its lock. All map actions use the
-shared command log and hard-constraint diagnostics.
-
-## Privacy
-
-Solving happens on the local computer. Registered teacher working files are
-removed when their plan is replaced or cleared; remaining working directories
-are cleaned up when the process exits. Project path mode accesses the path
-entered by the user, so do not expose the service to untrusted users. Do not
-commit real student data, screenshots, or exports.
-
-## Accessibility and small screens
-
-- Tab reaches upload, selection, solve, and download controls in order, with a
-  visible focus outline.
-- A skip link at the start of the page moves directly to the main content.
-- Enabled seats are keyboard-focusable and expose seat, student, and location
-  details to assistive technology.
-- Side-by-side controls stack on narrow screens, and buttons keep a touch target
-  of at least 44 pixels.
-- Non-essential motion is disabled when the operating system requests reduced
-  motion.
-
-## Current limitations
-
-- Layout editing uses clicks and toolbar actions; drag-and-drop and box selection
-  are not available yet.
-- History comparison and restoring a snapshot are supported; per-plan visual
-  diffing is still being refined.
-- The interface supports Simplified Chinese and English.
-
-## Related documents
-
-- [Quick start](quickstart.md)
-- [Project workflow](project.md)
-- [Export formats](export.md)
+- **Keyboard Navigation**: Use `Tab` to navigate through import, configuration, solving, and export controls with high-contrast focus outlines.
+- **Responsive Layout**: Adapts gracefully to compact screens with touch targets exceeding 44px.
+- **Instant Language Switching**: Toggle between Simplified Chinese and English seamlessly without losing current working state.

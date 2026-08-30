@@ -1,23 +1,25 @@
-# Multi-candidate example
+# Multi-Candidate Seating Examples
 
-The repository does not commit generated candidate sets, reports, or seating
-exports. Generate them under the ignored `outputs/` directory:
+This directory contains reference examples for multi-candidate seating generation and comparison in [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis).
+
+---
+
+## 💡 Quick Command
+
+To generate candidate plans and a comparison report using the sample files:
 
 ```bash
+# 1. Solve and generate 5 diverse candidates
 seattrellis solve \
-  --students examples/students.csv \
-  --layout examples/classroom.json \
-  --rules examples/rules_multi_candidate.json \
-  --history-dir examples/history \
-  --candidates 5 \
-  --output outputs/candidates.json \
-  --report outputs/plan-report.json
+  --problem problem.json \
+  --output outputs/candidates.json
 
+# 2. Export the recommended candidate plan as an interactive HTML chart
 seattrellis export \
-  --snapshot outputs/candidates.json \
-  --candidate recommended \
+  --problem problem.json \
+  --solution outputs/candidates.json \
   --format html \
   --output outputs/recommended.html
 ```
 
-All names and records in `examples/` are fictional.
+> 🔒 **Privacy Note**: All names, student IDs, and classroom data in `examples/` are 100% fictional. Real classroom records should always be kept in `.gitignore`-protected directories (such as `outputs/`).

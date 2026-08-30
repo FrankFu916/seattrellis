@@ -1,7 +1,17 @@
 # seattrellis-application
 
-Application layer for SeatTrellis: use-case orchestration for class generation, candidate sets, drafts, rotation and export.
+Use-case orchestration and application services layer for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis).
 
-Part of [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序), a local-first classroom seating tool. See the [workspace README](https://github.com/FrankFu916/seattrellis) for the crate overview and build instructions.
+---
 
-License: Apache-2.0.
+## 🎯 Responsibilities
+
+- Coordinates classroom generation workflows, candidate plan comparison, and multi-period rotations.
+- Manages interactive editing sessions, draft states, and anchor-aware repair execution.
+- Bridges domain rules and core solvers with I/O and export subsystems.
+
+---
+
+## 📄 License
+
+Licensed under [Apache-2.0](../../LICENSE).

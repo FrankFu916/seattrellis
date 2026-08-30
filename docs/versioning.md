@@ -1,93 +1,41 @@
-# Versioning and Compatibility
+# 版本命名与兼容性规范（Versioning）
 
-## SemVer
+[English](versioning.md) · [简体中文](versioning.md)
 
-SeatTrellis follows [Semantic Versioning 2.0.0](https://semver.org/):
+**席序（SeatTrellis）** 严格遵循 [语义化版本规范 2.0.0 (Semantic Versioning)](https://semver.org/lang/zh-CN/)。
 
-- **MAJOR** introduces incompatible API or file-format changes;
-- **MINOR** adds backward-compatible functionality;
-- **PATCH** contains backward-compatible fixes.
+---
 
-SeatTrellis v2.0.0 is the current released Rust line. Crate versions are read
-from `Cargo.toml`. The Python line is frozen at 1.9.0 (`v1.9.0` on
-`v1.x-maintenance`) and is a legacy package only. From v2 onward, incompatible
-changes to the public CLI, file formats, or HTTP API require a new MAJOR
-version.
+## 🏷️ 1. 版本号语义
 
-## Schema versions
+版本格式定义为：`MAJOR.MINOR.PATCH`
 
-Long-lived artifacts carry `schema_version`. The v2 artifact registry contains
-these kinds, each with a current outer artifact version of `2`:
+- **主版本号 (MAJOR)**：引入不兼容的 API 变更、数据 Schema 结构破坏性重构或核心行为改变；
+- **次版本号 (MINOR)**：引入向后兼容的新功能、新偏好规则或新格式导出器；
+- **修订号 (PATCH)**：提供向后兼容的问题修复与算法性能优化。
 
-`student_roster`, `classroom_layout`, `rule_set`, `seating_snapshot`,
-`candidate_set`, `plan_comparison`, `history_archive`, `rotation_plan`,
-`editing_operation_log`, `project`, `project_bundle_manifest`, and
-`export_preset`.
+---
 
-The project payload itself retains its project-file schema (`schema_version: 1`)
-inside the v2 artifact envelope. Do not infer migration support from the
-registry list. `schema-migrate` currently has explicit v1-to-v2 transforms for
-student rosters, classroom layouts, and project files. Other artifact kinds are
-rejected when no typed migration step exists.
+## 📦 2. 数据 Schema 兼容与升级策略
 
-Schemas are stored under `schemas/` and can be exported with:
+- 所有持久化数据（如快照、项目清单、轮换计划）均显式携带 `schema_version`；
+- 系统提供 `schema-migrate` 工具支持将旧版本数据安全迁移至新版本，并在修改前自动创建隐藏备份；
+- 系统严格禁止对更高版本的未识别文件进行降级操作，防止数据损毁。
 
-```bash
-seattrellis schema-export \
-  --kind seating_snapshot \
-  --output seating-snapshot.v2.schema.json
-```
+---
 
-Migration validates and rewrites supported legacy inputs:
+## 🖥️ 3. 运行环境支持矩阵
 
-```bash
-seattrellis schema-migrate --input roster-v1.json --dry-run
-seattrellis schema-migrate --input roster-v1.json --output roster-v2.json
-seattrellis schema-migrate --input project-v1.json --in-place
-```
+| 运行环境 | 最低版本要求 (Baseline) |
+| :--- | :--- |
+| **Rust 编译环境** | MSRV 1.88+ |
+| **操作系统** | macOS 13+ / Windows 10+ / Ubuntu 22.04+ (或等同 Linux 发行版) |
+| **桌面端运行时** | Tauri 2 原生窗口 |
+| **前端浏览器** | Chrome 100+ / Edge 100+ / Safari 16+ / Firefox 100+ |
 
-`--dry-run` validates without writing. In-place or destination replacement
-creates a backup before the write; the backup name is implementation-managed.
-Newer schema versions are rejected and never downgraded.
+---
 
-Editor commands and state are short-lived transport contracts, not durable
-artifacts, and are not handled by `schema-migrate`. Their current protocol
-version is `"1.0"`; clients must send `protocol_version`, and unsupported
-versions are rejected before execution.
+## 📖 相关文档
 
-## CLI compatibility
-
-Run `seattrellis --help` for the installed binary's exact options. The core
-v2 surface keeps these names stable:
-
-- `seattrellis solve`, `validate`, and `export`;
-- `--problem`, `--solution`, `--output`, `--seed`, and `--time-limit`;
-- exit codes `0 / 2 / 3 / 4 / 5 / 70 / 130`.
-
-The detailed meanings are in the [CLI reference](cli.md).
-
-## Deprecation policy
-
-The v1 CLI and Python API exist only in the frozen legacy package. The v2 CLI
-uses `seattrellis`; migration support is explicit rather than inferred.
-When a future v2 feature is deprecated, documentation will identify it and the
-runtime will provide a warning before removal in a later MAJOR line.
-
-## Compatibility matrix
-
-| Component | v2.0.0 baseline |
-| --- | --- |
-| Rust | MSRV 1.88; CI covers Linux, Windows, and macOS |
-| Operating systems | macOS 13+, Windows 10+, Ubuntu 22.04+ targets |
-| Desktop shell | Tauri 2 in `app/src-tauri` |
-| Frontend | React 19 and TypeScript in `clients/web`; Node.js is build-only |
-| Runtime dependencies | No Python, Node.js, OR-Tools, or Streamlit runtime |
-
-## Frozen v1 compatibility
-
-- `seattrellis==1.9.0` remains installable from PyPI through
-  `v1.x-maintenance`;
-- documented v1 roster, layout, and project inputs have v2 migration paths;
-- v2 does not promise v1 command names or Python API compatibility;
-- migration-era Python oracle/parity tooling was removed after v2.0.0 and is not
-  a v2 compatibility requirement.
+- [发布规范与完整性保障](publishing.md)
+- [从 v1 升级指南](rust-migration.md)

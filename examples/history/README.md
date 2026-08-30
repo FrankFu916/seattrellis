@@ -1,3 +1,9 @@
-# Fictional history snapshots
+# Fictional Historical Seating Snapshots
 
-These files are fictional SeatTrellis seating snapshots for fair-rotation demos. Do not store real historical seating records in this repository.
+This directory contains synthetic historical seating snapshots (`*.snapshot.json`) used for demonstrating and testing fair room-zone rotation and recent desk-mate avoidance algorithms.
+
+---
+
+## 🔒 Confidentiality Notice
+
+All student records and seat positions in these files are strictly fictional. Never store real student rosters or actual historical seating files in public repositories.

@@ -1,80 +1,51 @@
-# 输入格式
+# 输入数据与 Schema 格式规范
 
-[English](input-format.md) / [简体中文](input-format.zh.md)
+[English](input-format.md) · [简体中文](input-format.zh.md)
 
-SeatTrellis v2.0.0 使用学生名单、教室布局和规则文件，也可以用一个本地 project 文件保存这些文件的相对路径和常用默认值。示例文件都在 `examples/`，只包含虚构数据。
+**席序（SeatTrellis）v2.0.0** 围绕**学生花名册（Roster）**、**教室网格布局（Classroom Layout）**与**排座规则集（RuleSet）**三大核心数据展开。
 
-v2.0.0 中这些文件通过 project 工作流（`project-*` 命令、工作台的班级项目面板）消费；
-独立 CLI 命令则把学生、座位和规则内联到一份 problem JSON（`CoreSolveRequest`）
-中求解，见[快速开始](quickstart.zh.md)。v1 的名单、布局和 project 文件有明确的
-迁移步骤；历史工具在支持的范围内仍可读取旧 snapshot，但并非所有产物都能自动迁移。
+无论是通过班级项目文件（`*.project.json`）管理，还是内联至单文件 `problem.json` 中直接求解，所有输入均经过 Rust 本地严格类型与边界校验。
 
-## 学生名单
+---
 
-CSV 和 Excel `.xlsx` / `.xlsm` 都由本地 Rust 导入器原生支持，无需安装任何 extra：
+## 👥 1. 学生花名册（CSV / Excel）
 
-```bash
-seattrellis project-init --dir my-class   # 在已有 students.csv 的目录创建 project
-seattrellis project-validate --project my-class/seattrellis.project.json
-```
+系统支持标准的 `.csv` 文件以及 Excel `.xlsx` / `.xlsm` 工作簿，由原生 Rust 解析器直接读取，无需安装 Python 或 Office 运行库。
 
-旧版 `.xls` 请先另存为 `.xlsx` 或 CSV。
+### 字段定义与表头映射
 
-### Excel（.xlsx / .xlsm）导入边界
+| 字段名称 | 标识符 (`key`) | 类型 | 必填性 | 说明与示例 |
+| :--- | :--- | :--- | :--- | :--- |
+| **学号/唯一编码** | `student_id` | 文本 | 推荐 | 学生的稳定唯一编号（如 `STU001`）。若省略，系统将自动以 `name` 作为内部标识。 |
+| **学生姓名** | `name` | 文本 | 核心 | 学生的展示姓名（如 `张三`）。 |
+| **性别/分组** | `gender` | 文本 | 可选 | 用于性别均衡或组别划分（如 `男`/`女`、`M`/`F`）。 |
+| **身高 (cm)** | `height_cm` / `height` | 正数 | 可选 | 学生的实际身高，用于高个靠后排序（如 `168.5`）。 |
+| **综合/学业成绩** | `score` | 数值 | 可选 | 成绩或加权综合分，用于学业分层互助（如 `89.5`）。 |
+| **视力情况** | `vision` / `vision_score` | 文本/数值 | 可选 | 视力状态（如 `poor`、`0.6`、`近视`），用于排座前排关照。 |
+| **个性化标签** | `tags` | 文本 | 可选 | 支持以逗号、分号、竖线分隔（如 `班长, 组长, 实验员`）。 |
+| **特殊关照需求** | `needs` | 文本 | 可选 | 特殊需求说明（如 `靠窗, 靠前排`）。 |
+| **教师内部备注** | `notes` | 文本 | 可选 | 教师日常排座参考备注。 |
 
-Excel 导入读取工作簿的**第一个工作表**，并遵守以下边界：
+### Excel（.xlsx / .xlsm）读取边界规范
+- **默认读取第一个工作表**：仅解析工作簿中的 Sheet 1。
+- **纯文本与前导零保留**：诸如 `001`、`020` 等学号格式将被严格保留为文本，不会误转为整数。
+- **公式解析规则**：支持解析已包含计算缓存结果的公式单元格；若遇到无缓存值的裸公式将提示明确错误。
+- **安全规格上限**：单个文件最大支持 20 MiB，最大支持 10,000 行学生数据及 256 列。
 
-- 支持的单元格取值：共享字符串、内联字符串、公式缓存值（`str`）、数字与布尔
-  （带缓存结果）；**没有缓存值的公式单元格会报错**；
-- 文本单元格按文本读取，`001` 这类前导零编号不会丢失；
-- 上限：文件不超过 20 MiB（解压后的 XML 部件同样受限）、数据行不超过
-  10,000、列数不超过 256；超限或加密工作簿会明确报错。
+---
 
-至少需要提供 `student_id` 或 `name` 之一。其他字段都是可选字段：
+## 🏫 2. 教室网格布局 JSON（`layout.json`）
 
-| 字段 | 说明 |
-| --- | --- |
-| `student_id` | 学生稳定编号，可选但推荐 |
-| `name` | 学生显示姓名 |
-| `gender` | 性别或其他分组信息 |
-| `height_cm` | 身高，必须是正数 |
-| `score` | 成绩或综合分，必须是有限数字 |
-| `vision` | 视力信息，例如 `poor`、`0.8` |
-| `tags` | 标签，可用逗号、分号、顿号或竖线分隔 |
-| `needs` | 特殊需求，可用同样分隔符 |
-| `notes` | 备注 |
-
-导入器会检查：
-
-- 学生表不能为空；
-- 表头必须包含 `student_id` 或 `name` 中至少一列；
-- 每行至少有 `student_id` 或 `name`；
-- 如果存在 `name` 列，非空学生行中的 `name` 不能为空；
-- `student_id` 不能重复；
-- `height_cm`、`score` 不能是非法数值，错误会尽量指出列名和行号；
-- 未识别列会保存在学生的 `attributes` 中。
-- 没有 `student_id` 的学生会使用 `name` 作为稳定内部 ID，并在 `validate` 中给出 warning。
-
-可以先运行轻量预检（通过 project 工作流，或把数据内联进 problem JSON 后运行
-`seattrellis validate --problem`）：
-
-```bash
-seattrellis project-validate --project my-class/seattrellis.project.json --strict
-```
-
-`project-validate` 只检查输入和明显冲突，不生成座位表。加 `--strict` 时，warning 也会导致命令失败。
-
-## 教室布局 JSON
-
-布局由 seat nodes 组成，不要求是完整矩阵。
+教室布局由离散的“座位节点（Seat Nodes）”拓扑构成，**不局限于规则矩形**，可完美适配 L 型、多边形或缺角异形教室。
 
 ```json
 {
-  "layout_id": "fictional-room",
-  "name": "Fictional Classroom",
+  "layout_id": "class-room-a",
+  "name": "三年二班主教室",
   "seats": [
-    {"seat_id": "R1C1", "row": 1, "col": 1, "enabled": true},
-    {"seat_id": "R1C2", "row": 1, "col": 2, "enabled": false, "zone": "aisle"}
+    { "seat_id": "R1C1", "row": 1, "col": 1, "enabled": true },
+    { "seat_id": "R1C2", "row": 1, "col": 2, "enabled": false, "zone": "aisle" },
+    { "seat_id": "R1C3", "row": 1, "col": 3, "enabled": true, "near_window": true }
   ],
   "adjacency": {
     "include_horizontal": true,
@@ -85,35 +56,31 @@ seattrellis project-validate --project my-class/seattrellis.project.json --stric
 }
 ```
 
-座位字段：
+### 座位节点属性说明
 
-| 字段 | 说明 |
-| --- | --- |
-| `seat_id` | 必填，座位唯一 ID |
-| `row` / `col` | 必填，正整数 |
-| `x` / `y` | 可选坐标，默认使用 `col` / `row` |
-| `enabled` | 可选，`false` 表示不可用座位 |
-| `zone` | 可选，区域标签 |
-| `near_window` / `near_door` / `near_platform` / `near_ac` | 可选布尔字段 |
-| `tags` | 可选标签列表 |
-| `attributes` | 可选扩展属性 |
+| 属性 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `seat_id` | 字符串 | 必填。教室内的唯一座位编码（如 `R1C1`、`A-01`）。 |
+| `row` / `col` | 正整数 | 必填。座位的逻辑排号与列号（从 1 开始计）。 |
+| `enabled` | 布尔值 | 可选。默认为 `true`；设为 `false` 表示该位置为走廊、立柱或不可用空位。 |
+| `zone` | 字符串 | 可选。区域标签（如 `front`、`middle`、`back`、`aisle`）。 |
+| `near_window` / `near_door` / `near_ac` / `near_platform` | 布尔值 | 可选。标识该座位是否临窗、临门、临空调或靠讲台。 |
+| `group_id` | 字符串/数值 | 可选。所属小组标识，用于小组分层排座。 |
 
-布局校验会检查空 `seat_id`、重复 `seat_id`、`row` / `col` 类型、空布局、没有可用座位、以及 `custom_edges` 引用不存在或不可用座位。跨文件预检还会检查学生人数是否超过可用座位数，以及规则是否把学生固定到 `enabled=false` 的座位。
+---
 
-错误示例可参考 `examples/invalid/duplicate_student_id.csv`、`examples/invalid/duplicate_seat_id.json` 和 `examples/invalid/not_enough_seats.json`。
+## 🎒 3. 班级项目描述文件（`seattrellis.project.json`）
 
-## Project workspace JSON
-
-project 文件是本地文件型工作流的配置入口，推荐命名为 `seattrellis.project.json` 或 `project.seattrellis.json`：
+用于将班级的所有关联资源以相对路径集中管理：
 
 ```json
 {
   "kind": "seattrellis_project",
   "schema_version": 1,
-  "name": "Demo Class",
+  "name": "高一（3）班",
   "students": "students.csv",
   "layout": "classroom.json",
-  "rules": "rules_multi_candidate.json",
+  "rules": "rules.json",
   "history_dir": "history",
   "outputs_dir": "outputs",
   "default_candidates": 5,
@@ -122,83 +89,38 @@ project 文件是本地文件型工作流的配置入口，推荐命名为 `seat
 }
 ```
 
-`students`、`layout`、`rules` 必填；`history_dir` 可省略；其余字段有默认值。所有路径必须是相对路径，并相对于 project 文件所在目录解析，而不是相对于安装目录。`project-solve` 会在需要时创建 `outputs_dir`，但不会自动创建或伪造学生、layout、rules、history 输入。
+- **纯相对路径**：所有文件路径均相对于项目文件所在目录解析，便于整班文件夹拷贝与跨机器分享。
+- **元数据安全性**：项目文件本身仅保存配置路径，不包含真实敏感的学生名单或成绩，可安全进行版本控制。
 
-```bash
-seattrellis project-info --project examples/project.seattrellis.json
-seattrellis project-validate --project examples/project.seattrellis.json
-seattrellis project-solve --project examples/project.seattrellis.json
-seattrellis project-export --project examples/project.seattrellis.json
+---
+
+## 📸 4. 历史快照（Historical Snapshot JSON）
+
+历史快照是系统进行公平轮换和搭档回避分析的核心依据。
+
+```json
+{
+  "schema_version": 2,
+  "snapshot_id": "2026-term1-w01",
+  "timestamp": "2026-09-01T08:00:00Z",
+  "assignment": {
+    "STU001": "R1C1",
+    "STU002": "R1C3"
+  },
+  "metrics": {
+    "solved": true,
+    "score": 92.5
+  }
+}
 ```
 
-project 文件只保存路径和默认配置，不保存学生名单、成绩、备注、座位偏好或 snapshot 内容。真实输入和输出仍应放在 `.gitignore` 覆盖的私有目录中；不要因为 project 文件本身可分享，就误把它引用的真实数据一并提交。
+- 系统按文件名时间序加载历史快照（如 `examples/history/*.snapshot.json`）；
+- 若历史快照中缺少某位新转入的学生，系统将自动跳过该学生并在指标中提示，不影响整体求解。
 
-## 历史 snapshot
+---
 
-`history-report`、`pair-report` 和 `validate --history` / `--history-dir` 读取
-SeatTrellis JSON snapshot（v1 时代的 snapshot 由迁移路径自动处理）。历史分析只
-依赖 JSON snapshot，不需要 Excel、PNG、Streamlit、SQLite 或数据库。
+## 📖 相关文档
 
-```bash
-seattrellis history-report --problem problem.json --history-dir examples/history
-seattrellis pair-report --problem problem.json --history-dir examples/history
-seattrellis validate --problem problem.json --history-dir examples/history --preset daily
-```
-
-历史 snapshot 会用当前学生名单和当前 layout 解释：
-
-- 多个 snapshot 按传入顺序或目录文件名排序组成历史序列；
-- 某个历史 snapshot 缺少当前学生时，该学生在该周次被跳过并产生 warning；
-- 历史 snapshot 引用当前 layout 中不存在的座位时，该记录标记为 `unknown` 并产生 warning；
-- 历史 snapshot 引用当前 layout 中 `enabled=false` 的座位时，该记录保留为历史座位，但不参与位置类别统计；
-- pair history 使用当前 layout 的 `row` / `col`、adjacency graph 和 custom edges 判断 `desk_mate`、`horizontal`、`vertical`、`diagonal`、`adjacent_any`、`within_distance`；
-- pair history 中引用 `enabled=false` 座位时，新排座不会使用该座位，但历史关系会尽量按 row/col 坐标统计并记录 warning；
-- `within_distance` 使用 Chebyshev 距离，默认阈值为 `2`；
-- v0.1.0 / v0.1.1 / v0.1.2 / v0.2.0 / v0.2.1 snapshot 仍可读取；v0.2.2 不修改普通 snapshot schema。
-
-`examples/history/` 只包含虚构历史数据。真实历史座位记录应脱敏并保存在忽略目录中，不要提交到公开仓库。
-
-## Candidate set JSON
-
-v2.0.0 的多方案生成使用 `candidates` 命令，输出 `api_version: 2` 的候选报告（每个
-候选带 `candidate_id`、assignment、plan score 明细和 hard-constraint 摘要），
-推荐方案是加权总分最高的 hard-valid 候选：
-
-```bash
-seattrellis candidates --problem problem.json --count 5 > outputs/candidates.json
-```
-
-v1 时代的 candidate set（`kind: "candidate_set"`，`schema_version: "0.2.2"`，
-每个候选内嵌完整 snapshot）继续可读；project 工作流（`project-export
---candidate <id>`）对这类产物按 `candidate_id` 选择方案后导出，默认使用
-`recommended_candidate_id`。如果 ID 不存在，CLI 会列出可用 ID 并返回友好错误。
-
-`project-solve --report` 写出的 `kind: "plan_comparison_report"` 是比较报告，
-不是可导出的座位 snapshot。真实 candidate set、比较报告和导出文件都应放在已
-忽略的 `outputs/` 等私有目录，不要提交到公开仓库。
-
-## 座位位置类别
-
-位置类别用于 `history-report` 和 `fair_rotation`。当前规则如下：
-
-- `row` 越小越靠前；
-- 如果 `zone` 明确为 `front`、`middle` 或 `back`，优先使用该显式区域；否则按当前 layout 的可用座位 row 推断：最小 row 为 `front`，最大 row 为 `back`，其他 row 为 `middle`；只有一行时推断为 `middle`；
-- `side` 使用当前 layout 中可用座位的最小 col 或最大 col；
-- `corner` 使用可用座位的 row 边界和 col 边界交点；
-- `near_window`、`near_door`、`near_platform`、`near_ac` 只由显式布尔字段决定，字段不存在时默认 `false`；
-- 异形教室按实际 seat nodes 处理，缺失座位不会被补成矩阵座位；
-- `enabled=false` 的座位不参与分配统计和类别边界计算。
-
-## 规则 JSON
-
-规则 JSON（`RuleSet`）内联在 problem JSON 的 `rules` 字段中，或由 project 的
-`rules` 路径引用。v2.0.0 的 `validate --preset <name>` 只做场景数据缺失检查
-（history/score/height/vision warning），不合并 preset 规则。完整规则与预设
-说明见 [rules.zh.md](rules.zh.md)。
-
-注意：problem JSON 的原生求解路径只消费**顶层索引对形式**的 hard 约束——
-`fixed_seats` / `must_be_adjacent` / `cannot_be_adjacent` / `min_distance`
-（学生用列表下标引用，见[快速开始](quickstart.zh.md)的 problem.json 示例）。
-`rules.hard` 中的字符串引用形式不会被原生路径消费；非空的 `rules.hard`
-会在 solve 请求中被明确拒绝并给出上述指引。字符串形式由工作台/服务端在生成
-problem 之前解析合并为顶层索引对。
+- [排座规则手册](rules.zh.md)
+- [快速上手指南](quickstart.zh.md)
+- [班级项目工作流](project.zh.md)

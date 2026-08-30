@@ -1,7 +1,17 @@
 # seattrellis-io
 
-Persistence side of SeatTrellis: roster parsing, project workspaces, artifact migration, rotation plans, privacy scans and journaled transactions.
+I/O subsystem, roster parsers, project lifecycle, and migration engine for [SeatTrellis (席序)](https://github.com/FrankFu916/seattrellis).
 
-Part of [SeatTrellis](https://github.com/FrankFu916/seattrellis) (席序), a local-first classroom seating tool. See the [workspace README](https://github.com/FrankFu916/seattrellis) for the crate overview and build instructions.
+---
 
-License: Apache-2.0.
+## 📂 Features
+
+- **Zero-Dependency Roster Parsing**: Robust, memory-safe CSV and Excel (`.xlsx` / `.xlsm`) ingest with leading-zero preservation and header heuristics.
+- **Class Project Workspace**: Serialization, relative path validation, project initialization, bundle packaging (`.zip`), and restore.
+- **Schema Migration Engine**: Transactional in-place or destination upgrades from v1 legacy formats to v2 schemas with automated backups.
+
+---
+
+## 📄 License
+
+Licensed under [Apache-2.0](../../LICENSE).

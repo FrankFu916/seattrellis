@@ -1,33 +1,40 @@
-# Rust Core
+# 原生 Rust 核心与求解引擎（Native Core）
 
-SeatTrellis v2.0.0 is implemented in Rust. `seattrellis_core` is the semantic
-source of truth for rule compilation, legality checks, the editing state model,
-migration-facing contracts, privacy decisions, scoring, and solver statuses.
-The CLI, loopback App server, Tauri shell, and React workbench build on this
-core rather than maintaining separate seating logic.
+[English](native-core.md) · [简体中文](native-core.md)
 
-## Runtime
+**席序（SeatTrellis）v2.0.0** 的全部核心算法、数据校验、状态迁移与格式渲染均由原生 Rust 独立实现。
 
-The v2 runtime has no Python, Node.js, or OR-Tools dependency:
+---
 
-- `seattrellis` is the standalone solve, report, project, migration, and
-  export tool;
-- `seattrellis_web` is the loopback HTTP server at `127.0.0.1` by default and
-  embeds the React workbench assets;
-- `app/src-tauri/` is the Tauri 2 desktop shell.
+## ⚡ 1. 架构定位
 
-The temporary PyO3 compatibility extension used during the v1-to-v2 migration
-was never the default solver. It was retired before the v2.0.0 release and is
-not part of the v2 source tree or release artifacts.
+`seattrellis_core` 是整个系统的单一业务真相源（Single Source of Truth）：
+- **规则编译器**：负责将高层 JSON 规则编译为高效的图论约束与代价矩阵；
+- **回溯搜索与局部搜索**：毫秒级完成约束剪枝、启发式求解与多候选生成；
+- **合规性独立复核**：对任何输出或微调方案执行全量硬约束检验，确保 100% 合规。
 
-## Build and test
+---
+
+## 🚫 2. 彻底脱离 Python / 外部运行时
+
+- **纯 Rust 编译**：v2.0.0 彻底移除了对 Python、OR-Tools、PyO3 桥接层及 Node.js 的依赖；
+- **全平台原生分发**：以单个静态二进制或轻量系统安装包的形式运行在 macOS、Windows 和 Linux 上。
+
+---
+
+## 🧪 3. 核心测试与验证
 
 ```bash
+# 运行 core 核心测试
 cargo test --locked -p seattrellis_core
-cargo test --locked -p seattrellis
-cargo clippy --all-targets -p seattrellis_core -p seattrellis -- -D warnings
+
+# 运行全量工作区静态检查
+cargo clippy --all-targets --workspace -- -D warnings
 ```
 
-The Python line remains frozen at 1.9.0 on `v1.x-maintenance` as a legacy
-package only. Its migration-era oracle/differential infrastructure was removed
-after v2.0.0 and does not affect v2 builds, runs, or distributions.
+---
+
+## 📖 相关文档
+
+- [系统架构解析](architecture.md)
+- [开发与测试指南](development.md)
