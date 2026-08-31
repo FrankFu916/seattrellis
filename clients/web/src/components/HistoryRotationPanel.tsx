@@ -15,6 +15,7 @@ import {
 import type { Locale, Translate } from "../i18n/messages";
 import { HistoryFilesCard } from "./HistoryFilesCard";
 import { ProjectWorkspacePanel } from "./ProjectWorkspacePanel";
+import { RotationMovementHeatmap } from "./RotationMovementHeatmap";
 
 type HistoryRotationPanelProps = {
   locale: Locale;
@@ -159,6 +160,13 @@ export function HistoryRotationPanel({
               <p className="muted">{t("rotation.none")}</p>
             ) : (
               <>
+                <RotationMovementHeatmap
+                  plan={rotationPlan}
+                  layoutSeats={assignments}
+                  activePeriod={activeRotationPeriod}
+                  locale={locale}
+                  t={t}
+                />
                 <div className="period-cards">
                   {rotationPlan.periods.map((period) => (
                     <button

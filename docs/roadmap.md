@@ -15,7 +15,9 @@ SeatTrellis 2.0 established the product's local-first foundation. This roadmap d
 ## Near-term priorities
 
 1. **Advanced layout editing** — selection boxes, batch seat movement, better touch interactions, and guided irregular-layout creation.
-2. **Change visualization** — seat-movement heatmaps, neighbor-history graphs, and clearer comparisons between candidates and periods.
+2. **Change visualization**
+   - **Delivered:** a generation-time seat-movement heatmap covering occupancy changes across the full generated sequence, adjacent-period movement distances when the current layout resolves both seat IDs, and aggregate movement statistics. Occupancy comes from generated snapshots, while distance uses current layout coordinates; later manual edits do not update the heatmap or rewrite those snapshots.
+   - **Still planned:** neighbor-history graphs and clearer comparisons between candidates and periods.
 3. **Web distribution proof of concept** — evaluate a browser-local WebAssembly execution path without weakening the project's privacy claims.
 4. **Accessibility and responsive design** — keyboard coverage, screen-reader semantics, reduced-motion support, and improved tablet layouts.
 5. **Signed desktop releases** — macOS notarization and Windows signing when the required publisher infrastructure is available.

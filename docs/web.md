@@ -80,7 +80,9 @@ For classes that rotate seating on a weekly, monthly, or semester basis:
 1. Specify the number of future periods in the generation step (e.g., generate 4 periods).
 2. Each period produces an independent snapshot and editing draft.
 3. The solver computes overall **desk-mate repetition rates** and **zone distribution balance** across all periods.
-4. Save the full rotation sequence directly into your class project or export group rosters.
+4. The **History & rotation → Rotation plan** view provides a seat-movement heatmap across the full generated sequence. It shows seat-occupant changes, calculates adjacent-period movement distances when both seat IDs can be resolved in the current layout, and summarizes the results. Unresolved seat changes still count as moves, with distance marked unavailable.
+5. Occupant changes come from snapshots created during that generation run, while grid distances use the current layout coordinates. Manual fine-tuning of the selected period updates only its editing draft; it does not update the heatmap or write the change back into the generated period snapshots.
+6. Save the full rotation sequence directly into your class project or export group rosters.
 
 ---
 
