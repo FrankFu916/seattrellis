@@ -40,7 +40,7 @@ Arranging classroom seating is an intricate, recurring challenge for every teach
 | 🎯 **Explainable Soft Preferences** | Intelligently balances vision needs, height gradients, academic diversity, fair seat rotations, and recent-neighbor avoidance. Every rule provides explicit scoring breakdowns. |
 | 🔀 **Multi-Candidate Comparison & Determinism** | Generates multiple high-quality candidate plans with clear trade-off metrics. Pinning the random seed ensures 100% reproducible results anytime. |
 | ✋ **Interactive Hand Tuning** | Easily swap seats, drag and drop, lock specific assignments, undo/redo, and apply intelligent constraint-aware repairs with real-time rule validation. |
-| 📅 **Multi-Term Fair Rotation** | Automatically tracks historical seating cycles, generating multi-period rotation schedules and desk-mate repetition summaries for ongoing classes. |
+| 📅 **Multi-Term Fair Rotation** | Tracks historical seating, generates multi-period rotations, and visualizes seat churn and adjacent-period movement distances with a local heatmap. |
 | 🖨️ **8 Standard Export Formats** | High-fidelity export to SVG, standalone HTML, printable HTML, PNG images, PDF, Excel (XLSX), Word (DOCX), and PowerPoint (PPTX), with one-click toggles for teacher records vs. anonymized student postings. |
 | 🔒 **Local-First & Privacy by Design** | 100% offline computation without accounts, telemetry, or third-party servers. Public exports automatically anonymize sensitive identifiers. |
 
