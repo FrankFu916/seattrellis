@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install minimum supported Rust
-        uses: dtolnay/rust-toolchain@1.88
+        uses: dtolnay/rust-toolchain@1.120
       - name: Install CJK fonts (Linux)
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - name: Install Tauri system libraries (Linux)
@@ -68,7 +68,7 @@ jobs:
           npm ci
           npm run build
         working-directory: clients/web
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@1.120
       - name: Build the Rust server and CLI (release)
         run: cargo build --locked --release -p seattrellis_web -p seattrellis
       - uses: actions/setup-python@v7
