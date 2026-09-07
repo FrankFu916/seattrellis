@@ -1,6 +1,5 @@
 # 输入数据与 Schema 格式规范
 
-[English](input-format.md) · [简体中文](input-format.zh.md)
 
 **席序（SeatTrellis）v2.0.0** 围绕**学生花名册（Roster）**、**教室网格布局（Classroom Layout）**与**排座规则集（RuleSet）**三大核心数据展开。
 
@@ -121,6 +120,6 @@
 
 ## 📖 相关文档
 
-- [排座规则手册](rules.zh.md)
-- [快速上手指南](quickstart.zh.md)
-- [班级项目工作流](project.zh.md)
+- [排座规则手册](rules.md)
+- [快速上手指南](quickstart.md)
+- [班级项目工作流](project.md)

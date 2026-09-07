@@ -1,6 +1,5 @@
 # Rule Handbook
 
-[English](rules.md) · [简体中文](rules.zh.md)
 
 In **SeatTrellis**, classroom seating rules are partitioned into two distinct tiers:
 - **Hard Constraints**: Mandatory invariants that must be unconditionally satisfied. If any hard constraint cannot be satisfied, the problem is deemed infeasible and diagnostic reasons are provided.

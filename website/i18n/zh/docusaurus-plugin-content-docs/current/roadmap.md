@@ -1,6 +1,5 @@
 # 产品路线图
 
-[English](roadmap.md) · [简体中文](roadmap.zh.md)
 
 SeatTrellis 2.0 已经建立了“本地优先”的产品基础。本文说明下一阶段的投入方向以及必须遵守的隐私边界；它是方向性规划，不代表具体发布日期承诺。
 
@@ -49,7 +48,7 @@ Vercel、Netlify 和 Cloudflare 可以托管界面与短生命周期计算，但
 
 ## 工具链策略
 
-Web 应用已使用 TypeScript 7，并通过类型检查、单元测试和浏览器 E2E 验证。Docusaurus 文档站会继续使用 TypeScript 6，直到其工具链正式支持 TypeScript 7。单独升级文档编译器几乎没有用户可见收益，因此兼容性优先于版本完全统一。
+Web 前端使用 TypeScript 7，因为当前 Vite 工具链已支持，并已通过类型检查、单元测试和浏览器 E2E。Docusaurus 文档站使用其 3.10 版本推荐的 TypeScript 6.0 过渡方案。TypeScript 7 目前尚未提供 MDX 类工具所需的编译器 API，而 Docusaurus 仍依赖 `baseUrl`；因此文档站应等待集成正式支持后再升级，不为追求版本统一而冒兼容性风险。
 
 ## 明确不做
 

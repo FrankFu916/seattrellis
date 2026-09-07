@@ -1,6 +1,5 @@
 # Web & Desktop Workbench Guide
 
-[English](web.md) · [简体中文](web.zh.md)
 
 **SeatTrellis** offers a modern interactive workbench designed for educators and administrators. Built with React 19 and driven by a local Rust backend, it delivers a responsive, local-first seating arrangement workflow without external cloud dependencies.
 

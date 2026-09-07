@@ -5,7 +5,6 @@ title: SeatTrellis Documentation
 
 # SeatTrellis Documentation Center
 
-[English](index.md) · [简体中文](index.zh.md)
 
 **SeatTrellis** is a privacy-first, local-first intelligent classroom seating planner. Whether for routine semester rotations, academic peer-tutoring, or standardized test layouts, SeatTrellis generates scientifically sound, fair, and fully explainable seating arrangements in seconds.
 

@@ -1,6 +1,5 @@
 # Input Formats & Data Schemas
 
-[English](input-format.md) · [简体中文](input-format.zh.md)
 
 **SeatTrellis v2.0.0** operates around three core inputs: the **Student Roster**, the **Classroom Layout**, and the **RuleSet**.
 

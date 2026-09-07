@@ -167,6 +167,39 @@ def unsafe_documentation_images(root: Path, paths: list[str]) -> list[str]:
     return problems
 
 
+def documentation_translation_problems(root: Path) -> list[str]:
+    """Keep the published English and Chinese documentation sets in sync."""
+    source_root = root / "docs"
+    translation_root = (
+        root
+        / "website"
+        / "i18n"
+        / "zh"
+        / "docusaurus-plugin-content-docs"
+        / "current"
+    )
+    sources = {path.name for path in source_root.glob("*.md")}
+    translations = {path.name for path in translation_root.glob("*.md")}
+    problems = []
+    for name in sorted(sources - translations):
+        problems.append(f"missing Chinese documentation translation: docs/{name}")
+    for name in sorted(translations - sources):
+        problems.append(f"orphan Chinese documentation translation: {name}")
+
+    for name in sorted(sources & translations):
+        source_text = (source_root / name).read_text(encoding="utf-8")
+        translation_text = (translation_root / name).read_text(encoding="utf-8")
+        source_han = sum("\u4e00" <= character <= "\u9fff" for character in source_text)
+        translation_han = sum(
+            "\u4e00" <= character <= "\u9fff" for character in translation_text
+        )
+        if source_han > 50:
+            problems.append(f"English documentation contains substantial Chinese: {name}")
+        if translation_han < 50:
+            problems.append(f"Chinese documentation is not translated: {name}")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -183,6 +216,7 @@ def main() -> int:
     problems = [
         *(f"tracked: {item}" for item in find_problems(tracked)),
         *unsafe_documentation_images(root, tracked),
+        *documentation_translation_problems(root),
         *(f"workspace metadata: {item}" for item in workspace_metadata(root)),
     ]
     for archive in args.archive:

@@ -1,6 +1,5 @@
 # 中文字体与高保真排版策略
 
-[English](font-strategy.md) · [简体中文](font-strategy.zh.md)
 
 在排版与打印座位表时，中文字符的清晰度、对齐精度与跨平台一致性至关重要。本文档阐述 **席序（SeatTrellis）v2.0.0** 在各类导出格式（HTML、print-html、SVG、PDF、PNG 及 Office）中的中文字体渲染与回退策略。
 
@@ -50,5 +49,5 @@
 
 ## 📖 相关文档
 
-- [多格式导出与排版打印](export.zh.md)
-- [快速上手指南](quickstart.zh.md)
+- [多格式导出与排版打印](export.md)
+- [快速上手指南](quickstart.md)

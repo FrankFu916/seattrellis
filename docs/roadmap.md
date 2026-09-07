@@ -1,6 +1,5 @@
 # Product Roadmap
 
-[English](roadmap.md) · [简体中文](roadmap.zh.md)
 
 SeatTrellis 2.0 established the product's local-first foundation. This roadmap describes the next product investments and the privacy constraints that govern them; it is directional rather than a promise of release dates.
 
@@ -51,7 +50,7 @@ For that reason, hosted compute is not the default roadmap direction. A self-hos
 
 ## Toolchain policy
 
-The web application uses TypeScript 7 because its Vite toolchain supports it and the migration is verified by type checks, unit tests, and browser E2E tests. The Docusaurus documentation site remains on TypeScript 5.9 until its toolchain officially supports TypeScript 7. Upgrading the docs compiler alone offers little user-visible value, so compatibility is more important than version uniformity.
+The web application uses TypeScript 7 because its Vite toolchain supports it and the migration is verified by type checks, unit tests, and browser E2E tests. The Docusaurus documentation site uses TypeScript 6.0 as the compatibility bridge recommended by Docusaurus 3.10. TypeScript 7 does not yet expose the compiler API required by MDX-oriented tooling, and Docusaurus still relies on `baseUrl`; the docs site should move to TypeScript 7 only after that integration is supported rather than pursuing version uniformity by itself.
 
 ## Explicit non-goals
 
