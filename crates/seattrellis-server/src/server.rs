@@ -563,6 +563,9 @@ pub(crate) fn route(
         ("GET", ["api", "v1", "editing", "drafts", draft_id]) => {
             editing_fetch_response(draft_id, editor_store)
         }
+        ("DELETE", ["api", "v1", "editing", "drafts", draft_id]) => {
+            editing_delete_response(draft_id, editor_store, solve_requests)
+        }
         ("GET", ["api", "v1", "editing", "drafts", draft_id, "audit"]) => {
             draft_audit_response(draft_id, editor_store, solve_requests)
         }
@@ -1062,6 +1065,25 @@ fn editing_fetch_response(draft_id: &str, editor_store: &EditorDraftStore) -> Re
     match editing::fetch_state(editor_store, draft_id) {
         Ok(state) => Response::json(200, serde_json::to_value(state).unwrap_or(json!({}))),
         Err(_) => json_error(404, "editor draft was not found"),
+    }
+}
+
+fn editing_delete_response(
+    draft_id: &str,
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+) -> Response {
+    let removed_editor = editing::delete_draft(editor_store, draft_id);
+    let removed_request = seattrellis_application::delete_solve_request(solve_requests, draft_id);
+    if removed_editor || removed_request {
+        Response {
+            status: 204,
+            content_type: None,
+            content_disposition: None,
+            body: Vec::new(),
+        }
+    } else {
+        json_error(404, "editor draft was not found")
     }
 }
 
@@ -4925,7 +4947,28 @@ mod tests {
             .contains("filename=\"seat-plan.svg\""));
         assert!(export.body.starts_with(b"<svg"));
 
-        // 7. Delete the roster draft (204, then 404).
+        // 7. Delete the editor draft and paired source request (204, then
+        // 404); neither sensitive in-memory copy remains reachable.
+        let del_editor = route(
+            &request("DELETE", &format!("/api/v1/editing/drafts/{draft_id}"), b""),
+            &root,
+            &editor_store,
+            &solve_requests,
+            &root,
+        );
+        assert_eq!(del_editor.status, 204);
+        assert!(editing::get_draft(&editor_store, &draft_id).is_none());
+        assert!(!solve_requests.lock().unwrap().contains_key(&draft_id));
+        let del_editor_again = route(
+            &request("DELETE", &format!("/api/v1/editing/drafts/{draft_id}"), b""),
+            &root,
+            &editor_store,
+            &solve_requests,
+            &root,
+        );
+        assert_eq!(del_editor_again.status, 404);
+
+        // 8. Delete the roster draft (204, then 404).
         let del = route(
             &request(
                 "DELETE",

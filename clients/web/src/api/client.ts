@@ -640,6 +640,14 @@ export async function fetchEditorState(draftId: string): Promise<EditorState> {
   return fetchJson<EditorState>(`/editing/drafts/${draftId}`);
 }
 
+/** Delete an in-memory editor draft and its sensitive source request. */
+export async function deleteEditorDraft(draftId: string): Promise<void> {
+  await fetchJson<void>(`/editing/drafts/${encodeURIComponent(draftId)}`, {
+    method: "DELETE",
+    keepalive: true,
+  });
+}
+
 /** Recompute the score + hard-constraint audit for a draft (B5/D5, D6). */
 export async function fetchDraftAudit(
   draftId: string,

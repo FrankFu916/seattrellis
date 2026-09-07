@@ -112,4 +112,81 @@ describe("LayoutEditorPanel", () => {
       );
     });
   });
+
+  it("selects a rectangular range and applies one atomic bulk command", async () => {
+    const user = userEvent.setup();
+    render(
+      <LayoutEditorPanel
+        roomSettings={settings}
+        t={createTranslator("en")}
+        onRoomSettingsChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByTestId("layout-editor-open"));
+    await user.click(screen.getByRole("gridcell", { name: /Row 1, column 1/ }));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("gridcell", { name: /Row 2, column 2/ }));
+    await user.keyboard("{/Shift}");
+
+    expect(screen.getByText("4 selected")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Aisle" }));
+    await waitFor(() => {
+      expect(dispatchLayoutCommand).toHaveBeenCalledWith(
+        "layout-1",
+        expect.objectContaining({
+          action: "apply",
+          operation: {
+            kind: "set_cells",
+            payload: {
+              cells: expect.arrayContaining([
+                expect.objectContaining({ row: 1, column: 1, kind: "aisle" }),
+                expect.objectContaining({ row: 2, column: 2, kind: "aisle" }),
+              ]),
+            },
+          },
+        }),
+      );
+    });
+  });
+
+  it("moves a selection without translating the whole layout", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createLayoutDraft).mockResolvedValue({
+      ...initialState,
+      cells: initialState.cells.map((cell) =>
+        cell.row === 1 && cell.column === 2
+          ? { ...cell, kind: "empty", seat_id: null }
+          : cell,
+      ),
+      usable_seat_count: 3,
+    });
+    render(
+      <LayoutEditorPanel
+        roomSettings={settings}
+        t={createTranslator("en")}
+        onRoomSettingsChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByTestId("layout-editor-open"));
+    await user.click(screen.getByRole("gridcell", { name: /Row 1, column 1/ }));
+    await user.click(screen.getByRole("button", { name: /Move selected cells right/ }));
+    await waitFor(() => {
+      expect(dispatchLayoutCommand).toHaveBeenCalledWith(
+        "layout-1",
+        expect.objectContaining({
+          action: "apply",
+          operation: {
+            kind: "translate_cells",
+            payload: {
+              cells: [{ row: 1, column: 1 }],
+              row_delta: 0,
+              column_delta: 1,
+            },
+          },
+        }),
+      );
+    });
+  });
 });

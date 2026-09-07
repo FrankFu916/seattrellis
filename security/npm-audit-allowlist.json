@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "expires": "2026-12-01",
+  "reason": "Docusaurus 3.10.2 uses image-size 2.0.2 at documentation build time. No patched upstream release exists; repository hygiene rejects every affected image format and signature, so untrusted input cannot reach these parsers.",
+  "advisories": [
+    "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
+    "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr"
+  ],
+  "packages": {
+    "image-size": "2.0.2"
+  }
+}

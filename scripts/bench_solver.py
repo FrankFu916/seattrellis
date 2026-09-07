@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASELINE = ROOT / "benchmarks" / "solver-baseline.json"
 CLI = ROOT / "target" / "release" / "seattrellis"
 SIZES = (40, 50, 60, 80)
-RUNS_PER_SIZE = 3
+RUNS_PER_SIZE = 5
 # Absolute interactive bounds (ms): a solver that exceeds these on CI-class
 # hardware is unusable regardless of the baseline drift.
 ABSOLUTE_BOUNDS_MS = {40: 1500, 50: 2500, 60: 3500, 80: 6000}

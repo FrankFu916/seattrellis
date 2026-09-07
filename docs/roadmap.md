@@ -14,7 +14,9 @@ SeatTrellis 2.0 established the product's local-first foundation. This roadmap d
 
 ## Near-term priorities
 
-1. **Advanced layout editing** — selection boxes, batch seat movement, better touch interactions, and guided irregular-layout creation.
+1. **Advanced layout editing**
+   - **Delivered:** rectangular Shift-selection, Ctrl/Command multi-selection, atomic batch cell-type changes, collision-safe batch movement, and one-step undo/redo.
+   - **Still planned:** drag selection, better touch interactions, and guided irregular-layout creation.
 2. **Change visualization**
    - **Delivered:** a generation-time seat-movement heatmap covering occupancy changes across the full generated sequence, adjacent-period movement distances when the current layout resolves both seat IDs, and aggregate movement statistics. Occupancy comes from generated snapshots, while distance uses current layout coordinates; later manual edits do not update the heatmap or rewrite those snapshots.
    - **Still planned:** neighbor-history graphs and clearer comparisons between candidates and periods.
@@ -49,7 +51,7 @@ For that reason, hosted compute is not the default roadmap direction. A self-hos
 
 ## Toolchain policy
 
-The web application uses TypeScript 7 because its Vite toolchain supports it and the migration is verified by type checks, unit tests, and browser E2E tests. The Docusaurus documentation site remains on TypeScript 6 until its toolchain officially supports TypeScript 7. Upgrading the docs compiler alone offers little user-visible value, so compatibility is more important than version uniformity.
+The web application uses TypeScript 7 because its Vite toolchain supports it and the migration is verified by type checks, unit tests, and browser E2E tests. The Docusaurus documentation site remains on TypeScript 5.9 until its toolchain officially supports TypeScript 7. Upgrading the docs compiler alone offers little user-visible value, so compatibility is more important than version uniformity.
 
 ## Explicit non-goals
 

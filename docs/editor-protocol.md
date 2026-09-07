@@ -54,6 +54,23 @@
 
 - **单调递增版本号（`revision`）**：每次成功的操作（Apply/Undo/Redo）使草稿版本号精准 +1；
 - **防冲突拦截**：若提交的 `base_revision` 与当前草稿版本不匹配，服务端将返回 `EditorProtocolConflictError` 并拒绝写入，确保多端操作安全。
+- **主动销毁**：`DELETE /api/v1/editing/drafts/{draft_id}` 同时删除编辑草稿及其对应的原始求解请求；工作台在上下文切换和页面卸载时调用该端点。
+
+## 🧱 4. 教室布局草稿命令
+
+布局编辑器使用独立但语义一致的 `LayoutCommand` 信封：`action` 为 `apply`、`undo` 或 `redo`，并通过 `base_revision` 做乐观并发控制。批量操作在后端一次校验、一次提交、一步撤销；任一格越界、座位编号重复或移动目标冲突时，整个命令都不会修改草稿。
+
+| 操作类型 (`kind`) | 载荷参数 (`payload`) | 功能描述 |
+| :--- | :--- | :--- |
+| `set_cell` | `row`, `column`, `kind`, 可选 `seat_id` | 修改单格类型。 |
+| `set_cells` | `cells: [{row, column, kind, seat_id?}]` | 原子化批量修改所选区域。 |
+| `insert_row` / `delete_row` | `index` | 插入或删除一排。 |
+| `insert_column` / `delete_column` | `index` | 插入或删除一列。 |
+| `translate` | `row_delta`, `column_delta` | 整体平移所有非空格。 |
+| `translate_cells` | `cells: [{row, column}]`, `row_delta`, `column_delta` | 原子化移动所选非空格；禁止覆盖未选中的非空格。 |
+| `mirror_horizontal` / `flip_vertical` | 空对象 | 整体左右镜像或上下翻转。 |
+
+浏览器界面支持单击单选、Shift 单击矩形选择，以及 Ctrl/Command 单击增减选择。批量改类型和移动都发送一个命令，因此撤销不会拆成多步。
 
 ---
 

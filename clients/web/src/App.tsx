@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EDITOR_PROTOCOL_VERSION,
   RosterApiError,
+  deleteEditorDraft,
   dispatchEditorCommand,
   exportDraft,
   fetchDraftAudit,
@@ -383,6 +384,7 @@ export function App() {
   const generationTokenRef = useRef(0);
   /** Same idea for async draft switches (period cards, candidate picks). */
   const draftSwitchRef = useRef(0);
+  const liveDraftIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -401,6 +403,17 @@ export function App() {
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [isDirty, t]);
+
+  useEffect(() => {
+    liveDraftIdsRef.current = currentEditorDraftIds();
+  });
+
+  useEffect(
+    () => () => {
+      releaseEditorDrafts(liveDraftIdsRef.current);
+    },
+    [],
+  );
 
   // Re-audit the current draft whenever it changes (D6): the diagnostics
   // panel and the canvas badges consume the same Rust report.
@@ -582,11 +595,29 @@ export function App() {
     setView(next);
   }
 
+  function currentEditorDraftIds(): string[] {
+    return [
+      editorDraftId,
+      ...rotationEditors.map((editor) => editor.draft_id),
+      ...candidateMetas.map((candidate) => candidate.draft_id),
+    ].filter((draftId, index, all): draftId is string =>
+      Boolean(draftId) && all.indexOf(draftId) === index,
+    );
+  }
+
+  function releaseEditorDrafts(draftIds: string[]): void {
+    if (draftIds.length === 0) {
+      return;
+    }
+    void Promise.allSettled(draftIds.map((draftId) => deleteEditorDraft(draftId)));
+  }
+
   /** Restore the initial workbench draft (context switch, D1). */
   function resetWorkbench() {
     // Invalidate any in-flight generate so its result cannot resurrect the
     // previous class's plan after the context has been reset.
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     setStudents(demoStudents);
     setRevision(0);
     setSelectedFileName(null);
@@ -646,6 +677,7 @@ export function App() {
       return;
     }
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     const { students: restoredStudents, assignments: restoredAssignments } =
       restoreSnapshotPlan(snapshot, assignments);
     if (restoredStudents.length === 0) {
@@ -660,6 +692,7 @@ export function App() {
     setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
+    setCandidateMetas([]);
     setActiveRotationPeriod(1);
     setSelectedSeatId(null);
     setSaveError(null);
@@ -681,6 +714,7 @@ export function App() {
       return;
     }
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     setSelectedRoomId(roomId);
     setRoomSettings((current) => ({ ...current, enabled: false }));
     setAssignments(
@@ -699,11 +733,13 @@ export function App() {
     setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
+    setCandidateMetas([]);
     setActiveRotationPeriod(1);
   }
 
   function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     setRoomSettings((current) => ({ ...current, ...changes }));
     setSelectedSeatId(null);
     setEditorDraftId(null);
@@ -712,6 +748,7 @@ export function App() {
     setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
+    setCandidateMetas([]);
     setActiveRotationPeriod(1);
   }
 
@@ -1151,6 +1188,7 @@ export function App() {
 
   function handleRotationLoad(result: ProjectRotationLoadResponse) {
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     const editors = result.period_editors.length
       ? result.period_editors
       : [result.editor];
@@ -1168,6 +1206,7 @@ export function App() {
     // A stale result (context/roster changed mid-flight) must not overwrite
     // the workbench: every state-resetting handler bumps this token.
     const token = generationTokenRef.current;
+    const supersededDraftIds = currentEditorDraftIds();
     setIsGenerating(true);
     setSaveError(null);
     const className = selectedFileName
@@ -1245,6 +1284,7 @@ export function App() {
         return;
       }
       setCandidateMetas(metas);
+      releaseEditorDrafts(supersededDraftIds);
       setHistory([]);
       setSelectedSeatId(null);
       setIsDirty(false);
@@ -1325,6 +1365,7 @@ export function App() {
 
   function handleRosterImported(importedStudents: Student[]) {
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     setStudents(importedStudents);
     setRevision((prev) => prev + 1);
     setAssignments(
@@ -1349,6 +1390,7 @@ export function App() {
   /** D10: fill an empty roster with the built-in sample roster. */
   function handleUseSampleRoster() {
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     setStudents(demoStudents);
     setRevision((prev) => prev + 1);
     setSelectedFileName(null);
@@ -1370,6 +1412,7 @@ export function App() {
 
   function handleStudentsEdited(editedStudents: Student[]) {
     generationTokenRef.current += 1;
+    releaseEditorDrafts(currentEditorDraftIds());
     setStudents(editedStudents);
     setRevision((prev) => prev + 1);
     setAssignments((current) =>
@@ -1392,6 +1435,7 @@ export function App() {
     setEditorRedoDepth(0);
     setRotationPlan(null);
     setRotationEditors([]);
+    setCandidateMetas([]);
     setActiveRotationPeriod(1);
   }
 

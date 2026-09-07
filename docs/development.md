@@ -9,7 +9,7 @@
 ## 🛠️ 1. 环境准备
 
 - **Rust 工具链**：MSRV 1.88+（推荐安装最新 Stable 版本）；
-- **Node.js & npm**：仅用于前端开发与构建（Node.js 20+，npm 10+）；
+- **Node.js & npm**：仅用于前端开发与构建（Node.js 22.12+，npm 10+）；
 - **开发操作系统**：macOS、Linux 或 Windows。
 
 ---
@@ -34,7 +34,13 @@ cd clients/web && npm test && npm run typecheck && cd ../..
 
 # 5. 校验 OpenAPI 契约与生成的 Schema 一致性
 cargo run -p xtask -- contract check
+
+# 6. 校验仓库隐私边界与 JavaScript 供应链审计策略
+python3 scripts/check_repository_hygiene.py
+python3 scripts/check_npm_audit.py clients/web website
 ```
+
+文档站当前通过 Docusaurus 间接使用 `image-size` 2.0.2。上游尚未发布修复版本，因此仓库只临时放行两个已审查的构建期 DoS 公告，并同时拒绝 ICNS、JPEG XL、JPEG 2000、HEIF/HEIC 与 AVIF 的扩展名和文件魔数。例外记录在 `security/npm-audit-allowlist.json`，到期后 CI 强制重新评估；任何新增 npm 公告都会直接失败。
 
 ---
 

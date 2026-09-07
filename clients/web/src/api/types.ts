@@ -452,14 +452,16 @@ export type CreateLayoutDraftRequest = {
 export type LayoutOperation = {
   kind:
     | "set_cell"
+    | "set_cells"
     | "insert_row"
     | "delete_row"
     | "insert_column"
     | "delete_column"
     | "translate"
+    | "translate_cells"
     | "mirror_horizontal"
     | "flip_vertical";
-  payload?: Record<string, string | number | null>;
+  payload?: Record<string, unknown>;
 };
 
 export type LayoutCommand = {

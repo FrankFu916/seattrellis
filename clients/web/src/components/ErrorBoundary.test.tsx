@@ -70,13 +70,9 @@ describe("ErrorBoundary (W6: top-level crash guard)", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     const reload = vi.fn();
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: { ...window.location, reload },
-    });
     const user = userEvent.setup();
     render(
-      <ErrorBoundary>
+      <ErrorBoundary onReload={reload}>
         <ThrowingChild />
       </ErrorBoundary>,
     );

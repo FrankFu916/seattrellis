@@ -871,6 +871,18 @@ pub fn get_draft(store: &EditorDraftStore, draft_id: &str) -> Option<EditorDraft
     store.lock().ok()?.get(draft_id).cloned()
 }
 
+/// Remove an editor draft immediately, returning whether it existed.
+pub fn delete_draft(store: &EditorDraftStore, draft_id: &str) -> bool {
+    let cleaned = draft_id.trim();
+    if cleaned.is_empty() {
+        return false;
+    }
+    store
+        .lock()
+        .map(|mut guard| guard.remove(cleaned).is_some())
+        .unwrap_or(false)
+}
+
 /// Build the wire state for a stored draft, or a clear error for an unknown id.
 pub fn fetch_state(store: &EditorDraftStore, draft_id: &str) -> Result<EditorState, String> {
     let guard = store
@@ -1882,6 +1894,11 @@ mod tests {
         )
         .unwrap_err()
         .contains("unknown editor draft"));
+
+        assert!(delete_draft(&store, "draft-1"));
+        assert!(get_draft(&store, "draft-1").is_none());
+        assert!(!delete_draft(&store, "draft-1"));
+        assert!(!delete_draft(&store, "   "));
     }
 
     #[test]
