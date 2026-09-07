@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 
 import {
   compileLayoutDraft,
@@ -67,7 +67,8 @@ export function LayoutEditorPanel({
   onRoomSettingsChange,
 }: LayoutEditorPanelProps) {
   const [layout, setLayout] = useState<LayoutStateResponse | null>(null);
-  const [selected, setSelected] = useState<LayoutCellState | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [selectionAnchor, setSelectionAnchor] = useState<LayoutCellState | null>(null);
   const [busy, setBusy] = useState<"opening" | "saving" | "command" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -92,6 +93,11 @@ export function LayoutEditorPanel({
       );
     });
   }, [layout]);
+
+  const selectedCells = useMemo(
+    () => cells.filter((cell) => selectedKeys.has(cellKey(cell.row, cell.column))),
+    [cells, selectedKeys],
+  );
 
   async function openEditor(): Promise<void> {
     setBusy("opening");
@@ -119,7 +125,8 @@ export function LayoutEditorPanel({
         layout: sourceLayout,
       });
       setLayout(state);
-      setSelected(null);
+      setSelectedKeys(new Set());
+      setSelectionAnchor(null);
     } catch (caught) {
       setError(
         caught instanceof LocalizedError
@@ -134,6 +141,7 @@ export function LayoutEditorPanel({
   async function runCommand(
     action: LayoutCommand["action"],
     operation?: LayoutOperation,
+    selectionAfter?: (current: Set<string>, next: LayoutStateResponse) => Set<string>,
   ): Promise<void> {
     if (!layout) {
       return;
@@ -151,13 +159,11 @@ export function LayoutEditorPanel({
       };
       const next = await dispatchLayoutCommand(layout.draft_id, command);
       setLayout(next);
-      setSelected((current) =>
-        current
-          ? next.cells.find(
-              (cell) => cell.row === current.row && cell.column === current.column,
-            ) ?? null
-          : null,
-      );
+      const available = new Set(next.cells.map((cell) => cellKey(cell.row, cell.column)));
+      setSelectedKeys((current) => {
+        const requested = selectionAfter ? selectionAfter(current, next) : current;
+        return new Set([...requested].filter((key) => available.has(key)));
+      });
     } catch (caught) {
       setError(describeApiError(caught, t, "layoutEditor.actionFailed"));
     } finally {
@@ -198,24 +204,122 @@ export function LayoutEditorPanel({
       }
     }
     setLayout(null);
-    setSelected(null);
+    setSelectedKeys(new Set());
+    setSelectionAnchor(null);
     setError(null);
     setStatus(null);
   }
 
   function setCellKind(kind: LayoutCellKind): void {
-    if (!selected) {
+    if (selectedCells.length === 0) {
       return;
     }
-    const payload: Record<string, string | number | null> = {
-      row: selected.row,
-      column: selected.column,
+    const updates = selectedCells.map((cell) => ({
+      row: cell.row,
+      column: cell.column,
       kind,
-    };
-    if (kind === "seat" && selected.seat_id) {
-      payload.seat_id = selected.seat_id;
+      ...(kind === "seat" && cell.seat_id ? { seat_id: cell.seat_id } : {}),
+    }));
+    void runCommand("apply", {
+      kind: updates.length === 1 ? "set_cell" : "set_cells",
+      payload: updates.length === 1 ? updates[0] : { cells: updates },
+    });
+  }
+
+  function selectCell(cell: LayoutCellState, event: MouseEvent<HTMLButtonElement>): void {
+    const key = cellKey(cell.row, cell.column);
+    if (event.shiftKey && selectionAnchor) {
+      const minRow = Math.min(selectionAnchor.row, cell.row);
+      const maxRow = Math.max(selectionAnchor.row, cell.row);
+      const minColumn = Math.min(selectionAnchor.column, cell.column);
+      const maxColumn = Math.max(selectionAnchor.column, cell.column);
+      setSelectedKeys(
+        new Set(
+          cells
+            .filter(
+              (candidate) =>
+                candidate.row >= minRow &&
+                candidate.row <= maxRow &&
+                candidate.column >= minColumn &&
+                candidate.column <= maxColumn,
+            )
+            .map((candidate) => cellKey(candidate.row, candidate.column)),
+        ),
+      );
+      return;
     }
-    void runCommand("apply", { kind: "set_cell", payload });
+    setSelectionAnchor(cell);
+    if (event.metaKey || event.ctrlKey) {
+      setSelectedKeys((current) => {
+        const next = new Set(current);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+      return;
+    }
+    setSelectedKeys(new Set([key]));
+  }
+
+  function moveSelection(rowDelta: number, columnDelta: number): void {
+    if (selectedCells.length === 0) {
+      void runCommand("apply", {
+        kind: "translate",
+        payload: { row_delta: rowDelta, column_delta: columnDelta },
+      });
+      return;
+    }
+    const positions = selectedCells.map(({ row, column }) => ({ row, column }));
+    void runCommand(
+      "apply",
+      {
+        kind: "translate_cells",
+        payload: {
+          cells: positions,
+          row_delta: rowDelta,
+          column_delta: columnDelta,
+        },
+      },
+      () =>
+        new Set(
+          positions.map(({ row, column }) =>
+            cellKey(row + rowDelta, column + columnDelta),
+          ),
+        ),
+    );
+  }
+
+  function canMove(rowDelta: number, columnDelta: number): boolean {
+    if (!layout) {
+      return false;
+    }
+    const chosen = selectedCells.length > 0
+      ? selectedCells.filter((cell) => cell.kind !== "empty")
+      : cells.filter((cell) => cell.kind !== "empty");
+    if (chosen.length === 0) {
+      return false;
+    }
+    const chosenKeys = new Set(chosen.map((cell) => cellKey(cell.row, cell.column)));
+    const occupiedKeys = new Set(
+      cells
+        .filter((cell) => cell.kind !== "empty")
+        .map((cell) => cellKey(cell.row, cell.column)),
+    );
+    return chosen.every((cell) => {
+      const row = cell.row + rowDelta;
+      const column = cell.column + columnDelta;
+      const target = cellKey(row, column);
+      return (
+        row >= 1 &&
+        row <= layout.rows &&
+        column >= 1 &&
+        column <= layout.columns &&
+        (!occupiedKeys.has(target) || chosenKeys.has(target))
+      );
+    });
   }
 
   return (
@@ -255,26 +359,40 @@ export function LayoutEditorPanel({
                 key={kind}
                 className={`layout-kind-button kind-${kind}`}
                 type="button"
-                aria-pressed={selected?.kind === kind}
+                aria-pressed={
+                  selectedCells.length > 0 && selectedCells.every((cell) => cell.kind === kind)
+                }
                 onClick={() => setCellKind(kind)}
-                disabled={!selected || busy !== null}
+                disabled={selectedCells.length === 0 || busy !== null}
               >
                 {t(`layoutEditor.kind.${label}`)}
               </button>
             ))}
+            <span className="layout-selection-count" role="status">
+              {t("layoutEditor.selectionCount", { count: selectedCells.length })}
+            </span>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => setSelectedKeys(new Set())}
+              disabled={selectedCells.length === 0 || busy !== null}
+            >
+              {t("layoutEditor.clearSelection")}
+            </button>
           </div>
 
           <div
             className="layout-editor-grid"
             style={{ gridTemplateColumns: `repeat(${layout.columns}, minmax(24px, 1fr))` }}
             role="grid"
+            aria-multiselectable="true"
             aria-label={t("layoutEditor.grid")}
           >
             {cells.map((cell) => (
               <button
                 key={cellKey(cell.row, cell.column)}
                 className={`layout-cell kind-${cell.kind}${
-                  selected && selected.row === cell.row && selected.column === cell.column
+                  selectedKeys.has(cellKey(cell.row, cell.column))
                     ? " is-selected"
                     : ""
                 }`}
@@ -285,7 +403,8 @@ export function LayoutEditorPanel({
                   column: cell.column,
                   kind: t(`layoutEditor.kind.${cell.kind}`),
                 })}
-                onClick={() => setSelected(cell)}
+                aria-selected={selectedKeys.has(cellKey(cell.row, cell.column))}
+                onClick={(event) => selectCell(cell, event)}
                 disabled={busy !== null}
               >
                 {cell.kind === "seat" ? cell.seat_id : cell.kind === "platform" ? "▰" : ""}
@@ -343,11 +462,8 @@ export function LayoutEditorPanel({
               type="button"
               title={t("layoutEditor.moveLeft")}
               aria-label={t("layoutEditor.moveLeft")}
-              onClick={() => void runCommand("apply", {
-                kind: "translate",
-                payload: { row_delta: 0, column_delta: -1 },
-              })}
-              disabled={busy !== null}
+              onClick={() => moveSelection(0, -1)}
+              disabled={busy !== null || !canMove(0, -1)}
             >
               ←
             </button>
@@ -356,11 +472,8 @@ export function LayoutEditorPanel({
               type="button"
               title={t("layoutEditor.moveRight")}
               aria-label={t("layoutEditor.moveRight")}
-              onClick={() => void runCommand("apply", {
-                kind: "translate",
-                payload: { row_delta: 0, column_delta: 1 },
-              })}
-              disabled={busy !== null}
+              onClick={() => moveSelection(0, 1)}
+              disabled={busy !== null || !canMove(0, 1)}
             >
               →
             </button>
@@ -369,11 +482,8 @@ export function LayoutEditorPanel({
               type="button"
               title={t("layoutEditor.moveUp")}
               aria-label={t("layoutEditor.moveUp")}
-              onClick={() => void runCommand("apply", {
-                kind: "translate",
-                payload: { row_delta: -1, column_delta: 0 },
-              })}
-              disabled={busy !== null}
+              onClick={() => moveSelection(-1, 0)}
+              disabled={busy !== null || !canMove(-1, 0)}
             >
               ↑
             </button>
@@ -382,11 +492,8 @@ export function LayoutEditorPanel({
               type="button"
               title={t("layoutEditor.moveDown")}
               aria-label={t("layoutEditor.moveDown")}
-              onClick={() => void runCommand("apply", {
-                kind: "translate",
-                payload: { row_delta: 1, column_delta: 0 },
-              })}
-              disabled={busy !== null}
+              onClick={() => moveSelection(1, 0)}
+              disabled={busy !== null || !canMove(1, 0)}
             >
               ↓
             </button>

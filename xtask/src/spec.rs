@@ -180,6 +180,15 @@ fn paths() -> Value {
                     "200": { "description": "EditorState", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EditorState" } } } },
                     "404": { "$ref": "#/components/responses/NotFound" }
                 }
+            },
+            "delete": {
+                "tags": ["editing"],
+                "summary": "Delete an editor draft and its source request",
+                "parameters": [path_param("draft_id")],
+                "responses": {
+                    "204": { "description": "Deleted" },
+                    "404": { "$ref": "#/components/responses/NotFound" }
+                }
             }
         },
         "/api/v1/editing/drafts/{draft_id}/commands": {

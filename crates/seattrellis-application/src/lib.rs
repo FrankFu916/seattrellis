@@ -43,6 +43,18 @@ pub fn store_solve_request(
     Ok(())
 }
 
+/// Remove the sensitive solve request paired with an editor draft.
+pub fn delete_solve_request(store: &SolveRequestStore, draft_id: &str) -> bool {
+    let cleaned = draft_id.trim();
+    if cleaned.is_empty() {
+        return false;
+    }
+    store
+        .lock()
+        .map(|mut guard| guard.remove(cleaned).is_some())
+        .unwrap_or(false)
+}
+
 /// A domain error from the application layer. `status` is the HTTP status
 /// the transport should reply with; `code` is the stable machine-readable
 /// error code; `message` is the human-facing detail.
@@ -119,5 +131,15 @@ mod tests {
             guard.contains_key(&format!("draft-{:06}", MAX_SOLVE_REQUESTS + 3)),
             "newest survives"
         );
+    }
+
+    #[test]
+    fn solve_request_can_be_deleted_immediately() {
+        let store = SolveRequestStore::default();
+        store_solve_request(&store, "draft-1".to_string(), json!({"student": "S1"})).unwrap();
+        assert!(delete_solve_request(&store, " draft-1 "));
+        assert!(store.lock().unwrap().is_empty());
+        assert!(!delete_solve_request(&store, "draft-1"));
+        assert!(!delete_solve_request(&store, ""));
     }
 }

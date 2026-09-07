@@ -242,23 +242,10 @@ def test_import_solve_edit_export_workflow(
     page.get_by_role("button", name="Export", exact=True).click()
     # Quick-export SVG straight from the context menu: the default export
     # is print-html now (D9), so the vector path is exercised explicitly.
-    export_btn = page.get_by_role("button", name="Export", exact=True)
-    print("EXPORT BTN COUNT:", export_btn.count())
-    print("BTN ENABLED:", export_btn.is_enabled(), "VISIBLE:", export_btn.is_visible())
-    print("BTN BOX:", export_btn.bounding_box())
-    export_btn.evaluate("(el) => el.click()")
-    page.wait_for_timeout(600)
-    print("AFTER EVAL CLICK MENU OPEN:", page.locator(".ctx-menu").count())
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(300)
-    export_btn.click()
-    page.wait_for_timeout(600)
-    print("AFTER REAL CLICK MENU OPEN:", page.locator(".ctx-menu").count())
-    print("MENU ITEMS:", page.get_by_role("menuitem").all_text_contents())
-    print("DIALOG:", page.locator(".preview-dialog").count())
-    print("BACKDROP:", page.locator(".dialog-backdrop").count())
+    svg_item = page.get_by_role("menuitem", name=re.compile("^SVG", re.IGNORECASE))
+    expect(svg_item).to_be_visible()
     with page.expect_download(timeout=30_000) as download_info:
-        page.get_by_role("menuitem", name=re.compile("^SVG", re.IGNORECASE)).click()
+        svg_item.click()
     download = download_info.value
     # Close the preview dialog the quick export opened (it covers the
     # context bar) so the settings entry stays reachable.

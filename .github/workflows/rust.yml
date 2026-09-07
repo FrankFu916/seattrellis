@@ -101,7 +101,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.88
+      # Keep the action ref on its stable channel and pin the compiler through
+      # its input. Otherwise Dependabot mistakes 1.88 for an action release
+      # and proposes nonexistent Rust versions (for example 1.120).
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88
       - name: Install CJK fonts (Linux)
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - name: Install Tauri system libraries (Linux)

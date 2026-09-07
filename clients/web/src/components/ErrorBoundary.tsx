@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 type ErrorBoundaryProps = {
   children: ReactNode;
+  onReload?: () => void;
 };
 
 type ErrorBoundaryState = {
@@ -14,6 +15,10 @@ function prefersChinese(): boolean {
     typeof navigator.language === "string" &&
     navigator.language.toLowerCase().startsWith("zh")
   );
+}
+
+function reloadWindow(): void {
+  window.location.reload();
 }
 
 /**
@@ -78,7 +83,7 @@ export class ErrorBoundary extends Component<
         >
           {`${error.name}: ${error.message}`}
         </pre>
-        <button type="button" onClick={() => window.location.reload()}>
+        <button type="button" onClick={this.props.onReload ?? reloadWindow}>
           {zh ? "刷新页面" : "Reload"}
         </button>
       </div>

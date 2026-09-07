@@ -21,6 +21,48 @@ PRIVATE_COMPONENTS = {
     "snapshots",
 }
 FORBIDDEN_NAMES = {".DS_Store", ".env"}
+FORBIDDEN_IMAGE_SUFFIXES = {
+    ".avif",
+    ".heic",
+    ".heif",
+    ".icns",
+    ".j2k",
+    ".jp2",
+    ".jxl",
+}
+
+
+def _unsafe_image_format(data: bytes) -> str | None:
+    """Identify formats affected by the unpatched image-size build-time DoS.
+
+    Docusaurus currently pulls image-size 2.0.2, whose ICNS, JPEG XL and
+    HEIF-family parsers can loop forever on crafted input. Documentation
+    assets are repository-controlled, so rejecting both their extensions and
+    file signatures closes the reachable attack surface until upstream ships
+    a patched dependency.
+    """
+    if data.startswith(b"icns"):
+        return "ICNS"
+    if data.startswith(b"\xff\x0a"):
+        return "JPEG XL codestream"
+    if data.startswith(b"\x00\x00\x00\x0cJXL \r\n\x87\n"):
+        return "JPEG XL container"
+    if data.startswith(b"\x00\x00\x00\x0cjP  \r\n\x87\n"):
+        return "JPEG 2000"
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        brand = data[8:12]
+        if brand in {
+            b"avif",
+            b"avis",
+            b"heic",
+            b"heix",
+            b"hevc",
+            b"hevx",
+            b"mif1",
+            b"msf1",
+        }:
+            return f"ISO BMFF ({brand.decode('ascii')})"
+    return None
 
 
 def _is_allowed_example_snapshot(path: PurePosixPath) -> bool:
@@ -100,6 +142,31 @@ def workspace_metadata(root: Path) -> list[str]:
     ]
 
 
+def unsafe_documentation_images(root: Path, paths: list[str]) -> list[str]:
+    problems = []
+    for relative in paths:
+        parts = PurePosixPath(relative).parts
+        if not parts or parts[0] not in {"docs", "website"}:
+            continue
+        path = root / relative
+        if not path.is_file():
+            continue
+        suffix = path.suffix.lower()
+        if suffix in FORBIDDEN_IMAGE_SUFFIXES:
+            problems.append(f"unsafe documentation image extension: {relative}")
+            continue
+        try:
+            signature = _unsafe_image_format(path.read_bytes()[:32])
+        except OSError as error:
+            problems.append(f"cannot inspect tracked file {relative}: {error}")
+            continue
+        if signature is not None:
+            problems.append(
+                f"unsafe documentation image signature ({signature}): {relative}"
+            )
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -112,8 +179,10 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
 
+    tracked = tracked_paths(root)
     problems = [
-        *(f"tracked: {item}" for item in find_problems(tracked_paths(root))),
+        *(f"tracked: {item}" for item in find_problems(tracked)),
+        *unsafe_documentation_images(root, tracked),
         *(f"workspace metadata: {item}" for item in workspace_metadata(root)),
     ]
     for archive in args.archive:

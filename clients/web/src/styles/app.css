@@ -1561,9 +1561,17 @@ input:focus-visible,
 
 .layout-editor-toolbar,
 .layout-editor-actions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.layout-selection-count {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .layout-kind-button {

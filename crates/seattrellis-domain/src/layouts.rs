@@ -59,6 +59,8 @@ pub const MAX_LAYOUT_ROWS: i32 = 50;
 pub const MAX_LAYOUT_COLUMNS: i32 = 50;
 /// Maximum number of grid cells (`rows * columns`).
 pub const MAX_LAYOUT_CELLS: i32 = 1_000;
+/// Maximum number of abandoned visual-layout drafts retained in memory.
+pub const MAX_LAYOUT_DRAFTS: usize = 32;
 
 const ACTION_APPLY: &str = "apply";
 const ACTION_UNDO: &str = "undo";
@@ -67,11 +69,13 @@ const ACTION_REDO: &str = "redo";
 /// Supported layout operation kinds, in the order used by error messages.
 const OPERATION_KINDS: &[&str] = &[
     "set_cell",
+    "set_cells",
     "insert_row",
     "delete_row",
     "insert_column",
     "delete_column",
     "translate",
+    "translate_cells",
     "mirror_horizontal",
     "flip_vertical",
 ];
@@ -347,36 +351,27 @@ impl LayoutDraft {
         let mut columns = self.columns;
         match operation.kind.as_str() {
             "set_cell" => {
-                let row = required_int(&operation.payload, "set_cell", "row")?;
-                let column = required_int(&operation.payload, "set_cell", "column")?;
-                self.require_position(row, column)?;
-                let raw_kind = operation
-                    .payload
-                    .get("kind")
-                    .and_then(JsonValue::as_str)
-                    .ok_or_else(|| {
-                        "Cell kind must be seat, aisle, platform, or empty.".to_string()
-                    })?;
-                let kind = parse_cell_kind(raw_kind)?;
-                let seat_id = if kind == LayoutCellKind::Seat {
-                    match operation.payload.get("seat_id") {
-                        Some(JsonValue::String(value)) if !value.trim().is_empty() => {
-                            Some(value.trim().to_string())
-                        }
-                        _ => Some(self.next_seat_id(row, column)),
+                apply_cell_update(
+                    self,
+                    &mut cells,
+                    &JsonValue::Object(operation.payload.clone()),
+                )?;
+            }
+            "set_cells" => {
+                let updates = required_array(&operation.payload, "set_cells", "cells")?;
+                if updates.is_empty() {
+                    return Err("set_cells requires at least one cell.".to_string());
+                }
+                let mut positions = HashSet::new();
+                for update in updates {
+                    let position = apply_cell_update(self, &mut cells, update)?;
+                    if !positions.insert(position) {
+                        return Err(format!(
+                            "set_cells contains duplicate position row {}, column {}.",
+                            position.0, position.1
+                        ));
                     }
-                } else {
-                    None
-                };
-                cells.insert(
-                    (row, column),
-                    LayoutCell {
-                        row,
-                        column,
-                        kind,
-                        seat_id,
-                    },
-                );
+                }
             }
             "insert_row" => {
                 let index = required_int(&operation.payload, "insert_row", "index")?;
@@ -502,6 +497,61 @@ impl LayoutDraft {
                 }
                 cells = moved;
             }
+            "translate_cells" => {
+                let selected = required_positions(&operation.payload, "translate_cells")?;
+                for &(row, column) in &selected {
+                    self.require_position(row, column)?;
+                }
+                let row_delta = required_int(&operation.payload, "translate_cells", "row_delta")?;
+                let column_delta =
+                    required_int(&operation.payload, "translate_cells", "column_delta")?;
+                if row_delta == 0 && column_delta == 0 {
+                    return Ok((rows, columns, cells));
+                }
+                let selected: HashSet<(i32, i32)> = selected.into_iter().collect();
+                let moving: Vec<LayoutCell> = selected
+                    .iter()
+                    .filter_map(|position| cells.get(position).cloned())
+                    .filter(|cell| cell.kind != LayoutCellKind::Empty)
+                    .collect();
+                if moving.is_empty() {
+                    return Err(
+                        "translate_cells must select at least one non-empty cell.".to_string()
+                    );
+                }
+                let mut targets = HashSet::new();
+                for cell in &moving {
+                    let target = (cell.row + row_delta, cell.column + column_delta);
+                    self.require_position(target.0, target.1)?;
+                    if !targets.insert(target) {
+                        return Err("Translated cells would overlap.".to_string());
+                    }
+                    if cells.get(&target).is_some_and(|occupant| {
+                        occupant.kind != LayoutCellKind::Empty && !selected.contains(&target)
+                    }) {
+                        return Err(format!(
+                            "Translated cells would collide at row {}, column {}.",
+                            target.0, target.1
+                        ));
+                    }
+                }
+                for cell in &moving {
+                    cells.remove(&(cell.row, cell.column));
+                }
+                for cell in moving {
+                    let row = cell.row + row_delta;
+                    let column = cell.column + column_delta;
+                    cells.insert(
+                        (row, column),
+                        LayoutCell {
+                            row,
+                            column,
+                            kind: cell.kind,
+                            seat_id: cell.seat_id,
+                        },
+                    );
+                }
+            }
             "mirror_horizontal" => {
                 let mut mirrored: HashMap<(i32, i32), LayoutCell> = HashMap::new();
                 for cell in self.cells.values() {
@@ -573,9 +623,13 @@ impl LayoutDraft {
         Ok(())
     }
 
-    fn next_seat_id(&self, row: i32, column: i32) -> String {
-        let existing: HashSet<String> = self
-            .cells
+    fn next_seat_id_for(
+        &self,
+        cells: &HashMap<(i32, i32), LayoutCell>,
+        row: i32,
+        column: i32,
+    ) -> String {
+        let existing: HashSet<String> = cells
             .values()
             .filter_map(|cell| cell.seat_id.clone())
             .collect();
@@ -641,6 +695,11 @@ pub fn create_layout_draft(store: &LayoutDraftStore, request_json: &str) -> Resu
         ));
     }
     guard.insert(draft.draft_id.clone(), draft);
+    if guard.len() > MAX_LAYOUT_DRAFTS {
+        if let Some(oldest) = guard.keys().min().cloned() {
+            guard.remove(&oldest);
+        }
+    }
     Ok(json)
 }
 
@@ -1043,6 +1102,81 @@ fn parse_cell_kind(raw: &str) -> Result<LayoutCellKind, String> {
         "empty" => Ok(LayoutCellKind::Empty),
         _ => Err("Cell kind must be seat, aisle, platform, or empty.".to_string()),
     }
+}
+
+fn required_array<'a>(
+    payload: &'a JsonMap<String, JsonValue>,
+    operation: &str,
+    field: &str,
+) -> Result<&'a Vec<JsonValue>, String> {
+    payload
+        .get(field)
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| format!("{operation}.{field} must be an array."))
+}
+
+fn apply_cell_update(
+    draft: &LayoutDraft,
+    cells: &mut HashMap<(i32, i32), LayoutCell>,
+    value: &JsonValue,
+) -> Result<(i32, i32), String> {
+    let payload = value
+        .as_object()
+        .ok_or_else(|| "Each cell update must be an object.".to_string())?;
+    let row = required_int(payload, "cell", "row")?;
+    let column = required_int(payload, "cell", "column")?;
+    draft.require_position(row, column)?;
+    let raw_kind = payload
+        .get("kind")
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| "Cell kind must be seat, aisle, platform, or empty.".to_string())?;
+    let kind = parse_cell_kind(raw_kind)?;
+    let seat_id = if kind == LayoutCellKind::Seat {
+        match payload.get("seat_id") {
+            Some(JsonValue::String(value)) if !value.trim().is_empty() => {
+                Some(value.trim().to_string())
+            }
+            _ => Some(draft.next_seat_id_for(cells, row, column)),
+        }
+    } else {
+        None
+    };
+    cells.insert(
+        (row, column),
+        LayoutCell {
+            row,
+            column,
+            kind,
+            seat_id,
+        },
+    );
+    Ok((row, column))
+}
+
+fn required_positions(
+    payload: &JsonMap<String, JsonValue>,
+    operation: &str,
+) -> Result<Vec<(i32, i32)>, String> {
+    let values = required_array(payload, operation, "cells")?;
+    if values.is_empty() {
+        return Err(format!("{operation} requires at least one cell."));
+    }
+    let mut positions = Vec::with_capacity(values.len());
+    let mut unique = HashSet::new();
+    for value in values {
+        let cell = value
+            .as_object()
+            .ok_or_else(|| format!("Each {operation} cell must be an object."))?;
+        let row = required_int(cell, operation, "row")?;
+        let column = required_int(cell, operation, "column")?;
+        if !unique.insert((row, column)) {
+            return Err(format!(
+                "{operation} contains duplicate position row {row}, column {column}."
+            ));
+        }
+        positions.push((row, column));
+    }
+    Ok(positions)
 }
 
 fn validate_dimensions(rows: i32, columns: i32) -> Result<(), String> {
@@ -1463,6 +1597,68 @@ mod tests {
     }
 
     #[test]
+    fn set_cells_is_one_atomic_undo_step() {
+        let store = store();
+        let state = create_rect(&store, 2, 3);
+        let state = dispatch(
+            &store,
+            &state,
+            "bulk",
+            "apply",
+            Some(json!({
+                "kind": "set_cells",
+                "payload": {"cells": [
+                    {"row": 1, "column": 1, "kind": "aisle"},
+                    {"row": 1, "column": 2, "kind": "platform"},
+                    {"row": 1, "column": 3, "kind": "empty"}
+                ]}
+            })),
+        );
+        assert_eq!(state["revision"], 1);
+        assert_eq!(state["undo_depth"], 1);
+        assert_eq!(state["usable_seat_count"], 3);
+        assert_eq!(cell(&state, 1, 1)["kind"], "aisle");
+        assert_eq!(cell(&state, 1, 2)["kind"], "platform");
+        assert_eq!(cell(&state, 1, 3)["kind"], "empty");
+
+        let state = dispatch(&store, &state, "undo-bulk", "undo", None);
+        assert_eq!(state["usable_seat_count"], 6);
+        assert_eq!(cell(&state, 1, 1)["seat_id"], "R1C1");
+        assert_eq!(cell(&state, 1, 2)["seat_id"], "R1C2");
+        assert_eq!(cell(&state, 1, 3)["seat_id"], "R1C3");
+    }
+
+    #[test]
+    fn set_cells_rejects_duplicate_positions_without_mutating() {
+        let store = store();
+        let state = create_rect(&store, 2, 2);
+        let error = dispatch_layout_command(
+            &store,
+            state["draft_id"].as_str().unwrap(),
+            &json!({
+                "command_id": "duplicate-position",
+                "draft_id": state["draft_id"],
+                "base_revision": 0,
+                "action": "apply",
+                "operation": {
+                    "kind": "set_cells",
+                    "payload": {"cells": [
+                        {"row": 1, "column": 1, "kind": "aisle"},
+                        {"row": 1, "column": 1, "kind": "empty"}
+                    ]}
+                }
+            })
+            .to_string(),
+        )
+        .expect_err("duplicate position");
+        assert!(error.contains("duplicate position"), "{error}");
+        let after = get_layout_state(&store, state["draft_id"].as_str().unwrap()).unwrap();
+        let after: JsonValue = serde_json::from_str(&after).unwrap();
+        assert_eq!(after["revision"], 0);
+        assert_eq!(after["usable_seat_count"], 4);
+    }
+
+    #[test]
     fn insert_and_delete_rows_shift_seats() {
         let store = store();
         let state = create_rect(&store, 2, 2);
@@ -1632,6 +1828,79 @@ mod tests {
         );
         assert_eq!(after["usable_seat_count"], 4);
         assert_eq!(after["undo_depth"], 0);
+    }
+
+    #[test]
+    fn translate_cells_moves_only_selection_and_preserves_ids() {
+        let store = store();
+        let mut state = create_rect(&store, 2, 3);
+        state = dispatch(
+            &store,
+            &state,
+            "clear-targets",
+            "apply",
+            Some(json!({
+                "kind": "set_cells",
+                "payload": {"cells": [
+                    {"row": 2, "column": 1, "kind": "empty"},
+                    {"row": 2, "column": 2, "kind": "empty"}
+                ]}
+            })),
+        );
+        let state = dispatch(
+            &store,
+            &state,
+            "move-selection",
+            "apply",
+            Some(json!({
+                "kind": "translate_cells",
+                "payload": {
+                    "cells": [
+                        {"row": 1, "column": 1},
+                        {"row": 1, "column": 2}
+                    ],
+                    "row_delta": 1,
+                    "column_delta": 0
+                }
+            })),
+        );
+        assert_eq!(cell(&state, 1, 1)["kind"], "empty");
+        assert_eq!(cell(&state, 1, 2)["kind"], "empty");
+        assert_eq!(cell(&state, 2, 1)["seat_id"], "R1C1");
+        assert_eq!(cell(&state, 2, 2)["seat_id"], "R1C2");
+        assert_eq!(cell(&state, 1, 3)["seat_id"], "R1C3");
+        assert_eq!(cell(&state, 2, 3)["seat_id"], "R2C3");
+    }
+
+    #[test]
+    fn translate_cells_collision_is_atomic() {
+        let store = store();
+        let state = create_rect(&store, 2, 2);
+        let error = dispatch_layout_command(
+            &store,
+            state["draft_id"].as_str().unwrap(),
+            &json!({
+                "command_id": "collision",
+                "draft_id": state["draft_id"],
+                "base_revision": 0,
+                "action": "apply",
+                "operation": {
+                    "kind": "translate_cells",
+                    "payload": {
+                        "cells": [{"row": 1, "column": 1}],
+                        "row_delta": 0,
+                        "column_delta": 1
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect_err("occupied target");
+        assert!(error.contains("collide"), "{error}");
+        let after = get_layout_state(&store, state["draft_id"].as_str().unwrap()).unwrap();
+        let after: JsonValue = serde_json::from_str(&after).unwrap();
+        assert_eq!(after["revision"], 0);
+        assert_eq!(cell(&after, 1, 1)["seat_id"], "R1C1");
     }
 
     #[test]
@@ -1957,6 +2226,19 @@ mod tests {
             !delete_layout_draft_in_store(&store, "   "),
             "blank id misses"
         );
+    }
+
+    #[test]
+    fn layout_store_evicts_oldest_draft_at_capacity() {
+        let store = store();
+        let first = create_rect(&store, 1, 1);
+        let first_id = first["draft_id"].as_str().unwrap().to_string();
+        for _ in 0..MAX_LAYOUT_DRAFTS {
+            create_rect(&store, 1, 1);
+        }
+        let guard = store.lock().unwrap();
+        assert_eq!(guard.len(), MAX_LAYOUT_DRAFTS);
+        assert!(!guard.contains_key(&first_id));
     }
 
     #[test]

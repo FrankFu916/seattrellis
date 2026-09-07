@@ -49,6 +49,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Keep one VM-backed jsdom environment per worker instead of recreating
+    // the full DOM runtime for every test file (Vitest 5 recommendation).
+    pool: "vmThreads",
     globals: true,
     setupFiles: "./src/test/setup.ts",
     css: true,
