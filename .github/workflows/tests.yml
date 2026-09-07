@@ -41,7 +41,7 @@ jobs:
         working-directory: clients/web
       # Test the whole workspace at MSRV, not just core: a per-crate list
       # previously skipped other crates and let an MSRV compile break ship
-      # undetected. The PyO3 shim is excluded from the workspace already.
+      # undetected.
       - name: Test the Rust workspace at MSRV
         run: cargo test --locked --workspace
 
