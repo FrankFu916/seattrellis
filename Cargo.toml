@@ -1,10 +1,8 @@
 # SeatTrellis root production workspace (M1-01).
 #
 # Unifies the former native/, app/ and app/src-tauri/ workspaces into a single
-# lockfile and build graph. The PyO3 compatibility crate (seattrellis_native)
-# stays a member but is excluded from default-members so `cargo build` /
-# `cargo test` at the root never compiles it (plan: PyO3 isolated from
-# production default-members; removed before beta.1).
+# lockfile and build graph. The legacy PyO3 compatibility crate has been
+# removed; all production entry points use the Rust workspace below.
 
 [workspace]
 members = [

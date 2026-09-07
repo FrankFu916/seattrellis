@@ -59,10 +59,10 @@ jobs:
       # Test every crate: the previous per-crate list silently skipped
       # schema/domain/export/io/rules/application/server, which let an
       # MSRV compile break in seattrellis-schema ship undetected
-      # (schema audit 2026-08-12). The PyO3 shim stays excluded.
-      - name: Test the workspace (except the PyO3 shim)
+      # (schema audit 2026-08-12).
+      - name: Test the workspace
         run: cargo test --locked --workspace
-      - name: Clippy (workspace, except the PyO3 shim)
+      - name: Clippy (workspace)
         run: cargo clippy --all-targets --workspace -- -D warnings
 
   contract-drift:
@@ -121,14 +121,13 @@ jobs:
             patchelf
       # The full workspace must compile at MSRV, not just core: testing only
       # core previously let an MSRV compile break in another crate ship
-      # undetected (see the workspace test matrix note above). The PyO3 shim
-      # is excluded from the workspace already.
+      # undetected (see the workspace test matrix note above).
       - name: Build the React workbench (server embeds clients/web/dist)
         run: |
           npm ci
           npm run build
         working-directory: clients/web
-      - name: Test the workspace at MSRV (except the PyO3 shim)
+      - name: Test the workspace at MSRV
         run: cargo test --locked --workspace
 
   long-run-gates:
