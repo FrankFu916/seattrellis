@@ -1,6 +1,5 @@
 # 排座规则手册
 
-[English](rules.md) · [简体中文](rules.zh.md)
 
 在 **席序（SeatTrellis）** 中，排座规则被严格划分为两类：
 - **硬约束（Hard Constraints）**：必须无条件满足的底线规则。若无法全部满足，方案判定为不可行并提示冲突原因。

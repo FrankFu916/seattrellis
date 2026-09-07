@@ -1,6 +1,5 @@
 # Export Formats & Printing Guide
 
-[English](export.md) · [简体中文](export.zh.md)
 
 **SeatTrellis v2.0.0** includes a high-performance, native Rust rendering pipeline. Export seating arrangements in milliseconds to vector graphics, raster images, office documents, and print-ready sheets without external dependencies on Microsoft Office, LibreOffice, Python, or browser headless runtimes.
 

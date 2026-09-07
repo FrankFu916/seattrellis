@@ -1,6 +1,5 @@
 # 多格式导出与排版打印指南
 
-[English](export.md) · [简体中文](export.zh.md)
 
 **席序（SeatTrellis）v2.0.0** 内置全套由纯 Rust 实现的本地渲染器。无需依赖 Microsoft Office、WPS、浏览器环境或 Python 脚本，即可毫秒级生成高质量矢量图、高清位图、可编辑办公文档及打印专用排版。
 
@@ -95,13 +94,13 @@ seattrellis project-export \
 ## 📐 4. 打印排版细节与字体策略
 
 1. **A4 纸张自适应算法**：`print-html` 模板会根据当前班级中最长学生姓名与教室列数，动态计算最优字号与单元格间距，确保 100% 容纳在一页 A4 纸内，避免跨页断行。
-2. **本地字体光栅化**：PNG 和 PDF 导出在生成时自动搜寻并加载操作系统的中文字体（如苹方、微软雅黑、思源黑体等）。详情请参考 [中文字体策略](font-strategy.zh.md)。
+2. **本地字体光栅化**：PNG 和 PDF 导出在生成时自动搜寻并加载操作系统的中文字体（如苹方、微软雅黑、思源黑体等）。详情请参考 [中文字体策略](font-strategy.md)。
 
 ---
 
 ## 📖 相关参考
 
-- [快速上手指南](quickstart.zh.md)
-- [Web 与桌面工作台指南](web.zh.md)
-- [中文字体策略](font-strategy.zh.md)
-- [班级项目工作流](project.zh.md)
+- [快速上手指南](quickstart.md)
+- [Web 与桌面工作台指南](web.md)
+- [中文字体策略](font-strategy.md)
+- [班级项目工作流](project.md)

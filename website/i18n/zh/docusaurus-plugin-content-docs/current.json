@@ -1,0 +1,50 @@
+{
+  "version.label": {
+    "message": "当前版本",
+    "description": "The label for version current"
+  },
+  "sidebar.docs.category.Getting Started": {
+    "message": "快速开始",
+    "description": "The label for category 'Getting Started' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.CLI": {
+    "message": "CLI",
+    "description": "The label for category 'CLI' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Web Workbench": {
+    "message": "Web 工作台",
+    "description": "The label for category 'Web Workbench' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Input & Rules": {
+    "message": "输入与规则",
+    "description": "The label for category 'Input & Rules' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Project Workflow": {
+    "message": "项目工作流",
+    "description": "The label for category 'Project Workflow' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Candidates & Scoring": {
+    "message": "候选方案与评分",
+    "description": "The label for category 'Candidates & Scoring' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Export": {
+    "message": "导出",
+    "description": "The label for category 'Export' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.History & Rotation": {
+    "message": "历史与轮换",
+    "description": "The label for category 'History & Rotation' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Privacy": {
+    "message": "隐私",
+    "description": "The label for category 'Privacy' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Troubleshooting": {
+    "message": "故障排查",
+    "description": "The label for category 'Troubleshooting' in sidebar 'docs'"
+  },
+  "sidebar.docs.category.Developer Reference": {
+    "message": "开发者参考",
+    "description": "The label for category 'Developer Reference' in sidebar 'docs'"
+  }
+}

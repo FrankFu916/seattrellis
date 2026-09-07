@@ -28,15 +28,16 @@ const config: Config = {
   },
 
   i18n: {
-    // The Chinese docs currently live beside the English source files rather
-    // than in Docusaurus's translated-content tree. Use the curated /zh/ page
-    // until those files are ready for a real zh-Hans locale.
     defaultLocale: 'en',
-    locales: ['en'],
+    locales: ['en', 'zh'],
     localeConfigs: {
       en: {
         label: 'English',
         htmlLang: 'en',
+      },
+      zh: {
+        label: '简体中文',
+        htmlLang: 'zh-CN',
       },
     },
   },
@@ -53,8 +54,10 @@ const config: Config = {
           // site dir), so the edit URL must be computed from the doc path
           // relative to docs/ — a plain editUrl prefix would produce
           // `edit/main/../docs/...` URLs that normalize to a 404 on GitHub.
-          editUrl: ({ docPath }) =>
-            `https://github.com/FrankFu916/seattrellis/edit/main/docs/${docPath}`,
+          editUrl: ({ docPath, locale }) =>
+            locale === 'zh'
+              ? `https://github.com/FrankFu916/seattrellis/edit/main/website/i18n/zh/docusaurus-plugin-content-docs/current/${docPath}`
+              : `https://github.com/FrankFu916/seattrellis/edit/main/docs/${docPath}`,
         },
         blog: false,
         theme: {
@@ -102,20 +105,8 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          type: 'dropdown',
-          label: 'Language',
-          className: 'navbar-language',
+          type: 'localeDropdown',
           position: 'right',
-          items: [
-            {
-              label: 'English',
-              to: '/',
-            },
-            {
-              label: '简体中文',
-              to: '/zh/',
-            },
-          ],
         },
         {
           href: 'https://github.com/FrankFu916/seattrellis',
@@ -131,8 +122,7 @@ const config: Config = {
         {
           title: 'Documentation',
           items: [
-            { label: 'English', to: '/' },
-            { label: 'Simplified Chinese', to: '/zh/' },
+            { label: 'Home', to: '/' },
           ],
         },
         {

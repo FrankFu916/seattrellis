@@ -1,6 +1,5 @@
 # Class Project Workflow Guide
 
-[English](project.md) · [简体中文](project.zh.md)
 
 The **Class Project** workflow is designed for long-term, ongoing classroom management. It utilizes a lightweight JSON manifest (`seattrellis.project.json`) that manages rosters, room layouts, rules, historical snapshots, and output targets with relative paths.
 

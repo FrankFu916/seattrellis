@@ -1,6 +1,5 @@
 # 班级项目（Project）工作流指南
 
-[English](project.md) · [简体中文](project.zh.md)
 
 **班级项目（Project）** 是 SeatTrellis 专为长期班级管理设计的本地文件工作流。它使用一个轻量级的 JSON 清单文件（`seattrellis.project.json`），将学生名单、教室布局、排座规则、历史轮换与输出目录统一组织，实现免反复配置、一键求解与全周期轮换。
 
@@ -112,6 +111,6 @@ seattrellis project-pack --project my-class/seattrellis.project.json --output cl
 
 ## 📖 相关文档
 
-- [快速上手指南](quickstart.zh.md)
-- [多格式导出与排版打印](export.zh.md)
-- [Web 与桌面工作台指南](web.zh.md)
+- [快速上手指南](quickstart.md)
+- [多格式导出与排版打印](export.md)
+- [Web 与桌面工作台指南](web.md)

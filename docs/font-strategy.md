@@ -1,6 +1,5 @@
 # Font Rendering & Typography Strategy
 
-[English](font-strategy.md) · [简体中文](font-strategy.zh.md)
 
 Accurate character rendering, alignment precision, and cross-platform consistency are crucial for classroom seating charts. This document outlines how **SeatTrellis v2.0.0** handles fonts across all export formats (HTML, print-html, SVG, PDF, PNG, and Office documents).
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from check_npm_audit import advisory_urls
 from check_repository_hygiene import (
     _unsafe_image_format,
+    documentation_translation_problems,
     unsafe_documentation_images,
 )
 
@@ -66,6 +67,32 @@ class NpmAuditPolicyTests(unittest.TestCase):
             "b": {"via": ["a"]},
         }
         self.assertEqual(advisory_urls(vulnerabilities["a"], vulnerabilities, {"a"}), set())
+
+
+class DocumentationTranslationTests(unittest.TestCase):
+    def test_requires_matching_language_specific_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "docs"
+            translated = (
+                root
+                / "website"
+                / "i18n"
+                / "zh"
+                / "docusaurus-plugin-content-docs"
+                / "current"
+            )
+            source.mkdir()
+            translated.mkdir(parents=True)
+            (source / "guide.md").write_text("English guide " * 10, encoding="utf-8")
+            (translated / "guide.md").write_text("中文指南" * 20, encoding="utf-8")
+            self.assertEqual(documentation_translation_problems(root), [])
+
+            (translated / "guide.md").write_text("English only", encoding="utf-8")
+            self.assertIn(
+                "Chinese documentation is not translated: guide.md",
+                documentation_translation_problems(root),
+            )
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
-/** The sidebar is the public English navigation contract. */
+/** The sidebar is shared by the English source and translated locales. */
 type DocsSection = {
   type: 'category';
   label: string;

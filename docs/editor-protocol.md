@@ -1,24 +1,35 @@
-# 交互式编辑器命令协议（Editor Protocol）
+# Editor Protocol
 
-[English](editor-protocol.md) · [简体中文](editor-protocol.md)
+**SeatTrellis v2.0.0 is released.** The current editor protocol version is
+`"1.0"`.
 
-**席序（SeatTrellis）v2.0.0** 采用统一的 `protocol_version: "1.0"` 交互式编辑协议。该协议定义了 React 前端、Tauri 桌面外壳与 Rust 本地服务之间的通信契约。
+The editor protocol is the transport boundary between the React workbench, the
+loopback `seattrellis_web` server, and the desktop shell. Rust
+(`seattrellis-domain::editing`) enforces domain rules; clients submit commands
+and render the minimal state returned by the server. The CLI `edit` and `repair`
+commands reuse the same editing semantics.
 
----
+The current protocol version is `"1.0"` and exposes two documents:
 
-## 📨 1. 命令与状态信封（Envelopes）
+- `EditorCommandEnvelope`: an apply, undo, or redo command from a client;
+- `EditorStateEnvelope`: the current seats and lock state returned by the server.
+  A command response also carries a separate `validation` object registered in
+  `schemas/editor-state.schema.json`; the state `GET` endpoint does not include
+  that object.
 
-协议包含两类核心数据文档：
-- **`EditorCommandEnvelope`**：前端向服务端发送的操作指令（应用微调、撤销 Undo、重做 Redo）；
-- **`EditorStateEnvelope`**：服务端返回的最新草稿座次、锁定状态与约束诊断结果。
+The JSON Schemas are `schemas/editor-command.schema.json` and
+`schemas/editor-state.schema.json`.
 
-### 命令示例（`EditorCommandEnvelope`）
+## Command format
+
+Every command explicitly carries its type, protocol version, command ID, draft
+ID, and base revision:
 
 ```json
 {
   "kind": "seattrellis_editor_command",
   "protocol_version": "1.0",
-  "command_id": "cmd-20260830-001",
+  "command_id": "move-20260718-001",
   "draft_id": "7b7359c6f9cd4e128df8b9145d012ec1",
   "base_revision": 3,
   "action": "apply",
@@ -26,55 +37,124 @@
     {
       "kind": "swap_students",
       "payload": {
-        "first_student": "STU001",
-        "second_student": "STU018"
+        "first_student": "S001",
+        "second_student": "S018"
       }
     }
   ]
 }
 ```
 
----
+An `action` of `"undo"` or `"redo"` must not include `operations`:
 
-## 🛠️ 2. 支持的操作指令集
+```json
+{
+  "kind": "seattrellis_editor_command",
+  "protocol_version": "1.0",
+  "command_id": "undo-20260718-001",
+  "draft_id": "7b7359c6f9cd4e128df8b9145d012ec1",
+  "base_revision": 4,
+  "action": "undo"
+}
+```
 
-| 操作类型 (`kind`) | 载荷参数 (`payload`) | 功能描述 |
-| :--- | :--- | :--- |
-| `swap_students` | `first_student`, `second_student` | 互换两名学生的座位。 |
-| `move_student` | `student_key`, `seat_id` | 将指定学生移动到目标空座。 |
-| `batch_move` | `moves: [{student_key, seat_id}]` | 原子化批量移动多名学生（一步可撤销）。 |
-| `seat_student` | `student_key`, `seat_id` | 将未入座学生安排至指定空座。 |
-| `unseat_student` | `student_key` | 将学生移出座位，放入未分配区。 |
-| `lock_student` / `unlock_student` | `student_key` | 锁定/解锁学生的当前座次。 |
-| `lock_seat` / `unlock_seat` | `seat_id` | 锁定/解锁指定座位。 |
+Supported operations are:
 
----
+| Kind | Payload |
+| --- | --- |
+| `swap_students` | `first_student`, `second_student` |
+| `move_student` | `student_key`, `seat_id` |
+| `batch_move` | `moves: [{student_key, seat_id}]` |
+| `seat_student` | `student_key`, `seat_id` |
+| `unseat_student` | `student_key` |
+| `lock_student` / `unlock_student` | `student_key` |
+| `lock_seat` / `unlock_seat` | `seat_id` |
 
-## 🔒 3. 并发控制与版本一致性
+One command expands to at most 100 operations. Each mapping in `batch_move`
+counts as one operation, and students and target seats must each be unique. The
+server validates and replays the complete command before writing the draft; a
+failure never commits a partial result.
 
-- **单调递增版本号（`revision`）**：每次成功的操作（Apply/Undo/Redo）使草稿版本号精准 +1；
-- **防冲突拦截**：若提交的 `base_revision` 与当前草稿版本不匹配，服务端将返回 `EditorProtocolConflictError` 并拒绝写入，确保多端操作安全。
-- **主动销毁**：`DELETE /api/v1/editing/drafts/{draft_id}` 同时删除编辑草稿及其对应的原始求解请求；工作台在上下文切换和页面卸载时调用该端点。
+## Revisions and conflicts
 
-## 🧱 4. 教室布局草稿命令
+A new draft receives a non-reusable `draft_id` and starts at revision 0. Each
+successful apply, undo, or redo increments revision exactly once, even when an
+apply contains several operations. Undo and redo operate on whole command
+batches.
 
-布局编辑器使用独立但语义一致的 `LayoutCommand` 信封：`action` 为 `apply`、`undo` 或 `redo`，并通过 `base_revision` 做乐观并发控制。批量操作在后端一次校验、一次提交、一步撤销；任一格越界、座位编号重复或移动目标冲突时，整个命令都不会修改草稿。
+Before writing, the server checks:
 
-| 操作类型 (`kind`) | 载荷参数 (`payload`) | 功能描述 |
-| :--- | :--- | :--- |
-| `set_cell` | `row`, `column`, `kind`, 可选 `seat_id` | 修改单格类型。 |
-| `set_cells` | `cells: [{row, column, kind, seat_id?}]` | 原子化批量修改所选区域。 |
-| `insert_row` / `delete_row` | `index` | 插入或删除一排。 |
-| `insert_column` / `delete_column` | `index` | 插入或删除一列。 |
-| `translate` | `row_delta`, `column_delta` | 整体平移所有非空格。 |
-| `translate_cells` | `cells: [{row, column}]`, `row_delta`, `column_delta` | 原子化移动所选非空格；禁止覆盖未选中的非空格。 |
-| `mirror_horizontal` / `flip_vertical` | 空对象 | 整体左右镜像或上下翻转。 |
+1. whether `draft_id` belongs to the current draft;
+2. whether `command_id` has already been processed;
+3. whether `base_revision` equals the current revision.
 
-浏览器界面支持单击单选、Shift 单击矩形选择，以及 Ctrl/Command 单击增减选择。批量改类型和移动都发送一个命令，因此撤销不会拆成多步。
+Any failure raises `EditorProtocolConflictError` without changing the draft or
+output files. After a conflict, a client must fetch the latest
+`EditorStateEnvelope` and construct a new command from the user's intent; it
+must not silently overwrite newer state.
 
----
+`DELETE /api/v1/editing/drafts/{draft_id}` actively disposes both the editor
+draft and its paired source solve request. The workbench calls it when context
+changes, a replacement generation succeeds, and the page is closed.
 
-## 📖 相关文档
+## Classroom layout commands
 
-- [Web 与桌面工作台指南](web.zh.md)
-- [系统架构解析](architecture.md)
+The visual classroom editor uses a separate `LayoutCommand` envelope with the
+same `apply`, `undo`, `redo`, `base_revision`, and atomicity semantics. A batch
+is validated and committed once and becomes one undo step. If any cell is out
+of bounds, repeats a seat ID, or moves onto an unselected physical cell, the
+whole command is rejected without changing the draft.
+
+| Kind | Payload | Purpose |
+| --- | --- | --- |
+| `set_cell` | `row`, `column`, `kind`, optional `seat_id` | Change one cell |
+| `set_cells` | `cells: [{row, column, kind, seat_id?}]` | Change a selection atomically |
+| `insert_row` / `delete_row` | `index` | Insert or remove a row |
+| `insert_column` / `delete_column` | `index` | Insert or remove a column |
+| `translate` | `row_delta`, `column_delta` | Move every non-empty cell |
+| `translate_cells` | `cells: [{row, column}]`, `row_delta`, `column_delta` | Move selected non-empty cells without collisions |
+| `mirror_horizontal` / `flip_vertical` | empty object | Reflect the entire layout |
+
+The browser supports click for a single cell, Shift-click for a rectangle, and
+Ctrl/Command-click to toggle cells. Batch type changes and moves each send one
+command so undo never fragments a user action.
+
+## State format
+
+State contains only what the editor needs:
+
+- student key, display name, current seat, and lock state;
+- seat key, row, column, enabled state, current student key, and lock state;
+- undo and redo depths.
+
+Hard-constraint results are not part of the state itself. Apply/undo/redo
+responses carry `validation` (`valid`, `hard_constraints_satisfied`, and
+`violations`), while `GET .../editing/drafts/{id}` returns state without it.
+
+Scores, notes, special needs, height, vision, tags, and extension attributes do
+not enter the state protocol. Seats do not repeat student names; clients join
+them to the student list through `student_key`.
+
+This is data minimization, not anonymization. Names, stable student keys, and
+constraint diagnostics may still identify students. Do not send state or
+commands to remote telemetry or public logs. Escape diagnostic strings as
+untrusted plain text and do not treat them as stable machine-readable codes.
+
+`draft_id` is only a concurrency identifier, not an authorization token. Any
+future HTTP or WebSocket exposure must also verify session ownership and provide
+CSRF, Origin, and access-control protection.
+
+## Validation boundary
+
+JSON Schema validates field types, required fields, operation shapes, and basic
+size limits. These cross-field and domain constraints remain owned by the Rust
+server model and editing state machine:
+
+- apply must contain operations, while undo/redo must not;
+- the expanded operation count must not exceed 100;
+- batch sources and targets must not repeat;
+- students, seats, locks, and occupancy relationships must be valid in the
+  current draft.
+
+Clients may use the Schema for immediate feedback, but cannot skip server
+validation.
