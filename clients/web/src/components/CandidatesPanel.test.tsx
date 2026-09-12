@@ -214,6 +214,13 @@ describe("candidate comparison", () => {
       screen.getByRole("combobox", { name: "Right comparison plan" }),
     ).toHaveValue("new-b");
     expect(screen.getByText(/Recommended · A/)).toBeInTheDocument();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Left comparison plan" }),
+      "new-b",
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Right comparison plan" }),
+    ).toHaveValue("new-b");
   });
 
   it("refreshes audits when a draft revision changes", async () => {

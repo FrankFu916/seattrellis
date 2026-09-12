@@ -78,6 +78,12 @@ export function CandidatesPanel({
     candidates.find((candidate) => candidate.draft_id === rightId) ??
     candidates.find((candidate) => candidate.draft_id !== left?.draft_id) ??
     left;
+  // Persist fallbacks when a new generation replaces the draft IDs, so a later
+  // selection on one side does not silently change the other side's fallback.
+  useEffect(() => {
+    setLeftId(left?.draft_id ?? null);
+    setRightId(compared?.draft_id ?? null);
+  }, [left?.draft_id, compared?.draft_id]);
   const leftIndex = candidates.indexOf(left);
   const compareIndex = candidates.indexOf(compared);
   const auditKey = [recommended, left, compared]
