@@ -163,7 +163,9 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
       - name: Build fuzz targets
-        run: cargo +nightly fuzz build
+        run: |
+          cargo +nightly metadata --locked --manifest-path fuzz/Cargo.toml --format-version 1 > /dev/null
+          cargo +nightly fuzz build
       - name: Bounded fuzz runs
         run: |
           for target in solve_request dto_parsers csv_importer editor_commands export_options migration; do
