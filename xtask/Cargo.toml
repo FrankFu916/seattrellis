@@ -16,4 +16,4 @@ seattrellis-rules = { path = "../crates/seattrellis-rules", version = "2.1.0" }
 schemars = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-jsonschema = { version = "0.52", default-features = false }
+jsonschema = { version = "0.55", default-features = false }
