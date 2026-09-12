@@ -1,14 +1,15 @@
 //! Reproducible visual QA with synthetic names only.
-//! cargo run -p seattrellis-export --example render_gallery -- /tmp/chosen-directory
+//! cargo run -p seattrellis-export --example render_gallery
+//! Outputs are kept in a fresh private temporary directory, printed below.
 use seattrellis_export::export::export_plan_with_warnings;
 use serde_json::json;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let output = std::env::args_os()
-        .nth(1)
-        .ok_or("provide an output directory for synthetic artifacts")?;
-    let output = std::path::Path::new(&output);
-    std::fs::create_dir_all(output)?;
+    // No caller-controlled destination and no existing files to overwrite.
+    let output = tempfile::Builder::new()
+        .prefix("seattrellis-export-gallery-")
+        .tempdir()?
+        .keep();
     let names = [
         "林晓雨",
         "欧阳明月",

@@ -3109,6 +3109,7 @@ dependencies = [
  "seattrellis_core",
  "serde",
  "serde_json",
+ "tempfile",
  "ttf-parser",
  "zip",
 ]
