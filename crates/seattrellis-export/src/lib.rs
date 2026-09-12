@@ -9,3 +9,4 @@ pub mod fonts;
 pub mod office;
 pub mod print_html;
 pub mod render;
+pub mod scene;

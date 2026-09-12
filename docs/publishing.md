@@ -1,7 +1,7 @@
 # Publishing and Release Integrity
 
-SeatTrellis v2.0.0 is released. This page documents the repeatable process for
-subsequent v2 releases. The v2 channels are GitHub Releases for prebuilt CLI/App
+This page documents the repeatable process for v2 releases. The v2 channels are
+GitHub Releases for prebuilt CLI/App
 binaries and desktop bundles, and crates.io for the CLI source package. The
 Python 1.9.0 line remains a separate frozen legacy release on
 `v1.x-maintenance`.
@@ -15,9 +15,9 @@ Rust workflow then:
 
 1. builds the React workbench and embeds it in the App server;
 2. builds `seattrellis` and `seattrellis_web` for Linux, Windows, and macOS;
-3. collects six CLI/App binaries and attaches their `SHA256SUMS`;
-4. runs long-run quality gates and the no-Python-runtime scan for release
-   artifacts.
+3. runs cross-platform tests, MSRV, lint, audit, contract, fuzz, long-run quality
+   gates and the no-Python-runtime scan;
+4. attaches six CLI/App binaries and `SHA256SUMS` only after these gates pass.
 
 `v1.*` tags are handled by the maintenance line and do not receive Rust
 binaries.
@@ -25,7 +25,9 @@ binaries.
 ### Desktop bundles
 
 The Tauri workflow builds macOS `.app`/`.dmg`, Windows MSI/NSIS, and Linux `.deb`
-bundles and attaches them to the corresponding release. Desktop bundles are
+bundles for `v2.*` releases and attaches them to the corresponding release.
+Manual runs also check out the exact existing release tag, not the current
+default branch. Desktop bundles are
 **unsigned by the owner's release policy**. The workflow attaches a separate
 `DESKTOP-SHA256SUMS`; verify it in addition to the general `SHA256SUMS` file.
 On first launch, macOS may require **Open** from the context menu and Windows

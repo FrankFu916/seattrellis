@@ -163,7 +163,9 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
       - name: Build fuzz targets
-        run: cargo +nightly fuzz build
+        run: |
+          cargo +nightly metadata --locked --manifest-path fuzz/Cargo.toml --format-version 1 > /dev/null
+          cargo +nightly fuzz build
       - name: Bounded fuzz runs
         run: |
           for target in solve_request dto_parsers csv_importer editor_commands export_options migration; do
@@ -202,7 +204,7 @@ jobs:
     # Rust binaries (the v1.9.0 release initially did — fixed).
     if: >-
       github.event_name == 'release' &&
-      !startsWith(github.event.release.tag_name, 'v1.')
+      startsWith(github.event.release.tag_name, 'v2.')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -239,8 +241,19 @@ jobs:
 
   publish-assets:
     name: Publish release binaries
-    if: github.event_name == 'release'
-    needs: build-binaries
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v2.')
+    # Building alone is not a release gate. Every quality job must succeed
+    # before any Rust binary or checksum is attached to the published release.
+    needs:
+      - build-binaries
+      - test
+      - contract-drift
+      - fmt
+      - dependency-audit
+      - msrv
+      - long-run-gates
+      - fuzz-targets
+      - no-python-runtime
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -279,4 +292,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         shell: bash
-        run: gh release upload "$RELEASE_TAG" release/* --clobber
+        run: gh release upload "$RELEASE_TAG" release/*

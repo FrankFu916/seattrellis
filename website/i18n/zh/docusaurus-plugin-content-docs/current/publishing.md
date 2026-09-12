@@ -14,6 +14,8 @@
 2. **crates.io 官方源**：
    - 发布核心 Rust CLI 工具源码包（`cargo publish -p seattrellis`）。
 
+从 2.1.0 开始，正式 `v2.*` release 会自动构建桌面安装包；手动触发也必须检出该 release 的确切 Git tag，不能从默认分支编译后附加到旧版本。macOS `.app` / `.dmg`、Windows MSI / NSIS、Linux `.deb` 五种资产齐全后才生成桌面校验清单。Rust CLI / Web 二进制须等跨平台测试、MSRV、Clippy、依赖审计、契约检查、模糊测试、长期运行测试与无 Python 运行时检查通过后才上传。
+
 ---
 
 ## 🔒 2. 产物校验与安全性说明

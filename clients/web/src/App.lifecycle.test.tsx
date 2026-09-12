@@ -19,6 +19,12 @@ vi.mock("./api/client", async (importOriginal) => ({
   fetchDraftAudit: vi.fn(),
   deleteEditorDraft: vi.fn(),
   dispatchEditorCommand: vi.fn(),
+  exportDraft: vi.fn(),
+}));
+
+vi.mock("./domain/desktop", async (original) => ({
+  ...(await original<typeof import("./domain/desktop")>()),
+  saveBlobWithDialog: vi.fn().mockResolvedValue("saved"),
 }));
 
 const editor = (id: string): EditorState => ({
@@ -116,6 +122,87 @@ async function generate(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("workbench asynchronous ownership", () => {
+  it("aborts an export when leaving its class and ignores the late file", async () => {
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = vi.fn(() => "blob:late-export");
+        static revokeObjectURL = vi.fn();
+      },
+    );
+    const pending = deferred<Awaited<ReturnType<typeof api.exportDraft>>>();
+    vi.mocked(api.exportDraft).mockReturnValueOnce(pending.promise);
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: /Other class/ });
+    await generate(user);
+    await screen.findByRole("button", { name: "Choose plan B" });
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(screen.getByRole("button", { name: "Generate preview" }));
+    await user.click(screen.getByRole("button", { name: /Other class/ }));
+    expect(vi.mocked(api.exportDraft).mock.calls[0][1]?.aborted).toBe(true);
+    await act(async () =>
+      pending.resolve({
+        blob: new Blob(["late file"]),
+        filename: "old-class.pdf",
+        warnings: [],
+      }),
+    );
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Save file" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Choose classroom" }),
+    ).toBeEnabled();
+  });
+
+  it("does not treat exporting a seating image as saving the editable project", async () => {
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = vi.fn(() => "blob:export");
+        static revokeObjectURL = vi.fn();
+      },
+    );
+    vi.mocked(api.exportDraft).mockResolvedValue({
+      blob: new Blob(
+        [
+          '<html><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70"><text>Alice</text></svg></body></html>',
+        ],
+        { type: "text/html" },
+      ),
+      filename: "seat-plan.html",
+      warnings: [],
+    });
+    vi.mocked(api.dispatchEditorCommand).mockResolvedValue({
+      ...editor("a"),
+      revision: 1,
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: /Other class/ });
+    await generate(user);
+    await screen.findByRole("button", { name: "Choose plan B" });
+    await user.click(
+      screen.getByRole("button", { name: "Row 1, seat 1, Alice" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Lock selected seat" }),
+    );
+    await waitFor(() =>
+      expect(api.dispatchEditorCommand).toHaveBeenCalledOnce(),
+    );
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(screen.getByRole("button", { name: "Generate preview" }));
+    await screen.findByTitle("Seating chart in the generated file");
+    await user.click(screen.getByRole("button", { name: "Save file" }));
+    await screen.findByText(/Sent to local saving/);
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(beforeUnload);
+    expect(beforeUnload.defaultPrevented).toBe(true);
+  });
+
   it("unblocks a new class immediately and deletes a late generation without showing it", async () => {
     const pending = deferred<GenerateClassResponse>();
     vi.mocked(api.generateClass).mockReturnValueOnce(pending.promise);

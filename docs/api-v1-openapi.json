@@ -381,6 +381,11 @@
           "draft_id": {
             "type": "string"
           },
+          "expected_revision": {
+            "description": "Reject with 409 when the current draft revision differs.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "format": {
             "enum": [
               "svg",
@@ -388,6 +393,7 @@
               "print-html",
               "png",
               "pdf",
+              "xlsx",
               "excel",
               "docx",
               "pptx"
@@ -397,19 +403,56 @@
           "locale": {
             "type": "string"
           },
+          "margin_mm": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
           "orientation": {
             "type": "string"
           },
           "page_scale": {
             "type": "number"
           },
-          "privacy": {
+          "paper_size": {
+            "enum": [
+              "a4",
+              "a3",
+              "letter"
+            ],
             "type": "string"
+          },
+          "privacy": {
+            "properties": {
+              "anonymize": {
+                "type": "boolean"
+              },
+              "hide_notes": {
+                "type": "boolean"
+              },
+              "hide_scores": {
+                "type": "boolean"
+              },
+              "hide_special_needs": {
+                "type": "boolean"
+              },
+              "show_height": {
+                "type": "boolean"
+              },
+              "show_vision": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
           },
           "show_student_ids": {
             "type": "boolean"
           },
           "template": {
+            "type": "string"
+          },
+          "title": {
+            "description": "Custom chart title; anonymization does not redact this caller-supplied value.",
+            "maxLength": 200,
             "type": "string"
           }
         },
@@ -1251,7 +1294,7 @@
                 }
               }
             },
-            "description": "Binary artifact (Content-Disposition attachment)"
+            "description": "Binary artifact (Content-Disposition attachment). X-Export-Warnings carries a percent-encoded JSON string array; Cache-Control is no-store."
           },
           "400": {
             "$ref": "#/components/responses/InvalidInput"
@@ -1259,11 +1302,54 @@
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
         },
         "summary": "Export a draft in one of 8 formats",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/v1/exports/preview": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "SVG seating scene, not an Office application screenshot. Optional X-Export-Warnings is a percent-encoded JSON string array; Cache-Control is no-store."
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Preview the selected format's seating scene without remembering export defaults",
         "tags": [
           "exports"
         ]

@@ -1,6 +1,6 @@
 # Release Checklist
 
-**Current release: v2.0.0 (released).** Use this checklist for a subsequent
+**Current release target: v2.1.0.** Use this checklist for a subsequent
 public v2 release. Replace `<version>` with the exact crate version and `<tag>`
 with `v<version>`; every release candidate must use a unique version because
 crates.io files cannot be replaced.
@@ -53,6 +53,11 @@ Run this gate after the version scope is frozen:
       `project-pack`, and `project-restore`.
 - [ ] Export teacher and public outputs in Chinese and English, including A4
       portrait and landscape where supported.
+- [ ] Inspect real PDF and Office renders with synthetic CJK/Latin names,
+      long titles, custom seat IDs, empty seats and aisles. Verify that one long
+      name does not shrink the rest of the class or create an extra Word page.
+- [ ] Test stale revision rejection, cancellation, retry, unchanged save bytes,
+      and HTML/PDF previews without frames or browser PDF plugins.
 - [ ] Confirm public output contains no scores, notes, special needs, height,
       vision data, student IDs, or un-anonymized labels.
 - [ ] Export and validate committed JSON Schemas. Exercise schema migration in

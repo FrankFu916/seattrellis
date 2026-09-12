@@ -50,6 +50,35 @@ fn base_request(extra: serde_json::Value) -> String {
 }
 
 #[test]
+fn every_format_rejects_seats_that_collapse_to_one_rendered_coordinate() {
+    let mut request: serde_json::Value =
+        serde_json::from_str(&base_request(serde_json::json!({}))).unwrap();
+    request["request"]["layout"] = serde_json::Value::Null;
+    request["request"]["seat_positions"][0] = serde_json::json!([0.1, 0.0]);
+    request["request"]["seat_positions"][1] = serde_json::json!([0.2, 0.0]);
+    for format in [
+        "svg",
+        "png",
+        "pdf",
+        "html",
+        "print-html",
+        "docx",
+        "pptx",
+        "xlsx",
+    ] {
+        request["format"] = serde_json::json!(format);
+        let error = export_plan(&request.to_string()).unwrap_err();
+        assert!(error.contains("multiple seats map"), "{format}: {error}");
+        let error = seattrellis_export::export::export_preview_with_warnings(&request.to_string())
+            .unwrap_err();
+        assert!(
+            error.contains("multiple seats map"),
+            "{format} preview: {error}"
+        );
+    }
+}
+
+#[test]
 fn paper_sizes_have_correct_point_dimensions() {
     assert_eq!(PaperSize::A4.points(), (595.0, 842.0));
     assert_eq!(PaperSize::A3.points(), (842.0, 1191.0));
@@ -123,7 +152,7 @@ fn docx_landscape_swaps_page_dimensions() {
         .read_to_string(&mut doc)
         .unwrap();
     assert!(
-        doc.contains(r#"<w:pgSz w:w="16838" w:h="11906"/>"#),
+        doc.contains(r#"<w:pgSz w:w="16840" w:h="11900"/>"#),
         "landscape pgSz must swap width/height"
     );
     let portrait = export_plan(&base_request(serde_json::json!({
@@ -138,7 +167,32 @@ fn docx_landscape_swaps_page_dimensions() {
         .read_to_string(&mut doc)
         .unwrap();
     assert!(
-        doc.contains(r#"<w:pgSz w:w="11906" w:h="16838"/>"#),
+        doc.contains(r#"<w:pgSz w:w="11900" w:h="16840"/>"#),
         "portrait pgSz must keep A4 portrait"
     );
+}
+
+#[test]
+fn docx_export_honours_paper_and_margin_options() {
+    let bytes = export_plan(&base_request(serde_json::json!({
+        "format": "docx", "orientation": "landscape", "paper_size": "a3", "margin_mm": 20.0
+    })))
+    .expect("a3 docx exports");
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+    let mut doc = String::new();
+    use std::io::Read;
+    archive
+        .by_name("word/document.xml")
+        .unwrap()
+        .read_to_string(&mut doc)
+        .unwrap();
+    assert!(
+        doc.contains(r#"<w:pgSz w:w="23820" w:h="16840"/>"#),
+        "A3 landscape must not silently export A4"
+    );
+    assert!(
+        doc.contains(r#"<w:pgMar w:top="1140" w:right="1140" w:bottom="1140" w:left="1140""#),
+        "20 mm margins must be used on all edges"
+    );
+    assert!(doc.contains(r#"<w:tblLayout w:type="fixed"/>"#));
 }

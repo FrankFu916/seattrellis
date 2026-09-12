@@ -612,11 +612,15 @@ export type GenerateRotationPlanResponse =
 
 export type ExportDraftRequest = {
   draft_id: string;
+  expected_revision?: number;
+  title?: string;
   format: string;
   template: "public" | "teacher" | "report";
   privacy: ExportPrivacyOptions;
   orientation: "portrait" | "landscape";
   page_scale: number;
+  paper_size?: "a4" | "a3" | "letter";
+  margin_mm?: number;
   locale?: "zh" | "en";
   show_student_ids?: boolean;
 };

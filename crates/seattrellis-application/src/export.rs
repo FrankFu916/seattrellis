@@ -15,6 +15,7 @@ pub struct ExportOutcome {
     pub content_type: &'static str,
     pub content_disposition: String,
     pub body: Vec<u8>,
+    pub warnings: Vec<String>,
 }
 
 /// Fetch the originating solve request stored for a draft. A miss means the
@@ -42,6 +43,23 @@ pub fn export_draft(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
 ) -> Result<ExportOutcome, AppError> {
+    export_draft_inner(value, editor_store, solve_requests, false)
+}
+
+pub fn preview_draft(
+    value: &Value,
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+) -> Result<ExportOutcome, AppError> {
+    export_draft_inner(value, editor_store, solve_requests, true)
+}
+
+fn export_draft_inner(
+    value: &Value,
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+    preview: bool,
+) -> Result<ExportOutcome, AppError> {
     let draft_id = value
         .get("draft_id")
         .and_then(Value::as_str)
@@ -58,12 +76,23 @@ pub fn export_draft(
         Ok(state) => state,
         Err(_) => return Err(AppError::not_found("editor draft was not found")),
     };
+    if let Some(expected) = value.get("expected_revision") {
+        let expected = expected.as_u64().ok_or_else(|| {
+            AppError::bad_request("expected_revision must be a non-negative integer")
+        })?;
+        if expected != state.revision {
+            return Err(AppError {
+                status: 409,
+                code: "revision_conflict",
+                message: "The seating plan changed. Refresh the export preview before saving."
+                    .into(),
+            });
+        }
+    }
     let response_value = export_response_value(&request_value, &state)?;
 
     let mut export_json = value.clone();
     if let Some(object) = export_json.as_object_mut() {
-        // `print-html` has its own dedicated layout (print-layout-spec.md);
-        // no normalization to `html` anymore (M5-A2).
         // Remembered export defaults fill in options the request did not
         // specify explicitly (PD-D9 "last used" semantics, M5-A5). The
         // memory file lives in the user config dir; malformed memory is
@@ -97,7 +126,6 @@ pub fn export_draft(
                 ("anonymize", memory.anonymize),
                 ("show_height", memory.show_height),
                 ("show_vision", memory.show_vision),
-                ("show_student_ids", memory.show_student_ids),
             ] {
                 if !object.contains_key("privacy") {
                     let privacy = patch
@@ -107,6 +135,12 @@ pub fn export_draft(
                         .expect("privacy entry is an object");
                     privacy.insert(key.to_string(), serde_json::Value::Bool(value));
                 }
+            }
+            if !object.contains_key("show_student_ids") {
+                patch.insert(
+                    "show_student_ids".into(),
+                    Value::Bool(memory.show_student_ids),
+                );
             }
             for key in ["page_scale", "margin_mm"] {
                 if !object.contains_key(key) {
@@ -131,19 +165,31 @@ pub fn export_draft(
         Ok(format) => format,
         Err(message) => return Err(AppError::bad_request(&message)),
     };
-    let bytes = match seattrellis_export::export::export_plan(&export_string) {
-        Ok(bytes) => bytes,
+    let rendered = if preview {
+        seattrellis_export::export::export_preview_with_warnings(&export_string)
+    } else {
+        seattrellis_export::export::export_plan_with_warnings(&export_string)
+    };
+    let (bytes, warnings) = match rendered {
+        Ok(result) => result,
         Err(message) => return Err(AppError::bad_request(&message)),
     };
 
     // Remember the effective parameters for the next quick export.
-    let _ = remember_defaults(&export_json);
+    if !preview {
+        let _ = remember_defaults(&export_json);
+    }
 
     let filename = format!("seat-plan.{}", format.extension());
     Ok(ExportOutcome {
-        content_type: format.mime(),
+        content_type: if preview {
+            "image/svg+xml"
+        } else {
+            format.mime()
+        },
         content_disposition: format!("attachment; filename=\"{filename}\""),
         body: bytes,
+        warnings,
     })
 }
 

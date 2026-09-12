@@ -1,17 +1,6 @@
-//! Rendering of a solved seating plan to SVG, HTML, PNG, or PDF.
-//!
-//! This module is a copy of `historical crates/seattrellis-cli/src/render.rs` (kept
-//! byte-consistent with the CLI's `render_svg`/`render_html`/`render_png`/
-//! `render_pdf` so both entry points produce identical output and a future
-//! extraction into a shared crate is a mechanical move). See the CLI source for
-//! the design notes.
-//!
-//! App extension: [`render_pdf_with`] adds an optional [`PdfLayout`] so the
-//! export domain module can honour `orientation` (swap A4 portrait/landscape)
-//! and `page_scale` (extra fit-to-page multiplier) without changing the default
-//! [`render_pdf`] behaviour.
+//! Shared seating model and scene-backed visual export writers.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
@@ -23,6 +12,8 @@ use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
 /// One seat in the recovered grid, plus the student seated there (if any).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GridCell {
+    /// Authoritative layout identifier, not a synthesized row/column label.
+    pub seat_id: String,
     pub row: i32,
     pub col: i32,
     pub seat_index: usize,
@@ -32,8 +23,7 @@ pub struct GridCell {
     pub detail: Option<String>,
     pub enabled: bool,
     /// The seated student's key (identifier), when the request carries one.
-    /// Used by the Office (XLSX/DOCX/PPTX) writers to mirror the oracle's
-    /// "Assignments" sheet; the SVG/HTML/PNG/PDF renderers ignore it.
+    /// Shown by all renderers only when the caller opts in to identifiers.
     pub student_key: Option<String>,
 }
 
@@ -89,17 +79,29 @@ impl SeatingGrid {
         }
 
         let mut cells = Vec::with_capacity(seat_count);
+        let mut occupied_coordinates = HashSet::with_capacity(seat_count);
         let mut min_row = i32::MAX;
         let mut max_row = i32::MIN;
         let mut min_col = i32::MAX;
         let mut max_col = i32::MIN;
         for (seat_index, position) in request.seat_positions.iter().enumerate() {
             let (row, col, enabled) = seat_row_col(request, seat_index, *position)?;
+            if !occupied_coordinates.insert((row, col)) {
+                return Err(format!(
+                    "multiple seats map to row {row}, column {col}; give each seat a distinct layout row/column before exporting"
+                ));
+            }
             min_row = min_row.min(row);
             max_row = max_row.max(row);
             min_col = min_col.min(col);
             max_col = max_col.max(col);
             cells.push(GridCell {
+                seat_id: request
+                    .layout
+                    .as_ref()
+                    .and_then(|layout| layout.seats.get(seat_index))
+                    .map(|seat| seat.seat_id.clone())
+                    .unwrap_or_else(|| format!("R{row}C{col}")),
                 row,
                 col,
                 seat_index,
@@ -219,49 +221,6 @@ fn student_label(request: &CoreSolveRequest, index: usize) -> String {
     format!("Student {}", index + 1)
 }
 
-// ---------------------------------------------------------------------------
-// Shared geometry
-// ---------------------------------------------------------------------------
-
-const CELL_W: f64 = 110.0;
-const CELL_H: f64 = 64.0;
-const PAD: f64 = 24.0;
-const HEADER_H: f64 = 52.0;
-const RECT_W: f64 = 102.0;
-const RECT_H: f64 = 56.0;
-
-fn grid_cols(grid: &SeatingGrid) -> i64 {
-    i64::from(grid.max_col) - i64::from(grid.min_col) + 1
-}
-
-fn grid_rows(grid: &SeatingGrid) -> i64 {
-    i64::from(grid.max_row) - i64::from(grid.min_row) + 1
-}
-
-/// Top-left origin of the grid cell at `(row, col)`.
-fn cell_origin(grid: &SeatingGrid, row: i32, col: i32) -> (f64, f64) {
-    let x = PAD + (col - grid.min_col) as f64 * CELL_W;
-    let y = HEADER_H + PAD + (row - grid.min_row) as f64 * CELL_H;
-    (x, y)
-}
-
-/// Font size for a student name, shrinking to fit wider/longer labels.
-fn name_font_size(name: &str) -> u8 {
-    match name.chars().count() {
-        0..=7 => 13,
-        8..=12 => 10,
-        _ => 8,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Escaping
-// ---------------------------------------------------------------------------
-
-/// Escape text for use inside XML/HTML text nodes. `&apos;` is a valid named
-/// entity in both XML and HTML5, so one function serves both renderers.
-/// Control characters illegal in XML 1.0 (anything below 0x20 except tab/LF/CR)
-/// are dropped rather than emitted raw.
 fn escape_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -278,571 +237,340 @@ fn escape_text(text: &str) -> String {
     out
 }
 
-// ---------------------------------------------------------------------------
-// Renderer labels (V2/V3: SVG/HTML share the zh wording of PNG/PDF/print-html)
-// ---------------------------------------------------------------------------
-
-/// Whether the renderer labels follow the zh convention (the export contract
-/// defaults to `locale: "zh"`; only `en` selects the English labels, matching
-/// `anonymize_grid`'s placeholder rule).
 pub(crate) fn is_zh_locale(locale: &str) -> bool {
     !matches!(locale.trim().to_ascii_lowercase().as_str(), "en")
 }
 
-/// Label for an enabled seat without a student ("空座" mirrors the PNG/PDF
-/// rasterizers and print-html so every format agrees).
-fn empty_seat_label(locale: &str) -> &'static str {
-    if is_zh_locale(locale) {
-        "空座"
-    } else {
-        "empty"
-    }
-}
-
-/// The front-of-room annotation above the first row.
-fn front_of_room_label(locale: &str) -> &'static str {
-    if is_zh_locale(locale) {
-        "教室前方"
-    } else {
-        "front of room"
-    }
-}
-
-/// The header subtitle. English keeps the grid's built-in
-/// "N students / M seats / feasible" line; zh mirrors it as
-/// "N 名学生 · M 个座位 · 可行" (same numbers, same feasibility verdict).
-fn subtitle_label(grid: &SeatingGrid, locale: &str) -> String {
-    if !is_zh_locale(locale) {
-        return grid.subtitle.clone();
-    }
-    let seated = grid
-        .cells
-        .iter()
-        .filter(|cell| cell.student.is_some())
-        .count();
-    let feasible = !grid.subtitle.ends_with("infeasible");
-    format!(
-        "{seated} 名学生 · {} 个座位 · {}",
-        grid.cells.len(),
-        if feasible { "可行" } else { "不可行" }
-    )
-}
-
-// ---------------------------------------------------------------------------
-// SVG
-// ---------------------------------------------------------------------------
-
-/// Render the plan as a self-contained SVG document (no scripts, no external
-/// references, UTF-8 text so CJK names display with the system's sans-serif).
-///
-/// The document deliberately starts with the `<svg` root element (no XML
-/// declaration) so it opens cleanly in browsers and embeds as-is.
 pub fn render_svg(grid: &SeatingGrid, locale: &str) -> String {
-    let cols = grid_cols(grid) as f64;
-    let rows = grid_rows(grid) as f64;
-    let width = PAD * 2.0 + cols * CELL_W;
-    let height = HEADER_H + PAD * 2.0 + rows * CELL_H;
-    let grid_w = cols * CELL_W;
+    render_svg_with(grid, &PdfLayout::portrait(), locale)
+}
 
-    let mut out = String::with_capacity(4096 + grid.cells.len() * 160);
-    out.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">\n"
-    ));
-    out.push_str("  <rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n");
+pub fn render_svg_with(grid: &SeatingGrid, page: &PdfLayout, locale: &str) -> String {
+    render_scene_svg(&crate::scene::build_scene(grid, page, locale))
+}
 
-    // Header: title + subtitle.
-    out.push_str(&format!(
-        "  <text x=\"{}\" y=\"24\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"16\" font-weight=\"bold\" fill=\"#1c2733\">{}</text>\n",
-        width / 2.0,
-        escape_text(&grid.title)
-    ));
-    out.push_str(&format!(
-        "  <text x=\"{}\" y=\"42\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"11\" fill=\"#5a6b7f\">{}</text>\n",
-        width / 2.0,
-        escape_text(&subtitle_label(grid, locale))
-    ));
-
-    // Front-of-room indicator (min_row is the front, matching the solver).
-    let front_y = HEADER_H + 6.0;
-    out.push_str(&format!(
-        "  <line x1=\"{PAD}\" y1=\"{front_y}\" x2=\"{}\" y2=\"{front_y}\" stroke=\"#c8d2de\" stroke-width=\"1\"/>\n",
-        PAD + grid_w
-    ));
-    out.push_str(&format!(
-        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"#8a97a6\">{}</text>\n",
-        PAD + grid_w / 2.0,
-        front_y - 5.0,
-        escape_text(front_of_room_label(locale))
-    ));
-
-    for row in grid.min_row..=grid.max_row {
-        for col in grid.min_col..=grid.max_col {
-            let (x, y) = cell_origin(grid, row, col);
-            let center_x = x + CELL_W / 2.0;
-            let center_y = y + CELL_H / 2.0;
-            match grid.cell_at(row, col) {
-                Some(cell) => match &cell.student {
-                    Some(name) => {
-                        let size = name_font_size(name);
-                        out.push_str(&format!(
-                        "  <rect x=\"{}\" y=\"{}\" width=\"{RECT_W}\" height=\"{RECT_H}\" rx=\"7\" fill=\"#e8f0fe\" stroke=\"#4a7fd4\" stroke-width=\"1.5\"/>\n",
-                        x + 4.0,
-                        y + 4.0
-                    ));
-                        out.push_str(&format!(
-                        "  <text x=\"{center_x}\" y=\"{center_y}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"sans-serif\" font-size=\"{size}\" fill=\"#1c2733\">{}</text>\n",
-                        escape_text(name)
-                    ));
-                        if let Some(detail) = &cell.detail {
-                            out.push_str(&format!(
-                            "  <text x=\"{center_x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#7b8ea8\">{}</text>\n",
-                            y + CELL_H - 20.0,
-                            escape_text(detail)
-                        ));
-                        }
-                        out.push_str(&format!(
-                        "  <text x=\"{center_x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#7b8ea8\">{}</text>\n",
-                        y + CELL_H - 9.0,
-                        cell.seat_index + 1
-                    ));
-                    }
-                    None => {
-                        let label = if cell.enabled {
-                            empty_seat_label(locale)
-                        } else {
-                            "unused"
-                        };
-                        out.push_str(&format!(
-                            "  <rect x=\"{}\" y=\"{}\" width=\"{RECT_W}\" height=\"{RECT_H}\" rx=\"7\" fill=\"#f7f8f9\" stroke=\"#cfd8e2\" stroke-width=\"1\" stroke-dasharray=\"4 3\"/>\n",
-                            x + 4.0,
-                            y + 4.0
-                        ));
-                        out.push_str(&format!(
-                            "  <text x=\"{center_x}\" y=\"{center_y}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-family=\"sans-serif\" font-size=\"9\" fill=\"#9aa7b5\">{}</text>\n",
-                            escape_text(label)
-                        ));
-                    }
-                },
-                None => {
-                    // Grid position with no seat: faint skeleton cell.
+/// Standalone, script-free SVG, using exactly the same coordinates as the
+/// raster and presentation writers. Local clipping paths cannot load resources.
+pub fn render_scene_svg(scene: &crate::scene::ChartScene) -> String {
+    use crate::scene::{Element, TextAlign};
+    let mut out = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}pt\" height=\"{}pt\" viewBox=\"0 0 {} {}\">\n<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n",
+        scene.width, scene.height, scene.width, scene.height
+    );
+    for (index, element) in scene.elements.iter().enumerate() {
+        match element {
+            Element::Box {
+                bounds: b,
+                radius,
+                fill,
+                stroke,
+                stroke_width,
+                dashed,
+            } => {
+                out.push_str(&format!(
+                    "<rect x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" rx=\"{:.3}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{:.3}\"{}/>\n",
+                    b.x,b.y,b.w,b.h,radius,hex_color(*fill),hex_color(*stroke),stroke_width,
+                    if *dashed { " stroke-dasharray=\"3 2\"" } else { "" }
+                ));
+            }
+            Element::Text {
+                bounds: b,
+                text,
+                font_size,
+                color,
+                bold,
+                align,
+            } => {
+                let x = if *align == TextAlign::Center {
+                    b.x + b.w / 2.0
+                } else {
+                    b.x
+                };
+                let baseline = text_baseline(*b, *font_size);
+                let outline = crate::fonts::svg_text_outline(text, *font_size);
+                out.push_str(&format!(
+                    "<defs><clipPath id=\"text-{index}\"><rect x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\"/></clipPath></defs>\n\
+                     <text x=\"{x:.3}\" y=\"{baseline:.3}\" font-family=\"'PingFang SC','Microsoft YaHei','Noto Sans CJK SC','Heiti SC',Arial,sans-serif\" font-size=\"{font_size:.3}\" font-weight=\"{}\" text-anchor=\"{}\" fill=\"{}\" clip-path=\"url(#text-{index})\"{}>{}</text>\n",
+                    b.x,b.y,b.w,b.h,if *bold { 600 } else { 400 },
+                    if *align == TextAlign::Center { "middle" } else { "start" },
+                    hex_color(*color), if outline.is_some() { " opacity=\"0\"" } else { "" },escape_text(text)
+                ));
+                if let Some(path) = outline {
+                    let origin = if *align == TextAlign::Center {
+                        x - crate::scene::text_width(text, *font_size) / 2.0
+                    } else {
+                        x
+                    };
                     out.push_str(&format!(
-                        "  <rect x=\"{}\" y=\"{}\" width=\"{RECT_W}\" height=\"{RECT_H}\" rx=\"7\" fill=\"#fbfbfc\" stroke=\"#eceff2\" stroke-width=\"1\"/>\n",
-                        x + 4.0,
-                        y + 4.0
+                        "<g aria-hidden=\"true\" clip-path=\"url(#text-{index})\"><path transform=\"translate({origin:.3} {baseline:.3}) scale(1 -1)\" fill=\"{}\"{} d=\"{path}\"/></g>\n",
+                        hex_color(*color), if *bold { format!(" stroke=\"{}\" stroke-width=\"0.1\" stroke-linejoin=\"round\"",hex_color(*color)) } else { String::new() }
                     ));
                 }
             }
         }
     }
-
     out.push_str("</svg>\n");
     out
 }
 
-// ---------------------------------------------------------------------------
-// HTML
-// ---------------------------------------------------------------------------
+fn hex_color(color: crate::scene::Color) -> String {
+    format!("#{:02x}{:02x}{:02x}", color[0], color[1], color[2])
+}
 
-/// Render the plan as a self-contained HTML page: one `<tr>` per grid row, one
-/// `<td>` per grid column, inline CSS only, no scripts.
 pub fn render_html(grid: &SeatingGrid, locale: &str) -> String {
-    let mut out = String::with_capacity(4096 + grid.cells.len() * 160);
-    out.push_str("<!DOCTYPE html>\n");
-    out.push_str("<html lang=\"zh-CN\">\n<head>\n");
-    out.push_str("<meta charset=\"utf-8\">\n");
-    out.push_str(&format!("<title>{}</title>\n", escape_text(&grid.title)));
-    out.push_str("<style>\n");
-    out.push_str("  body { font-family: -apple-system, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK\", \"Hiragino Sans GB\", sans-serif; margin: 24px; color: #1c2733; }\n");
-    out.push_str("  h1 { font-size: 22px; margin: 0 0 4px; text-align: center; }\n");
-    out.push_str(
-        "  p.sub { font-size: 14px; color: #5a6b7f; margin: 0 0 12px; text-align: center; }\n",
-    );
-    out.push_str(
-        "  p.front { font-size: 12px; color: #8a97a6; margin: 0 0 6px; text-align: center; }\n",
-    );
-    // Fixed-layout table: cells share the printable width evenly and scale
-    // down on narrow windows instead of overflowing the screen.
-    out.push_str("  table.seating { border-collapse: separate; border-spacing: 6px; margin: 0 auto; width: 100%; max-width: 1000px; table-layout: fixed; }\n");
-    out.push_str("  td { height: 58px; text-align: center; vertical-align: middle; border-radius: 7px; font-size: 14px; overflow: hidden; }\n");
-    out.push_str("  td.seat { background: #e8f0fe; border: 1px solid #4a7fd4; }\n");
-    out.push_str("  td.seat .name { font-weight: 600; font-size: 15px; }\n");
-    out.push_str("  td.seat .detail { display: block; font-size: 11px; color: #7b8ea8; }\n");
-    out.push_str(
-        "  td.seat .num { display: block; font-size: 11px; color: #7b8ea8; margin-top: 2px; }\n",
-    );
-    out.push_str("  td.empty { background: #f7f8f9; border: 1px dashed #cfd8e2; color: #9aa7b5; font-size: 11px; }\n");
-    out.push_str("  td.void { border: none; }\n");
-    out.push_str("  @media (max-width: 640px) { td { height: 48px; } td.seat .name { font-size: 13px; } td.seat .detail, td.seat .num { font-size: 10px; } }\n");
-    out.push_str("</style>\n</head>\n<body>\n");
-    out.push_str(&format!("<h1>{}</h1>\n", escape_text(&grid.title)));
-    out.push_str(&format!(
-        "<p class=\"sub\">{}</p>\n",
-        escape_text(&subtitle_label(grid, locale))
-    ));
-    out.push_str(&format!(
-        "<p class=\"front\">{}</p>\n",
-        escape_text(front_of_room_label(locale))
-    ));
-    out.push_str("<table class=\"seating\">\n");
-
-    for row in grid.min_row..=grid.max_row {
-        out.push_str("  <tr>\n");
-        for col in grid.min_col..=grid.max_col {
-            match grid.cell_at(row, col) {
-                Some(cell) => match &cell.student {
-                    Some(name) => {
-                        let detail = cell
-                            .detail
-                            .as_ref()
-                            .map(|detail| {
-                                format!("<span class=\"detail\">{}</span>", escape_text(detail))
-                            })
-                            .unwrap_or_default();
-                        out.push_str(&format!(
-                            "    <td class=\"seat\"><span class=\"name\">{}</span>{detail}<span class=\"num\">{}</span></td>\n",
-                            escape_text(name),
-                            cell.seat_index + 1
-                        ));
-                    }
-                    None => {
-                        let label = if cell.enabled {
-                            empty_seat_label(locale)
-                        } else {
-                            "unused"
-                        };
-                        out.push_str(&format!(
-                            "    <td class=\"empty\">{}</td>\n",
-                            escape_text(label)
-                        ));
-                    }
-                },
-                None => {
-                    out.push_str("    <td class=\"void\"></td>\n");
-                }
-            }
-        }
-        out.push_str("  </tr>\n");
-    }
-
-    out.push_str("</table>\n</body>\n</html>\n");
-    out
+    let scene = crate::scene::build_scene(grid, &PdfLayout::portrait(), locale);
+    render_scene_html(&scene, &grid.title, locale)
 }
 
-// ---------------------------------------------------------------------------
-// PNG / PDF shared palette
-// ---------------------------------------------------------------------------
-
-/// RGB colors shared by the PNG and PDF renderers. Mirrors the SVG palette so
-/// all four exports agree: occupied seats are blue-tinted, empty seats light
-/// gray, disabled seats a muted gray, and void grid positions near-white.
-type Rgb = [u8; 3];
-
-const WHITE: Rgb = [0xff, 0xff, 0xff];
-const OCCUPIED_FILL: Rgb = [0xe8, 0xf0, 0xfe];
-const OCCUPIED_STROKE: Rgb = [0x4a, 0x7f, 0xd4];
-const EMPTY_FILL: Rgb = [0xf7, 0xf8, 0xf9];
-const EMPTY_STROKE: Rgb = [0xcf, 0xd8, 0xe2];
-const DISABLED_FILL: Rgb = [0xec, 0xef, 0xf3];
-const DISABLED_STROKE: Rgb = [0x9a, 0xa7, 0xb5];
-const VOID_FILL: Rgb = [0xfb, 0xfb, 0xfc];
-const VOID_STROKE: Rgb = [0xec, 0xef, 0xf2];
-const DIVIDER: Rgb = [0xc8, 0xd2, 0xde];
-
-/// The (fill, stroke) color pair for the grid position at `(row, col)`.
-fn cell_colors(grid: &SeatingGrid, row: i32, col: i32) -> (Rgb, Rgb) {
-    match grid.cell_at(row, col) {
-        Some(cell) if cell.student.is_some() => (OCCUPIED_FILL, OCCUPIED_STROKE),
-        Some(cell) if !cell.enabled => (DISABLED_FILL, DISABLED_STROKE),
-        Some(_) => (EMPTY_FILL, EMPTY_STROKE),
-        None => (VOID_FILL, VOID_STROKE),
-    }
+/// The web page embeds the scene rather than running a second CSS table layout.
+/// Printing has zero browser page margin: the scene already contains margins.
+pub fn render_scene_html(scene: &crate::scene::ChartScene, title: &str, locale: &str) -> String {
+    format!(
+        "<!DOCTYPE html>\n<html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{}</title>\n\
+         <style>@page{{size:{}pt {}pt;margin:0}}*{{box-sizing:border-box}}html,body{{margin:0;padding:0}}body{{background:#e9ece5}}.paper{{width:{}pt;margin:0 auto;background:white}}.paper>svg{{display:block;width:100%;height:auto}}@media print{{html,body{{background:white;width:{}pt;height:{}pt}}.paper{{margin:0;break-inside:avoid;page-break-inside:avoid}}}}</style></head>\n\
+         <body><main class=\"paper\" aria-label=\"{}\">{}</main></body></html>\n",
+        escape_text(locale),escape_text(title),scene.width,scene.height,scene.width,
+        scene.width,scene.height,escape_text(title),render_scene_svg(scene)
+    )
 }
 
-// ---------------------------------------------------------------------------
-// PNG
-// ---------------------------------------------------------------------------
+const RASTER_SCALE: f64 = 3.0;
+const MAX_RASTER_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Rasterize the plan as an RGB PNG.
-///
-/// The image is rendered at 2× density so names remain legible in documents,
-/// messaging apps, and classroom projectors. Text uses the same discovered
-/// system CJK font as PDF and is resolved at export time.
 pub fn render_png(grid: &SeatingGrid) -> Result<Vec<u8>, String> {
-    let cols = grid_cols(grid);
-    let rows = grid_rows(grid);
-    let width = ((PAD * 2.0 + cols as f64 * CELL_W) * PNG_RASTER_SCALE).ceil() as u32;
-    let height = ((HEADER_H + PAD * 2.0 + rows as f64 * CELL_H) * PNG_RASTER_SCALE).ceil() as u32;
-    if width == 0 || height == 0 {
-        return Err("cannot render an empty grid to PNG".to_string());
-    }
-    // Fail with an error instead of allocating an unbounded raster for a
-    // wide/tall grid (2x scale: a 1000x100 room would need ~8.5 GiB).
-    if u64::from(width) * u64::from(height) * 3 > MAX_RASTER_BYTES {
-        return Err(format!(
-            "grid is too large to rasterize to PNG ({width}x{height} px exceeds \
-             the {MAX_RASTER_BYTES}-byte buffer limit)"
-        ));
-    }
+    render_png_with(grid, &PdfLayout::portrait(), "zh")
+}
 
-    let mut data = vec![0u8; width as usize * height as usize * 3];
-    let mut canvas = Canvas::new(&mut data, width, height);
-    canvas.fill(0, 0, width, height, WHITE);
-    let divider_y = ((HEADER_H + 4.0) * PNG_RASTER_SCALE) as u32;
-    canvas.fill(0, divider_y, width, 2, DIVIDER);
+pub fn render_png_with(
+    grid: &SeatingGrid,
+    page: &PdfLayout,
+    locale: &str,
+) -> Result<Vec<u8>, String> {
+    let scene = crate::scene::build_scene(grid, page, locale);
+    render_scene_png(&scene)
+}
 
-    let font = crate::fonts::load_cjk_font();
-    if let Some(font) = &font {
-        draw_text_in_rect(
-            &mut canvas,
-            font,
-            &grid.title,
-            PAD * PNG_RASTER_SCALE,
-            6.0 * PNG_RASTER_SCALE,
-            (f64::from(width) / PNG_RASTER_SCALE - PAD * 2.0) * PNG_RASTER_SCALE,
-            26.0 * PNG_RASTER_SCALE,
-            18.0 * PNG_RASTER_SCALE,
-            (20, 20, 19),
-        );
-        draw_text_in_rect(
-            &mut canvas,
-            font,
-            &grid.subtitle,
-            PAD * PNG_RASTER_SCALE,
-            31.0 * PNG_RASTER_SCALE,
-            (f64::from(width) / PNG_RASTER_SCALE - PAD * 2.0) * PNG_RASTER_SCALE,
-            16.0 * PNG_RASTER_SCALE,
-            9.0 * PNG_RASTER_SCALE,
-            (94, 93, 89),
-        );
-        draw_text_in_rect(
-            &mut canvas,
-            font,
-            "讲台 / FRONT OF ROOM",
-            PAD * PNG_RASTER_SCALE,
-            47.0 * PNG_RASTER_SCALE,
-            (f64::from(width) / PNG_RASTER_SCALE - PAD * 2.0) * PNG_RASTER_SCALE,
-            15.0 * PNG_RASTER_SCALE,
-            8.0 * PNG_RASTER_SCALE,
-            (94, 93, 89),
-        );
-    }
-    for row in grid.min_row..=grid.max_row {
-        for col in grid.min_col..=grid.max_col {
-            let (x, y) = cell_origin(grid, row, col);
-            canvas.rect(
-                (x + 4.0) * PNG_RASTER_SCALE,
-                (y + 4.0) * PNG_RASTER_SCALE,
-                RECT_W * PNG_RASTER_SCALE,
-                RECT_H * PNG_RASTER_SCALE,
-                cell_colors(grid, row, col),
-                2,
-            );
-            if let Some(cell) = grid.cell_at(row, col) {
-                if let Some(font) = &font {
-                    let text_x = (x + 4.0) * PNG_RASTER_SCALE;
-                    let text_y = (y + 4.0) * PNG_RASTER_SCALE;
-                    let text_w = RECT_W * PNG_RASTER_SCALE;
-                    let text_h = RECT_H * PNG_RASTER_SCALE;
-                    if let Some(name) = &cell.student {
-                        draw_text_in_rect(
-                            &mut canvas,
-                            font,
-                            name,
-                            text_x,
-                            text_y + text_h * 0.08,
-                            text_w,
-                            text_h * 0.56,
-                            14.0 * PNG_RASTER_SCALE,
-                            (30, 34, 40),
-                        );
-                        draw_text_in_rect(
-                            &mut canvas,
-                            font,
-                            &(cell.seat_index + 1).to_string(),
-                            text_x,
-                            text_y + text_h * 0.72,
-                            text_w,
-                            text_h * 0.2,
-                            7.0 * PNG_RASTER_SCALE,
-                            (94, 93, 89),
-                        );
-                    } else if cell.enabled {
-                        draw_text_in_rect(
-                            &mut canvas,
-                            font,
-                            "空座",
-                            text_x,
-                            text_y,
-                            text_w,
-                            text_h,
-                            9.0 * PNG_RASTER_SCALE,
-                            (154, 167, 181),
-                        );
-                    }
-                }
-            }
-        }
-    }
-
+pub fn render_scene_png(scene: &crate::scene::ChartScene) -> Result<Vec<u8>, String> {
+    validate_raster_page(scene)?;
+    let (width, height, data) = rasterize_scene(scene, RASTER_SCALE);
     let mut out = Vec::new();
     {
-        // The encoder borrows `out`; drop the writer before returning it.
         let mut encoder = png::Encoder::new(&mut out, width, height);
         encoder.set_color(png::ColorType::Rgb);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder
             .write_header()
-            .map_err(|error| format!("PNG header write failed: {error}"))?;
+            .map_err(|e| format!("PNG header write failed: {e}"))?;
         writer
             .write_image_data(&data)
-            .map_err(|error| format!("PNG data write failed: {error}"))?;
+            .map_err(|e| format!("PNG data write failed: {e}"))?;
     }
     Ok(out)
 }
 
-const PNG_RASTER_SCALE: f64 = 2.0;
-
-/// Upper bound for a PNG raster buffer (3 bytes per pixel at 2x density).
-const MAX_RASTER_BYTES: u64 = 512 * 1024 * 1024;
-
-#[allow(clippy::too_many_arguments)]
-fn draw_text_in_rect(
-    canvas: &mut Canvas<'_>,
-    font: &fontdue::Font,
-    text: &str,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    max_font_px: f64,
-    color: (u8, u8, u8),
-) {
-    if text.is_empty() {
-        return;
+fn validate_raster_page(scene: &crate::scene::ChartScene) -> Result<(), String> {
+    if !scene.width.is_finite()
+        || !scene.height.is_finite()
+        || scene.width <= 0.0
+        || scene.height <= 0.0
+        || scene.width * scene.height * RASTER_SCALE * RASTER_SCALE * 3.0 > MAX_RASTER_BYTES as f64
+    {
+        return Err("page is too large to rasterize".into());
     }
-    let max_px = ((w - 4.0).max(2.0) / text.chars().count().max(1) as f64).min(max_font_px);
-    let px_size = max_px.clamp(6.0, max_font_px).round() as f32;
-    // Total advance width to center the string.
-    let total_width: f64 = text
-        .chars()
-        .map(|ch| font.rasterize(ch, px_size).0.advance_width as f64)
-        .sum();
-    let mut cursor_x = x + (w - total_width) / 2.0;
-    let baseline = y + h * 0.68;
-    for ch in text.chars() {
-        let (metrics, bitmap) = font.rasterize(ch, px_size);
-        let draw_x = (cursor_x + metrics.xmin as f64).round() as u32;
-        let draw_y = (baseline - metrics.height as f64 + metrics.ymin as f64).round() as u32;
-        for row in 0..metrics.height {
-            for col in 0..metrics.width {
-                let alpha = bitmap[row * metrics.width + col];
-                if alpha > 0 {
-                    canvas.blend_pixel(draw_x + col as u32, draw_y + row as u32, color, alpha);
-                }
-            }
-        }
-        cursor_x += metrics.advance_width as f64;
+    Ok(())
+}
+
+fn default_margin_mm() -> f64 {
+    12.0
+}
+
+pub fn render_pdf(grid: &SeatingGrid) -> String {
+    render_pdf_with(grid, PdfLayout::portrait())
+}
+
+pub fn render_pdf_with(grid: &SeatingGrid, page: PdfLayout) -> String {
+    render_pdf_locale_with(grid, &page, "zh")
+}
+
+pub fn render_pdf_locale_with(grid: &SeatingGrid, page: &PdfLayout, locale: &str) -> String {
+    render_scene_pdf(&crate::scene::build_scene(grid, page, locale))
+        .expect("supported PDF page geometry")
+}
+
+/// Convert a top-origin line box to a font baseline using font ascent/descent.
+/// The old renderer added ymin to the glyph origin, moving descenders upward
+/// and other glyphs downward independently within the same line.
+fn text_baseline(bounds: crate::scene::Rect, size: f64) -> f64 {
+    if let Some(metrics) =
+        crate::fonts::load_cjk_font().and_then(|f| f.horizontal_line_metrics(size as f32))
+    {
+        bounds.y
+            + (bounds.h - f64::from(metrics.ascent - metrics.descent)) / 2.0
+            + f64::from(metrics.ascent)
+    } else {
+        bounds.y + (bounds.h - size) / 2.0 + size * 0.82
     }
 }
 
-/// `png` encoder owns the chunk/compression details).
+fn rasterize_scene(scene: &crate::scene::ChartScene, density: f64) -> (u32, u32, Vec<u8>) {
+    use crate::scene::{Element, Rect, TextAlign};
+    let width = (scene.width * density).ceil() as u32;
+    let height = (scene.height * density).ceil() as u32;
+    let mut data = vec![255u8; width as usize * height as usize * 3];
+    let mut canvas = Canvas {
+        data: &mut data,
+        width,
+        height,
+    };
+    for element in &scene.elements {
+        match element {
+            Element::Box {
+                bounds,
+                radius,
+                fill,
+                stroke,
+                stroke_width,
+                dashed,
+            } => {
+                let b = Rect {
+                    x: bounds.x * density,
+                    y: bounds.y * density,
+                    w: bounds.w * density,
+                    h: bounds.h * density,
+                };
+                canvas.rounded_rect(
+                    b,
+                    *radius * density,
+                    *fill,
+                    *stroke,
+                    *stroke_width * density,
+                    *dashed,
+                );
+            }
+            Element::Text {
+                bounds,
+                text,
+                font_size,
+                color,
+                bold,
+                align,
+            } => {
+                let Some(font) = crate::fonts::load_cjk_font() else {
+                    continue;
+                };
+                let size = (*font_size * density) as f32;
+                let text_w: f64 = text
+                    .chars()
+                    .map(|c| f64::from(font.metrics(c, size).advance_width))
+                    .sum();
+                let mut cursor_x = bounds.x * density
+                    + if *align == TextAlign::Center {
+                        (bounds.w * density - text_w) / 2.0
+                    } else {
+                        0.0
+                    };
+                let baseline = text_baseline(*bounds, *font_size) * density;
+                let clip = Rect {
+                    x: bounds.x * density,
+                    y: bounds.y * density,
+                    w: bounds.w * density,
+                    h: bounds.h * density,
+                };
+                for ch in text.chars() {
+                    let (metrics, bitmap) = font.rasterize(ch, size);
+                    let x = (cursor_x + f64::from(metrics.xmin)).round() as i64;
+                    let y =
+                        (baseline - metrics.height as f64 - f64::from(metrics.ymin)).round() as i64;
+                    for row in 0..metrics.height {
+                        for col in 0..metrics.width {
+                            let px = x + col as i64;
+                            let py = y + row as i64;
+                            if (px as f64) >= clip.x
+                                && (px as f64) < clip.x + clip.w
+                                && (py as f64) >= clip.y
+                                && (py as f64) < clip.y + clip.h
+                            {
+                                canvas.blend(px, py, *color, bitmap[row * metrics.width + col]);
+                                if *bold {
+                                    canvas.blend(
+                                        px + 1,
+                                        py,
+                                        *color,
+                                        bitmap[row * metrics.width + col] / 3,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    cursor_x += f64::from(metrics.advance_width);
+                }
+            }
+        }
+    }
+    (width, height, data)
+}
+
 struct Canvas<'a> {
     data: &'a mut [u8],
     width: u32,
     height: u32,
 }
-
 impl Canvas<'_> {
-    fn new(data: &mut [u8], width: u32, height: u32) -> Canvas<'_> {
-        Canvas {
-            data,
-            width,
-            height,
+    fn blend(&mut self, x: i64, y: i64, color: crate::scene::Color, alpha: u8) {
+        if x < 0 || y < 0 || x >= i64::from(self.width) || y >= i64::from(self.height) || alpha == 0
+        {
+            return;
+        }
+        let offset = (y as usize * self.width as usize + x as usize) * 3;
+        for (channel, value) in color.iter().enumerate() {
+            self.data[offset + channel] = ((u32::from(*value) * u32::from(alpha)
+                + u32::from(self.data[offset + channel]) * (255 - u32::from(alpha)))
+                / 255) as u8;
         }
     }
-
-    /// Blend an anti-aliased glyph pixel over the canvas (alpha 0..=255).
-    fn blend_pixel(&mut self, x: u32, y: u32, color: (u8, u8, u8), alpha: u8) {
-        if x >= self.width || y >= self.height || alpha == 0 {
-            return;
-        }
-        let index = (y * self.width + x) as usize * 3;
-        if alpha == 255 {
-            self.data[index] = color.0;
-            self.data[index + 1] = color.1;
-            self.data[index + 2] = color.2;
-            return;
-        }
-        let a = alpha as u32;
-        let fg = [color.0 as u32, color.1 as u32, color.2 as u32];
-        for (offset, channel) in fg.into_iter().enumerate() {
-            let base = self.data[index + offset] as u32;
-            self.data[index + offset] = ((channel * a + base * (255 - a)) / 255) as u8;
-        }
-    }
-
-    /// Fill `[x, x+w) x [y, y+h)` with `rgb`, clipped to the image bounds.
-    fn fill(&mut self, x: u32, y: u32, w: u32, h: u32, rgb: Rgb) {
-        let x_end = (x + w).min(self.width);
-        let y_end = (y + h).min(self.height);
-        if x >= self.width || y >= self.height || x_end <= x || y_end <= y {
-            return;
-        }
-        let row_len = self.width as usize * 3;
-        for yy in y..y_end {
-            let start = yy as usize * row_len + x as usize * 3;
-            let end = yy as usize * row_len + x_end as usize * 3;
-            for idx in (start..end).step_by(3) {
-                self.data[idx] = rgb[0];
-                self.data[idx + 1] = rgb[1];
-                self.data[idx + 2] = rgb[2];
+    fn rounded_rect(
+        &mut self,
+        b: crate::scene::Rect,
+        radius: f64,
+        fill: crate::scene::Color,
+        stroke: crate::scene::Color,
+        border: f64,
+        dashed: bool,
+    ) {
+        let radius = radius.min(b.w / 2.0).min(b.h / 2.0).max(0.0);
+        let inside = |x: f64, y: f64, inset: f64| {
+            let left = b.x + inset;
+            let top = b.y + inset;
+            let right = b.x + b.w - inset;
+            let bottom = b.y + b.h - inset;
+            if x < left || x > right || y < top || y > bottom {
+                return false;
+            }
+            let r = (radius - inset).max(0.0);
+            let cx = x.clamp(left + r, right - r);
+            let cy = y.clamp(top + r, bottom - r);
+            (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r + 0.001
+        };
+        for y in
+            (b.y.floor().max(0.0) as i64)..((b.y + b.h).ceil().min(f64::from(self.height)) as i64)
+        {
+            for x in (b.x.floor().max(0.0) as i64)
+                ..((b.x + b.w).ceil().min(f64::from(self.width)) as i64)
+            {
+                if inside(x as f64 + 0.5, y as f64 + 0.5, 0.0) {
+                    let is_border = !inside(x as f64 + 0.5, y as f64 + 0.5, border);
+                    let color = if is_border && (!dashed || ((x + y) / 6) % 2 == 0) {
+                        stroke
+                    } else {
+                        fill
+                    };
+                    self.blend(x, y, color, 255);
+                }
             }
         }
     }
-
-    /// Draw a rectangle with a `border`-pixel border in the stroke color around
-    /// an interior filled with the fill color.
-    fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, colors: (Rgb, Rgb), border: u32) {
-        let (fill, stroke) = colors;
-        let x0 = x.round() as u32;
-        let y0 = y.round() as u32;
-        let rw = w.round() as u32;
-        let rh = h.round() as u32;
-        // Outer rect in the stroke color, then the inset area in the fill color.
-        self.fill(x0, y0, rw, rh, stroke);
-        if rw > border * 2 && rh > border * 2 {
-            self.fill(
-                x0 + border,
-                y0 + border,
-                rw - border * 2,
-                rh - border * 2,
-                fill,
-            );
-        }
-    }
 }
 
-// ---------------------------------------------------------------------------
-// PDF
-// ---------------------------------------------------------------------------
-
-/// A4 portrait page size in points (PDF coordinates grow up and to the right).
-/// Default printable margin in points (12mm ≈ 34pt), matching the print
-/// layout spec (margins 12/14mm).
-fn default_margin_pt() -> f64 {
-    (12.0_f64 * 72.0 / 25.4).round()
-}
-/// Vertical space reserved for the title, subtitle, and front-of-room label.
-const PDF_HEADER_SPACE: f64 = 100.0;
-
-/// Page geometry for the PDF page-image renderer (app extension).
-///
-/// Defaults to A4 portrait at the natural fit-to-page scale. The export domain
-/// module swaps in [`PdfLayout::landscape`] for `orientation: "landscape"` and
-/// applies the frontend `page_scale` via [`PdfLayout::with_scale`] so the
-/// `orientation`/`page_scale` fields of `ExportDraftRequest` map without
-/// changing the default [`render_pdf`] behaviour.
-/// Standard page sizes for document exports (plan §12.3 unification).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaperSize {
     A4,
@@ -892,12 +620,12 @@ pub struct PdfLayout {
 impl PdfLayout {
     /// A4 portrait with the default margin.
     pub fn portrait() -> Self {
-        Self::from_paper(PaperSize::A4, false, default_margin_pt())
+        Self::from_paper(PaperSize::A4, false, default_margin_mm())
     }
 
     /// A4 landscape with the default margin.
     pub fn landscape() -> Self {
-        Self::from_paper(PaperSize::A4, true, default_margin_pt())
+        Self::from_paper(PaperSize::A4, true, default_margin_mm())
     }
 
     /// Page geometry from paper size + orientation + margin (mm→pt).
@@ -933,27 +661,15 @@ impl PdfLayout {
     }
 }
 
-/// Render the plan as a single-page, viewer-independent PDF.
-///
-/// The page is rasterized with the system font at export time and stored as a
-/// losslessly encoded image.  The previous system-font-reference path wrote
-/// one font's glyph IDs without embedding that font; viewers that substituted
-/// another font displayed dots, boxes, or unrelated letters.
-pub fn render_pdf(grid: &SeatingGrid) -> String {
-    render_pdf_with(
-        grid,
-        PdfLayout::from_paper(PaperSize::A4, false, default_margin_pt()),
-    )
-}
-
-/// [`render_pdf`] with an explicit page geometry (orientation + scale).
-pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
-    let (image_width, image_height, rgb) = rasterize_pdf_page(grid, &layout);
+pub fn render_scene_pdf(scene: &crate::scene::ChartScene) -> Result<String, String> {
+    validate_raster_page(scene)?;
+    let (image_width, image_height, rgb) = rasterize_scene(scene, RASTER_SCALE);
+    let layout = scene;
     let (filter, compressed) = pdf_compress_image(&rgb);
     let encoded = ascii_hex(&compressed);
     let content = format!(
         "q\n{:.2} 0 0 {:.2} 0 0 cm\n/Im0 Do\nQ\n",
-        layout.page_w, layout.page_h
+        layout.width, layout.height
     );
 
     let mut bodies = Vec::new();
@@ -962,8 +678,8 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
     bodies.push(format!(
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w} {page_h}] \
          /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
-        page_w = layout.page_w,
-        page_h = layout.page_h
+        page_w = layout.width,
+        page_h = layout.height
     ));
     bodies.push(format!(
         "<< /Length {} >>\nstream\n{content}\nendstream",
@@ -993,7 +709,7 @@ pub fn render_pdf_with(grid: &SeatingGrid, layout: PdfLayout) -> String {
     out.push_str(&format!(
         "trailer\n<< /Size {count} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n"
     ));
-    out
+    Ok(out)
 }
 
 fn pdf_compress_image(data: &[u8]) -> (&'static str, Vec<u8>) {
@@ -1006,154 +722,6 @@ fn pdf_compress_image(data: &[u8]) -> (&'static str, Vec<u8>) {
     ("/RunLengthDecode", pdf_run_length_encode(data))
 }
 
-const PDF_RASTER_SCALE: f64 = 2.0;
-
-/// Rasterize the page at 144 DPI. The flat classroom palette compresses well
-/// with FlateDecode while names stay crisp on paper and on screen.
-fn rasterize_pdf_page(grid: &SeatingGrid, layout: &PdfLayout) -> (u32, u32, Vec<u8>) {
-    let width = (layout.page_w * PDF_RASTER_SCALE).round() as u32;
-    let height = (layout.page_h * PDF_RASTER_SCALE).round() as u32;
-    let mut data = vec![0_u8; width as usize * height as usize * 3];
-    let mut canvas = Canvas::new(&mut data, width, height);
-    canvas.fill(0, 0, width, height, WHITE);
-
-    let cols = grid_cols(grid) as f64;
-    let rows = grid_rows(grid) as f64;
-    let grid_w = cols * CELL_W;
-    let grid_h = rows * CELL_H;
-    let avail_w = layout.page_w - layout.margin_pt * 2.0;
-    let avail_h = layout.page_h - PDF_HEADER_SPACE - layout.margin_pt * 0.5;
-    let base_scale = (avail_w / grid_w).min(avail_h / grid_h).clamp(0.1, 2.0);
-    let scale = (base_scale * layout.scale_multiplier).clamp(0.1, 2.0);
-    let grid_x = layout.margin_pt;
-    let grid_top = 112.0;
-
-    let font = crate::fonts::load_cjk_font();
-    if let Some(font) = &font {
-        draw_text_in_rect(
-            &mut canvas,
-            font,
-            &grid.title,
-            layout.margin_pt * PDF_RASTER_SCALE,
-            22.0 * PDF_RASTER_SCALE,
-            (layout.page_w - layout.margin_pt * 2.0) * PDF_RASTER_SCALE,
-            30.0 * PDF_RASTER_SCALE,
-            20.0 * PDF_RASTER_SCALE,
-            (20, 20, 19),
-        );
-        draw_text_in_rect(
-            &mut canvas,
-            font,
-            &grid.subtitle,
-            layout.margin_pt * PDF_RASTER_SCALE,
-            54.0 * PDF_RASTER_SCALE,
-            (layout.page_w - layout.margin_pt * 2.0) * PDF_RASTER_SCALE,
-            20.0 * PDF_RASTER_SCALE,
-            11.0 * PDF_RASTER_SCALE,
-            (94, 93, 89),
-        );
-        draw_text_in_rect(
-            &mut canvas,
-            font,
-            "讲台 / FRONT OF ROOM",
-            grid_x * PDF_RASTER_SCALE,
-            78.0 * PDF_RASTER_SCALE,
-            grid_w * scale * PDF_RASTER_SCALE,
-            18.0 * PDF_RASTER_SCALE,
-            9.0 * PDF_RASTER_SCALE,
-            (94, 93, 89),
-        );
-    }
-    canvas.fill(
-        (grid_x * PDF_RASTER_SCALE).round() as u32,
-        (102.0 * PDF_RASTER_SCALE).round() as u32,
-        (grid_w * scale * PDF_RASTER_SCALE).round() as u32,
-        2,
-        DIVIDER,
-    );
-
-    for row in grid.min_row..=grid.max_row {
-        for col in grid.min_col..=grid.max_col {
-            let col_offset = f64::from(col - grid.min_col);
-            let row_offset = f64::from(row - grid.min_row);
-            let inner_x = grid_x + col_offset * CELL_W * scale + 4.0 * scale;
-            let inner_y = grid_top + row_offset * CELL_H * scale + 4.0 * scale;
-            let inner_w = RECT_W * scale;
-            let inner_h = RECT_H * scale;
-            canvas.rect(
-                inner_x * PDF_RASTER_SCALE,
-                inner_y * PDF_RASTER_SCALE,
-                inner_w * PDF_RASTER_SCALE,
-                inner_h * PDF_RASTER_SCALE,
-                cell_colors(grid, row, col),
-                2,
-            );
-
-            let Some(cell) = grid.cell_at(row, col) else {
-                continue;
-            };
-            let Some(font) = &font else {
-                continue;
-            };
-            let x = inner_x * PDF_RASTER_SCALE;
-            let y = inner_y * PDF_RASTER_SCALE;
-            let w = inner_w * PDF_RASTER_SCALE;
-            let h = inner_h * PDF_RASTER_SCALE;
-            if let Some(name) = &cell.student {
-                draw_text_in_rect(
-                    &mut canvas,
-                    font,
-                    name,
-                    x,
-                    y + h * 0.10,
-                    w,
-                    h * 0.48,
-                    13.0 * PDF_RASTER_SCALE,
-                    (20, 20, 19),
-                );
-                if let Some(detail) = &cell.detail {
-                    draw_text_in_rect(
-                        &mut canvas,
-                        font,
-                        detail,
-                        x,
-                        y + h * 0.53,
-                        w,
-                        h * 0.25,
-                        7.5 * PDF_RASTER_SCALE,
-                        (94, 93, 89),
-                    );
-                }
-                draw_text_in_rect(
-                    &mut canvas,
-                    font,
-                    &(cell.seat_index + 1).to_string(),
-                    x,
-                    y + h * 0.78,
-                    w,
-                    h * 0.17,
-                    7.0 * PDF_RASTER_SCALE,
-                    (94, 93, 89),
-                );
-            } else if cell.enabled {
-                draw_text_in_rect(
-                    &mut canvas,
-                    font,
-                    "空座",
-                    x,
-                    y,
-                    w,
-                    h,
-                    9.0 * PDF_RASTER_SCALE,
-                    (154, 167, 181),
-                );
-            }
-        }
-    }
-    (width, height, data)
-}
-
-/// PDF RunLengthEncode packets (the same packet layout as TIFF PackBits).
 fn pdf_run_length_encode(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len() / 4);
     let mut index = 0;
@@ -1325,7 +893,7 @@ mod tests {
         assert!(!svg.contains("<script"), "no scripts");
         assert!(!svg.contains("href="), "no external references");
         assert!(!svg.contains("<image"), "no external images");
-        assert!(!svg.contains("url("), "no external fills");
+        assert!(!svg.contains("url(http"), "no external fills");
         assert!(svg.contains("Alice"));
         assert!(svg.contains("张伟"), "CJK names survive as UTF-8");
     }
@@ -1374,8 +942,8 @@ mod tests {
         let grid = SeatingGrid::build(&request, &response).unwrap();
         let html = render_html(&grid, "en");
         assert!(html.starts_with("<!DOCTYPE html>"));
-        assert!(html.contains("<table"));
-        assert!(html.contains("</table>"));
+        assert!(html.contains("<svg "));
+        assert!(html.contains("</svg>"));
         assert!(!html.contains("<script"), "no scripts");
         assert!(html.contains("A&amp;B &lt;C&gt;"));
         assert!(
@@ -1388,7 +956,7 @@ mod tests {
     fn html_renders_empty_and_void_cells() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
         let html = render_html(&grid, "en");
-        assert!(html.contains("class=\"empty\""), "empty seats are marked");
+        assert!(html.contains(">Empty<"), "empty seats are marked");
         // Row 1 has 3 seats but max col is 3 == min col 1, so no void here;
         // use a wider request to exercise void cells.
         assert!(!html.contains("class=\"void\""));
@@ -1407,10 +975,7 @@ mod tests {
         let grid = SeatingGrid::build(&request, &response).unwrap();
         assert_eq!((grid.min_col, grid.max_col), (1, 4));
         let html = render_html(&grid, "en");
-        assert!(
-            html.contains("class=\"void\""),
-            "missing grid positions are void"
-        );
+        assert!(!html.contains("R1C3"), "missing grid positions are void");
         let svg = render_svg(&grid, "en");
         assert!(!svg.contains("<script"));
     }
@@ -1430,8 +995,8 @@ mod tests {
         ]));
         let grid = SeatingGrid::build(&request, &sample_response()).unwrap();
         assert!(!grid.cell_at(2, 3).unwrap().enabled);
-        assert!(render_svg(&grid, "en").contains("unused"));
-        assert!(render_html(&grid, "en").contains("unused"));
+        assert!(render_svg(&grid, "en").contains("Unavailable"));
+        assert!(render_html(&grid, "en").contains("Unavailable"));
     }
 
     // V2/V3: the zh locale must render the same Chinese wording as PNG/PDF
@@ -1443,21 +1008,18 @@ mod tests {
         let svg = render_svg(&grid, "zh");
         assert!(svg.contains(">空座<"), "zh empty-seat label: {svg}");
         assert!(svg.contains("教室前方"), "zh front-of-room label");
+        assert!(svg.contains("4 名学生 · 6 个座位"), "zh subtitle: {svg}");
+        assert!(!svg.contains(">Empty<"), "no English empty label: {svg}");
         assert!(
-            svg.contains("4 名学生 · 6 个座位 · 可行"),
-            "zh subtitle: {svg}"
-        );
-        assert!(!svg.contains(">empty<"), "no English empty label: {svg}");
-        assert!(
-            !svg.contains("front of room"),
+            !svg.contains("FRONT OF ROOM"),
             "no English front label: {svg}"
         );
         assert!(!svg.contains("students / "), "no English subtitle: {svg}");
 
         let en = render_svg(&grid, "en");
-        assert!(en.contains(">empty<"));
-        assert!(en.contains("front of room"));
-        assert!(en.contains("4 students / 6 seats / feasible"));
+        assert!(en.contains(">Empty<"));
+        assert!(en.contains("FRONT OF ROOM"));
+        assert!(en.contains("4 students · 6 seats"));
         assert!(!en.contains("空座"));
     }
 
@@ -1465,19 +1027,19 @@ mod tests {
     fn html_localizes_labels_for_zh_and_keeps_en_unchanged() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
         let html = render_html(&grid, "zh");
-        assert!(html.contains(">空座</td>"), "zh empty-seat cell: {html}");
+        assert!(html.contains(">空座<"), "zh empty-seat cell: {html}");
         assert!(html.contains("教室前方"), "zh front-of-room label");
-        assert!(html.contains("4 名学生 · 6 个座位 · 可行"), "zh subtitle");
+        assert!(html.contains("4 名学生 · 6 个座位"), "zh subtitle");
         assert!(
-            !html.contains(">empty<"),
+            !html.contains(">Empty<"),
             "no rendered English empty label (CSS class names excluded): {html}"
         );
         assert!(!html.contains(">front of room<"));
 
         let en = render_html(&grid, "en");
-        assert!(en.contains(">empty</td>"));
-        assert!(en.contains("front of room"));
-        assert!(en.contains("4 students / 6 seats / feasible"));
+        assert!(en.contains(">Empty<"));
+        assert!(en.contains("FRONT OF ROOM"));
+        assert!(en.contains("4 students · 6 seats"));
     }
 
     #[test]
@@ -1539,20 +1101,14 @@ mod tests {
     }
 
     #[test]
-    fn png_rejects_oversized_raster_instead_of_allocating() {
-        // A wide grid within the extent guard would need gigabytes of pixel
-        // buffer at 2x density; render_png must fail cleanly, not allocate.
-        let grid = SeatingGrid {
-            title: "t".into(),
-            subtitle: "s".into(),
-            cells: Vec::new(),
-            min_row: 1,
-            max_row: 100,
-            min_col: 1,
-            max_col: 1000,
+    fn png_rejects_oversized_pages_instead_of_allocating() {
+        let scene = crate::scene::ChartScene {
+            width: 100_000.0,
+            height: 100_000.0,
+            elements: Vec::new(),
+            warnings: Vec::new(),
         };
-        let error = render_png(&grid).unwrap_err();
-        assert!(error.contains("too large"), "unexpected error: {error}");
+        assert!(render_scene_png(&scene).unwrap_err().contains("too large"));
     }
 
     #[test]
@@ -1567,35 +1123,31 @@ mod tests {
     }
 
     #[test]
-    fn font_size_shrinks_for_long_names() {
-        assert_eq!(name_font_size("Alice"), 13);
-        assert_eq!(name_font_size("AliceandBob"), 10);
-        assert_eq!(name_font_size("AveryLongStudentName"), 8);
+    fn typography_fits_measured_width_and_multiple_lines() {
+        let (short, _) = crate::scene::fit_text("Alice", 100.0, 32.0, 18.0, 2);
+        let (long, lines) =
+            crate::scene::fit_text("Alexandra Montgomery-Johnson", 100.0, 32.0, 18.0, 2);
+        assert!(long < short);
+        assert!(lines.len() <= 2);
+        for line in lines {
+            assert!(crate::scene::text_width(&line, long) <= 100.1);
+        }
     }
 
     #[test]
-    fn png_magic_header_and_dimensions_match_grid() {
+    fn png_magic_header_and_dimensions_match_the_shared_paper_scene() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
         let bytes = render_png(&grid).unwrap();
-
-        // 8-byte PNG signature.
-        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n", "PNG signature");
-        // IHDR width/height are big-endian u32s at bytes 16..24.
-        let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
-        let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
-        let cols = grid_cols(&grid) as f64;
-        let rows = grid_rows(&grid) as f64;
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
         assert_eq!(
-            width,
-            ((PAD * 2.0 + cols * CELL_W) * PNG_RASTER_SCALE).ceil() as u32
+            u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
+            (595.0 * RASTER_SCALE) as u32
         );
         assert_eq!(
-            height,
-            ((HEADER_H + PAD * 2.0 + rows * CELL_H) * PNG_RASTER_SCALE).ceil() as u32
+            u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
+            (842.0 * RASTER_SCALE) as u32
         );
-        // Closes with an IEND chunk.
-        let tail = &bytes[bytes.len() - 8..bytes.len() - 4];
-        assert_eq!(tail, b"IEND", "last chunk must be IEND");
+        assert_eq!(&bytes[bytes.len() - 8..bytes.len() - 4], b"IEND");
     }
 
     #[test]
@@ -1730,32 +1282,35 @@ mod tests {
     }
 
     #[test]
-    fn png_renders_names_when_font_available() {
+    fn png_renders_names_inside_their_scene_text_boxes() {
         let grid = SeatingGrid::build(&sample_request(), &sample_response()).unwrap();
-        let bytes = render_png(&grid).expect("png renders");
+        let bytes = render_png(&grid).unwrap();
         let (width, height, data) = decode_png(&bytes);
-        let font = crate::fonts::load_cjk_font();
-        if font.is_none() {
-            // Fontless machines (CI before fonts are installed) skip the
-            // pixel assertion but must still produce a valid PNG.
-            assert!(width > 0 && height > 0);
+        assert!(width > 0 && height > 0);
+        if crate::fonts::load_cjk_font().is_none() {
             return;
         }
-        // First seat rectangle: center should contain dark text pixels
-        // (name color 30,34,40) rather than only the seat background.
-        let (x, y) = cell_origin(&grid, grid.min_row, grid.min_col);
-        let start_x = ((x + 4.0) * PNG_RASTER_SCALE) as u32;
-        let start_y = ((y + 4.0) * PNG_RASTER_SCALE) as u32;
+        let scene = crate::scene::build_scene(&grid, &PdfLayout::portrait(), "zh");
+        let bounds = scene
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                crate::scene::Element::Text { bounds, text, .. } if text == "Alice" => {
+                    Some(*bounds)
+                }
+                _ => None,
+            })
+            .unwrap();
         let mut dark = 0;
-        for dy in 0..(RECT_H * PNG_RASTER_SCALE) as u32 {
-            for dx in 0..(RECT_W * PNG_RASTER_SCALE) as u32 {
-                let px = (start_y + dy) * width + (start_x + dx);
-                let idx = px as usize * 3;
-                if data[idx] < 90 && data[idx + 1] < 90 && data[idx + 2] < 110 {
+        for y in (bounds.y * RASTER_SCALE) as u32..((bounds.y + bounds.h) * RASTER_SCALE) as u32 {
+            for x in (bounds.x * RASTER_SCALE) as u32..((bounds.x + bounds.w) * RASTER_SCALE) as u32
+            {
+                let offset = (y * width + x) as usize * 3;
+                if data[offset] < 100 && data[offset + 1] < 100 && data[offset + 2] < 100 {
                     dark += 1;
                 }
             }
         }
-        assert!(dark > 0, "name pixels must be drawn inside the first seat");
+        assert!(dark > 20, "name ink must be inside the shared text box");
     }
 }

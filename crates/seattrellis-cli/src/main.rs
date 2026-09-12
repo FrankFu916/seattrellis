@@ -2741,8 +2741,8 @@ mod tests {
 
         // Default (auto) orientation: print-html prints landscape A4; an
         // explicit landscape matches it, portrait flips the page.
-        let landscape_page = "@page { size: 297mm 210mm";
-        let portrait_page = "@page { size: 210mm 297mm";
+        let landscape_page = "@page{size:842pt 595pt";
+        let portrait_page = "@page{size:595pt 842pt";
         commands::run_project_export(&export_args("print-html", None, None))
             .expect("default auto export should succeed");
         assert!(

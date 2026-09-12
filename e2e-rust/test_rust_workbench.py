@@ -277,17 +277,14 @@ def test_import_solve_edit_export_workflow(
 
     # --- export ---------------------------------------------------------
     page.get_by_role("button", name="Export", exact=True).click()
-    # Quick-export SVG straight from the context menu: the default export
-    # is print-html now (D9), so the vector path is exercised explicitly.
-    svg_item = page.get_by_role("menuitem", name=re.compile("^SVG", re.IGNORECASE))
-    expect(svg_item).to_be_visible()
+    page.get_by_role("combobox", name="File format").select_option("svg")
+    page.get_by_role("button", name="Generate preview", exact=True).click()
+    expect(page.get_by_role("img", name="Seating chart in the generated file")).to_be_visible(timeout=60_000)
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_enabled()
     with page.expect_download(timeout=30_000) as download_info:
-        svg_item.click()
+        page.get_by_role("button", name="Save file", exact=True).click()
     download = download_info.value
-    # Close the preview dialog the quick export opened (it covers the
-    # context bar) so the settings entry stays reachable.
-    page.keyboard.press("Escape")
-    expect(page.get_by_role("button", name="Open export preview")).to_have_count(0)
+    expect(page.get_by_role("menu")).to_have_count(0)
     assert download.suggested_filename == "seat-plan.svg", (
         f"unexpected export filename: {download.suggested_filename}"
     )
@@ -312,6 +309,8 @@ def test_export_defaults_carry_real_names(
     literal name '学生'), and the default print-html entry downloads a
     usable document."""
 
+    # A stable PDF preview must also work in a WebView with no PDF plugin.
+    page.add_init_script("Object.defineProperty(navigator, 'pdfViewerEnabled', {get: () => false})")
     page.goto(rust_server.url)
     expect(page.get_by_text("Your local class is ready")).to_be_visible(
         timeout=15_000
@@ -320,13 +319,35 @@ def test_export_defaults_carry_real_names(
     go_to_generate_step(page)
     generate_seating_plan(page)
 
-    # --- quick-export PDF from the canvas context menu ------------------
-    # The canvas view carries the export menu; the export view's primary
-    # action is the preview button instead.
+    # --- PDF prepared once, then saved from the same workspace ----------
+    export_requests: list[str] = []
+    page.on(
+        "request",
+        lambda request: export_requests.append(request.url)
+        if request.url.endswith("/api/v1/exports") else None,
+    )
     page.get_by_role("button", name="Export", exact=True).click()
+    expect(page.get_by_role("combobox", name="File format")).to_have_value("print-html")
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_disabled()
+    page.get_by_role("combobox", name="File format").select_option("pdf")
+    with page.expect_response(lambda response: response.url.endswith("/api/v1/exports/preview")) as preview_info:
+        page.get_by_role("button", name="Generate preview", exact=True).click()
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_enabled(timeout=60_000)
+    pdf_preview = page.get_by_role("img", name="Seating chart in the generated file")
+    expect(pdf_preview).to_be_visible()
+    expect(page.locator("object")).to_have_count(0)
+    assert page.evaluate("() => navigator.pdfViewerEnabled") is False
+    page.wait_for_function("""() => {
+      const image = document.querySelector('.export-preview-content img');
+      return image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+    }""")
+    preview_mime = preview_info.value.header_value("content-type")
+    assert preview_mime == "image/svg+xml", "PDF preview must not depend on a native PDF viewer"
+    expect(page.get_by_text(re.compile("without requiring a browser PDF plugin"))).to_be_visible()
     with page.expect_download(timeout=60_000) as pdf_info:
-        page.get_by_role("menuitem", name=re.compile("^PDF", re.IGNORECASE)).click()
+        page.get_by_role("button", name="Save file", exact=True).click()
     pdf_download = pdf_info.value
+    assert len(export_requests) == 1, "saving must reuse the prepared PDF"
     assert pdf_download.suggested_filename == "seat-plan.pdf", (
         f"unexpected PDF filename: {pdf_download.suggested_filename}"
     )
@@ -341,14 +362,15 @@ def test_export_defaults_carry_real_names(
     )
 
     # --- default print-html download keeps real names -------------------
-    # Open the export view from the menu, preview, then save the default
-    # format (print-html, D9).
-    page.get_by_role("button", name="Export", exact=True).click()
-    page.get_by_role("menuitem", name="Layout & privacy settings").click()
-    expect(page.get_by_role("button", name="Open export preview")).to_be_visible()
-    page.get_by_role("button", name="Open export preview").click()
+    page.get_by_role("combobox", name="File format").select_option("print-html")
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_disabled()
+    page.get_by_role("button", name="Generate preview", exact=True).click()
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_enabled(timeout=60_000)
+    preview = page.get_by_role("img", name="Seating chart in the generated file")
+    expect(preview).to_be_visible()
+    expect(page.locator("iframe, object")).to_have_count(0)
     with page.expect_download(timeout=30_000) as download_info:
-        page.get_by_role("button", name="Save a copy").click()
+        page.get_by_role("button", name="Save file", exact=True).click()
     download = download_info.value
     assert download.suggested_filename == "seat-plan.print.html", (
         f"unexpected default export filename: {download.suggested_filename}"
@@ -363,6 +385,89 @@ def test_export_defaults_carry_real_names(
         "default export must not be anonymized (public template regression)"
     )
     assert "<!doctype html" in html.lower(), "print-html must be a document"
+    assert len(export_requests) == 2, "saving must not render the HTML again"
+
+    # Changing privacy discards the old file, including its student IDs.
+    page.get_by_role("checkbox", name="Also show student IDs").check()
+    page.get_by_role("radio", name=re.compile("^Anonymous copy")).check()
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_disabled()
+    expect(page.get_by_role("checkbox", name="Also show student IDs")).to_have_count(0)
+    page.get_by_role("button", name="Generate preview", exact=True).click()
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_enabled(timeout=60_000)
+    with page.expect_download(timeout=30_000) as anonymous_info:
+        page.get_by_role("button", name="Save file", exact=True).click()
+    anonymous_path = anonymous_info.value.path()
+    assert anonymous_path is not None
+    anonymous_html = anonymous_path.read_text(encoding="utf-8")
+    assert "Student001" not in anonymous_html, "anonymous export leaked a name"
+    assert "STU001" not in anonymous_html, "anonymous export leaked a student ID"
+    assert len(export_requests) == 3, "each settings snapshot is rendered once"
+
+
+# ---------------------------------------------------------------------------
+# 2c. the actual HTML chart is visible without embedding an active document
+# ---------------------------------------------------------------------------
+
+
+def test_html_export_preview_is_visible_and_inert(
+    page: Page, rust_server: RustServer
+) -> None:
+    """Show the real artifact's chart as a passive image, not a mock canvas.
+
+    Append a synthetic probe to the real Rust response. This verifies that an
+    accidentally introduced script or event handler stays outside the preview.
+    No iframe/plugin is used, including in WebViews with opaque-blob issues.
+    """
+    page.add_init_script("""(() => {
+      const original = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        if (blob.type === 'image/svg+xml') {
+          blob.text().then(source => { window.__export_svg_preview = source; });
+        }
+        return original(blob);
+      };
+    })()""")
+    page.goto(rust_server.url)
+    expect(page.get_by_text("Your local class is ready")).to_be_visible(timeout=15_000)
+    upload_and_confirm_roster(page)
+    go_to_generate_step(page)
+    generate_seating_plan(page)
+
+    def append_inert_probe(route) -> None:
+        response = route.fetch()
+        assert response.ok, "the real Rust export must succeed before injection"
+        html = response.text()
+        assert "<svg" in html, "the HTML artifact must contain its rendered chart"
+        probe = """
+          <script>window.__export_script_ran = true;</script>
+          <button id="export-security-probe"
+            onclick="window.__export_handler_ran = true">Sandbox probe</button>
+        """
+        route.fulfill(response=response, body=html.replace("</body>", probe + "</body>"))
+
+    page.route("**/api/v1/exports", append_inert_probe)
+    page.get_by_role("button", name="Export", exact=True).click()
+    page.get_by_role("button", name="Generate preview", exact=True).click()
+    preview = page.get_by_role("img", name="Seating chart in the generated file")
+    expect(preview).to_be_visible(timeout=60_000)
+    expect(preview).to_have_attribute("src", re.compile("^blob:"))
+    expect(page.locator("iframe, object, #export-security-probe")).to_have_count(0)
+    page.wait_for_function("""() => {
+      const image = document.querySelector('.export-preview-content img');
+      return image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+    }""")
+    page.wait_for_function("() => typeof window.__export_svg_preview === 'string'")
+    preview_source = page.evaluate("() => window.__export_svg_preview")
+    assert "<path" in preview_source, "the preview must contain visible glyph geometry"
+    assert "viewBox=" in preview_source
+    assert "Student001" in preview_source, "the real export's accessible names must survive"
+    assert "<script" not in preview_source
+    assert "export-security-probe" not in preview_source
+    assert page.evaluate("() => window.__export_script_ran === undefined")
+    assert page.evaluate("() => window.__export_handler_ran === undefined")
+    assert len(page.frames) == 1, "HTML previews must not create a child browsing context"
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_enabled()
+    rust_server.assert_healthy()
 
 
 # ---------------------------------------------------------------------------

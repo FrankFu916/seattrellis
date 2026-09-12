@@ -258,6 +258,7 @@ pub(crate) struct Request {
 /// A minimal response: status code, optional content type, optional
 /// `Content-Disposition`, and the raw body.
 pub(crate) struct Response {
+    pub(crate) export_warnings: Vec<String>,
     pub(crate) status: u16,
     pub(crate) content_type: Option<&'static str>,
     pub(crate) content_disposition: Option<String>,
@@ -270,6 +271,7 @@ impl Response {
         Response {
             status,
             content_type: Some("application/json; charset=utf-8"),
+            export_warnings: Vec::new(),
             content_disposition: None,
             body,
         }
@@ -279,6 +281,7 @@ impl Response {
         Response {
             status,
             content_type: Some(content_type),
+            export_warnings: Vec::new(),
             content_disposition: None,
             body: body.into(),
         }
@@ -501,6 +504,15 @@ fn export_response(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
 ) -> Response {
+    export_response_inner(body, editor_store, solve_requests, false)
+}
+
+fn export_response_inner(
+    body: &[u8],
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+    preview: bool,
+) -> Response {
     if body.is_empty() {
         return json_error(400, "empty request body");
     }
@@ -508,10 +520,16 @@ fn export_response(
         Ok(value) => value,
         Err(_) => return json_error(400, "export request is not valid JSON"),
     };
-    match seattrellis_application::export::export_draft(&value, editor_store, solve_requests) {
+    let outcome = if preview {
+        seattrellis_application::export::preview_draft(&value, editor_store, solve_requests)
+    } else {
+        seattrellis_application::export::export_draft(&value, editor_store, solve_requests)
+    };
+    match outcome {
         Ok(outcome) => Response {
             status: 200,
             content_type: Some(outcome.content_type),
+            export_warnings: outcome.warnings,
             content_disposition: Some(outcome.content_disposition),
             body: outcome.body,
         },
@@ -574,6 +592,9 @@ pub(crate) fn route(
         }
         ("POST", ["api", "v1", "exports"]) => {
             export_response(&request.body, editor_store, solve_requests)
+        }
+        ("POST", ["api", "v1", "exports", "preview"]) => {
+            export_response_inner(&request.body, editor_store, solve_requests, true)
         }
         ("POST", ["api", "v1", "layouts", "drafts"]) => layout_create_response(&request.body),
         ("GET", ["api", "v1", "layouts", "drafts", draft_id]) => layout_get_response(draft_id),
@@ -1053,6 +1074,7 @@ fn roster_delete_response(draft_id: &str) -> Response {
         Response {
             status: 204,
             content_type: None,
+            export_warnings: Vec::new(),
             content_disposition: None,
             body: Vec::new(),
         }
@@ -1079,6 +1101,7 @@ fn editing_delete_response(
         Response {
             status: 204,
             content_type: None,
+            export_warnings: Vec::new(),
             content_disposition: None,
             body: Vec::new(),
         }
@@ -1236,6 +1259,7 @@ fn layout_delete_response(draft_id: &str) -> Response {
         Response {
             status: 204,
             content_type: None,
+            export_warnings: Vec::new(),
             content_disposition: None,
             body: Vec::new(),
         }
@@ -1391,6 +1415,7 @@ fn project_bundle_response(body: &[u8]) -> Response {
             Response {
                 status: 200,
                 content_type: Some("application/zip"),
+                export_warnings: Vec::new(),
                 content_disposition: Some(format!("attachment; filename=\"{filename}\"")),
                 body: bytes,
             }
@@ -1908,6 +1933,7 @@ fn rotation_register_download_response(body: &[u8]) -> Response {
             Ok(bytes) => Response {
                 status: 200,
                 content_type: Some("text/csv; charset=utf-8"),
+                export_warnings: Vec::new(),
                 content_disposition: Some(
                     "attachment; filename=\"group-register.csv\"".to_string(),
                 ),
@@ -1920,6 +1946,7 @@ fn rotation_register_download_response(body: &[u8]) -> Response {
             Ok(bytes) => Response {
                 status: 200,
                 content_type: Some("text/html; charset=utf-8"),
+                export_warnings: Vec::new(),
                 content_disposition: Some(
                     "attachment; filename=\"group-register.html\"".to_string(),
                 ),
@@ -4947,6 +4974,57 @@ mod tests {
             .contains("filename=\"seat-plan.svg\""));
         assert!(export.body.starts_with(b"<svg"));
 
+        // A preview and its downloadable artifact are tied to the same draft
+        // revision. Neither may quietly read newer seats after a manual edit.
+        let mut preview_body = export_body.clone();
+        preview_body["expected_revision"] = json!(0);
+        for endpoint in ["/api/v1/exports", "/api/v1/exports/preview"] {
+            let stale = route(
+                &request(
+                    "POST",
+                    endpoint,
+                    &serde_json::to_vec(&preview_body).unwrap(),
+                ),
+                &root,
+                &editor_store,
+                &solve_requests,
+                &root,
+            );
+            assert_eq!(stale.status, 409);
+            assert_eq!(body_json(&stale)["code"], "revision_conflict");
+        }
+        preview_body["expected_revision"] = json!(1);
+        preview_body["title"] = json!("Current class <A>");
+        let preview = route(
+            &request(
+                "POST",
+                "/api/v1/exports/preview",
+                &serde_json::to_vec(&preview_body).unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+            &root,
+        );
+        assert_eq!(preview.status, 200);
+        assert_eq!(preview.content_type, Some("image/svg+xml"));
+        assert!(String::from_utf8_lossy(&preview.body).contains("Current class &lt;A&gt;"));
+        let artifact = route(
+            &request(
+                "POST",
+                "/api/v1/exports",
+                &serde_json::to_vec(&preview_body).unwrap(),
+            ),
+            &root,
+            &editor_store,
+            &solve_requests,
+            &root,
+        );
+        assert_eq!(
+            preview.body, artifact.body,
+            "SVG preview must be the actual export scene"
+        );
+
         // 7. Delete the editor draft and paired source request (204, then
         // 404); neither sensitive in-memory copy remains reachable.
         let del_editor = route(
@@ -5052,14 +5130,13 @@ mod tests {
         );
         assert_eq!(export.content_type, Some("text/html; charset=utf-8"));
         let body = String::from_utf8_lossy(&export.body);
-        // Dedicated print layout (print-layout-spec): landscape @page,
-        // platform annotation, and the reproducibility seed line.
+        // Printed HTML uses the same page scene as the visual exports.
         assert!(
-            body.contains("@page { size: 297mm 210mm"),
+            body.contains("@page{size:842pt 595pt"),
             "landscape A4 default"
         );
-        assert!(body.contains("讲台 ↑"), "platform annotation");
-        assert!(body.contains("seed "), "reproducibility line");
+        assert!(body.contains("FRONT OF ROOM"), "platform annotation");
+        assert!(body.contains("<svg "), "shared scene");
     }
 
     #[test]
