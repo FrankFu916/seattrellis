@@ -137,6 +137,7 @@ export function diffSeatIds(
   a: Array<{ seatId: string; student?: { id: string } | undefined }>,
   b: Array<{ seatId: string; student?: { id: string } | undefined }>,
 ): Set<string> {
+  const beforeById = new Map(a.map((seat) => [seat.seatId, seat]));
   const byId = new Map(b.map((seat) => [seat.seatId, seat]));
   const diff = new Set<string>();
   for (const seat of a) {
@@ -147,7 +148,7 @@ export function diffSeatIds(
   }
   for (const seat of b) {
     if (!diff.has(seat.seatId)) {
-      const other = a.find((item) => item.seatId === seat.seatId);
+      const other = beforeById.get(seat.seatId);
       if (!other || other.student?.id !== seat.student?.id) {
         diff.add(seat.seatId);
       }

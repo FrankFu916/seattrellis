@@ -65,6 +65,51 @@ describe("session token re-bootstrap", () => {
     window.sessionStorage.clear();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("bounds a stalled session bootstrap and recovers on the next request", async () => {
+    vi.useFakeTimers();
+    let stall = true;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (String(input).endsWith("/session") && stall) {
+        return new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        });
+      }
+      if (init?.signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+      return Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/session")
+        ? { session_token: "recovered" } : { draft_id: "draft-1" }), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { fetchEditorState } = await import("./client");
+    const failed = expect(fetchEditorState("draft-1")).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(1800);
+    await failed;
+    expect(vi.getTimerCount()).toBe(0);
+    stall = false;
+    await expect(fetchEditorState("draft-1")).resolves.toMatchObject({ draft_id: "draft-1" });
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/session"))).toHaveLength(2);
+    expect(new Headers(fetchMock.mock.calls.at(-1)?.[1]?.headers).get("Authorization")).toBe("Bearer recovered");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("shares session bootstrap across concurrent editor requests", async () => {
+    let resolveSession!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { resolveSession = resolve; });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => String(input).endsWith("/session")
+      ? pending : Promise.resolve(new Response("{}", { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const { fetchEditorState } = await import("./client");
+    const requests = [fetchEditorState("a"), fetchEditorState("b")];
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveSession(new Response(JSON.stringify({ session_token: "shared" }), { status: 200 }));
+    await Promise.all(requests);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("re-bootstraps once after a 401 even when no token was known", async () => {
     // The service was down during bootstrap (call 0), so the first API call
     // (call 1) goes out unauthenticated and is rejected; a fresh session

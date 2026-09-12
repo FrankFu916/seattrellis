@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchDraftAudit } from "../api/client";
-import type {
-  DraftAuditReport,
-  SeatAssignment,
-} from "../api/types";
+import type { DraftAuditReport, SeatAssignment } from "../api/types";
 import {
   diffSeatIds,
   dimensionLabel,
@@ -12,6 +9,10 @@ import {
   type DimensionKey,
 } from "../domain/auditTerms";
 import { describeApiError } from "../domain/errorMessages";
+import {
+  candidateLabel as labelOf,
+  compareCandidateStudents,
+} from "../domain/candidateComparison";
 import type { Locale, Translate } from "../i18n/messages";
 
 export type CandidateMeta = {
@@ -19,6 +20,7 @@ export type CandidateMeta = {
   total_score: number;
   recommended: boolean;
   assignments: SeatAssignment[];
+  revision: number;
 };
 
 export type ReproInfo = {
@@ -33,12 +35,9 @@ type CandidatesPanelProps = {
   repro: ReproInfo;
   locale: Locale;
   t: Translate;
+  activeDraftId?: string | null;
   onChoose: (draftId: string) => void;
 };
-
-function labelOf(index: number): string {
-  return String.fromCharCode(65 + index);
-}
 
 /** D5 fused form: recommendation reason -> diff highlight -> details. */
 export function CandidatesPanel({
@@ -46,26 +45,51 @@ export function CandidatesPanel({
   repro,
   locale,
   t,
+  activeDraftId,
   onChoose,
 }: CandidatesPanelProps) {
-  const recommendedIndex = candidates.findIndex(
-    (candidate) => candidate.recommended,
+  const recommendedIndex = Math.max(
+    0,
+    candidates.findIndex((candidate) => candidate.recommended),
   );
   const recommended = candidates[recommendedIndex] ?? candidates[0];
-  const [compareIndex, setCompareIndex] = useState(() =>
-    candidates.length > 1 && recommendedIndex !== 1 ? 1 : 0,
+  const [leftId, setLeftId] = useState<string | null>(
+    recommended?.draft_id ?? null,
   );
+  const [rightId, setRightId] = useState<string | null>(
+    () =>
+      candidates.find(
+        (candidate) => candidate.draft_id !== recommended?.draft_id,
+      )?.draft_id ??
+      recommended?.draft_id ??
+      null,
+  );
+  const [query, setQuery] = useState("");
+  const [changesOnly, setChangesOnly] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailMode, setDetailMode] = useState<"scores" | "rules">("scores");
   const [audits, setAudits] = useState<Record<string, DraftAuditReport>>({});
   const [auditError, setAuditError] = useState<string | null>(null);
 
-  const compared = candidates[compareIndex] ?? recommended;
+  const left =
+    candidates.find((candidate) => candidate.draft_id === leftId) ??
+    recommended;
+  const compared =
+    candidates.find((candidate) => candidate.draft_id === rightId) ??
+    candidates.find((candidate) => candidate.draft_id !== left?.draft_id) ??
+    left;
+  const leftIndex = candidates.indexOf(left);
+  const compareIndex = candidates.indexOf(compared);
+  const auditKey = [recommended, left, compared]
+    .filter(Boolean)
+    .map((candidate) => `${candidate.draft_id}:${candidate.revision}`)
+    .join("|");
+  const [loadedAuditKey, setLoadedAuditKey] = useState("");
 
   useEffect(() => {
     let current = true;
     const wanted = new Set(
-      [recommended?.draft_id, compared?.draft_id].filter(
+      [recommended?.draft_id, left?.draft_id, compared?.draft_id].filter(
         (id): id is string => Boolean(id),
       ),
     );
@@ -97,24 +121,47 @@ export function CandidatesPanel({
       }
       setAudits(next);
       setAuditError(message);
+      setLoadedAuditKey(auditKey);
     });
     return () => {
       current = false;
     };
-  }, [recommended?.draft_id, compared?.draft_id, t]);
+  }, [auditKey, t]);
 
-  const recommendedAudit = recommended ? audits[recommended.draft_id] : undefined;
-  const comparedAudit = compared ? audits[compared.draft_id] : undefined;
+  const auditsReady = loadedAuditKey === auditKey;
+  const recommendedAudit =
+    recommended && auditsReady ? audits[recommended.draft_id] : undefined;
+  const leftAudit = left && auditsReady ? audits[left.draft_id] : undefined;
+  const comparedAudit =
+    compared && auditsReady ? audits[compared.draft_id] : undefined;
   const reason = useMemo(
     () => (recommendedAudit ? reasonCardFor(recommendedAudit, t) : null),
     [recommendedAudit, t],
   );
   const diff = useMemo(() => {
-    if (!recommended || !compared || recommended.draft_id === compared.draft_id) {
-      return null;
-    }
-    return diffSeatIds(recommended.assignments, compared.assignments);
-  }, [recommended, compared]);
+    return diffSeatIds(left?.assignments ?? [], compared?.assignments ?? []);
+  }, [left, compared]);
+  const movements = useMemo(
+    () =>
+      compareCandidateStudents(
+        left?.assignments ?? [],
+        compared?.assignments ?? [],
+      ),
+    [left, compared],
+  );
+  const changedCount = movements.filter((movement) => movement.changed).length;
+  const search = query.trim().toLocaleLowerCase(locale);
+  const visibleMovements = movements.filter(
+    (movement) =>
+      (!changesOnly || movement.changed) &&
+      (!search ||
+        [
+          movement.studentName,
+          movement.studentId,
+          movement.fromSeatId,
+          movement.toSeatId,
+        ].some((value) => value?.toLocaleLowerCase(locale).includes(search))),
+  );
 
   const allDimensions: DimensionKey[] = [
     "fair_rotation_score",
@@ -131,14 +178,20 @@ export function CandidatesPanel({
     key: DimensionKey,
   ): number | null {
     const dimension = report?.score.breakdown[key];
-    if (dimension?.status !== "available" || typeof dimension.score !== "number") {
+    if (
+      dimension?.status !== "available" ||
+      typeof dimension.score !== "number"
+    ) {
       return null;
     }
     return dimension.score;
   }
 
   return (
-    <section className="candidates-panel" aria-label={t("audit.candidateCount", { count: candidates.length })}>
+    <section
+      className="candidates-panel"
+      aria-label={t("audit.candidateCount", { count: candidates.length })}
+    >
       <header className="cand-head">
         <span className="chip chip-green">
           {t("audit.candidateCount", { count: candidates.length })}
@@ -146,7 +199,9 @@ export function CandidatesPanel({
         {recommended ? (
           <span className="small muted">
             {t("audit.recommended")} · {labelOf(recommendedIndex)} ·{" "}
-            {t("audit.points", { score: String(Math.round(recommended.total_score)) })}
+            {t("audit.generatedScore", {
+              score: String(Math.round(recommended.total_score)),
+            })}
           </span>
         ) : null}
         <span className="cand-spacer" aria-hidden="true" />
@@ -154,20 +209,12 @@ export function CandidatesPanel({
           type="button"
           className="secondary-button"
           data-testid="repro-toggle"
+          aria-expanded={detailOpen}
           onClick={() => setDetailOpen((open) => !open)}
         >
           {t("audit.detailTitle")}
           <span aria-hidden="true">{detailOpen ? "▴" : "▾"}</span>
         </button>
-        {recommended ? (
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => onChoose(recommended.draft_id)}
-          >
-            {t("audit.choose", { label: labelOf(recommendedIndex) })}
-          </button>
-        ) : null}
       </header>
 
       {detailOpen ? (
@@ -189,7 +236,9 @@ export function CandidatesPanel({
             {labelOf(recommendedIndex)}
           </span>
           <div>
-            <div className="rec-title">{t("audit.choose", { label: labelOf(recommendedIndex) })}</div>
+            <div className="rec-title">
+              {t("audit.choose", { label: labelOf(recommendedIndex) })}
+            </div>
             <div className="rec-body">
               {reason.reasons.map((item, index) => (
                 <span key={index}>{item}</span>
@@ -214,77 +263,131 @@ export function CandidatesPanel({
         </div>
       ) : null}
 
-      {auditError ? (
+      {auditError && auditsReady ? (
         <p className="inline-error" role="alert">
           {auditError}
         </p>
       ) : null}
 
-      {diff ? (
+      {left && compared ? (
         <>
           <div className="plain-diff">
-            {t("audit.plainDiff", { label: labelOf(compareIndex) })}
+            {t("audit.comparePair", {
+              left: labelOf(leftIndex),
+              right: labelOf(compareIndex),
+            })}{" "}
             <b>{t("audit.diffLegend", { count: String(diff.size) })}</b>
           </div>
           <div className="cand-compare">
-            <div className="cand-plan">
-              <div className="cand-plan-head">
-                <span className="chip chip-blue">
-                  {labelOf(recommendedIndex)} · {t("audit.recommended")}
-                </span>
-                <select
-                  aria-label={t("audit.choose", { label: labelOf(recommendedIndex) })}
-                  value={recommended.draft_id}
-                  onChange={(event) => {
-                    const index = candidates.findIndex(
-                      (candidate) => candidate.draft_id === event.target.value,
-                    );
-                    onChoose(candidates[index].draft_id);
-                  }}
-                >
-                  {candidates.map((candidate, index) => (
-                    <option key={candidate.draft_id} value={candidate.draft_id}>
-                      {labelOf(index)}
-                    </option>
-                  ))}
-                </select>
+            {[left, compared].map((candidate, side) => (
+              <div className="cand-plan" key={side}>
+                <div className="cand-plan-head">
+                  <select
+                    aria-label={t(
+                      side === 0 ? "audit.compareLeft" : "audit.compareRight",
+                    )}
+                    value={candidate.draft_id}
+                    onChange={(event) =>
+                      (side === 0 ? setLeftId : setRightId)(event.target.value)
+                    }
+                  >
+                    {candidates.map((option, index) => (
+                      <option key={option.draft_id} value={option.draft_id}>
+                        {labelOf(index)}
+                        {option.recommended
+                          ? ` · ${t("audit.recommended")}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={candidate.draft_id === activeDraftId}
+                    onClick={() => onChoose(candidate.draft_id)}
+                  >
+                    {candidate.draft_id === activeDraftId
+                      ? t("audit.currentPlan")
+                      : t("audit.choose", {
+                          label: labelOf(candidates.indexOf(candidate)),
+                        })}
+                  </button>
+                </div>
+                <MiniSeatGrid
+                  assignments={candidate.assignments}
+                  diff={diff}
+                  t={t}
+                />
               </div>
-              <MiniSeatGrid assignments={recommended.assignments} diff={diff} t={t} />
-            </div>
-            <div className="cand-plan">
-              <div className="cand-plan-head">
-                <span className="chip chip-gray">{labelOf(compareIndex)}</span>
-                <select
-                  aria-label={t("audit.choose", { label: labelOf(compareIndex) })}
-                  value={compared.draft_id}
-                  onChange={(event) =>
-                    setCompareIndex(
-                      candidates.findIndex(
-                        (candidate) => candidate.draft_id === event.target.value,
-                      ),
-                    )
-                  }
-                >
-                  {candidates.map((candidate, index) => (
-                    <option key={candidate.draft_id} value={candidate.draft_id}>
-                      {labelOf(index)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <MiniSeatGrid assignments={compared.assignments} diff={diff} t={t} />
-            </div>
+            ))}
           </div>
+          <details className="cand-movements">
+            <summary>
+              {t("audit.studentChanges", { count: changedCount })}
+            </summary>
+            <div className="cand-movement-controls">
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                aria-label={t("audit.searchChanges")}
+                placeholder={t("audit.searchChanges")}
+              />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={changesOnly}
+                  onChange={(event) => setChangesOnly(event.target.checked)}
+                />
+                {t("audit.onlyChanges")}
+              </label>
+            </div>
+            <div className="cand-table-scroll">
+              <table className="score-table">
+                <caption className="sr-only">
+                  {t("audit.comparePair", {
+                    left: labelOf(leftIndex),
+                    right: labelOf(compareIndex),
+                  })}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{t("audit.student")}</th>
+                    <th scope="col">{labelOf(leftIndex)}</th>
+                    <th scope="col">{labelOf(compareIndex)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleMovements.map((movement) => (
+                    <tr key={movement.studentId}>
+                      <th scope="row">
+                        {movement.studentName}{" "}
+                        <small>{movement.studentId}</small>
+                      </th>
+                      <td>{movement.fromSeatId ?? t("audit.notSeated")}</td>
+                      <td>{movement.toSeatId ?? t("audit.notSeated")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {visibleMovements.length === 0 ? (
+                <p role="status">{t("audit.noChangesFound")}</p>
+              ) : null}
+            </div>
+          </details>
         </>
       ) : null}
 
-      {recommendedAudit && comparedAudit ? (
+      {leftAudit && comparedAudit ? (
         <div className="cand-details">
-          <div className="view-switch" role="tablist">
+          <div
+            className="view-switch"
+            role="group"
+            aria-label={t("audit.detailTitle")}
+          >
             <button
               type="button"
-              role="tab"
-              aria-selected={detailMode === "scores"}
+              aria-pressed={detailMode === "scores"}
               data-active={detailMode === "scores"}
               onClick={() => setDetailMode("scores")}
             >
@@ -292,8 +395,7 @@ export function CandidatesPanel({
             </button>
             <button
               type="button"
-              role="tab"
-              aria-selected={detailMode === "rules"}
+              aria-pressed={detailMode === "rules"}
               data-active={detailMode === "rules"}
               onClick={() => setDetailMode("rules")}
             >
@@ -305,7 +407,7 @@ export function CandidatesPanel({
               <thead>
                 <tr>
                   <th>{t("audit.scoreTableTitle")}</th>
-                  <th>{labelOf(recommendedIndex)}</th>
+                  <th>{labelOf(leftIndex)}</th>
                   <th>{labelOf(compareIndex)}</th>
                   <th>{t("audit.explanation")}</th>
                 </tr>
@@ -313,7 +415,7 @@ export function CandidatesPanel({
               <tbody>
                 {allDimensions.map((key) => {
                   const meta = dimensionLabel(key, t);
-                  const a = dimensionScore(recommendedAudit, key);
+                  const a = dimensionScore(leftAudit, key);
                   const b = dimensionScore(comparedAudit, key);
                   return (
                     <tr key={key}>
@@ -333,7 +435,7 @@ export function CandidatesPanel({
             <div className="rule-details">
               {allDimensions.map((key) => {
                 const meta = dimensionLabel(key, t);
-                const dimension = recommendedAudit.score.breakdown[key];
+                const dimension = leftAudit.score.breakdown[key];
                 if (dimension?.status !== "available") {
                   return null;
                 }
@@ -341,12 +443,13 @@ export function CandidatesPanel({
                   <details className="rule-detail" key={key}>
                     <summary>
                       <span className="chip chip-amber">{t("rules.soft")}</span>
-                      {meta.term}
+                      {labelOf(leftIndex)} · {meta.term}
                       <span className="num">{dimension.score ?? "—"}/100</span>
                     </summary>
                     <div className="rd-body">
                       {meta.hint}
-                      {dimension.details && Object.keys(dimension.details).length > 0 ? (
+                      {dimension.details &&
+                      Object.keys(dimension.details).length > 0 ? (
                         <pre className="json-view">
                           {JSON.stringify(dimension.details, null, 2)}
                         </pre>
@@ -372,32 +475,30 @@ function MiniSeatGrid({
   diff: Set<string>;
   t: Translate;
 }) {
-  const columns =
-    Math.max(0, ...assignments.map((seat) => seat.column)) + 1;
+  const columns = Math.max(0, ...assignments.map((seat) => seat.column)) + 1;
   const rows = Math.max(0, ...assignments.map((seat) => seat.row)) + 1;
-  const byId = new Map(assignments.map((seat) => [seat.seatId, seat]));
   return (
     <div
       className="mini-grid"
-      style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}
+      style={{
+        gridTemplateColumns: `repeat(${columns}, minmax(64px, 1fr))`,
+        gridTemplateRows: `repeat(${rows}, minmax(46px, auto))`,
+      }}
     >
-      {Array.from({ length: rows * columns }, (_, index) => {
-        const row = Math.floor(index / columns);
-        const column = index % columns;
-        const seat = byId.get(`R${row + 1}C${column + 1}`);
-        if (!seat) {
-          return <span className="mini-cell mini-cell-empty" key={index} />;
-        }
+      {assignments.map((seat) => {
         const changed = diff.has(seat.seatId);
         return (
           <span
             className={`mini-cell${changed ? " mini-cell-diff" : ""}`}
             title={seat.seatId}
+            style={{ gridRow: seat.row + 1, gridColumn: seat.column + 1 }}
             key={seat.seatId}
           >
             <small>{seat.seatId}</small>
             {seat.student?.name ?? ""}
-            {changed ? <em className="mini-diff-tag">{t("audit.changed")}</em> : null}
+            {changed ? (
+              <em className="mini-diff-tag">{t("audit.changed")}</em>
+            ) : null}
           </span>
         );
       })}

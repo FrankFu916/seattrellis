@@ -37,7 +37,10 @@ referenced files.
 
 Imported roster drafts expire after two idle hours. Editor drafts, their source
 solve requests, and visual layout drafts also have hard capacity bounds. The
-workbench actively deletes sensitive in-memory drafts when the teacher switches
-class, roster, or room, after a replacement generation succeeds, and when the
-page closes. Any remaining unsaved drafts disappear when the local process
-exits.
+workbench requests deletion of sensitive in-memory drafts when the teacher
+switches class, roster, or room, after a replacement generation succeeds, and
+when the workbench unmounts. Late generation results are also deleted when
+their original context is no longer active, including every rotation period.
+Browser termination or a lost connection can prevent cleanup requests from
+finishing; this is not a secure-erasure guarantee. Any remaining unsaved drafts
+disappear when the local process exits.

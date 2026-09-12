@@ -14,6 +14,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  web-unit:
+    name: Web typecheck and unit tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: clients/web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
   rust-msrv:
     name: Rust workspace / 1.88 MSRV
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false

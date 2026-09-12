@@ -4695,6 +4695,7 @@ input:focus-visible,
 
 .cand-plan-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -4720,6 +4721,47 @@ input:focus-visible,
   background: var(--surface-soft);
   font-size: 0.875rem;
   text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.cand-movements summary {
+  cursor: pointer;
+  padding: 8px 4px;
+}
+
+.cand-movement-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.cand-movement-controls > input {
+  flex: 1;
+  min-width: 160px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.cand-movement-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cand-table-scroll {
+  overflow: auto;
+  max-height: 320px;
+}
+
+.cand-table-scroll th small {
+  display: block;
+  text-transform: none;
+  font-weight: normal;
 }
 
 .mini-cell small {
