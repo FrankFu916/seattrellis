@@ -56,6 +56,7 @@ import { CandidatesPanel, type CandidateMeta, type ReproInfo } from "./component
 import { SeatingCanvasEditor } from "./components/SeatingCanvasEditor";
 import { Sidebar } from "./components/Sidebar";
 import { saveBlobWithDialog } from "./domain/desktop";
+import { consumeGeneratedDrafts } from "./domain/generatedDrafts";
 import {
   rosterIsValid,
   StudentRosterEditor,
@@ -410,6 +411,8 @@ export function App() {
 
   useEffect(
     () => () => {
+      generationTokenRef.current += 1;
+      draftSwitchRef.current += 1;
       releaseEditorDrafts(liveDraftIdsRef.current);
     },
     [],
@@ -612,11 +615,17 @@ export function App() {
     void Promise.allSettled(draftIds.map((draftId) => deleteEditorDraft(draftId)));
   }
 
+  function invalidatePendingWork(): void {
+    generationTokenRef.current += 1;
+    draftSwitchRef.current += 1;
+    setIsGenerating(false);
+  }
+
   /** Restore the initial workbench draft (context switch, D1). */
   function resetWorkbench() {
     // Invalidate any in-flight generate so its result cannot resurrect the
     // previous class's plan after the context has been reset.
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(demoStudents);
     setRevision(0);
@@ -676,7 +685,7 @@ export function App() {
     if (isDirty && !window.confirm(t("app.discardDraft"))) {
       return;
     }
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     const { students: restoredStudents, assignments: restoredAssignments } =
       restoreSnapshotPlan(snapshot, assignments);
@@ -713,7 +722,7 @@ export function App() {
     if (!room) {
       return;
     }
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setSelectedRoomId(roomId);
     setRoomSettings((current) => ({ ...current, enabled: false }));
@@ -738,7 +747,7 @@ export function App() {
   }
 
   function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setRoomSettings((current) => ({ ...current, ...changes }));
     setSelectedSeatId(null);
@@ -939,7 +948,6 @@ export function App() {
       return;
     }
     await applyEditorCommand({ action: "apply", operations });
-    setSelectedSeatId(null);
   }
 
   async function applyEditorCommand(
@@ -948,6 +956,7 @@ export function App() {
     if (!editorDraftId) {
       return;
     }
+    const token = ++draftSwitchRef.current;
     setSaveError(null);
     try {
       const editor = await dispatchEditorCommand({
@@ -959,15 +968,11 @@ export function App() {
         action: command.action,
         operations: command.operations,
       });
-      const plan = editorToPlan(editor);
-      setAssignments(plan.assignments);
-      setStudents(plan.students);
-      setEditorRevision(editor.revision);
-      setEditorUndoDepth(editor.undo_depth);
-      setEditorRedoDepth(editor.redo_depth);
-      setSelectedSeatId(null);
+      if (token !== draftSwitchRef.current) return;
+      applyEditorState(editor);
       setIsDirty(true);
     } catch (err) {
+      if (token !== draftSwitchRef.current) return;
       setSelectedSeatId(null);
       if (isRevisionConflict(err)) {
         // The authoritative draft moved forward (another window, or a stale
@@ -976,7 +981,7 @@ export function App() {
         setSaveError(t("app.revisionConflict"));
         try {
           const editor = await fetchEditorState(editorDraftId);
-          applyEditorState(editor);
+          if (token === draftSwitchRef.current) applyEditorState(editor);
         } catch {
           // The draft may be gone; the conflict note above still explains.
         }
@@ -1038,6 +1043,13 @@ export function App() {
     const plan = editorToPlan(editor);
     setStudents(plan.students);
     setAssignments(plan.assignments);
+    setCandidateMetas((current) =>
+      current.map((candidate) =>
+        candidate.draft_id === editor.draft_id
+          ? { ...candidate, assignments: plan.assignments, revision: editor.revision }
+          : candidate,
+      ),
+    );
     setEditorDraftId(editor.draft_id);
     setEditorRevision(editor.revision);
     setEditorUndoDepth(editor.undo_depth);
@@ -1187,8 +1199,9 @@ export function App() {
   }
 
   function handleRotationLoad(result: ProjectRotationLoadResponse) {
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
+    setCandidateMetas([]);
     const editors = result.period_editors.length
       ? result.period_editors
       : [result.editor];
@@ -1205,7 +1218,8 @@ export function App() {
   async function handleGenerate() {
     // A stale result (context/roster changed mid-flight) must not overwrite
     // the workbench: every state-resetting handler bumps this token.
-    const token = generationTokenRef.current;
+    const token = ++generationTokenRef.current;
+    draftSwitchRef.current += 1;
     const supersededDraftIds = currentEditorDraftIds();
     setIsGenerating(true);
     setSaveError(null);
@@ -1236,62 +1250,45 @@ export function App() {
             }),
           )
         : await generateClass(buildGenerateClassRequest(requestArgs));
-      if (token !== generationTokenRef.current) {
-        return;
-      }
       if (!response.feasible) {
         // ProvenInfeasible/Timeout/Unknown/Cancelled are successful transport
         // responses with no editable assignment, not HTTP failures.
-        setSaveError(t("app.planNotFound"));
-        return;
-      }
-      const isRotation = "rotation_plan" in response;
-      const periodEditors =
-        isRotation && response.period_editors?.length
-          ? response.period_editors
-          : [response.editor];
-      const editor = await fetchEditorState(periodEditors[0].draft_id);
-      if (token !== generationTokenRef.current) {
-        return;
-      }
-      applyEditorState(editor);
-      setRotationEditors(isRotation ? periodEditors : []);
-      setActiveRotationPeriod(1);
-      setRotationPlan(isRotation ? response.rotation_plan : null);
-      // Candidate comparison (D5): fetch every candidate's draft and keep
-      // its seat plan so the panel can diff and switch without re-solving.
-      const metas: CandidateMeta[] = [];
-      if ("candidates" in response && Array.isArray(response.candidates)) {
-        for (const candidate of response.candidates) {
-          try {
-            const state = await fetchEditorState(candidate.candidate_id);
-            if (token !== generationTokenRef.current) {
-              return;
-            }
-            const plan = editorToPlan(state);
-            metas.push({
-              draft_id: candidate.candidate_id,
-              total_score: candidate.total_score,
-              recommended: candidate.recommended,
-              assignments: plan.assignments,
-            });
-          } catch {
-            // A candidate draft may already be evicted; skip it.
-          }
+        if (token === generationTokenRef.current) {
+          setSaveError(t("app.planNotFound"));
         }
-      }
-      if (token !== generationTokenRef.current) {
         return;
       }
-      setCandidateMetas(metas);
-      releaseEditorDrafts(supersededDraftIds);
-      setHistory([]);
-      setSelectedSeatId(null);
-      setIsDirty(false);
-      setGenerationDone(true);
-      setFirstRunDismissed(true);
-      window.localStorage.setItem(FIRST_RUN_KEY, "done");
-      setView("canvas");
+      await consumeGeneratedDrafts(
+        response,
+        () => token === generationTokenRef.current,
+        ({ editor, periodEditors, rotationPlan, candidates }) => {
+          applyEditorState(editor);
+          setRotationEditors(periodEditors);
+          setActiveRotationPeriod(1);
+          setRotationPlan(rotationPlan);
+          setCandidateMetas(
+            candidates.map(({ summary, editor: candidateEditor }) => ({
+              draft_id: candidateEditor.draft_id,
+              total_score: summary.total_score,
+              recommended: summary.recommended,
+              assignments: editorToPlan(candidateEditor).assignments,
+              revision: candidateEditor.revision,
+            })),
+          );
+          releaseEditorDrafts(supersededDraftIds);
+          setHistory([]);
+          setSelectedSeatId(null);
+          setIsDirty(false);
+          setGenerationDone(true);
+          setFirstRunDismissed(true);
+          setView("canvas");
+          try {
+            window.localStorage.setItem(FIRST_RUN_KEY, "done");
+          } catch {
+            // Optional preference only.
+          }
+        },
+      );
     } catch (err) {
       if (token !== generationTokenRef.current) {
         return;
@@ -1364,7 +1361,7 @@ export function App() {
   }
 
   function handleRosterImported(importedStudents: Student[]) {
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(importedStudents);
     setRevision((prev) => prev + 1);
@@ -1389,7 +1386,7 @@ export function App() {
 
   /** D10: fill an empty roster with the built-in sample roster. */
   function handleUseSampleRoster() {
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(demoStudents);
     setRevision((prev) => prev + 1);
@@ -1411,7 +1408,7 @@ export function App() {
   }
 
   function handleStudentsEdited(editedStudents: Student[]) {
-    generationTokenRef.current += 1;
+    invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(editedStudents);
     setRevision((prev) => prev + 1);
@@ -1671,6 +1668,7 @@ export function App() {
                 }}
                 locale={locale}
                 t={t}
+                activeDraftId={editorDraftId}
                 onChoose={(draftId) => {
                   const token = ++draftSwitchRef.current;
                   void fetchEditorState(draftId)
@@ -1705,6 +1703,7 @@ export function App() {
                   </p>
                 ) : null}
                 <SeatingCanvasEditor
+                  key={editorDraftId ?? `preview-${revision}`}
                   assignments={assignments}
                   students={students}
                   canUndo={

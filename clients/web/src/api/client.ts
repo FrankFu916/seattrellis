@@ -47,9 +47,12 @@ export const EDITOR_PROTOCOL_VERSION = "1.0";
 
 /** Bootstrap (or re-bootstrap after a 401) the loopback session token. */
 async function bootstrapSessionToken(): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${API_ROOT}/session`, {
       headers: { Accept: "application/json" },
+      signal: controller.signal,
     });
     if (!response.ok) {
       return null;
@@ -67,6 +70,8 @@ async function bootstrapSessionToken(): Promise<string | null> {
     return token;
   } catch {
     return null;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -76,7 +81,12 @@ async function ensureSessionToken(): Promise<string | null> {
     return known;
   }
   if (!sessionBootstrapPromise) {
-    sessionBootstrapPromise = bootstrapSessionToken();
+    const pending = bootstrapSessionToken().finally(() => {
+      // A failed bootstrap must not be cached forever. Keep an overlapping
+      // refresh intact if it has already replaced this request.
+      if (sessionBootstrapPromise === pending) sessionBootstrapPromise = null;
+    });
+    sessionBootstrapPromise = pending;
   }
   return sessionBootstrapPromise;
 }
@@ -90,7 +100,7 @@ async function refreshSessionToken(): Promise<string | null> {
   } catch {
     // Best effort; the in-memory copy is cleared above.
   }
-  return bootstrapSessionToken();
+  return ensureSessionToken();
 }
 
 async function fetchJson<T>(

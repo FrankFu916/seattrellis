@@ -54,8 +54,9 @@ graph TD
 - **Hard Constraints**: Enforce fixed desk assignments, required/forbidden neighbor pairs, and minimum testing distances.
 
 ### Step 4: Solve & Interactive Fine-Tuning
-- **Sub-second Solving**: Generates mathematically verified seating arrangements accompanied by radar score breakdowns.
-- **Candidate Comparison**: Compare multiple candidate plans side-by-side with diversity and stability metrics.
+- **Verified Solving**: Generates seating arrangements with hard-constraint checks and score breakdowns. Runtime depends on the class size and rules; optimality is not guaranteed.
+- **Candidate Comparison**: Select any two plans independently in the left and right selectors, then explicitly choose the one to edit. Custom seat IDs and irregular layouts retain their coordinates. Comparing a plan with itself shows zero differences and keeps both selectors available.
+- **Student Changes**: Expand the change list to see each student's seat in both plans. Search by name, student ID, or seat, and optionally include unchanged students. Matching uses student IDs, so duplicate names stay distinct. Editing, undoing, or redoing a candidate updates its preview and score audit; the recommendation and generation score describe the original solve.
 - **Visual Swapping & Dragging**:
   - Click on one student, then click another to **swap their seats instantly**.
   - Click on a student, then click an empty desk to **move them**.

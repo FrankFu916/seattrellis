@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Compare any two candidate plans with independent selectors and explicit selection.
+  Custom seat IDs and irregular layouts render at their actual coordinates.
+  Search student seat changes by name, ID, or seat; edited previews and score
+  audits refresh with the draft revision.
+- Publish generated drafts atomically and clean up obsolete or failed generations,
+  including all rotation periods. Class changes clear the busy state and prevent
+  late generation, candidate-switch, or edit responses from overwriting the new class.
+- Bound session bootstrap time and allow recovery after a stalled local service.
+- Run frontend type checks and unit tests in CI alongside browser end-to-end tests.
+- Upgrade documentation dependencies SVGO, Joi, Colord, and js-yaml to address
+  newly published security advisories.
+
 ## 2.0.0 - 2026-08-26
 
 SeatTrellis 2.0.0 is the first stable release of the complete Rust rewrite.

@@ -184,6 +184,43 @@ def test_workbench_bootstraps_against_rust_backend(
 # ---------------------------------------------------------------------------
 
 
+def test_candidate_comparison_keeps_selection_explicit(
+    page: Page, rust_server: RustServer
+) -> None:
+    """A teacher can compare, inspect individual moves, and then choose a plan."""
+    page.goto(rust_server.url)
+    upload_and_confirm_roster(page)
+    go_to_generate_step(page)
+    generate_seating_plan(page)
+
+    panel = page.locator(".candidates-panel")
+    left = panel.get_by_role("combobox", name="Left comparison plan")
+    right = panel.get_by_role("combobox", name="Right comparison plan")
+    expect(left).to_be_visible()
+    original = left.input_value()
+    alternative = right.input_value()
+    assert original != alternative
+    before = seat_label(page, "Student001")
+    right.select_option(original)
+    expect(panel.get_by_text("Seats that differ between the plans (0)")).to_be_visible()
+    expect(left).to_be_visible()
+    right.select_option(alternative)
+    expect(seat(page, "Student001")).to_have_attribute("aria-label", before)
+
+    summary = panel.locator(".cand-movements summary")
+    click_summary_by_text(page, summary.inner_text())
+    panel.get_by_role("checkbox", name="Only students with changes").uncheck()
+    panel.get_by_role("searchbox").fill("Student001")
+    rows = panel.locator(".cand-movements tbody tr")
+    expect(rows).to_have_count(1)
+    expect(rows.first).to_contain_text("Student001")
+
+    alternative_card = panel.locator(".cand-plan").nth(1)
+    alternative_card.get_by_role("button", name=re.compile("Choose plan")).click()
+    expect(alternative_card.get_by_role("button", name="Current plan")).to_be_disabled()
+    rust_server.assert_healthy()
+
+
 def test_import_solve_edit_export_workflow(
     page: Page, rust_server: RustServer
 ) -> None:
