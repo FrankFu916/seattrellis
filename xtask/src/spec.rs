@@ -211,10 +211,24 @@ fn paths() -> Value {
                 "summary": "Export a draft in one of 8 formats",
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportDraftRequest" } } } },
                 "responses": {
-                    "200": { "description": "Binary artifact (Content-Disposition attachment)", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } },
+                    "200": { "description": "Binary artifact (Content-Disposition attachment). X-Export-Warnings carries a percent-encoded JSON string array; Cache-Control is no-store.", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } },
                     "400": { "$ref": "#/components/responses/InvalidInput" },
                     "404": { "$ref": "#/components/responses/NotFound" },
+                    "409": { "$ref": "#/components/responses/Conflict" },
                     "500": { "$ref": "#/components/responses/InternalError" }
+                }
+            }
+        },
+        "/api/v1/exports/preview": {
+            "post": {
+                "tags": ["exports"],
+                "summary": "Preview the selected format's seating scene without remembering export defaults",
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportDraftRequest" } } } },
+                "responses": {
+                    "200": { "description": "SVG seating scene, not an Office application screenshot. Optional X-Export-Warnings is a percent-encoded JSON string array; Cache-Control is no-store.", "content": { "image/svg+xml": { "schema": { "type": "string", "format": "binary" } } } },
+                    "400": { "$ref": "#/components/responses/InvalidInput" },
+                    "404": { "$ref": "#/components/responses/NotFound" },
+                    "409": { "$ref": "#/components/responses/Conflict" }
                 }
             }
         },
@@ -686,11 +700,19 @@ fn schemas() -> Value {
             "required": ["draft_id", "format"],
             "properties": {
                 "draft_id": { "type": "string" },
-                "format": { "type": "string", "enum": ["svg", "html", "print-html", "png", "pdf", "excel", "docx", "pptx"] },
+                "expected_revision": { "type": "integer", "minimum": 0, "description": "Reject with 409 when the current draft revision differs." },
+                "title": { "type": "string", "maxLength": 200, "description": "Custom chart title; anonymization does not redact this caller-supplied value." },
+                "format": { "type": "string", "enum": ["svg", "html", "print-html", "png", "pdf", "xlsx", "excel", "docx", "pptx"] },
                 "template": { "type": "string" },
-                "privacy": { "type": "string" },
+                "privacy": { "type": "object", "properties": {
+                    "hide_scores": { "type": "boolean" }, "hide_notes": { "type": "boolean" },
+                    "hide_special_needs": { "type": "boolean" }, "anonymize": { "type": "boolean" },
+                    "show_height": { "type": "boolean" }, "show_vision": { "type": "boolean" }
+                } },
                 "orientation": { "type": "string" },
                 "page_scale": { "type": "number" },
+                "paper_size": { "type": "string", "enum": ["a4", "a3", "letter"] },
+                "margin_mm": { "type": "number", "exclusiveMinimum": 0 },
                 "locale": { "type": "string" },
                 "show_student_ids": { "type": "boolean" }
             },

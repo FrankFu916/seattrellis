@@ -353,11 +353,22 @@ export interface EditorCommandEnvelope {
 
 export interface ExportDraftRequest {
   draft_id: string;
-  format: "svg" | "html" | "print-html" | "png" | "pdf" | "excel" | "docx" | "pptx";
+  expected_revision?: number;
+  title?: string;
+  format: "svg" | "html" | "print-html" | "png" | "pdf" | "xlsx" | "excel" | "docx" | "pptx";
   template?: string;
-  privacy?: string;
+  privacy?: {
+    hide_scores?: boolean;
+    hide_notes?: boolean;
+    hide_special_needs?: boolean;
+    anonymize?: boolean;
+    show_height?: boolean;
+    show_vision?: boolean;
+  };
   orientation?: string;
   page_scale?: number;
+  paper_size?: "a4" | "a3" | "letter";
+  margin_mm?: number;
   locale?: string;
   show_student_ids?: boolean;
 }
@@ -449,6 +460,24 @@ fn endpoints() -> Vec<(&'static str, String)> {
   request: ExportDraftRequest,
 ): Promise<Blob> {
   const response = await fetch(`${API_ROOT}/exports`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`SeatTrellis API ${response.status}`);
+  return response.blob();
+}"#
+            .to_string(),
+        ),
+        (
+            "previewExportDraft",
+            r#"export async function previewExportDraft(
+  request: ExportDraftRequest,
+): Promise<Blob> {
+  const response = await fetch(`${API_ROOT}/exports/preview`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -681,26 +681,79 @@ export async function dispatchEditorCommand(
 
 export async function exportDraft(
   request: ExportDraftRequest,
-): Promise<{ blob: Blob; filename: string }> {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  const sessionToken = await ensureSessionToken();
-  if (sessionToken) {
-    headers.set("Authorization", `Bearer ${sessionToken}`);
-  }
-  const response = await fetch(`${API_ROOT}/exports`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(request),
-  });
-  if (!response.ok) {
-    const detail = await safeErrorDetail(response);
-    throw new RosterApiError(response.status, detail.code, detail.message);
-  }
-  const blob = await response.blob();
-  const disposition = response.headers.get("Content-Disposition") ?? "";
+  signal?: AbortSignal,
+): Promise<{ blob: Blob; filename: string; warnings: string[] }> {
+  const { blob, disposition, warnings } = await fetchExportBlob("/exports", request, signal);
   const match = /filename="([^"]+)"/.exec(disposition);
-  const filename = match ? match[1] : `seating.${request.format}`;
-  return { blob, filename };
+  const filename = match ? match[1] : `seating.${request.format === "print-html" ? "print.html" : request.format}`;
+  return { blob, filename, warnings };
+}
+
+/** Document previews use the same authoritative draft and normalized settings. */
+export async function previewExportDraft(
+  request: ExportDraftRequest,
+  signal?: AbortSignal,
+): Promise<{ blob: Blob; warnings: string[] }> {
+  const { blob, warnings } = await fetchExportBlob("/exports/preview", request, signal);
+  return { blob, warnings };
+}
+
+async function fetchExportBlob(
+  path: string,
+  request: ExportDraftRequest,
+  signal?: AbortSignal,
+): Promise<{ blob: Blob; disposition: string; warnings: string[] }> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 60_000);
+  try {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    let sessionToken = await ensureSessionToken();
+    if (sessionToken) headers.set("Authorization", `Bearer ${sessionToken}`);
+    const send = () => {
+      controller.signal.throwIfAborted();
+      return fetch(`${API_ROOT}${path}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(request),
+        signal: controller.signal,
+      });
+    };
+    let response = await send();
+    if (response.status === 401) {
+      sessionToken = await refreshSessionToken();
+      if (sessionToken) {
+        headers.set("Authorization", `Bearer ${sessionToken}`);
+        response = await send();
+      }
+    }
+    if (!response.ok) {
+      const detail = await safeErrorDetail(response);
+      throw new RosterApiError(response.status, detail.code, detail.message);
+    }
+    const blob = await response.blob();
+    controller.signal.throwIfAborted();
+    let warnings: string[] = [];
+    try {
+      const raw: unknown = JSON.parse(decodeURIComponent(response.headers.get("X-Export-Warnings") ?? "[]"));
+      if (Array.isArray(raw)) warnings = raw.filter((item): item is string => typeof item === "string");
+    } catch {
+      // An optional diagnostics header must not invalidate a complete file.
+    }
+    return { blob, disposition: response.headers.get("Content-Disposition") ?? "", warnings };
+  } catch (error) {
+    if (timedOut) throw new DOMException("Export timed out", "TimeoutError");
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
 }
 
 function readDesktopSessionToken(): string | null {

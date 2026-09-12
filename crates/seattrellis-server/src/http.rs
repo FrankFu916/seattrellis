@@ -303,13 +303,22 @@ fn into_axum(response: Response) -> AxumResponse {
         .header(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';                  img-src 'self' data:; connect-src 'self'; font-src 'self';                  frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'none'; object-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
             ),
         )
         .header(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"))
         .header(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
     if let Some(content_type) = response.content_type {
         builder = builder.header(header::CONTENT_TYPE, content_type);
+    }
+    if !response.export_warnings.is_empty() {
+        // Percent-encoded JSON keeps Unicode/newlines out of HTTP header
+        // syntax. Warnings never contain roster contents.
+        let json = serde_json::to_vec(&response.export_warnings).unwrap_or_default();
+        let encoded: String = json.iter().map(|byte| format!("%{byte:02X}")).collect();
+        if let Ok(value) = HeaderValue::from_str(&encoded) {
+            builder = builder.header("X-Export-Warnings", value);
+        }
     }
     if let Some(disposition) = response.content_disposition {
         if let Ok(value) = HeaderValue::from_str(&disposition) {

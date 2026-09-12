@@ -58,14 +58,15 @@ describe("contextActionFor", () => {
     });
   });
 
-  it("offers the export menu on the canvas view", () => {
-    expect(contextActionFor("canvas", true)).toEqual({ kind: "exportMenu" });
+  it("offers one export workspace on the canvas view", () => {
+    expect(contextActionFor("canvas", true)).toEqual({ kind: "navigate", target: "export", label: "ctx.export" });
   });
 
-  it("keeps preview on the export settings view", () => {
+  it("returns from the export workspace to the seating plan", () => {
     expect(contextActionFor("export", true)).toEqual({
-      kind: "preview",
-      label: "action.preview",
+      kind: "navigate",
+      target: "canvas",
+      label: "export.backToPlan",
     });
   });
 
@@ -74,7 +75,7 @@ describe("contextActionFor", () => {
       kind: "navigate",
       target: "generate",
     });
-    expect(contextActionFor("history", true)).toEqual({ kind: "exportMenu" });
+    expect(contextActionFor("history", true)).toEqual({ kind: "navigate", target: "export", label: "ctx.export" });
   });
 
   it("covers every workbench view", () => {

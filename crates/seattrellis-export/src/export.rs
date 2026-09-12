@@ -1,66 +1,26 @@
-//! Export domain module: turns a solved plan into SVG / HTML / PNG / PDF bytes.
+//! Validated export dispatch for solved classroom plans.
 //!
-//! This is the app-side counterpart of the workbench's "export" flow. The
-//! frontend sends an `ExportDraftRequest` (see `clients/web/src/api/types.ts`);
-//! this module parses that shape, recovers the renderable seat grid from the
-//! solved plan ([`SeatingGrid::build`] in `seattrellis_export::render`, a mirror of the CLI's
-//! renderer), and dispatches to the matching render function.
+//! The application supplies the authoritative request and solution. This module
+//! validates their feasibility, filters optional student identifiers/details,
+//! and constructs one point-based scene for SVG, HTML, PNG and PDF. The preview
+//! endpoint uses the same scene and selected page options. Word and Excel retain
+//! editable tables; PowerPoint maps the scene to editable shapes.
 //!
-//! # Entry point
+//! `teacher` and legacy `report` templates retain names; `public` or
+//! `privacy.anonymize` substitutes numbered labels and always removes student
+//! identifiers. A custom title remains caller-provided text, even when names are
+//! anonymized. Sensitive scores, notes and special needs are never chart fields.
 //!
-//! [`export_plan`] accepts a single JSON object that carries the
-//! `ExportDraftRequest` fields **plus** the solved plan, so the loopback server
-//! can forward everything it already has in one shot:
-//!
-//! ```json
-//! {
-//!   "draft_id": "draft-1",
-//!   "format": "svg",
-//!   "template": "teacher",
-//!   "privacy": {
-//!     "hide_scores": false,
-//!     "hide_notes": false,
-//!     "hide_special_needs": false,
-//!     "anonymize": false,
-//!     "show_height": false,
-//!     "show_vision": false
-//!   },
-//!   "orientation": "portrait",
-//!   "page_scale": 1.0,
-//!   "locale": "zh",
-//!   "show_student_ids": true,
-//!   "request":  { ...CoreSolveRequest },
-//!   "response": { ...CoreSolveResponse }
-//! }
-//! ```
-//!
-//! # Template / privacy mapping (v1)
-//!
-//! - `template: "teacher"` / `"report"` render the real student labels
-//!   (display name, else key, else "Student N" — same as the CLI).
-//! - `template: "public"` — or any template with `privacy.anonymize` — renders a
-//!   placeholder in every occupied seat instead of a name ("学生"/"student",
-//!   following `locale`).
-//! - `privacy` fields beyond `anonymize` (`hide_scores`, `hide_notes`, ...) are
-//!   accepted for contract compatibility; the native renderers do not carry
-//!   scores/notes yet, so there is nothing extra to hide in v1.
-//! - `orientation` is decided by grid geometry for SVG/HTML/PNG (the raster and
-//!   vector documents size to the seat grid); for PDF it swaps the A4 page
-//!   between portrait and landscape.
-//! - `page_scale` applies to the PDF fit-to-page scale (clamped to 0.5–2.0);
-//!   it is inert for SVG/HTML/PNG.
-//! - `show_student_ids` is accepted for contract compatibility; the teacher
-//!   template already renders the student identifier (name-or-key) in v1.
-//!
-//! The module never panics: every failure is returned as a `String` error that
+//! Paper, orientation and millimetre margins apply to page-based exports;
+//! PowerPoint uses a fixed widescreen slide. Legacy scales above one are capped
+//! at fit-to-page to avoid clipping. Font fallback, missing glyphs and small or
+//! truncated text are surfaced by the warning-bearing entry points.
 //! identifies the offending field, so the server can surface a coarse 400.
 
 use seattrellis_core::{validate_solve_response, CoreSolveRequest, CoreSolveResponse};
 use serde::Deserialize;
 
-use crate::render::{
-    render_html, render_pdf_with, render_png, render_svg, GridCell, PdfLayout, SeatingGrid,
-};
+use crate::render::{GridCell, PdfLayout, SeatingGrid};
 
 // ---------------------------------------------------------------------------
 // Format / template / orientation enums
@@ -222,6 +182,9 @@ fn default_locale() -> String {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ExportRequest {
+    /// User-facing class/chart title; never a file path or executable markup.
+    #[serde(default)]
+    pub title: Option<String>,
     #[serde(default)]
     pub draft_id: String,
     /// `svg` | `html` | `png` | `pdf` (required).
@@ -285,6 +248,82 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
 pub fn render_export_with_warnings(
     request: &ExportRequest,
 ) -> Result<(Vec<u8>, Vec<String>), String> {
+    let (format, grid, page) = prepare_export(request)?;
+    // Editable tables have their own layout and preserve data that a visual
+    // preview may shorten. Only their actual writers can report file warnings.
+    match format {
+        ExportFormat::Xlsx => {
+            return crate::office::render_xlsx_with_warnings(&grid, &request.locale);
+        }
+        ExportFormat::Docx => {
+            return crate::office::render_docx_with_warnings(&grid, &page, &request.locale);
+        }
+        _ => {}
+    }
+    let scene = crate::scene::build_scene(&grid, &page, &request.locale);
+    let bytes = match format {
+        ExportFormat::Svg => crate::render::render_scene_svg(&scene).into_bytes(),
+        ExportFormat::Html | ExportFormat::PrintHtml => {
+            crate::render::render_scene_html(&scene, &grid.title, &request.locale).into_bytes()
+        }
+        ExportFormat::Png => crate::render::render_scene_png(&scene)?,
+        ExportFormat::Pdf => crate::render::render_scene_pdf(&scene)?.into_bytes(),
+        ExportFormat::Xlsx | ExportFormat::Docx => unreachable!("table formats returned above"),
+        ExportFormat::Pptx => crate::office::render_pptx_with(&grid, &request.locale)?,
+    };
+    let mut warnings = scene.warnings;
+    warnings.extend(font_warnings(format));
+    if !matches!(
+        format,
+        ExportFormat::Xlsx | ExportFormat::Docx | ExportFormat::Pptx
+    ) {
+        warnings.extend(crate::fonts::missing_glyph_warning(
+            &scene
+                .elements
+                .iter()
+                .filter_map(|element| {
+                    if let crate::scene::Element::Text { text, .. } = element {
+                        Some(text.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+        ));
+    }
+    Ok((bytes, warnings))
+}
+
+/// Generate the scene for the selected format, never a frontend approximation.
+/// Office previews represent the seating chart, not the editable table sheets.
+pub fn export_preview_with_warnings(request_json: &str) -> Result<(Vec<u8>, Vec<String>), String> {
+    let request = parse_export_request(request_json)?;
+    let (format, grid, page) = prepare_export(&request)?;
+    let scene = crate::scene::build_scene(&grid, &page, &request.locale);
+    let bytes = crate::render::render_scene_svg(&scene).into_bytes();
+    let mut warnings = scene.warnings;
+    warnings.extend(font_warnings(format));
+    warnings.extend(crate::fonts::missing_glyph_warning(
+        &scene
+            .elements
+            .iter()
+            .filter_map(|element| {
+                if let crate::scene::Element::Text { text, .. } = element {
+                    Some(text.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    ));
+    Ok((bytes, warnings))
+}
+
+fn prepare_export(
+    request: &ExportRequest,
+) -> Result<(ExportFormat, SeatingGrid, PdfLayout), String> {
     let format = ExportFormat::parse(&request.format)?;
     let template = ExportTemplate::parse(&request.template)?;
     let orientation = match request.orientation.as_deref() {
@@ -316,7 +355,7 @@ pub fn render_export_with_warnings(
     // hide_special_needs have nothing to hide in this renderer: it never
     // draws scores, notes or needs, so those exports cannot leak them.
     let hide_names = template == ExportTemplate::Public || request.privacy.anonymize;
-    let grid = if hide_names {
+    let mut grid = if hide_names {
         anonymize_grid(&grid, &request.locale)
     } else {
         filter_detail_grid(
@@ -326,39 +365,35 @@ pub fn render_export_with_warnings(
         )
     };
 
-    let bytes = match format {
-        ExportFormat::Svg => render_svg(&grid, &request.locale).into_bytes(),
-        ExportFormat::Html => render_html(&grid, &request.locale).into_bytes(),
-        ExportFormat::Png => render_png(&grid)?,
-        ExportFormat::Pdf => {
-            let layout = PdfLayout::from_paper(
-                paper,
-                orientation == ExportOrientation::Landscape,
-                margin_mm,
-            );
-            render_pdf_with(&grid, layout.with_scale(page_scale)).into_bytes()
+    if !request.show_student_ids || hide_names {
+        for cell in &mut grid.cells {
+            cell.student_key = None;
         }
-        ExportFormat::Xlsx => crate::office::render_xlsx(&grid)?,
-        ExportFormat::Docx => {
-            crate::office::render_docx(&grid, orientation == ExportOrientation::Landscape)?
+    }
+    if let Some(title) = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+    {
+        if title.chars().count() > 200 {
+            return Err("export title must be at most 200 characters".into());
         }
-        ExportFormat::PrintHtml => {
-            let print_options = crate::print_html::PrintHtmlOptions {
-                landscape: orientation == ExportOrientation::Landscape,
-                paper,
-                margin_mm,
-                page_scale,
-                show_student_ids: request.show_student_ids,
-                locale: request.locale.clone(),
-                seed: Some(request.request.seed),
-                period_label: None,
-            };
-            crate::print_html::render_print_html(&grid, &request.request, &print_options)
-                .into_bytes()
-        }
-        ExportFormat::Pptx => crate::office::render_pptx(&grid)?,
-    };
-    Ok((bytes, font_warnings(format)))
+        grid.title = title.to_string();
+    }
+    let mut page = PdfLayout::from_paper(
+        paper,
+        orientation == ExportOrientation::Landscape,
+        margin_mm,
+    )
+    .with_scale(page_scale);
+    if format == ExportFormat::Pptx {
+        page.page_w = 960.0;
+        page.page_h = 540.0;
+        page.margin_pt = 24.0;
+        page.scale_multiplier = 1.0;
+    }
+    Ok((format, grid, page))
 }
 
 /// Parse just the `format` field so the server can set a `Content-Type`
@@ -450,6 +485,7 @@ fn filter_detail_grid(grid: &SeatingGrid, show_height: bool, show_vision: bool) 
             Some(_) => None,
         };
         filtered.cells.push(GridCell {
+            seat_id: cell.seat_id.clone(),
             row: cell.row,
             col: cell.col,
             seat_index: cell.seat_index,
@@ -485,10 +521,14 @@ fn anonymize_grid(grid: &SeatingGrid, locale: &str) -> SeatingGrid {
             .cells
             .iter()
             .map(|cell| GridCell {
+                seat_id: cell.seat_id.clone(),
                 row: cell.row,
                 col: cell.col,
                 seat_index: cell.seat_index,
-                student: cell.student.as_ref().map(|_| placeholder.to_string()),
+                student: cell
+                    .student
+                    .as_ref()
+                    .map(|_| format!("{placeholder} {:02}", cell.seat_index + 1)),
                 // Anonymized exports never carry detail lines or identifiers.
                 student_key: None,
                 detail: None,
@@ -579,8 +619,8 @@ mod tests {
         let bytes = export_ok(&export_body("html", "teacher"));
         let html = String::from_utf8(bytes).unwrap();
         assert!(html.starts_with("<!DOCTYPE html>"), "HTML document type");
-        assert!(html.contains("<table"));
-        assert!(html.contains("</table>"));
+        assert!(html.contains("<svg "));
+        assert!(html.contains("</svg>"));
         assert!(!html.contains("<script"));
     }
 
@@ -674,8 +714,8 @@ mod tests {
         let svg = String::from_utf8(export_ok(&body)).unwrap();
         assert!(!svg.contains("Alice"));
         assert!(
-            svg.contains(">student<"),
-            "en placeholder is lowercase 'student'"
+            svg.contains(">student 01<"),
+            "en placeholder is numbered lowercase 'student'"
         );
     }
 
@@ -916,11 +956,11 @@ mod tests {
                 "{format} must use the zh front-of-room label"
             );
             assert!(
-                document.contains("4 名学生 · 6 个座位 · 可行"),
+                document.contains("4 名学生 · 6 个座位"),
                 "{format} must use the zh subtitle"
             );
             assert!(
-                !document.contains(">empty<") && !document.contains(">front of room<"),
+                !document.contains(">Empty<") && !document.contains(">front of room<"),
                 "{format} must not render English labels: {document}"
             );
             assert!(!document.contains("students / "), "{format} en subtitle");
@@ -930,9 +970,9 @@ mod tests {
         let mut body = export_body("svg", "teacher");
         body["locale"] = serde_json::Value::String("en".into());
         let svg = String::from_utf8(export_ok(&body)).unwrap();
-        assert!(svg.contains(">empty<"));
-        assert!(svg.contains("front of room"));
-        assert!(svg.contains("4 students / 6 seats / feasible"));
+        assert!(svg.contains(">Empty<"));
+        assert!(svg.contains("FRONT OF ROOM"));
+        assert!(svg.contains("4 students · 6 seats"));
     }
 
     #[test]
@@ -944,7 +984,7 @@ mod tests {
         body.as_object_mut().unwrap().remove("orientation");
         let html = String::from_utf8(export_ok(&body)).unwrap();
         assert!(
-            html.contains("@page { size: 297mm 210mm"),
+            html.contains("@page{size:842pt 595pt"),
             "print-html defaults to landscape A4: {}",
             &html[..html.len().min(600)]
         );
@@ -952,10 +992,7 @@ mod tests {
         // Explicit portrait still wins over the format default.
         body["orientation"] = serde_json::Value::String("portrait".into());
         let html = String::from_utf8(export_ok(&body)).unwrap();
-        assert!(
-            html.contains("@page { size: 210mm 297mm"),
-            "explicit portrait"
-        );
+        assert!(html.contains("@page{size:595pt 842pt"), "explicit portrait");
     }
 
     #[test]
@@ -997,5 +1034,45 @@ mod tests {
             .expect("export succeeds");
         let without = export_plan(&body_string(&export_body("svg", "teacher"))).expect("export");
         assert_eq!(with.0, without, "both entry points render identical bytes");
+    }
+
+    #[test]
+    fn spreadsheet_file_warnings_are_independent_of_the_scene_preview() {
+        let mut body = export_body("xlsx", "teacher");
+        body["request"]["students"][0]["display_name"] =
+            serde_json::json!("LongStudentName".repeat(80));
+        let request = body_string(&body);
+        let (_, file_warnings) = export_plan_with_warnings(&request).unwrap();
+        let (_, preview_warnings) = export_preview_with_warnings(&request).unwrap();
+        assert!(file_warnings.is_empty(), "{file_warnings:?}");
+        assert!(preview_warnings
+            .iter()
+            .any(|warning| warning.contains("shortened")));
+
+        body["request"]["students"][0]["display_name"] = serde_json::json!("名".repeat(32_768));
+        let (_, file_warnings) = export_plan_with_warnings(&body_string(&body)).unwrap();
+        assert_eq!(file_warnings.len(), 1);
+        assert!(file_warnings[0].contains("32767-character limit"));
+        assert!(!file_warnings[0].contains('名'));
+    }
+
+    #[test]
+    fn word_file_warnings_come_from_actual_table_fits() {
+        let mut body = export_body("docx", "teacher");
+        body["title"] = serde_json::json!("标题".repeat(100));
+        body["request"]["students"][0]["display_name"] =
+            serde_json::json!("LongStudentName".repeat(80));
+        let (_, warnings) = export_plan_with_warnings(&body_string(&body)).unwrap();
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("Word document was shortened")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("Word document are smaller than 8 pt")));
+        assert_eq!(
+            warnings.len(),
+            2,
+            "no unrelated scene warnings: {warnings:?}"
+        );
     }
 }

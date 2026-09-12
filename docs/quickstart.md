@@ -1,7 +1,7 @@
 # Quick Start Guide
 
 
-Welcome to **SeatTrellis v2.0.0**! This guide walks you through installation, problem validation, solving, candidate comparison, and exporting seating charts in under 5 minutes.
+Welcome to **SeatTrellis v2.1.0**! This guide walks you through installation, problem validation, solving, candidate comparison, and exporting seating charts in under 5 minutes.
 
 ---
 

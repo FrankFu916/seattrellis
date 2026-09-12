@@ -5,7 +5,6 @@ import {
   RosterApiError,
   deleteEditorDraft,
   dispatchEditorCommand,
-  exportDraft,
   fetchDraftAudit,
   fetchEditorState,
   generateClass,
@@ -37,14 +36,12 @@ import type {
   RotationSettings,
   SeatAssignment,
   Student,
-  ExportPrivacyOptions,
-  ExportTemplate,
 } from "./api/types";
 import { AppHeader } from "./components/AppHeader";
 import { ClassContextGuide } from "./components/ClassContextGuide";
 import { ContextBar } from "./components/ContextBar";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
-import { ExportPreviewDialog } from "./components/ExportPreviewDialog";
+import { ExportWorkspace } from "./components/ExportWorkspace";
 import {
   FirstRunChecklist,
   type FirstRunProgress,
@@ -55,7 +52,6 @@ import { SaveAsClassDialog } from "./components/SaveAsClassDialog";
 import { CandidatesPanel, type CandidateMeta, type ReproInfo } from "./components/CandidatesPanel";
 import { SeatingCanvasEditor } from "./components/SeatingCanvasEditor";
 import { Sidebar } from "./components/Sidebar";
-import { saveBlobWithDialog } from "./domain/desktop";
 import { consumeGeneratedDrafts } from "./domain/generatedDrafts";
 import {
   rosterIsValid,
@@ -100,10 +96,7 @@ import {
 const LOCALE_STORAGE_KEY = "seattrellis-locale";
 /** First-run checklist dismissal ("用过即收", D1). */
 const FIRST_RUN_KEY = "seattrellis-first-run:v1";
-/** Rust catalog id for the no-decision, print-ready default export. */
-export const DEFAULT_EXPORT_FORMAT = "print-html";
-/** Normal exports keep names visible; anonymization is an explicit sharing choice. */
-export const DEFAULT_EXPORT_TEMPLATE: ExportTemplate = "teacher";
+export { DEFAULT_EXPORT_FORMAT, DEFAULT_EXPORT_TEMPLATE } from "./domain/export";
 
 const DEFAULT_ADVANCED_SETTINGS: AdvancedSolveSettings = {
   // D4: the quick panel asks for the candidate count; 5 is the frozen
@@ -127,33 +120,6 @@ const DEFAULT_ROTATION_SETTINGS: RotationSettings = {
   enabled: false,
   periodCount: 4,
   periodLabels: "",
-};
-
-const DEFAULT_EXPORT_PRIVACY: Record<ExportTemplate, ExportPrivacyOptions> = {
-  public: {
-    hide_scores: true,
-    hide_notes: true,
-    hide_special_needs: true,
-    anonymize: true,
-    show_height: false,
-    show_vision: false,
-  },
-  teacher: {
-    hide_scores: false,
-    hide_notes: false,
-    hide_special_needs: false,
-    anonymize: false,
-    show_height: true,
-    show_vision: true,
-  },
-  report: {
-    hide_scores: false,
-    hide_notes: true,
-    hide_special_needs: true,
-    anonymize: false,
-    show_height: false,
-    show_vision: false,
-  },
 };
 
 const DEFAULT_DETAILED_RULE_SETTINGS: DetailedRuleSettings = {
@@ -329,16 +295,6 @@ export function App() {
   const [selectedRoomId, setSelectedRoomId] = useState("compact");
   const [selectedGoalId, setSelectedGoalId] =
     useState("daily-rotation");
-  const [selectedExportFormat, setSelectedExportFormat] = useState(DEFAULT_EXPORT_FORMAT);
-  const [orientation, setOrientation] = useState<
-    "portrait" | "landscape"
-  >("landscape");
-  const [exportTemplate, setExportTemplate] =
-    useState<ExportTemplate>(DEFAULT_EXPORT_TEMPLATE);
-  const [exportPrivacy, setExportPrivacy] = useState<ExportPrivacyOptions>(
-    DEFAULT_EXPORT_PRIVACY[DEFAULT_EXPORT_TEMPLATE],
-  );
-  const [pageScale, setPageScale] = useState(1);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSolveSettings>(DEFAULT_ADVANCED_SETTINGS);
   const [historySnapshots, setHistorySnapshots] = useState<HistorySnapshotPayload[]>([]);
@@ -367,10 +323,8 @@ export function App() {
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
   const [history, setHistory] = useState<SeatAssignment[][]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [editorDraftId, setEditorDraftId] = useState<string | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
   const [editorUndoDepth, setEditorUndoDepth] = useState(0);
@@ -493,7 +447,6 @@ export function App() {
       }
       const firstRoom = bootstrap.catalogs.roomTemplates[0];
       const firstGoal = bootstrap.catalogs.teacherGoals[0];
-      const firstFormat = bootstrap.catalogs.exportFormats[0];
       if (firstRoom) {
         setSelectedRoomId((value) =>
           bootstrap.catalogs.roomTemplates.some((room) => room.id === value)
@@ -506,15 +459,6 @@ export function App() {
           bootstrap.catalogs.teacherGoals.some((goal) => goal.id === value)
             ? value
             : firstGoal.id,
-        );
-      }
-      if (firstFormat) {
-        setSelectedExportFormat((value) =>
-          bootstrap.catalogs.exportFormats.some(
-            (format) => format.id === value,
-          )
-            ? value
-            : firstFormat.id,
         );
       }
     });
@@ -1318,48 +1262,6 @@ export function App() {
     }
   }
 
-  async function handleSave(format: string) {
-    if (!editorDraftId) {
-      return;
-    }
-    setIsSaving(true);
-    setSaveError(null);
-    try {
-      const { blob, filename } = await exportDraft({
-        draft_id: editorDraftId,
-        format,
-        template: exportTemplate,
-        privacy: exportPrivacy,
-        orientation,
-        page_scale: pageScale,
-        locale: locale === "zh-CN" ? "zh" : "en",
-      });
-      const desktopSave = await saveBlobWithDialog(filename, blob);
-      if (desktopSave === "cancelled") {
-        return;
-      }
-      if (desktopSave === "unavailable") {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        // Revoking synchronously can abort the download in some engines
-        // (e.g. Firefox); release the blob on the next tick instead.
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
-      setPreviewOpen(false);
-      setIsDirty(false);
-      setExportedOnce(true);
-    } catch (err) {
-      setSaveError(friendlyError(err, t));
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   function handleRosterImported(importedStudents: Student[]) {
     invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
@@ -1446,11 +1348,6 @@ export function App() {
       case "generate":
         void handleGenerate();
         break;
-      case "preview":
-        setPreviewOpen(true);
-        break;
-      case "exportMenu":
-        break;
     }
   }
 
@@ -1485,16 +1382,10 @@ export function App() {
             viewLabel={viewLabel}
             meta={viewMeta}
             action={contextAction}
-            exportFormats={catalogs.exportFormats}
-            locale={locale}
             isGenerating={isGenerating}
             canGenerate={rosterIsValid(students)}
             t={t}
             onAction={handleContextAction}
-            onQuickExport={(formatId) => {
-              void handleSave(formatId);
-            }}
-            onExportSettings={() => switchView("export")}
             onSaveAsClass={() => setSaveAsOpen(true)}
           />
           {showFirstRun ? (
@@ -1547,6 +1438,17 @@ export function App() {
                 onHistoryClear={clearHistoryFiles}
                 onRestoreSnapshot={handleRestoreSnapshot}
               />
+            ) : view === "export" ? (
+              <ExportWorkspace
+                key={editorDraftId ?? "unavailable"}
+                draftId={editorDraftId}
+                revision={editorRevision}
+                title={classContext.kind === "class" ? classContext.name : t("app.className")}
+                formats={catalogs.exportFormats}
+                locale={locale}
+                t={t}
+                onExported={() => setExportedOnce(true)}
+              />
             ) : (
               <WorkflowPanel
                 step={viewToStep(view)}
@@ -1561,12 +1463,6 @@ export function App() {
                 selectedRoomId={selectedRoomId}
                 goals={catalogs.teacherGoals}
                 selectedGoalId={selectedGoalId}
-                exportFormats={catalogs.exportFormats}
-                selectedExportFormat={selectedExportFormat}
-                exportTemplate={exportTemplate}
-                exportPrivacy={exportPrivacy}
-                orientation={orientation}
-                pageScale={pageScale}
                 advancedSettings={advancedSettings}
                 rotationSettings={rotationSettings}
                 detailedRules={detailedRules}
@@ -1612,16 +1508,6 @@ export function App() {
                 onFileSelected={setSelectedFileName}
                 onRoomChange={handleRoomChange}
                 onGoalChange={setSelectedGoalId}
-                onExportFormatChange={setSelectedExportFormat}
-                onExportTemplateChange={(template) => {
-                  setExportTemplate(template);
-                  setExportPrivacy({ ...DEFAULT_EXPORT_PRIVACY[template] });
-                }}
-                onExportPrivacyChange={(changes) =>
-                  setExportPrivacy((current) => ({ ...current, ...changes }))
-                }
-                onOrientationChange={setOrientation}
-                onPageScaleChange={setPageScale}
                 onAdvancedSettingsChange={(changes) =>
                   setAdvancedSettings((current) => ({ ...current, ...changes }))
                 }
@@ -1652,7 +1538,6 @@ export function App() {
                 onNext={() => undefined}
                 onGenerate={handleGenerate}
                 onToggleLock={handleToggleLock}
-                onPreview={() => setPreviewOpen(true)}
                 onOpenRules={() => switchView("rules")}
               />
             )}
@@ -1759,19 +1644,6 @@ export function App() {
           </main>
         </div>
       </div>
-      <ExportPreviewDialog
-        assignments={assignments}
-        orientation={orientation}
-        format={selectedExportFormat}
-        template={exportTemplate}
-        privacy={exportPrivacy}
-        open={previewOpen}
-        isSaving={isSaving}
-        error={saveError}
-        t={t}
-        onClose={() => setPreviewOpen(false)}
-        onSave={handleSave}
-      />
       <SaveAsClassDialog
         open={saveAsOpen}
         t={t}

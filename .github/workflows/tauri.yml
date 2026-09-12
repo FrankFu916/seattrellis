@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing GitHub Release tag to receive the desktop bundles
+        description: Existing Git tag and GitHub Release (published or draft) to build exactly
         required: true
         type: string
   release:
@@ -20,12 +20,11 @@ concurrency:
 jobs:
   bundle:
     name: Bundle / ${{ matrix.platform }}
-    # Desktop releases are deliberately opt-in until the first signed installer
-    # is ready. Manual runs can attach bundles to any existing release; the
-    # automatic path uses a desktop-v* preview tag so a Python-only release is
-    # not unexpectedly mixed with a different application version.
+    # Published v2 releases include desktop bundles. Keep the explicit desktop
+    # preview-tag path; never attach a v2 desktop build to a Python v1 release.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.release.tag_name, 'v2.') ||
       startsWith(github.event.release.tag_name, 'desktop-v')
     runs-on: ${{ matrix.platform }}
     strategy:
@@ -33,10 +32,13 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
+            target: aarch64-apple-darwin
             bundles: app,dmg
           - platform: windows-latest
+            target: x86_64-pc-windows-msvc
             bundles: msi,nsis
           - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
             # The .deb stays compact and uses the distribution WebKitGTK
             # runtime. AppImage is intentionally not part of the default
             # preview because bundling GTK/WebKit makes it roughly 80 MB.
@@ -44,6 +46,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Manual runs must also build the release tag, never the branch from
+          # which the workflow was dispatched. Draft releases need an existing tag.
+          ref: refs/tags/${{ github.event.release.tag_name || inputs.release_tag }}
 
       - name: Resolve the existing release
         id: release
@@ -53,11 +59,17 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         run: |
           set -euo pipefail
-          test -n "$RELEASE_TAG"
-          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq .id)"
+          case "$RELEASE_TAG" in
+            v2.*|desktop-v*) ;;
+            *) echo "Only v2.* or desktop-v* release tags may receive desktop assets" >&2; exit 1 ;;
+          esac
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          release_id="$(jq -r .id <<< "$release_json")"
+          release_draft="$(jq -r .draft <<< "$release_json")"
           test -n "$release_id"
           echo "id=$release_id" >> "$GITHUB_OUTPUT"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "draft=$release_draft" >> "$GITHUB_OUTPUT"
 
       - name: Install Linux bundler dependencies
         if: runner.os == 'Linux'
@@ -81,6 +93,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
+          targets: ${{ matrix.target }}
 
       - name: Build the React workbench (frontendDist)
         run: |
@@ -96,7 +109,58 @@ jobs:
           projectPath: app/src-tauri
           releaseId: ${{ steps.release.outputs.id }}
           tagName: ${{ steps.release.outputs.tag }}
-          args: --bundles ${{ matrix.bundles }} --no-sign
+          releaseDraft: ${{ steps.release.outputs.draft }}
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --no-sign
           releaseAssetNamePattern: seattrellis-desktop-[platform]-[arch]-[bundle][ext]
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
+
+  desktop-checksums:
+    name: Verify desktop asset set and publish checksums
+    needs: bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all five expected bundles and hash the release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          expected=(
+            seattrellis-desktop-darwin-aarch64-app.app.tar.gz
+            seattrellis-desktop-darwin-aarch64-dmg.dmg
+            seattrellis-desktop-linux-amd64-deb.deb
+            seattrellis-desktop-windows-x64-msi.msi
+            seattrellis-desktop-windows-x64-nsis.exe
+          )
+          release_json="$(gh release view "$RELEASE_TAG" --json assets)"
+          expected_json="$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc sort)"
+          if ! jq -e --argjson expected "$expected_json" \
+            '([.assets[] | select(.name | startswith("seattrellis-desktop-")) | .name] | sort) == $expected' \
+            <<< "$release_json" > /dev/null; then
+            echo "Desktop release assets must match the exact macOS app/dmg, Windows msi/nsis, and Linux deb set" >&2
+            jq -r '.assets[] | select(.name | startswith("seattrellis-desktop-")) | .name' <<< "$release_json" >&2
+            exit 1
+          fi
+          asset_dir="$(mktemp -d "$RUNNER_TEMP/desktop-assets.XXXXXX")"
+          for asset in "${expected[@]}"; do
+            gh release download "$RELEASE_TAG" --pattern "$asset" --dir "$asset_dir"
+            test -s "$asset_dir/$asset"
+          done
+          (
+            cd "$asset_dir"
+            sha256sum -- "${expected[@]}" > DESKTOP-SHA256SUMS
+          )
+          if jq -e '.assets | any(.name == "DESKTOP-SHA256SUMS")' <<< "$release_json" > /dev/null; then
+            existing_dir="$(mktemp -d "$RUNNER_TEMP/desktop-checksums.XXXXXX")"
+            gh release download "$RELEASE_TAG" --pattern DESKTOP-SHA256SUMS --dir "$existing_dir"
+            if ! cmp -s "$asset_dir/DESKTOP-SHA256SUMS" "$existing_dir/DESKTOP-SHA256SUMS"; then
+              echo "Refusing to replace existing DESKTOP-SHA256SUMS with different hashes" >&2
+              exit 1
+            fi
+            echo "Existing desktop checksums match; no replacement needed"
+          else
+            gh release upload "$RELEASE_TAG" "$asset_dir/DESKTOP-SHA256SUMS"
+          fi

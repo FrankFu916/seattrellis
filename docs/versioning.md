@@ -8,7 +8,7 @@ SeatTrellis follows [Semantic Versioning 2.0.0](https://semver.org/):
 - **MINOR** adds backward-compatible functionality;
 - **PATCH** contains backward-compatible fixes.
 
-SeatTrellis v2.0.0 is the current released Rust line. Crate versions are read
+SeatTrellis v2.1.0 is the current Rust application line. Crate versions are read
 from `Cargo.toml`. The Python line is frozen at 1.9.0 (`v1.9.0` on
 `v1.x-maintenance`) and is a legacy package only. From v2 onward, incompatible
 changes to the public CLI, file formats, or HTTP API require a new MAJOR

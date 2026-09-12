@@ -30,9 +30,7 @@ export type SessionClass = {
 /** The "next step" affordance offered by the context action bar (D1). */
 export type ContextAction =
   | { kind: "navigate"; target: WorkbenchView; label: MessageKey }
-  | { kind: "generate"; label: MessageKey }
-  | { kind: "preview"; label: MessageKey }
-  | { kind: "exportMenu" };
+  | { kind: "generate"; label: MessageKey };
 
 /** Map a workbench view to the legacy panel step it renders. */
 export function viewToStep(view: WorkbenchView): WorkflowStep {
@@ -77,12 +75,12 @@ export function contextActionFor(
     case "generate":
       return { kind: "generate", label: "action.generate" };
     case "canvas":
-      return { kind: "exportMenu" };
+      return { kind: "navigate", target: "export", label: "ctx.export" };
     case "export":
-      return { kind: "preview", label: "action.preview" };
+      return { kind: "navigate", target: "canvas", label: "export.backToPlan" };
     case "history":
       return hasPlan
-        ? { kind: "exportMenu" }
+        ? { kind: "navigate", target: "export", label: "ctx.export" }
         : { kind: "navigate", target: "generate", label: "ctx.nextGenerate" };
   }
 }

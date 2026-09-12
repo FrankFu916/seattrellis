@@ -8,8 +8,6 @@ import type {
   CommonPreferenceId,
   CustomRoomSettings,
   DetailedRuleSettings,
-  ExportPrivacyOptions,
-  ExportTemplate,
   RotationPlan,
   RotationSettings,
   RoomTemplate,
@@ -38,12 +36,6 @@ type WorkflowPanelProps = {
   selectedRoomId: string;
   goals: CatalogOption[];
   selectedGoalId: string;
-  exportFormats: CatalogOption[];
-  selectedExportFormat: string;
-  exportTemplate: ExportTemplate;
-  exportPrivacy: ExportPrivacyOptions;
-  orientation: "portrait" | "landscape";
-  pageScale: number;
   advancedSettings: AdvancedSolveSettings;
   historyFileNames: string[];
   historySnapshotCount: number;
@@ -65,11 +57,6 @@ type WorkflowPanelProps = {
   onFileSelected: (name: string | null) => void;
   onRoomChange: (roomId: string) => void;
   onGoalChange: (goalId: string) => void;
-  onExportFormatChange: (formatId: string) => void;
-  onExportTemplateChange: (template: ExportTemplate) => void;
-  onExportPrivacyChange: (changes: Partial<ExportPrivacyOptions>) => void;
-  onOrientationChange: (orientation: "portrait" | "landscape") => void;
-  onPageScaleChange: (scale: number) => void;
   onAdvancedSettingsChange: (
     changes: Partial<AdvancedSolveSettings>,
   ) => void;
@@ -95,7 +82,6 @@ type WorkflowPanelProps = {
   onNext: () => void;
   onGenerate: () => void;
   onToggleLock: () => void;
-  onPreview: () => void;
   /** Jump to the rules view (D4 quick panel "edit rules" entry). */
   onOpenRules?: () => void;
 };
@@ -139,12 +125,6 @@ export function WorkflowPanel({
   selectedRoomId,
   goals,
   selectedGoalId,
-  exportFormats,
-  selectedExportFormat,
-  exportTemplate,
-  exportPrivacy,
-  orientation,
-  pageScale,
   advancedSettings,
   historyFileNames,
   historySnapshotCount,
@@ -165,11 +145,6 @@ export function WorkflowPanel({
   onFileSelected,
   onRoomChange,
   onGoalChange,
-  onExportFormatChange,
-  onExportTemplateChange,
-  onExportPrivacyChange,
-  onOrientationChange,
-  onPageScaleChange,
   onAdvancedSettingsChange,
   onRotationSettingsChange,
   onDetailedRulesChange,
@@ -190,7 +165,6 @@ export function WorkflowPanel({
   onNext,
   onGenerate,
   onToggleLock,
-  onPreview,
   onOpenRules,
 }: WorkflowPanelProps) {
   const [rulesFileError, setRulesFileError] = useState<string | null>(null);
@@ -764,122 +738,6 @@ export function WorkflowPanel({
           </div>
         ) : null}
 
-        {step === "export" ? (
-          <div className="export-options">
-            <fieldset>
-              <legend>{t("export.use")}</legend>
-              <div className="segmented-options export-template-options">
-                {([
-                  ["teacher", "export.templateTeacher", "export.templateTeacherHint"],
-                  ["public", "export.templatePublic", "export.templatePublicHint"],
-                  ["report", "export.templateReport", "export.templateReportHint"],
-                ] as const).map(([template, label, hint]) => (
-                  <label
-                    data-selected={template === exportTemplate}
-                    key={template}
-                  >
-                    <input
-                      type="radio"
-                      name="export-template"
-                      checked={template === exportTemplate}
-                      onChange={() => onExportTemplateChange(template)}
-                    />
-                    <strong>{t(label)}</strong>
-                    <small>{t(hint)}</small>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>{t("export.format")}</legend>
-              <div className="compact-options export-format-options">
-                <label>
-                  <span className="sr-only">{t("export.format")}</span>
-                  <select
-                    value={selectedExportFormat}
-                    onChange={(event) => onExportFormatChange(event.target.value)}
-                  >
-                    {exportFormats.map((format) => (
-                      <option key={format.id} value={format.id}>
-                        {optionName(format, locale)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <small className="export-format-hint">
-                  {optionDescription(
-                    exportFormats.find((format) => format.id === selectedExportFormat) ??
-                      exportFormats[0] ??
-                      { description: { "zh-CN": "", en: "" } },
-                    locale,
-                  )}
-                </small>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>{t("export.privacy")}</legend>
-              <div className="privacy-options">
-                {([
-                  ["hide_scores", "export.hideScores"],
-                  ["hide_notes", "export.hideNotes"],
-                  ["hide_special_needs", "export.hideSpecialNeeds"],
-                  ["show_height", "export.showHeight"],
-                  ["show_vision", "export.showVision"],
-                  ["anonymize", "export.anonymize"],
-                ] as const).map(([key, label]) => (
-                  <label key={key}>
-                    <input
-                      type="checkbox"
-                      checked={exportPrivacy[key]}
-                      disabled={exportTemplate === "public"}
-                      onChange={(event) =>
-                        onExportPrivacyChange({ [key]: event.target.checked })
-                      }
-                    />
-                    {t(label)}
-                  </label>
-                ))}
-              </div>
-              <small className="export-privacy-hint">{t("export.privacyHint")}</small>
-            </fieldset>
-            <fieldset>
-              <legend>{t("export.orientation")}</legend>
-              <div className="compact-options">
-                {(["portrait", "landscape"] as const).map((value) => (
-                  <label key={value}>
-                    <input
-                      type="radio"
-                      name="orientation"
-                      checked={orientation === value}
-                      onChange={() => onOrientationChange(value)}
-                    />
-                    {t(`export.${value}`)}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>{t("export.scale")}</legend>
-              <label className="range-field">
-                <input
-                  type="range"
-                  min={0.5}
-                  max={2}
-                  step={0.1}
-                  value={pageScale}
-                  onChange={(event) => onPageScaleChange(Number(event.target.value))}
-                  disabled={selectedExportFormat === "svg" || selectedExportFormat === "pptx"}
-                />
-                <output>{pageScale.toFixed(1)}×</output>
-              </label>
-              <small className="export-scale-hint">
-                {selectedExportFormat === "svg" || selectedExportFormat === "pptx"
-                  ? t("export.scaleFixed")
-                  : t("export.scaleHint")}
-              </small>
-            </fieldset>
-          </div>
-        ) : null}
       </div>
 
       {!hideActions ? (
@@ -901,11 +759,6 @@ export function WorkflowPanel({
             >
               {isGenerating ? t("action.generating") : t("action.generate")}
               <span aria-hidden="true">→</span>
-            </button>
-          ) : step === "export" ? (
-            <button className="primary-button" type="button" onClick={onPreview}>
-              {t("action.preview")}
-              <span aria-hidden="true">↗</span>
             </button>
           ) : (
             <button className="primary-button" type="button" onClick={onNext}>

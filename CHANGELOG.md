@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+## 2.1.0 - 2026-09-12
+
+### Export workspace and document quality
+
+- Replace scattered export menus with one workbench: choose the format, visible
+  student information and supported page options, prepare a preview, then save
+  the already-generated file. Changing the draft or settings invalidates it.
+- Add cancellation, bounded requests, retry, duplicate-click protection, revision
+  conflicts and explicit quality warnings. Exporting does not mark a project saved.
+- Unify SVG, HTML, PNG and PDF on one point-based scene with actual seat IDs,
+  desk proportions, aisles and disabled/empty seats. Fit long names locally and
+  report small or shortened text. Reject overlapping rendered seat coordinates.
+- Correct text baselines, CJK font discovery and TTC face selection. Vector
+  outputs carry glyph outlines; PNG and PDF render at 216 dpi. Missing font
+  retries are bounded and installation can recover without restarting.
+- Preview HTML from its embedded SVG and PDF from the same scene, without
+  executable frames or PDF plugins. Keep the original document bytes for saving.
+- Rebuild editable Word tables, PowerPoint shapes and Excel layouts with clear
+  typography, explicit geometry, print areas and preserved assignment records.
+  Word fits long titles and names without shrinking unrelated students.
+- Default to names without student IDs or sensitive details. Anonymization uses
+  distinct numbered labels and removes identifiers; user-provided titles remain
+  unchanged. Office applications may substitute fonts; previews are not a
+  pixel-identical guarantee for editable Office files.
+- Add browser preview/isolation and lifecycle regression tests, shared-scene
+  geometry/font checks, Office package checks and a synthetic render gallery.
+- Align all application versions to 2.1.0 and build release assets from the exact
+  tag, gate native uploads on quality checks and generate desktop checksums.
+
+### Workbench and maintenance
+
 - Compare any two candidate plans with independent selectors and explicit selection.
   Custom seat IDs and irregular layouts render at their actual coordinates.
   Search student seat changes by name, ID, or seat; edited previews and score

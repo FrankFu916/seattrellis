@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { CatalogOption } from "../api/types";
 import { createTranslator } from "../i18n/messages";
 import { ContextBar } from "./ContextBar";
 import { FirstRunChecklist, type FirstRunProgress } from "./FirstRunChecklist";
@@ -9,11 +8,6 @@ import { SaveAsClassDialog } from "./SaveAsClassDialog";
 import { Sidebar } from "./Sidebar";
 
 const t = createTranslator("zh-CN");
-
-const FORMATS: CatalogOption[] = [
-  { id: "print", name: { "zh-CN": "打印页", en: "Print page" }, description: { "zh-CN": "", en: "" } },
-  { id: "pdf", name: { "zh-CN": "PDF", en: "PDF" }, description: { "zh-CN": "", en: "" } },
-];
 
 describe("Sidebar", () => {
   it("renders the three sections and highlights the active content view", () => {
@@ -135,14 +129,10 @@ describe("ContextBar", () => {
     context: { kind: "temp" } as const,
     viewLabel: "名单",
     meta: null,
-    exportFormats: FORMATS,
-    locale: "zh-CN" as const,
     isGenerating: false,
     canGenerate: true,
     t,
     onAction: vi.fn(),
-    onQuickExport: vi.fn(),
-    onExportSettings: vi.fn(),
     onSaveAsClass: vi.fn(),
   };
 
@@ -159,28 +149,24 @@ describe("ContextBar", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the quick export menu with formats and settings entry", async () => {
+  it("opens a single export workspace without a bypass menu", async () => {
     const user = userEvent.setup();
-    render(<ContextBar {...base} viewLabel="调整" action={{ kind: "exportMenu" }} />);
+    render(<ContextBar {...base} viewLabel="调整" action={{ kind: "navigate", target: "export", label: "ctx.export" }} />);
 
     await user.click(screen.getByRole("button", { name: /导出/ }));
-    await user.click(screen.getByRole("menuitem", { name: "PDF" }));
-    expect(base.onQuickExport).toHaveBeenCalledWith("pdf");
-
-    await user.click(screen.getByRole("button", { name: /导出/ }));
-    await user.click(screen.getByRole("menuitem", { name: "版式与隐私设置" }));
-    expect(base.onExportSettings).toHaveBeenCalled();
+    expect(base.onAction).toHaveBeenCalledWith({ kind: "navigate", target: "export", label: "ctx.export" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("offers save-as-class only in the scratch workspace", () => {
-    const { rerender } = render(<ContextBar {...base} action={{ kind: "exportMenu" }} />);
+    const { rerender } = render(<ContextBar {...base} action={{ kind: "navigate", target: "export", label: "ctx.export" }} />);
     expect(screen.getByRole("button", { name: "另存为班级" })).toBeInTheDocument();
 
     rerender(
       <ContextBar
         {...base}
         context={{ kind: "class", id: "p1", name: "初二（1）班" }}
-        action={{ kind: "exportMenu" }}
+        action={{ kind: "navigate", target: "export", label: "ctx.export" }}
       />,
     );
     expect(screen.queryByRole("button", { name: "另存为班级" })).toBeNull();
