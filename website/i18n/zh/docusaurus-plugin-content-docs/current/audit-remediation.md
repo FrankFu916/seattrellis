@@ -65,3 +65,5 @@ CLI 性能门禁通过未改动的相对与绝对阈值；本机 40/50/60/80 人
 `d8a7990` 的[优化核心 Rust CI](https://github.com/FrankFu916/seattrellis/actions/runs/36868538067)已成功完成：Windows/macOS/Linux workspace 测试与 Clippy、独立性能任务、候选/长跑/Word/轮换、fuzz 和其他共享门禁全部通过。
 
 已用修补后的 OR-Tools 9.15 对该优化核心完成新独立计时：九组纯硬约束案例中 CP-SAT 热流程八组更快，40 人混合案例 Rust 更快（核心 64.4 ms、进程 66.1 ms，对 CP-SAT 76.0 ms），60 人混合案例接近。36 份合法输出再次通过独立 Python 与 Rust 审计验证，不可行图证明和无效输出负例通过。新旧语料哈希一致，旧计时证据保持不变。新原始样本、审计和元数据在 `benchmarks/solver-comparison/updated-2026-10-01/`。该记录更新了此前“升级环境尚未计时”的阶段性结论，没有改写历史验证记录。
+
+纯报告提交 `d52f1e8` 的复测再现 Windows 历史测试失败；公开失败注释定位到 `projects.rs:3612` 的 `index_history_uses_original_roster_order_and_candidate_source`。本机将两个文件的修改时间强制设为相同，也复现 s2 对 s1 的断言：连续写入不保证时间不同，加载器原本规定同时间按规范路径排序。测试现为时间先后断言设置固定不同时间，并另验相同时间的排序、完整原始名单/启用座位映射和编译后的历史期次索引。生产排序和原始源数据断言保持不变。135 项 IO 单元测试、12 项集成测试及严格 Clippy 通过，消除了已定位的跨平台测试假设，未使用重试或睡眠掩盖问题。

@@ -705,6 +705,7 @@ pub fn load_project_source_documents(project_path: &Path) -> Result<Value, Strin
 /// Load deterministic oldest-first history inside the configured project
 /// directory. Symlink escapes, malformed artifacts and over-budget files
 /// fail explicitly instead of silently dropping historical constraints.
+/// Equal modification times are ordered by canonical path.
 pub fn load_project_history_snapshots(project_path: &Path) -> Result<Vec<Value>, String> {
     let workspace = resolve_project_workspace(project_path)?;
     let Some(directory) = workspace.history_dir.filter(|path| path.exists()) else {
@@ -2953,6 +2954,18 @@ mod tests {
         path
     }
 
+    fn set_modified_secs(path: &Path, secs: u64) {
+        fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(secs)),
+            )
+            .unwrap();
+    }
+
     /// Build a raw zip from (name, content, unix_mode) tuples.
     fn make_zip(entries: &[(&str, &[u8], u32)]) -> Vec<u8> {
         let mut cursor = Cursor::new(Vec::new());
@@ -3590,14 +3603,14 @@ mod tests {
         let project = write_project(&root, "history source", "id,name\nB,Bob\nA,Alice\n", true);
         fs::write(root.join("classroom.json"), layout.to_string()).unwrap();
         fs::write(root.join("rules.json"), "{}").unwrap();
-        write_snapshot(
+        let original_path = write_snapshot(
             &root,
             "original.snapshot.json",
             &json!({
                 "kind":"seattrellis_snapshot","schema_version":2,"assignment":[[0,0],[1,1]],"original_request":request
             }),
         );
-        write_snapshot(
+        let candidate_path = write_snapshot(
             &root,
             "candidates.json",
             &json!({
@@ -3605,6 +3618,11 @@ mod tests {
                 "candidates":[{"candidate_id":"c1","assignment":[[0,1],[1,0]]}]
             }),
         );
+        // Consecutive writes may share a timestamp on Windows. The source
+        // mapping checks below need an explicit, portable chronology.
+        set_modified_secs(&original_path, 1_750_000_000);
+        set_modified_secs(&candidate_path, 1_750_000_010);
+        assert!(mtime_nanos(&original_path) < mtime_nanos(&candidate_path));
         let snapshots = load_project_history_snapshots(&project).unwrap();
         assert_eq!(snapshots.len(), 2);
         assert_eq!(snapshots[0]["assignments"][0]["student_key"], "A");
@@ -3621,6 +3639,35 @@ mod tests {
                 .len(),
             2
         );
+
+        // Coarse clocks can tie both files. Filename order then places the
+        // candidates first, while both plans retain their original roster
+        // and enabled-seat index mapping rather than the current B,A order.
+        set_modified_secs(&original_path, 1_750_000_010);
+        assert_eq!(mtime_nanos(&original_path), mtime_nanos(&candidate_path));
+        let tied_snapshots = load_project_history_snapshots(&project).unwrap();
+        assert_eq!(tied_snapshots.len(), 2);
+        assert_eq!(
+            tied_snapshots[0]["assignments"],
+            json!([
+                {"student_key":"A","student_name":"A","seat_id":"s2"},
+                {"student_key":"B","student_name":"B","seat_id":"s1"}
+            ])
+        );
+        assert_eq!(
+            tied_snapshots[1]["assignments"],
+            json!([
+                {"student_key":"A","student_name":"A","seat_id":"s1"},
+                {"student_key":"B","student_name":"B","seat_id":"s2"}
+            ])
+        );
+        let tied_request = build_project_solve_request(&project).unwrap();
+        assert_eq!(tied_request["students"][0]["key"], "B");
+        let tied_records = &tied_request["history"]["students"]["A"]["records"];
+        assert_eq!(tied_records[0]["snapshot_index"], 1);
+        assert_eq!(tied_records[0]["seat_id"], "s2");
+        assert_eq!(tied_records[1]["snapshot_index"], 2);
+        assert_eq!(tied_records[1]["seat_id"], "s1");
     }
 
     #[test]
