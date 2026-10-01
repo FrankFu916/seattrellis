@@ -3,9 +3,13 @@
 Read only job boundaries, scalar job-level uses/needs, and their simple lists.
 No third-party YAML runtime is needed by the repository hygiene CI job.
 """
+import importlib.util
+import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,7 +96,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         rust = jobs("rust.yml")
         self.assertTrue({
             "build-binaries", "release-version", "web-quality", "security-quality", "test",
-            "contract-drift", "fmt", "dependency-audit", "long-run-gates", "fuzz-targets", "no-python-runtime",
+            "contract-drift", "fmt", "dependency-audit", "long-run-gates", "solver-performance", "fuzz-targets", "no-python-runtime",
         }.issubset(needs(rust["publish-assets"])))
         tauri = jobs("tauri.yml")
         self.assertIn("quality", needs(tauri["bundle"]))
@@ -103,6 +107,46 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("inputs.ref == ''", rust["publish-assets"])
         self.assertTrue({"web-unit", "web-e2e-rust"}.issubset(jobs("tests.yml")))
         self.assertTrue({"package-hygiene", "secret-scan"}.issubset(jobs("security.yml")))
+
+    def test_performance_has_an_independent_enforced_release_job(self):
+        rust = jobs("rust.yml")
+        performance = rust["solver-performance"]
+        self.assertNotIn("scripts/bench_solver.py", rust["long-run-gates"])
+        self.assertEqual(needs(performance), set())
+        self.assertIn("runs-on: ubuntu-latest", performance)
+        self.assertRegex(performance, r"timeout-minutes: [1-9][0-9]*\n")
+        self.assertIn("toolchain: 1.88.0", performance)
+        self.assertIn("cargo build --release --locked -p seattrellis", performance)
+        self.assertIn("python3 scripts/bench_solver.py --check", performance)
+        self.assertNotIn("--record", performance)
+        self.assertNotIn("continue-on-error:", performance)
+
+    def test_performance_check_rejects_either_limit_and_accepts_values_within_both(self):
+        spec = importlib.util.spec_from_file_location("benchmark_gate", ROOT / "scripts/bench_solver.py")
+        benchmark = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(benchmark)
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "seattrellis"
+            binary.write_bytes(b"test binary placeholder")
+            baseline = Path(directory) / "baseline.json"
+            for label, expected_ms, measured_ms, exit_code in [
+                ("within both", 100, 100, 0),
+                ("relative regression only", 100, 111, 1),
+                ("absolute regression only", 2000, 1600, 1),
+            ]:
+                with self.subTest(case=label):
+                    recorded = {str(size): {"median_ms": 100} for size in benchmark.SIZES}
+                    measured = {str(size): {"median_ms": 100} for size in benchmark.SIZES}
+                    recorded["40"]["median_ms"] = expected_ms
+                    measured["40"]["median_ms"] = measured_ms
+                    baseline.write_text(json.dumps({"sizes_ms": recorded}), encoding="utf-8")
+                    with patch.object(benchmark, "CLI", binary), \
+                            patch.object(benchmark, "measure_all", return_value=measured), \
+                            patch.object(benchmark, "metadata", return_value={}), \
+                            patch.object(benchmark, "append_ci_summary"), \
+                            patch("sys.argv", ["bench_solver.py", "--check", "--baseline", str(baseline)]), \
+                            patch("builtins.print"):
+                        self.assertEqual(benchmark.main(), exit_code)
 
     def test_checkout_release_refs_and_frontend_build_tools_are_explicit(self):
         for name in ["rust.yml", "tests.yml", "security.yml"]:

@@ -192,6 +192,12 @@ def append_ci_summary(report: str) -> None:
             print(f"could not write CI benchmark summary: {error}", file=sys.stderr)
 
 
+def report_ci_failure(message: str) -> None:
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        escaped = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::error title=Solver performance gate::{escaped}")
+
+
 def measure_all() -> dict:
     results = {}
     for count in SIZES:
@@ -259,6 +265,11 @@ def main() -> int:
     append_ci_summary("\n".join(summary))
     if failures:
         print(f"PERFORMANCE REGRESSION at sizes: {', '.join(failures)}")
+        report_ci_failure("; ".join(
+            f"n={size}: {measured[size]['median_ms']} ms; relative limit "
+            f"{baseline[size]['median_ms'] * TOLERANCE:.2f} ms; absolute limit "
+            f"{ABSOLUTE_BOUNDS_MS[int(size)]} ms" for size in failures
+        ))
         return 1
     return 0
 
@@ -268,5 +279,6 @@ if __name__ == "__main__":
         exit_status = main()
     except (Exception, SystemExit) as error:
         append_ci_summary(f"### Solver benchmark could not complete\n\n```text\n{error}\n```")
+        report_ci_failure(f"Benchmark could not complete: {error}")
         raise
     raise SystemExit(exit_status)

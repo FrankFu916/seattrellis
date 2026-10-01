@@ -68,6 +68,13 @@ pub(crate) fn build_cost_context_controlled(
     let students = effective_students(request);
     let layout = effective_layout(request);
     let rules = request.rules.clone().unwrap_or_default();
+    // Rule inputs remain immutable during a solve. Compile their merged form
+    // once rather than cloning relation strings for every student/seat probe.
+    let neighbor_rule = effective_neighbor_rule(&rules);
+    let soft = &rules.soft;
+    let has_score_objectives = (soft.score_position.enabled && soft.score_position.weight != 0)
+        || (soft.score_distribution.enabled && soft.score_distribution.weight != 0)
+        || (soft.mentor_pairing.enabled && soft.mentor_pairing.weight != 0);
     let adjacency_edges = adjacency_edges_by_seat_id(&layout, &request.edges);
     let objective_context = compile_soft_objectives_with_adjacency_controlled(
         &students,
@@ -88,6 +95,8 @@ pub(crate) fn build_cost_context_controlled(
         students,
         layout,
         rules,
+        neighbor_rule,
+        has_score_objectives,
         history: request.history.clone(),
         pair_history: request.pair_history.clone(),
         adjacency_edges,
@@ -187,7 +196,7 @@ fn candidate_ranking_cost(
         ctx.max_row,
     ) as f64;
 
-    let neighbor_rule = effective_neighbor_rule(&ctx.rules);
+    let neighbor_rule = &ctx.neighbor_rule;
     if neighbor_rule.enabled && neighbor_rule.weight != 0 {
         for (assigned_index, assigned_seat_index) in assignment.iter().enumerate() {
             if let Some(assigned_seat_index) = assigned_seat_index {
@@ -197,7 +206,7 @@ fn candidate_ranking_cost(
                     seat,
                     &ctx.layout.seats[*assigned_seat_index],
                     &ctx.layout,
-                    &neighbor_rule,
+                    neighbor_rule,
                     ctx.pair_history.as_ref(),
                     Some(&ctx.adjacency_edges),
                 ) as f64;
@@ -205,17 +214,20 @@ fn candidate_ranking_cost(
         }
     }
 
-    let mut prospective: HashMap<String, String> = HashMap::new();
-    for (index, assigned_seat_index) in assignment.iter().enumerate() {
-        if let Some(seat_index) = assigned_seat_index {
-            prospective.insert(
-                ctx.students[index].key.clone(),
-                ctx.layout.seats[*seat_index].seat_id.clone(),
-            );
+    if ctx.has_score_objectives {
+        let mut prospective: HashMap<String, String> = HashMap::new();
+        for (index, assigned_seat_index) in assignment.iter().enumerate() {
+            if let Some(seat_index) = assigned_seat_index {
+                prospective.insert(
+                    ctx.students[index].key.clone(),
+                    ctx.layout.seats[*seat_index].seat_id.clone(),
+                );
+            }
         }
+        prospective.insert(student.key.clone(), seat.seat_id.clone());
+        cost +=
+            evaluate_soft_objectives(&prospective, &ctx.objective_context, &ctx.rules).total_cost();
     }
-    prospective.insert(student.key.clone(), seat.seat_id.clone());
-    cost += evaluate_soft_objectives(&prospective, &ctx.objective_context, &ctx.rules).total_cost();
     cost
 }
 
@@ -259,7 +271,7 @@ pub(crate) fn full_solution_total_cost(
         }
     }
 
-    let neighbor_rule = effective_neighbor_rule(&ctx.rules);
+    let neighbor_rule = &ctx.neighbor_rule;
     if neighbor_rule.enabled && neighbor_rule.weight != 0 {
         for first_index in 0..assignment.len() {
             for second_index in (first_index + 1)..assignment.len() {
@@ -269,7 +281,7 @@ pub(crate) fn full_solution_total_cost(
                     &ctx.layout.seats[assignment[first_index]],
                     &ctx.layout.seats[assignment[second_index]],
                     &ctx.layout,
-                    &neighbor_rule,
+                    neighbor_rule,
                     ctx.pair_history.as_ref(),
                     Some(&ctx.adjacency_edges),
                 ) as f64;
@@ -277,15 +289,17 @@ pub(crate) fn full_solution_total_cost(
         }
     }
 
-    let mut assignment_by_key: HashMap<String, String> = HashMap::new();
-    for (student_index, seat_index) in assignment.iter().enumerate() {
-        assignment_by_key.insert(
-            ctx.students[student_index].key.clone(),
-            ctx.layout.seats[*seat_index].seat_id.clone(),
-        );
+    if ctx.has_score_objectives {
+        let mut assignment_by_key: HashMap<String, String> = HashMap::new();
+        for (student_index, seat_index) in assignment.iter().enumerate() {
+            assignment_by_key.insert(
+                ctx.students[student_index].key.clone(),
+                ctx.layout.seats[*seat_index].seat_id.clone(),
+            );
+        }
+        cost += evaluate_soft_objectives(&assignment_by_key, &ctx.objective_context, &ctx.rules)
+            .total_cost();
     }
-    cost += evaluate_soft_objectives(&assignment_by_key, &ctx.objective_context, &ctx.rules)
-        .total_cost();
     cost
 }
 

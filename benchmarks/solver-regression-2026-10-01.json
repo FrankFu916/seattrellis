@@ -1,0 +1,764 @@
+{
+  "schema_version": 1,
+  "purpose": "Controlled same-host diagnosis and repair of the October 2026 Rust solver runtime regression; historical baselines and thresholds unchanged.",
+  "collected_utc": "2026-10-01T13:15:39.891032+00:00",
+  "method": {
+    "reference_commit": "c376d60a43d38e6e18d6636a053277566b76f696",
+    "current_committed_base": "6c1b3ee46fef153508df79fbb375ffb8f30a8780",
+    "compiler": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+    "compiler_selection": "Rust 1.88.0 for both release binaries; same root Cargo.toml release profile opt-level=3, thin LTO, codegen-units=1, strip=true.",
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "cpu_count": 5,
+    "runs_per_size": 7,
+    "sizes": [
+      40,
+      50,
+      60,
+      80
+    ],
+    "seed": 42,
+    "warmup": "one untimed run of each binary per size immediately before measured pairs",
+    "order": [
+      "reference",
+      "current"
+    ],
+    "timing": "subprocess wall clock, same problem file, no response output; exit code and Solved checked after timer",
+    "concurrency": "Root was notified before/after each measurement window and avoided concurrent CPU-intensive work.",
+    "same_problem_per_pair": true,
+    "response_file_output": false,
+    "status_validation": "After stopping the timer, require process exit code 0 and exactly one stdout status line: status: Solved.",
+    "comparison_limitation": "Sequential fixed reference\u2192current pair order, seven samples; medians are local measurements rather than hardware-independent guarantees."
+  },
+  "corpus": {
+    "revision": "planted-hard-v1-explicit-soft",
+    "sha256": "70e9470c8a73ff10bed07aa47a39e36c20efa7fb5d943f495b2cb7994f964911",
+    "hash_encoding": "SHA256 of JSON for planted_request(n,42) at 40/50/60/80, sort_keys=True, separators=(comma,colon).",
+    "generator_file": "scripts/bench_solver.py",
+    "generator_sha256_at_report": "91b9a135052d266550e9ec9bb745c33fb9d811c32db7f380418135ab59008c04",
+    "effective_soft_rules": "All ten soft rules have enabled=false and weight=1 explicitly, preserving the historical effective hard-only workload independently of corrected defaults.",
+    "requests": {
+      "40": {
+        "path": "/workspace/.seattrellis-env/paired-benchmark/problem-40.json",
+        "sha256": "9e1ad82d9d52a29d1ba4bc8fdb078cf988af1dc31b4e6a154f3d2aacc0880ca9"
+      },
+      "50": {
+        "path": "/workspace/.seattrellis-env/paired-benchmark/problem-50.json",
+        "sha256": "a1be0dd327ccda2678b8f810b207a188a69195d4117fce5a89df3875c7de5390"
+      },
+      "60": {
+        "path": "/workspace/.seattrellis-env/paired-benchmark/problem-60.json",
+        "sha256": "2f0a596b58566d6e713ad43ccb1ad1b736a6f6defd90fb66b74081ac838d4a81"
+      },
+      "80": {
+        "path": "/workspace/.seattrellis-env/paired-benchmark/problem-80.json",
+        "sha256": "dadfc265aff1a7de7f3d08f6d71a6dc02aa789f50de49cf606881528d4f60cc4"
+      }
+    }
+  },
+  "build_provenance": {
+    "reference_export_command": [
+      "git",
+      "archive",
+      "c376d60",
+      "-o",
+      "/workspace/.seattrellis-env/paired-benchmark/reference-source.tar"
+    ],
+    "reference_source_directory": "/workspace/.seattrellis-env/reference-c376d60",
+    "reference_target_directory": "/workspace/.seattrellis-env/reference-c376d60-target",
+    "reference_build_command": [
+      "cargo",
+      "+1.88.0",
+      "build",
+      "--release",
+      "--locked",
+      "-p",
+      "seattrellis",
+      "--offline",
+      "--manifest-path",
+      "/workspace/.seattrellis-env/reference-c376d60/Cargo.toml"
+    ],
+    "cache_safety": "Copied third-party release cache into separate target; cargo clean --release for core/schema/rules/domain/export/io/application/CLI before rebuilding reference workspace packages, avoiding stale archive-timestamp reuse. Current target and tracked tree were not used for the reference build.",
+    "current_build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "-p",
+      "seattrellis",
+      "--offline"
+    ],
+    "current_toolchain": "Repository rust-toolchain.toml selects 1.88.0; environment activates matching rustup installation.",
+    "reference_core_source_sha256": {
+      "crates/seattrellis-core/src/audit.rs": "fff0dd2d287a6ab1079a3837690c0e38fde381b12625a14f2ae1365b542a560f",
+      "crates/seattrellis-core/src/candidates.rs": "9a732113637941806ecf6e05ac4c4a97f51e4d3b9fea4165bd237a1b99479ac7",
+      "crates/seattrellis-core/src/cost.rs": "d7d66d24740e8424195f2c85cb0fd0e438c7cdeb043bfc96348b8c5d05c7e9fc",
+      "crates/seattrellis-core/src/engine.rs": "c8ab23b0d642280b011addf6003e3acd08e4594eb035c3f21947a00e5644119b",
+      "crates/seattrellis-core/src/evaluation.rs": "2663ee98c4f810a92b2cc182eb035fd0d5d89826e5c95befe8fc75ea4a988df5",
+      "crates/seattrellis-core/src/lib.rs": "420e3691ef0e6d2465ff2119d1e7b69a1d28b4d5d6cc9ad167d8ba2503569d23",
+      "crates/seattrellis-core/src/models.rs": "0f32c929a4107b72fc5bd5b519c5e438e8e80631150088fb9fc976f06c200d46",
+      "crates/seattrellis-core/src/objectives.rs": "0b4aaff8a899727fc7107da8fcd139506366a150056d39cdd1de1444fad854b5",
+      "crates/seattrellis-core/src/precheck.rs": "7cc1d80ff01cd5e25dd7c682d358eea4ca6a78aaa8602eb5b0214b5c27379a2d",
+      "crates/seattrellis-core/src/repair.rs": "c855ded8f70d46341338fc1fd809178d94429e69d21651dbb04ccc3890dde2d4",
+      "crates/seattrellis-core/src/reports.rs": "19e1a31fea59e2a3da0e6f4b7971fc75da105245cd6cabb103cea7d1d33feeec",
+      "crates/seattrellis-core/src/rng.rs": "01592ed06d8d7d45116c8c7a692989eda5d8dc9e663ad11bf218ee012c25bdd8",
+      "crates/seattrellis-core/src/scoring.rs": "064d6c2fa68d68147ef062bc3c4da24218b50ffeee790c223ed67debdf7a2d9f",
+      "crates/seattrellis-core/src/solver.rs": "790593cb71f4570786b5eb80159fade48e730c2abbcbc61f1b05e135823f6374"
+    },
+    "before_current_core_source_sha256": {
+      "crates/seattrellis-core/src/audit.rs": "1736053171c8fe1f0e9eb1458ac1b334403cba2b9c9a0dda39d18031eadee1ca",
+      "crates/seattrellis-core/src/candidates.rs": "032d7cda4a5954be5ab845aa398a6454928a44fd69b14c2a9f6b0ab044660fb4",
+      "crates/seattrellis-core/src/cost.rs": "9d8d8a3a73531f8d4d64075cf26abc95674b275b8149ade37ff96871a5961058",
+      "crates/seattrellis-core/src/engine.rs": "9a1ead9b3df223928bc64bf945ef152b1003c151bf0564827566ff0083976419",
+      "crates/seattrellis-core/src/evaluation.rs": "80899dd5626435aa68a08b1b42deb6a771255fc76c891f90c687c565e55d5d81",
+      "crates/seattrellis-core/src/lib.rs": "bf1667ef90e6a41d2847e528fd56874df555e2de2b34d6e3059ae72823cf25d7",
+      "crates/seattrellis-core/src/models.rs": "e172423ad8de75ee9468af22b7cfe753493e4fabd4326abf97cfe0d933e519ee",
+      "crates/seattrellis-core/src/objectives.rs": "d32678ba293191142673d676f1bd728d4e0d973c9450f1addd8367644a193704",
+      "crates/seattrellis-core/src/precheck.rs": "7a0f871a68455dbc273422fdab1e8f83ffbb37a75f30ae0e3a16d69c92fb3cf9",
+      "crates/seattrellis-core/src/repair.rs": "d2fd86e4652dc4b647990b4d7c18fe1ef689fc9e83f88bbad6cc52329623b27c",
+      "crates/seattrellis-core/src/reports.rs": "e869155924a9e5cec79ee80b6a25ec50890f8dd09ed86f76a925e5aa602b5ebe",
+      "crates/seattrellis-core/src/rng.rs": "01592ed06d8d7d45116c8c7a692989eda5d8dc9e663ad11bf218ee012c25bdd8",
+      "crates/seattrellis-core/src/scoring.rs": "988ff96564c6160ca4340040a0c898eff72857a2d832a105774f4cf37a43ba2e",
+      "crates/seattrellis-core/src/solver.rs": "15b4bb8a7a581b723013b096eec445fed8e9589411bbff2476d07c6e1cdbd6ab"
+    },
+    "after_current_core_source_sha256": {
+      "crates/seattrellis-core/src/audit.rs": "1736053171c8fe1f0e9eb1458ac1b334403cba2b9c9a0dda39d18031eadee1ca",
+      "crates/seattrellis-core/src/candidates.rs": "032d7cda4a5954be5ab845aa398a6454928a44fd69b14c2a9f6b0ab044660fb4",
+      "crates/seattrellis-core/src/cost.rs": "9d8d8a3a73531f8d4d64075cf26abc95674b275b8149ade37ff96871a5961058",
+      "crates/seattrellis-core/src/engine.rs": "68f48b4cf5216251287cc5686da9ba8caf441dd256f4ca2c615a566c79a12a0a",
+      "crates/seattrellis-core/src/evaluation.rs": "80899dd5626435aa68a08b1b42deb6a771255fc76c891f90c687c565e55d5d81",
+      "crates/seattrellis-core/src/lib.rs": "bf1667ef90e6a41d2847e528fd56874df555e2de2b34d6e3059ae72823cf25d7",
+      "crates/seattrellis-core/src/models.rs": "e172423ad8de75ee9468af22b7cfe753493e4fabd4326abf97cfe0d933e519ee",
+      "crates/seattrellis-core/src/objectives.rs": "d32678ba293191142673d676f1bd728d4e0d973c9450f1addd8367644a193704",
+      "crates/seattrellis-core/src/precheck.rs": "7a0f871a68455dbc273422fdab1e8f83ffbb37a75f30ae0e3a16d69c92fb3cf9",
+      "crates/seattrellis-core/src/repair.rs": "d2fd86e4652dc4b647990b4d7c18fe1ef689fc9e83f88bbad6cc52329623b27c",
+      "crates/seattrellis-core/src/reports.rs": "e869155924a9e5cec79ee80b6a25ec50890f8dd09ed86f76a925e5aa602b5ebe",
+      "crates/seattrellis-core/src/rng.rs": "01592ed06d8d7d45116c8c7a692989eda5d8dc9e663ad11bf218ee012c25bdd8",
+      "crates/seattrellis-core/src/scoring.rs": "988ff96564c6160ca4340040a0c898eff72857a2d832a105774f4cf37a43ba2e",
+      "crates/seattrellis-core/src/solver.rs": "ba54379bebac35c14f961ae990a0dbadbd217c30fdb450ea42f951f62667543a"
+    },
+    "current_core_patch_sha256_at_report": "698139fd9f7f6838d11fdcc280fd7fb9027555b2d7e2b22326704ad44c75dcbe",
+    "current_core_dirty_paths": [
+      "crates/seattrellis-core/src/engine.rs",
+      "crates/seattrellis-core/src/solver.rs",
+      "crates/seattrellis-core/tests/audit_regressions.rs"
+    ],
+    "dirty_source_note": "The optimized current binary includes uncommitted engine.rs and solver.rs optimization relative to 27e67db. Current production core source hashes were collected after measurement; no production edits occurred after that binary was built. The integration test boundary table was extended after measurement and passed a focused rerun; it does not enter the CLI binary. Other root-owned dirty files are unrelated to core solver production source.",
+    "current_core_test_source_sha256": "b821824730e6a931504b278f54b2d6a78be86cd5401ea838f119dba39a833444"
+  },
+  "repair": {
+    "production_files": [
+      "crates/seattrellis-core/src/engine.rs",
+      "crates/seattrellis-core/src/solver.rs"
+    ],
+    "behavior": "Compile merged neighbor/cooling rules once per CostContext and borrow them in ranking/scoring; skip student-to-seat objective map allocations only when all three score objectives are disabled or have zero weight.",
+    "numerical_contract": "Overflow/underflow-safe hypot implementation retained unchanged.",
+    "baseline_or_threshold_changes": false
+  },
+  "before": {
+    "metadata": {
+      "reference_commit": "c376d60a43d38e6e18d6636a053277566b76f696",
+      "current_commit": "27e67db87a5eb02cf0b968ad9e4c7cc675ac9259",
+      "rustc": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "machine": "x86_64",
+      "cpu_count": 5,
+      "runs_per_size": 7,
+      "seed": 42,
+      "order": [
+        "reference",
+        "current"
+      ],
+      "warmup": "one untimed run of each binary per size immediately before measured pairs",
+      "measurement": "subprocess wall clock, same problem file, no response output; exit code and Solved checked after timer",
+      "corpus_revision": "planted-hard-v1-explicit-soft",
+      "corpus_sha256": "70e9470c8a73ff10bed07aa47a39e36c20efa7fb5d943f495b2cb7994f964911",
+      "binaries": {
+        "reference": {
+          "path": "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "sha256": "1417d4ada8095c1d7cda602a337402ffe3ac6529e3921ab1185b5a6ebe7ab25d"
+        },
+        "current": {
+          "path": "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-current",
+          "sha256": "ca4c0c66c995076e166d76aa432c4f2a8bff9f468426b3e2cca4bf2e229519c2"
+        }
+      }
+    },
+    "sizes": {
+      "40": {
+        "problem_sha256": "9e1ad82d9d52a29d1ba4bc8fdb078cf988af1dc31b4e6a154f3d2aacc0880ca9",
+        "pairs": [
+          {
+            "reference": 127.31456799883745,
+            "current": 145.1317459996062,
+            "ratio_current_reference": 1.1399461057821085
+          },
+          {
+            "reference": 116.51273099960235,
+            "current": 139.8797439996997,
+            "ratio_current_reference": 1.2005533026273079
+          },
+          {
+            "reference": 142.87524799874518,
+            "current": 133.34765500076173,
+            "ratio_current_reference": 0.933315300365623
+          },
+          {
+            "reference": 118.68205300015688,
+            "current": 141.09116200052085,
+            "ratio_current_reference": 1.1888163242367769
+          },
+          {
+            "reference": 136.6710949987464,
+            "current": 136.32972800041898,
+            "ratio_current_reference": 0.9975022736275687
+          },
+          {
+            "reference": 122.34342400006426,
+            "current": 144.00705999833008,
+            "ratio_current_reference": 1.1770723369508969
+          },
+          {
+            "reference": 136.97573200079205,
+            "current": 150.1398220007104,
+            "ratio_current_reference": 1.0961052721356674
+          }
+        ],
+        "reference_median_ms": 127.31456799883745,
+        "current_median_ms": 141.09116200052085,
+        "ratio_of_medians": 1.108209093572145,
+        "median_pair_ratio": 1.1399461057821085,
+        "committed_legacy_baseline_ms": 132.5,
+        "reference_vs_legacy_ratio": 0.9608646641421694,
+        "current_vs_legacy_ratio": 1.064838958494497,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 40\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 40\nstatus: Solved\n"
+        }
+      },
+      "50": {
+        "problem_sha256": "a1be0dd327ccda2678b8f810b207a188a69195d4117fce5a89df3875c7de5390",
+        "pairs": [
+          {
+            "reference": 269.5131060008862,
+            "current": 291.2651160004316,
+            "ratio_current_reference": 1.0807085426097012
+          },
+          {
+            "reference": 256.011198998749,
+            "current": 268.2508540001436,
+            "ratio_current_reference": 1.0478090608897714
+          },
+          {
+            "reference": 255.50671299970418,
+            "current": 278.00343399940175,
+            "ratio_current_reference": 1.0880474752916711
+          },
+          {
+            "reference": 257.17390299905674,
+            "current": 271.6701560002548,
+            "ratio_current_reference": 1.0563675117581866
+          },
+          {
+            "reference": 247.7718840000307,
+            "current": 293.19223099992087,
+            "ratio_current_reference": 1.1833151779234343
+          },
+          {
+            "reference": 271.5069269997912,
+            "current": 272.40088199869206,
+            "ratio_current_reference": 1.0032925679236964
+          },
+          {
+            "reference": 288.5560140002781,
+            "current": 270.86124400011613,
+            "ratio_current_reference": 0.9386782144830123
+          }
+        ],
+        "reference_median_ms": 257.17390299905674,
+        "current_median_ms": 272.40088199869206,
+        "ratio_of_medians": 1.0592088809247926,
+        "median_pair_ratio": 1.0563675117581866,
+        "committed_legacy_baseline_ms": 313.5,
+        "reference_vs_legacy_ratio": 0.8203314290241044,
+        "current_vs_legacy_ratio": 0.8689023349240576,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 50\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 50\nstatus: Solved\n"
+        }
+      },
+      "60": {
+        "problem_sha256": "2f0a596b58566d6e713ad43ccb1ad1b736a6f6defd90fb66b74081ac838d4a81",
+        "pairs": [
+          {
+            "reference": 537.8519619989675,
+            "current": 646.8363080002746,
+            "ratio_current_reference": 1.202628889920302
+          },
+          {
+            "reference": 560.351857000569,
+            "current": 637.4657439992006,
+            "ratio_current_reference": 1.1376169027285892
+          },
+          {
+            "reference": 592.0640929998626,
+            "current": 665.0454809987423,
+            "ratio_current_reference": 1.123266026198445
+          },
+          {
+            "reference": 564.8384279993479,
+            "current": 650.5936600005953,
+            "ratio_current_reference": 1.1518225881071718
+          },
+          {
+            "reference": 600.7449799999449,
+            "current": 704.0576359995612,
+            "ratio_current_reference": 1.1719742310616157
+          },
+          {
+            "reference": 520.1893560006283,
+            "current": 636.9236199989246,
+            "ratio_current_reference": 1.2244072521894416
+          },
+          {
+            "reference": 564.5898040002066,
+            "current": 685.1390809988516,
+            "ratio_current_reference": 1.2135165675053543
+          }
+        ],
+        "reference_median_ms": 564.5898040002066,
+        "current_median_ms": 650.5936600005953,
+        "ratio_of_medians": 1.1523298072176258,
+        "median_pair_ratio": 1.1719742310616157,
+        "committed_legacy_baseline_ms": 680.0,
+        "reference_vs_legacy_ratio": 0.8302791235297157,
+        "current_vs_legacy_ratio": 0.9567553823538165,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 60\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 60\nstatus: Solved\n"
+        }
+      },
+      "80": {
+        "problem_sha256": "dadfc265aff1a7de7f3d08f6d71a6dc02aa789f50de49cf606881528d4f60cc4",
+        "pairs": [
+          {
+            "reference": 1809.5131480004056,
+            "current": 2371.6575859998557,
+            "ratio_current_reference": 1.310660598747594
+          },
+          {
+            "reference": 1713.6467750005977,
+            "current": 2292.4722759998986,
+            "ratio_current_reference": 1.3377741022499219
+          },
+          {
+            "reference": 1818.913244000214,
+            "current": 2183.4372249995795,
+            "ratio_current_reference": 1.2004075687511584
+          },
+          {
+            "reference": 1736.5859679994173,
+            "current": 2174.8029260015755,
+            "ratio_current_reference": 1.252343947306561
+          },
+          {
+            "reference": 1765.1531929986959,
+            "current": 2211.191559999861,
+            "ratio_current_reference": 1.2526910235158806
+          },
+          {
+            "reference": 1732.1208270004718,
+            "current": 2112.505674998829,
+            "ratio_current_reference": 1.2196064166361147
+          },
+          {
+            "reference": 1810.6367309992493,
+            "current": 2178.7747790003777,
+            "ratio_current_reference": 1.2033196619169222
+          }
+        ],
+        "reference_median_ms": 1765.1531929986959,
+        "current_median_ms": 2183.4372249995795,
+        "ratio_of_medians": 1.236967552538763,
+        "median_pair_ratio": 1.252343947306561,
+        "committed_legacy_baseline_ms": 2203.5,
+        "reference_vs_legacy_ratio": 0.8010679341950061,
+        "current_vs_legacy_ratio": 0.9908950419784794,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 80\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 80\nstatus: Solved\n"
+        }
+      }
+    }
+  },
+  "after": {
+    "metadata": {
+      "reference_commit": "c376d60a43d38e6e18d6636a053277566b76f696",
+      "current_commit": "6c1b3ee46fef153508df79fbb375ffb8f30a8780",
+      "git_dirty": true,
+      "core_patch_sha256": "a1a2edc3bef0a3cc9e925bbb6f9daaf91d9026a26cf41f514e8574d38ca84720",
+      "rustc": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "machine": "x86_64",
+      "cpu_count": 5,
+      "runs_per_size": 7,
+      "seed": 42,
+      "order": [
+        "reference",
+        "current"
+      ],
+      "warmup": "one untimed run of each binary per size immediately before measured pairs",
+      "measurement": "subprocess wall clock, same problem file, no response output; exit code and Solved checked after timer",
+      "corpus_revision": "planted-hard-v1-explicit-soft",
+      "corpus_sha256": "70e9470c8a73ff10bed07aa47a39e36c20efa7fb5d943f495b2cb7994f964911",
+      "binaries": {
+        "reference": {
+          "path": "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "sha256": "1417d4ada8095c1d7cda602a337402ffe3ac6529e3921ab1185b5a6ebe7ab25d"
+        },
+        "current": {
+          "path": "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-optimized",
+          "sha256": "764c9b032834841c66319b2aa722a43eb679001dfeb632c52925be1ae61658d5"
+        }
+      }
+    },
+    "sizes": {
+      "40": {
+        "problem_sha256": "9e1ad82d9d52a29d1ba4bc8fdb078cf988af1dc31b4e6a154f3d2aacc0880ca9",
+        "pairs": [
+          {
+            "reference": 123.13462899874139,
+            "current": 80.08820800023386,
+            "ratio_current_reference": 0.6504117375547741
+          },
+          {
+            "reference": 124.13505899894517,
+            "current": 76.34485500057053,
+            "ratio_current_reference": 0.6150144497149614
+          },
+          {
+            "reference": 136.94106299954,
+            "current": 91.50450700144575,
+            "ratio_current_reference": 0.6682035687261542
+          },
+          {
+            "reference": 141.57553699988057,
+            "current": 82.0972849996906,
+            "ratio_current_reference": 0.5798832675433175
+          },
+          {
+            "reference": 126.17135300024529,
+            "current": 87.90487999976904,
+            "ratio_current_reference": 0.6967102904856551
+          },
+          {
+            "reference": 126.93149400001857,
+            "current": 88.71186999931524,
+            "ratio_current_reference": 0.6988956578365197
+          },
+          {
+            "reference": 126.59378600073978,
+            "current": 96.34214200013957,
+            "ratio_current_reference": 0.7610337366762739
+          }
+        ],
+        "reference_median_ms": 126.59378600073978,
+        "current_median_ms": 87.90487999976904,
+        "ratio_of_medians": 0.694385425831686,
+        "median_pair_ratio": 0.6682035687261542,
+        "committed_legacy_baseline_ms": 132.5,
+        "reference_vs_legacy_ratio": 0.9554248000055833,
+        "current_vs_legacy_ratio": 0.6634330566020304,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 40\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 40\nstatus: Solved\n"
+        }
+      },
+      "50": {
+        "problem_sha256": "a1be0dd327ccda2678b8f810b207a188a69195d4117fce5a89df3875c7de5390",
+        "pairs": [
+          {
+            "reference": 263.7815890011552,
+            "current": 206.98219399855589,
+            "ratio_current_reference": 0.7846726330761826
+          },
+          {
+            "reference": 276.31175900023663,
+            "current": 210.8719280004152,
+            "ratio_current_reference": 0.7631666808658498
+          },
+          {
+            "reference": 261.16414399984933,
+            "current": 216.0584450011811,
+            "ratio_current_reference": 0.8272898480325299
+          },
+          {
+            "reference": 257.1270110001933,
+            "current": 221.67602900117345,
+            "ratio_current_reference": 0.8621265737072127
+          },
+          {
+            "reference": 269.81487100056256,
+            "current": 210.38536800006113,
+            "ratio_current_reference": 0.7797397053019457
+          },
+          {
+            "reference": 281.9033149989991,
+            "current": 209.02800200019556,
+            "ratio_current_reference": 0.7414882723210888
+          },
+          {
+            "reference": 271.21363900005235,
+            "current": 215.0659220005764,
+            "ratio_current_reference": 0.7929760567850161
+          }
+        ],
+        "reference_median_ms": 269.81487100056256,
+        "current_median_ms": 210.8719280004152,
+        "ratio_of_medians": 0.7815430158405744,
+        "median_pair_ratio": 0.7846726330761826,
+        "committed_legacy_baseline_ms": 313.5,
+        "reference_vs_legacy_ratio": 0.8606534960145537,
+        "current_vs_legacy_ratio": 0.672637728868948,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 50\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 50\nstatus: Solved\n"
+        }
+      },
+      "60": {
+        "problem_sha256": "2f0a596b58566d6e713ad43ccb1ad1b736a6f6defd90fb66b74081ac838d4a81",
+        "pairs": [
+          {
+            "reference": 565.9605679993547,
+            "current": 523.1214469986298,
+            "ratio_current_reference": 0.9243072337138978
+          },
+          {
+            "reference": 540.7881989995076,
+            "current": 523.4646110002359,
+            "ratio_current_reference": 0.9679660391419017
+          },
+          {
+            "reference": 558.4738699999434,
+            "current": 495.69136500031163,
+            "ratio_current_reference": 0.8875820188335075
+          },
+          {
+            "reference": 608.6675030001061,
+            "current": 539.9681420003617,
+            "ratio_current_reference": 0.8871315444620798
+          },
+          {
+            "reference": 593.3838609998929,
+            "current": 542.5563220014737,
+            "ratio_current_reference": 0.9143429029013845
+          },
+          {
+            "reference": 606.8296889989142,
+            "current": 544.9782129999221,
+            "ratio_current_reference": 0.8980744068388803
+          },
+          {
+            "reference": 672.8157329998794,
+            "current": 528.4920890007925,
+            "ratio_current_reference": 0.7854930601048938
+          }
+        ],
+        "reference_median_ms": 593.3838609998929,
+        "current_median_ms": 528.4920890007925,
+        "ratio_of_medians": 0.8906411578337279,
+        "median_pair_ratio": 0.8980744068388803,
+        "committed_legacy_baseline_ms": 680.0,
+        "reference_vs_legacy_ratio": 0.8726233249998425,
+        "current_vs_legacy_ratio": 0.7771942485305772,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 60\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 60\nstatus: Solved\n"
+        }
+      },
+      "80": {
+        "problem_sha256": "dadfc265aff1a7de7f3d08f6d71a6dc02aa789f50de49cf606881528d4f60cc4",
+        "pairs": [
+          {
+            "reference": 1986.9881099984923,
+            "current": 2082.8310960005183,
+            "ratio_current_reference": 1.0482353092702195
+          },
+          {
+            "reference": 1782.000966000851,
+            "current": 1846.8095839998568,
+            "ratio_current_reference": 1.0363684527873454
+          },
+          {
+            "reference": 1811.1662820010679,
+            "current": 1914.5479639992118,
+            "ratio_current_reference": 1.057080171503592
+          },
+          {
+            "reference": 1882.152378999308,
+            "current": 1785.923076000472,
+            "ratio_current_reference": 0.9488727352404918
+          },
+          {
+            "reference": 1755.4271860008157,
+            "current": 1793.9061470005981,
+            "ratio_current_reference": 1.0219199983380938
+          },
+          {
+            "reference": 1754.635295999833,
+            "current": 1775.534989001244,
+            "ratio_current_reference": 1.011911132215941
+          },
+          {
+            "reference": 1827.9426629997033,
+            "current": 1794.0038540000387,
+            "ratio_current_reference": 0.9814333295640848
+          }
+        ],
+        "reference_median_ms": 1811.1662820010679,
+        "current_median_ms": 1794.0038540000387,
+        "ratio_of_medians": 0.990524101419298,
+        "median_pair_ratio": 1.0219199983380938,
+        "committed_legacy_baseline_ms": 2203.5,
+        "reference_vs_legacy_ratio": 0.8219497535743444,
+        "current_vs_legacy_ratio": 0.8141610410710409,
+        "last_stdout": {
+          "reference": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 80\nstatus: Solved\n",
+          "current": "feasible: true\nhard_constraints_satisfied: true\nattempts_used: 1\ntotal_cost: 0\nstudents seated: 80\nstatus: Solved\n"
+        }
+      }
+    }
+  },
+  "exact_measured_cli_commands": {
+    "before": {
+      "40": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-40.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-current",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-40.json"
+        ]
+      },
+      "50": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-50.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-current",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-50.json"
+        ]
+      },
+      "60": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-60.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-current",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-60.json"
+        ]
+      },
+      "80": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-80.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-current",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-80.json"
+        ]
+      }
+    },
+    "after": {
+      "40": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-40.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-optimized",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-40.json"
+        ]
+      },
+      "50": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-50.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-optimized",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-50.json"
+        ]
+      },
+      "60": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-60.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-optimized",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-60.json"
+        ]
+      },
+      "80": {
+        "reference": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-c376d60",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-80.json"
+        ],
+        "current": [
+          "/workspace/.seattrellis-env/paired-benchmark/binaries/seattrellis-optimized",
+          "solve",
+          "--problem",
+          "/workspace/.seattrellis-env/paired-benchmark/problem-80.json"
+        ]
+      }
+    }
+  },
+  "verification": {
+    "ordinary_core_tests": {
+      "passed": 147,
+      "failed": 0,
+      "ignored": 5,
+      "log": "/tmp/seattrellis-core-performance-tests.log"
+    },
+    "focused_final_boundary_test": "score_objective_allocation_guard_preserves_enabled_position_costs passed; disabled/nonzero, enabled/zero, enabled/nonzero weights covered.",
+    "new_neighbor_regression": "Neighbor-only, cooling-only, disabled and merged rules yield known fixed total costs; free candidate ranking avoids the penalized neighbor.",
+    "clippy": "cargo clippy --locked -p seattrellis_core --all-targets --offline -- -D warnings passed",
+    "format_and_diff": "cargo fmt -p seattrellis_core and scoped git diff --check passed",
+    "measured_runs": "56 before and 56 after runs all Solved; CLI stdout of each final reference/current sample agrees.",
+    "release_gate_status": "Parent separately runs existing --check and release long-run gates; their new results are not claimed here."
+  }
+}

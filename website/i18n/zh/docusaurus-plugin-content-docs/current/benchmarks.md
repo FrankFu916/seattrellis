@@ -32,6 +32,8 @@ python3 scripts/bench_solver.py --check
 
 ---
 
+CI 将求解器性能门禁与长期质量门禁分为独立任务，两项仍为发布必需条件。实测耗时表与元数据写入 Actions 任务摘要。[2026-10-01 同机器回归调查](https://github.com/FrankFu916/seattrellis/blob/main/benchmarks/solver-regression-2026-10-01.json)保留配对原始样本和源码/二进制哈希，不替换历史基线。
+
 ## 🔄 2. 长周期质量门禁（Long-Run Gates）
 
 在 CI/CD 流水线中，系统持续运行候选集生成与多期轮换质量测试：

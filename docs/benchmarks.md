@@ -39,6 +39,8 @@ reviewed release-maintenance operation, not an ordinary documentation change.
 
 The corpus revision `planted-hard-v1-explicit-soft` explicitly disables every soft objective to preserve the historical effective hard-only workload. Previously `soft={}` relied on a deserialization defect; corrected defaults would change that workload. The timed CLI command keeps response-file output disabled, as in the historical baseline, so storage locking/fsync latency is excluded. After timing, the gate checks both the frozen exit code and the printed `Solved` status. The legacy baseline lacks machine/compiler metadata and remains a regression threshold rather than a controlled comparison.
 
+CI reports the solver performance gate separately from long-run quality gates. Both remain required for release publication. Measured timing tables and provenance are included in the Actions job summary. The [2026-10-01 same-host regression investigation](https://github.com/FrankFu916/seattrellis/blob/main/benchmarks/solver-regression-2026-10-01.json) preserves raw paired measurements and source/binary hashes; it does not replace the historical baseline.
+
 ## Long-run quality gates
 
 Rust CI also runs release-mode candidate and rotation gates:

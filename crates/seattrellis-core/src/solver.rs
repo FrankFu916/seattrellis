@@ -14,7 +14,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use crate::models::{Layout, PairHistory, RuleSet, SeatHistory, Student};
+use crate::models::{AvoidRecentNeighborsRule, Layout, PairHistory, RuleSet, SeatHistory, Student};
 use crate::objectives::SoftObjectiveContext;
 use crate::rng::SplitMix64;
 
@@ -320,6 +320,8 @@ pub(crate) struct CostContext {
     pub(crate) students: Vec<Student>,
     pub(crate) layout: Layout,
     pub(crate) rules: RuleSet,
+    pub(crate) neighbor_rule: AvoidRecentNeighborsRule,
+    pub(crate) has_score_objectives: bool,
     pub(crate) history: Option<SeatHistory>,
     pub(crate) pair_history: Option<PairHistory>,
     pub(crate) adjacency_edges: HashSet<(String, String)>,

@@ -297,6 +297,54 @@ fn cooling_expires_by_global_period_while_legacy_occurrence_windows_remain_reada
 }
 
 #[test]
+fn compiled_neighbor_rule_preserves_cooling_cost_and_candidate_ranking() {
+    for (neighbors, cooling, expected_cost) in [
+        (false, false, 0.0),
+        (true, false, 0.0),
+        (false, true, 300.0),
+        (true, true, 500.0),
+    ] {
+        let mut soft = disabled_defaults();
+        soft["avoid_recent_neighbors"] = json!({"enabled":neighbors,"weight":2,
+            "relation_types":["adjacent_any"],"lookback":1,"max_recent_count":1});
+        soft["cooling"] = json!({"enabled":cooling,"weight":3,
+            "relation_types":["adjacent_any"],"cooling_period":2});
+        let mut request = json!({"api_version":2,"student_count":2,
+            "seat_positions":[[0,0],[1,0],[6,0]],"edges":[[0,1]],
+            "students":[{"key":"a"},{"key":"b"}],"fixed_seats":[[0,0],[1,1]],
+            "rules":{"soft":soft},"pair_history":{"history_count":2,
+                "pairs":{"a|b":{"records":[{"period_index":2,"relations":["adjacent_any"]}]}}}});
+        let fixed: CoreSolveResponse =
+            serde_json::from_str(&solve_problem_json(&request.to_string()).unwrap()).unwrap();
+        assert_eq!(fixed.total_cost, Some(expected_cost));
+
+        if expected_cost > 0.0 {
+            request["fixed_seats"] = json!([[0, 0]]);
+            let free: CoreSolveResponse =
+                serde_json::from_str(&solve_problem_json(&request.to_string()).unwrap()).unwrap();
+            assert_eq!(free.total_cost, Some(0.0));
+            let second_seat = free.assignment.iter().find(|pair| pair[0] == 1).unwrap()[1];
+            assert_ne!(second_seat, 1, "ranking must avoid the penalized neighbor");
+        }
+    }
+}
+
+#[test]
+fn score_objective_allocation_guard_preserves_enabled_position_costs() {
+    for (enabled, weight, expected_cost) in [(false, 2, 0.0), (true, 0, 0.0), (true, 2, 200.0)] {
+        let mut soft = disabled_defaults();
+        soft["score_position"] =
+            json!({"enabled":enabled,"weight":weight,"direction":"high_front"});
+        let request = json!({"api_version":2,"student_count":2,
+            "seat_positions":[[0,0],[0,1]],"student_scores":[100,0],
+            "fixed_seats":[[0,1],[1,0]],"rules":{"soft":soft}});
+        let response: CoreSolveResponse =
+            serde_json::from_str(&solve_problem_json(&request.to_string()).unwrap()).unwrap();
+        assert_eq!(response.total_cost, Some(expected_cost));
+    }
+}
+
+#[test]
 fn diagnostics_use_the_requested_distance_metric_and_all_available_seats() {
     let request = json!({"api_version":2,"student_count":2,"seat_positions":[[0,0],[1,0],[5,0]],
         "edges":[],"min_distance":[{"students":[0,1],"distance":3,"metric":"euclidean"}]});

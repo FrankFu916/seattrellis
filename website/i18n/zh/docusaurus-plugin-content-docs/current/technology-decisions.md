@@ -32,6 +32,7 @@ SAT、CP-SAT、OR-Tools 与实现语言是不同层面的选择。OR-Tools CP-SA
 | Axum / Tokio loopback | FFI、UniFFI、WASM Worker、其他 HTTP 框架 | 保留有界桌面与浏览器传输；移动端优先进程内桥接，网页本地版使用 Worker。 |
 | JSON / schemars / OpenAPI | Protobuf、FlatBuffers、CBOR | 保留可审查、版本化 JSON；测出载荷瓶颈才换二进制协议，协议与产品版本分别管理。 |
 | 文件事务 / fs2 / SHA-256 ZIP | SQLite、平台文档 API | 现有规模保持可携文件；可搜索的持久历史可用 SQLite，迁移与原子导出必须先设计。 |
+| 手写 CLI 参数解析 | clap、命令补全、稳定结构化输出 | 可渐进替换，保留命令名、退出码、dry-run 与输出路径契约；CLI 继续承担自动化入口。 |
 | 自建 CSV/Excel 导入 | csv、calamine | 保持兼容，使用恶意形状、大文件、公式和现有导入契约测试成熟解析库后决定替换。 |
 | SVG/HTML、Office XML 导出 | 成熟 OOXML 库、原生打印 | 本轮统一 XML 字符过滤并加入真实阅读器验收；支持库能降低维护且保持布局/隐私才切换。 |
 | fontdue / ttf-parser / 系统字体 | skrifa、HarfBuzz/rustybuzz、矢量 PDF 库 | 评估字体维护与复杂文字 shaping；可检索和无障碍 PDF 需要真实文字层。 |

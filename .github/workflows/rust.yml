@@ -99,7 +99,17 @@ jobs:
       # MSRV compile break in seattrellis-schema ship undetected
       # (schema audit 2026-08-12).
       - name: Test the workspace
-        run: cargo test --locked --workspace
+        shell: bash
+        run: |
+          set +e
+          cargo test --locked --workspace 2>&1 | tee workspace-test.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$test_status" -ne 0 ]; then
+            python scripts/report_rust_test_failure.py workspace-test.log || \
+              echo "Could not summarize test failure; Cargo exit status remains $test_status" >&2
+          fi
+          exit "$test_status"
       - name: Clippy (workspace)
         run: cargo clippy --all-targets --workspace -- -D warnings
 
@@ -170,6 +180,21 @@ jobs:
         run: cargo test --release --locked -p seattrellis-export --test export_options word_reader -- --ignored
       - name: Rotation gate
         run: cargo test --release --locked -p seattrellis-application --test rotation_gate -- --ignored
+
+  solver-performance:
+    name: Solver performance regression (release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
       - name: Solver performance regression gate
         run: |
           cargo build --release --locked -p seattrellis
@@ -302,6 +327,7 @@ jobs:
       - fmt
       - dependency-audit
       - long-run-gates
+      - solver-performance
       - fuzz-targets
       - no-python-runtime
     runs-on: ubuntu-latest
