@@ -318,25 +318,19 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    // Keep the join handle behind a mutex so the exit handler can take it.
-    let backend_handle = Arc::new(Mutex::new(Some(backend_thread)));
-
-    // Tauri 2's `App::run` returns `()`; the event loop ends when the last
-    // window closes or the shell exits.
-    app.run(move |_app_handle, event| {
+    // App::run exits the process directly. The desktop run_return API lets the
+    // shell finish backend cleanup before propagating the native exit code.
+    let event_shutdown = Arc::clone(&shutdown_flag);
+    let exit_code = app.run_return(move |_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { .. } = event {
-            shutdown_flag.store(true, Ordering::Relaxed);
+            event_shutdown.store(true, Ordering::Release);
         }
     });
     // Join only after the native event loop has closed. Active requests observe
     // shutdown and cooperative cancellation; the backend also has a finite grace period.
-    if let Some(thread) = backend_handle
-        .lock()
-        .ok()
-        .and_then(|mut guard| guard.take())
-    {
-        let _ = thread.join();
-    }
+    shutdown_flag.store(true, Ordering::Release);
+    let _ = backend_thread.join();
+    std::process::exit(exit_code);
 }
 
 #[cfg(test)]

@@ -37,7 +37,7 @@ machine/compiler metadata was not recorded; new records include input and binary
 hashes, compiler, commit and machine information. Updating a baseline is a
 reviewed release-maintenance operation, not an ordinary documentation change.
 
-The corpus revision `planted-hard-v1-explicit-soft` explicitly disables every soft objective to preserve the historical effective hard-only workload. Previously `soft={}` relied on a deserialization defect; corrected defaults would change that workload. The CLI now writes an explicit JSON response file and checks `Solved` after timing. Wall-clock measurements include that atomic output; the legacy baseline lacks these details and remains a regression threshold rather than a controlled comparison.
+The corpus revision `planted-hard-v1-explicit-soft` explicitly disables every soft objective to preserve the historical effective hard-only workload. Previously `soft={}` relied on a deserialization defect; corrected defaults would change that workload. The timed CLI command keeps response-file output disabled, as in the historical baseline, so storage locking/fsync latency is excluded. After timing, the gate checks both the frozen exit code and the printed `Solved` status. The legacy baseline lacks machine/compiler metadata and remains a regression threshold rather than a controlled comparison.
 
 ## Long-run quality gates
 

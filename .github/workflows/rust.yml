@@ -187,7 +187,9 @@ jobs:
           ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@nightly
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        # rust-toolchain.toml pins 1.88.0 even after installing nightly.
+        # cargo-fuzz 0.13.2 locks cargo-platform 0.3.3 (MSRV 1.91).
+        run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
       - name: Build fuzz targets
         run: |
           cargo +nightly metadata --locked --manifest-path fuzz/Cargo.toml --format-version 1 > /dev/null

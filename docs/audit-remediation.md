@@ -45,3 +45,11 @@ The local independent reader verification covers seven 40/60-student configurati
 ## Further development
 
 The selected native clients, full browser-local WASM/Worker edition, complex-script shaping, searchable/tagged PDF, native signing and target-OS accessibility certification remain development work. The existing workbench is the supported fallback. The current Linux cloud can validate the Rust server, CLI, web workbench and documents; it cannot certify Apple, WinUI or Android builds, or the Tauri window without its platform libraries. Source versions stay at 2.1.0 until a deliberate release update; the new workflow capabilities are candidates for 2.2.
+
+## CI follow-up
+
+The public [Rust run for dependency PR #162](https://github.com/FrankFu916/seattrellis/actions/runs/36858430930) identifies failed macOS/Windows workspace tests, the solver performance step and installation of cargo-fuzz. The API connection is denied by the cloud proxy; public pages expose job/step outcomes, but full logs require sign-in. These outcomes do not establish the exact cause of every failure.
+
+The follow-up fixes a test comparing canonical output against a raw temporary path (Windows extended prefixes and macOS directory aliases), restores the historical timed CLI command without response-file storage overhead, and explicitly installs pinned cargo-fuzz 0.13.2 with nightly. The old fuzz installation command was reproduced failing under the repository's Rust 1.88 override because cargo-platform 0.3.3 requires Rust 1.91; the corrected nightly installation succeeds. The performance gate passes unchanged thresholds at 143.93/267.48/627.32/2238.19 ms for 40/50/60/80 people on this host.
+
+Two further confirmed defects are repaired: the Tauri reusable caller now permits the callee's declared permission ceiling while quality jobs retain their read defaults and publishing stays disabled for the explicit ref; desktop shutdown uses `run_return` so backend cleanup runs before process exit. Recursive permission checks include skipped jobs. All 15 tooling tests, Actionlint, 135 IO unit tests and 12 IO integration tests pass, including temporary-directory symlink alias probes. Full Tauri compilation remains blocked locally by missing GLib/GObject/WebKit system development libraries; remote target-OS results remain necessary.

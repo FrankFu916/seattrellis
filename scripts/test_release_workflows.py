@@ -12,13 +12,64 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github/workflows"
 
 
-def jobs(name):
-    text = (WORKFLOWS / name).read_text().split("\njobs:\n", 1)[1]
+def job_blocks(text):
+    text = text.split("\njobs:\n", 1)[1]
     boundaries = list(re.finditer(r"^  ([\w-]+):\n", text, re.MULTILINE))
     return {
         match.group(1): text[match.end():boundaries[index + 1].start() if index + 1 < len(boundaries) else len(text)]
         for index, match in enumerate(boundaries)
     }
+
+
+def jobs(name):
+    return job_blocks((WORKFLOWS / name).read_text())
+
+
+def permission_policy(text, indent=0):
+    """Read the explicit permission map; omitted keys in a map mean none."""
+    match = re.search(rf"^{' ' * indent}permissions:([^\n]*)\n", text, re.MULTILINE)
+    if not match:
+        return None
+    scalar = match.group(1).strip()
+    if scalar in {"read-all", "write-all", "{}"}:
+        return {"*": {"read-all": 1, "write-all": 2, "{}": 0}[scalar]}
+    if scalar:
+        raise ValueError(f"unsupported permission declaration: {scalar}")
+    policy = {"*": 0}
+    for line in text[match.end():].splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        entry = re.fullmatch(rf"{' ' * (indent + 2)}([\w-]+): (none|read|write)", line)
+        if not entry:
+            break
+        policy[entry.group(1)] = {"none": 0, "read": 1, "write": 2}[entry.group(2)]
+    return policy
+
+
+def check_nested_permissions(workflows, name, ceiling=None, ancestors=()):
+    """Check all callee jobs, even jobs skipped by an event/ref condition.
+
+    A workflow permission map supplies job defaults, not a ceiling on its own
+    explicitly overridden jobs. Only an upstream reusable caller imposes that
+    ceiling; each nested call passes its own effective job permissions onward.
+    """
+    if name in ancestors:
+        raise ValueError(f"reusable workflow recursion: {name}")
+    text = workflows[name]
+    default = permission_policy(text)
+    for job_name, job in job_blocks(text).items():
+        policy = permission_policy(job, 4)
+        if policy is None:
+            policy = default if default is not None else ceiling
+        if ceiling is not None and policy is not None:
+            for permission in set(policy) | set(ceiling):
+                requested = policy.get(permission, policy["*"])
+                allowed = ceiling.get(permission, ceiling["*"])
+                if requested > allowed:
+                    raise ValueError(f"{name}/{job_name} elevates {permission} above its caller ceiling")
+        call = re.search(r"^    uses: \./\.github/workflows/([\w.-]+)\s*$", job, re.MULTILINE)
+        if call:
+            check_nested_permissions(workflows, call.group(1), policy, ancestors + (name,))
 
 
 def needs(job):
@@ -85,3 +136,65 @@ class ReleaseWorkflowTests(unittest.TestCase):
             group = re.search(r"^  group: ([^\n]+)", text, re.MULTILINE).group(1)
             prefixes.append(group.split("${{", 1)[0])
         self.assertEqual(len(set(prefixes)), len(prefixes))
+
+    def test_nested_workflows_never_elevate_their_callers_permissions(self):
+        workflows = {path.name: path.read_text() for path in WORKFLOWS.glob("*.yml")}
+        for name in ["rust.yml", "tauri.yml"]:
+            with self.subTest(workflow=name):
+                check_nested_permissions(workflows, name)
+
+    def test_skipped_publishers_still_require_a_sufficient_caller_ceiling(self):
+        workflows = {
+            "caller.yml": """name: Caller
+permissions:
+  contents: read
+jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+""",
+            "quality.yml": """name: Quality
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+  publish:
+    if: false
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+""",
+        }
+        with self.assertRaisesRegex(ValueError, "quality.yml/publish elevates contents"):
+            check_nested_permissions(workflows, "caller.yml")
+        workflows["caller.yml"] = workflows["caller.yml"].replace("contents: read", "contents: write")
+        check_nested_permissions(workflows, "caller.yml")
+
+    def test_nested_calls_respect_intermediate_permission_reduction(self):
+        workflows = {
+            "caller.yml": """name: Caller
+permissions:
+  contents: write
+jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+""",
+            "quality.yml": """name: Quality
+permissions:
+  contents: read
+jobs:
+  nested:
+    uses: ./.github/workflows/leaf.yml
+""",
+            "leaf.yml": """name: Leaf
+jobs:
+  publish:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+""",
+        }
+        with self.assertRaisesRegex(ValueError, "leaf.yml/publish elevates contents"):
+            check_nested_permissions(workflows, "caller.yml")
+        workflows["quality.yml"] = workflows["quality.yml"].replace("contents: read", "contents: write")
+        check_nested_permissions(workflows, "caller.yml")

@@ -3638,7 +3638,10 @@ mod tests {
         )
         .unwrap();
         fs::remove_file(root.join("students.csv")).unwrap();
-        assert_eq!(latest_project_plan_artifact(&project).unwrap(), result);
+        assert_eq!(
+            latest_project_plan_artifact(&project).unwrap(),
+            fs::canonicalize(&result).unwrap()
+        );
         let history = project_history(project.to_str().unwrap()).unwrap();
         assert_eq!(history.outputs[0].kind, "snapshot");
         assert_eq!(history.outputs[0].student_count, Some(1));

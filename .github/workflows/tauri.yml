@@ -22,7 +22,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v2.') || startsWith(github.event.release.tag_name, 'desktop-v')
     uses: ./.github/workflows/rust.yml
     permissions:
-      contents: read
+      # GitHub validates every callee permission declaration, including skipped
+      # release jobs. Its quality jobs still default to read; the nonempty ref
+      # below disables the Rust publisher while preserving this permission ceiling.
+      contents: write
     with:
       ref: ${{ format('refs/tags/{0}', github.event.release.tag_name || inputs.release_tag) }}
 
