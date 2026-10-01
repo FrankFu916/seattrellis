@@ -3,10 +3,17 @@
 This directory is an isolated engineering experiment. It does not add Python,
 OR-Tools, or a new solver dependency to SeatTrellis production packages.
 
+The [updated experiment](updated-2026-10-01/README.md) measures optimized Rust
+core `d8a7990` against OR-Tools 9.15.6755 and patched protobuf 6.33.5. CP-SAT
+is faster in eight of nine hard-only cases; Rust wins the 40-person mixed case.
+All 36 feasible assignments pass both validators, and infeasibility and invalid
+assignment controls pass. This is the current measured comparison.
+
+## Historical experiment before the Rust allocation optimization
+
 The timings below were recorded with OR-Tools 9.14.6206 and protobuf 6.31.1.
-The current reproduction requirements use OR-Tools 9.15.6755 and patched
-protobuf 6.33.5. Only correctness and dependency compatibility were checked
-with the updated environment; its performance has not been measured here.
+They and the original Rust binary/source hashes remain unchanged. Their
+all-nine-case ranking does not describe the optimized current Rust core.
 
 On this hard-feasibility corpus, CP-SAT was faster in all nine cases even after
 including its warm model construction and adapter work. Both engines solved

@@ -1,0 +1,9 @@
+{
+  "identical_frozen_input_hashes": 9,
+  "measured_trials": 27,
+  "feasible_assignments_independently_and_cli_validated": 36,
+  "infeasible_graph_proofs": 3,
+  "negative_control_passed": true,
+  "recorded_core_and_binary_hashes_verified": true,
+  "production_and_historical_artifacts_modified": false
+}
