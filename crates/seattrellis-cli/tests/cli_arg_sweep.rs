@@ -61,10 +61,9 @@ macro_rules! args {
 struct Fixtures {
     root: String,
     /// Dedicated output directory for the standalone sweep. Every write the
-    /// standalone cases make lands here so that concurrent CLI processes from
-    /// the other sweeps never share a journal directory (the transaction
-    /// layer's recovery pass in crates/seattrellis-io/src/transaction.rs
-    /// would otherwise roll back a live sibling transaction).
+    /// standalone cases make lands here to isolate their expected artifacts
+    /// from the other sweeps. Shared-directory concurrency is exercised by
+    /// the lifecycle regression tests.
     std_out: String,
     problem: String,
     solution: String,
@@ -1487,7 +1486,7 @@ fn project_commands_sweep() {
         fx,
         vec![
             Case::new(
-                "project-export:missing-snapshot",
+                "project-export:latest-snapshot-default",
                 args![
                     "project-export",
                     "--project",
@@ -1496,6 +1495,36 @@ fn project_commands_sweep() {
                     "svg",
                     "--output",
                     format!("{}/proj/pe1.svg", fx.root),
+                ],
+                Kind::Valid,
+            ),
+            Case::new(
+                "project-export:nonexistent-snapshot",
+                args![
+                    "project-export",
+                    "--project",
+                    &fx.project_file,
+                    "--snapshot",
+                    format!("{}/missing.snapshot.json", fx.root),
+                    "--format",
+                    "svg",
+                    "--output",
+                    format!("{}/proj/missing.svg", fx.root)
+                ],
+                Kind::Clean,
+            ),
+            Case::new(
+                "project-export:garbage-snapshot",
+                args![
+                    "project-export",
+                    "--project",
+                    &fx.project_file,
+                    "--snapshot",
+                    &fx.garbage,
+                    "--format",
+                    "svg",
+                    "--output",
+                    format!("{}/proj/garbage.svg", fx.root)
                 ],
                 Kind::Clean,
             ),

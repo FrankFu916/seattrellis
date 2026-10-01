@@ -248,15 +248,21 @@ pub fn render_export(request: &ExportRequest) -> Result<Vec<u8>, String> {
 pub fn render_export_with_warnings(
     request: &ExportRequest,
 ) -> Result<(Vec<u8>, Vec<String>), String> {
-    let (format, grid, page) = prepare_export(request)?;
+    let (format, grid, page, mut input_warnings) = prepare_export(request)?;
     // Editable tables have their own layout and preserve data that a visual
     // preview may shorten. Only their actual writers can report file warnings.
     match format {
         ExportFormat::Xlsx => {
-            return crate::office::render_xlsx_with_warnings(&grid, &request.locale);
+            let (bytes, warnings) =
+                crate::office::render_xlsx_with_warnings(&grid, &request.locale)?;
+            input_warnings.extend(warnings);
+            return Ok((bytes, input_warnings));
         }
         ExportFormat::Docx => {
-            return crate::office::render_docx_with_warnings(&grid, &page, &request.locale);
+            let (bytes, warnings) =
+                crate::office::render_docx_with_warnings(&grid, &page, &request.locale)?;
+            input_warnings.extend(warnings);
+            return Ok((bytes, input_warnings));
         }
         _ => {}
     }
@@ -264,14 +270,15 @@ pub fn render_export_with_warnings(
     let bytes = match format {
         ExportFormat::Svg => crate::render::render_scene_svg(&scene).into_bytes(),
         ExportFormat::Html | ExportFormat::PrintHtml => {
-            crate::render::render_scene_html(&scene, &grid.title, &request.locale).into_bytes()
+            crate::render::render_scene_html_with_grid(&scene, &grid, &request.locale).into_bytes()
         }
         ExportFormat::Png => crate::render::render_scene_png(&scene)?,
         ExportFormat::Pdf => crate::render::render_scene_pdf(&scene)?.into_bytes(),
         ExportFormat::Xlsx | ExportFormat::Docx => unreachable!("table formats returned above"),
         ExportFormat::Pptx => crate::office::render_pptx_with(&grid, &request.locale)?,
     };
-    let mut warnings = scene.warnings;
+    let mut warnings = input_warnings;
+    warnings.extend(scene.warnings);
     warnings.extend(font_warnings(format));
     if !matches!(
         format,
@@ -299,10 +306,10 @@ pub fn render_export_with_warnings(
 /// Office previews represent the seating chart, not the editable table sheets.
 pub fn export_preview_with_warnings(request_json: &str) -> Result<(Vec<u8>, Vec<String>), String> {
     let request = parse_export_request(request_json)?;
-    let (format, grid, page) = prepare_export(&request)?;
+    let (format, grid, page, mut warnings) = prepare_export(&request)?;
     let scene = crate::scene::build_scene(&grid, &page, &request.locale);
     let bytes = crate::render::render_scene_svg(&scene).into_bytes();
-    let mut warnings = scene.warnings;
+    warnings.extend(scene.warnings);
     warnings.extend(font_warnings(format));
     warnings.extend(crate::fonts::missing_glyph_warning(
         &scene
@@ -323,7 +330,7 @@ pub fn export_preview_with_warnings(request_json: &str) -> Result<(Vec<u8>, Vec<
 
 fn prepare_export(
     request: &ExportRequest,
-) -> Result<(ExportFormat, SeatingGrid, PdfLayout), String> {
+) -> Result<(ExportFormat, SeatingGrid, PdfLayout, Vec<String>), String> {
     let format = ExportFormat::parse(&request.format)?;
     let template = ExportTemplate::parse(&request.template)?;
     let orientation = match request.orientation.as_deref() {
@@ -366,9 +373,7 @@ fn prepare_export(
     };
 
     if !request.show_student_ids || hide_names {
-        for cell in &mut grid.cells {
-            cell.student_key = None;
-        }
+        crate::render::hide_student_ids(&mut grid, &request.request, &request.locale);
     }
     if let Some(title) = request
         .title
@@ -381,6 +386,13 @@ fn prepare_export(
         }
         grid.title = title.to_string();
     }
+    // Filter privacy first: neither warnings nor supplementary representations
+    // inspect values that public exports remove.
+    let warnings = if crate::xml::sanitize_grid(&mut grid) {
+        vec![crate::xml::SANITIZATION_WARNING.to_string()]
+    } else {
+        Vec::new()
+    };
     let mut page = PdfLayout::from_paper(
         paper,
         orientation == ExportOrientation::Landscape,
@@ -393,7 +405,7 @@ fn prepare_export(
         page.margin_pt = 24.0;
         page.scale_multiplier = 1.0;
     }
-    Ok((format, grid, page))
+    Ok((format, grid, page, warnings))
 }
 
 /// Parse just the `format` field so the server can set a `Content-Type`

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type {
   AdvancedSolveSettings,
@@ -167,6 +167,9 @@ export function WorkflowPanel({
   onToggleLock,
   onOpenRules,
 }: WorkflowPanelProps) {
+  const mountedRef = useRef(true);
+  const importTokens = useRef({ rules: 0, layout: 0 });
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const [rulesFileError, setRulesFileError] = useState<string | null>(null);
   const [layoutFileError, setLayoutFileError] = useState<string | null>(null);
 
@@ -174,12 +177,15 @@ export function WorkflowPanel({
     file: File,
     kind: "rules" | "layout",
   ): Promise<void> {
+    const token = ++importTokens.current[kind];
+    const isCurrent = () => mountedRef.current && token === importTokens.current[kind];
     const setError = kind === "rules" ? setRulesFileError : setLayoutFileError;
     try {
       if (file.size > 5 * 1024 * 1024) {
         throw new Error("too_large");
       }
       const parsed: unknown = JSON.parse(await file.text());
+      if (!isCurrent()) return;
       if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error("invalid");
       }
@@ -191,6 +197,7 @@ export function WorkflowPanel({
       }
       setError(null);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error(`Could not import ${kind} JSON`, error);
       setError(
         error instanceof Error && error.message === "too_large"

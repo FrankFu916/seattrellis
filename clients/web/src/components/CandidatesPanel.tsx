@@ -17,7 +17,7 @@ import type { Locale, Translate } from "../i18n/messages";
 
 export type CandidateMeta = {
   draft_id: string;
-  total_score: number;
+  total_score: number | null;
   recommended: boolean;
   assignments: SeatAssignment[];
   revision: number;
@@ -206,7 +206,7 @@ export function CandidatesPanel({
           <span className="small muted">
             {t("audit.recommended")} · {labelOf(recommendedIndex)} ·{" "}
             {t("audit.generatedScore", {
-              score: String(Math.round(recommended.total_score)),
+              score: recommended.total_score === null ? t("audit.scoreUnavailable") : String(Math.round(recommended.total_score)),
             })}
           </span>
         ) : null}

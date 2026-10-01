@@ -5,6 +5,8 @@ use std::io::Write;
 
 use seattrellis_core::{CoreSolveRequest, CoreSolveResponse};
 
+use crate::xml::escape_text;
+
 // ---------------------------------------------------------------------------
 // Grid model
 // ---------------------------------------------------------------------------
@@ -16,6 +18,8 @@ pub struct GridCell {
     pub seat_id: String,
     pub row: i32,
     pub col: i32,
+    /// Enabled seats use the canonical solve index. Disabled display-only
+    /// cells have indices after the solve domain and never hold a student.
     pub seat_index: usize,
     pub student: Option<String>,
     /// Optional per-student detail line (height / vision), rendered under
@@ -53,6 +57,16 @@ impl SeatingGrid {
         if seat_count == 0 {
             return Err("problem has no seat_positions to render".to_string());
         }
+        // Assignment indices refer only to enabled seats, in layout order.
+        // Indexing the raw layout would move students onto disabled seats
+        // whenever a disabled entry precedes an enabled one.
+        let enabled_layout_seats = request.layout.as_ref().map(|layout| layout.enabled_seats());
+        if enabled_layout_seats
+            .as_ref()
+            .is_some_and(|seats| seats.len() != seat_count)
+        {
+            return Err("enabled layout seats must match seat_positions one-to-one".to_string());
+        }
 
         // Map seat -> assigned student data. The detail line must follow the
         // assignment's student index, not the seat index: using the latter can
@@ -79,13 +93,49 @@ impl SeatingGrid {
         }
 
         let mut cells = Vec::with_capacity(seat_count);
-        let mut occupied_coordinates = HashSet::with_capacity(seat_count);
+        for (seat_index, position) in request.seat_positions.iter().enumerate() {
+            let layout_seat = enabled_layout_seats
+                .as_ref()
+                .and_then(|seats| seats.get(seat_index))
+                .copied();
+            let (row, col) = seat_row_col(layout_seat, seat_index, *position)?;
+            cells.push(GridCell {
+                seat_id: layout_seat
+                    .map(|seat| seat.seat_id.clone())
+                    .unwrap_or_else(|| format!("R{row}C{col}")),
+                row,
+                col,
+                seat_index,
+                student: student_by_seat.get(&seat_index).cloned(),
+                student_key: key_by_seat.get(&seat_index).cloned(),
+                detail: detail_by_seat.get(&seat_index).cloned(),
+                enabled: true,
+            });
+        }
+        // Keep unavailable locations visible, without putting them in the
+        // solve index domain or attaching any student data to them.
+        if let Some(layout) = &request.layout {
+            for (offset, seat) in layout.seats.iter().filter(|seat| !seat.enabled).enumerate() {
+                cells.push(GridCell {
+                    seat_id: seat.seat_id.clone(),
+                    row: seat.row,
+                    col: seat.col,
+                    seat_index: seat_count + offset,
+                    student: None,
+                    student_key: None,
+                    detail: None,
+                    enabled: false,
+                });
+            }
+        }
+
+        let mut occupied_coordinates = HashSet::with_capacity(cells.len());
         let mut min_row = i32::MAX;
         let mut max_row = i32::MIN;
         let mut min_col = i32::MAX;
         let mut max_col = i32::MIN;
-        for (seat_index, position) in request.seat_positions.iter().enumerate() {
-            let (row, col, enabled) = seat_row_col(request, seat_index, *position)?;
+        for cell in &cells {
+            let (row, col) = (cell.row, cell.col);
             if !occupied_coordinates.insert((row, col)) {
                 return Err(format!(
                     "multiple seats map to row {row}, column {col}; give each seat a distinct layout row/column before exporting"
@@ -95,21 +145,6 @@ impl SeatingGrid {
             max_row = max_row.max(row);
             min_col = min_col.min(col);
             max_col = max_col.max(col);
-            cells.push(GridCell {
-                seat_id: request
-                    .layout
-                    .as_ref()
-                    .and_then(|layout| layout.seats.get(seat_index))
-                    .map(|seat| seat.seat_id.clone())
-                    .unwrap_or_else(|| format!("R{row}C{col}")),
-                row,
-                col,
-                seat_index,
-                student: student_by_seat.get(&seat_index).cloned(),
-                student_key: key_by_seat.get(&seat_index).cloned(),
-                detail: detail_by_seat.get(&seat_index).cloned(),
-                enabled,
-            });
         }
 
         // Reject pathological extents before any renderer iterates them
@@ -162,28 +197,23 @@ impl SeatingGrid {
 }
 
 /// Derive a seat's grid coordinates. Prefer the layout's authoritative
-/// row/col/enabled when present; otherwise round the raw coordinates
+/// row/col when present; otherwise round the raw coordinates
 /// (seat_positions are `[x, y]` grid points, so `col = round(x)`, `row = round(y)`).
 fn seat_row_col(
-    request: &CoreSolveRequest,
+    layout_seat: Option<&seattrellis_core::models::Seat>,
     index: usize,
     position: [f64; 2],
-) -> Result<(i32, i32, bool), String> {
+) -> Result<(i32, i32), String> {
     if !position[0].is_finite() || !position[1].is_finite() {
         return Err(format!("seat {index} has a non-finite position"));
     }
-    if let Some(layout) = &request.layout {
-        if let Some(seat) = layout.seats.get(index) {
-            return Ok((seat.row, seat.col, seat.enabled));
-        }
+    if let Some(seat) = layout_seat {
+        return Ok((seat.row, seat.col));
     }
-    Ok((position[1].round() as i32, position[0].round() as i32, true))
+    Ok((position[1].round() as i32, position[0].round() as i32))
 }
 
-/// The display label for a student: `display_name`, else `key`, else
-/// "Student N" — never empty.
-/// Per-student detail line: height and/or vision, ASCII-only so the PDF
-/// renderer can draw it (CJK is a M5-04 render-parity item).
+/// Per-student detail line: height and/or vision, filtered by export privacy.
 fn student_detail(student: &seattrellis_core::models::Student) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
     if let Some(height) = student.height_cm {
@@ -205,6 +235,8 @@ fn student_detail(student: &seattrellis_core::models::Student) -> Option<String>
     }
 }
 
+/// The display label for a student: `display_name`, else `key`, else
+/// "Student N". Export options subsequently hide identifier-only fallbacks.
 fn student_label(request: &CoreSolveRequest, index: usize) -> String {
     if !request.students.is_empty() {
         if let Some(student) = request.students.get(index) {
@@ -221,20 +253,35 @@ fn student_label(request: &CoreSolveRequest, index: usize) -> String {
     format!("Student {}", index + 1)
 }
 
-fn escape_text(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            c if (c as u32) < 0x20 && c != '\t' && c != '\n' && c != '\r' => {}
-            _ => out.push(ch),
+/// Remove explicit identifiers and replace identifier-only name fallbacks.
+/// A missing display name must not expose its key through a different field.
+pub(crate) fn hide_student_ids(grid: &mut SeatingGrid, request: &CoreSolveRequest, locale: &str) {
+    let fallback_indices: HashMap<&str, usize> = request
+        .students
+        .iter()
+        .enumerate()
+        .filter(|(_, student)| {
+            student
+                .display_name
+                .as_deref()
+                .is_none_or(|name| name.trim().is_empty())
+        })
+        .map(|(index, student)| (student.key.as_str(), index))
+        .collect();
+    for cell in &mut grid.cells {
+        if let Some(index) = cell
+            .student_key
+            .as_deref()
+            .and_then(|key| fallback_indices.get(key))
+        {
+            cell.student = Some(if is_zh_locale(locale) {
+                format!("学生 {}", index + 1)
+            } else {
+                format!("Student {}", index + 1)
+            });
         }
+        cell.student_key = None;
     }
-    out
 }
 
 pub(crate) fn is_zh_locale(locale: &str) -> bool {
@@ -319,7 +366,57 @@ fn hex_color(color: crate::scene::Color) -> String {
 
 pub fn render_html(grid: &SeatingGrid, locale: &str) -> String {
     let scene = crate::scene::build_scene(grid, &PdfLayout::portrait(), locale);
-    render_scene_html(&scene, &grid.title, locale)
+    render_scene_html_with_grid(&scene, grid, locale)
+}
+
+pub(crate) fn assignment_headers(locale: &str) -> [&'static str; 4] {
+    if is_zh_locale(locale) {
+        ["学生编号", "学生姓名", "座位编号", "详细信息"]
+    } else {
+        ["Student ID", "Student name", "Seat ID", "Details"]
+    }
+}
+
+/// Keep complete, privacy-filtered assignments available to keyboard and
+/// screen-reader users even when the chart shortens text to fit a seat card.
+/// The supplementary table is excluded from printing the single-page chart.
+pub fn render_scene_html_with_grid(
+    scene: &crate::scene::ChartScene,
+    grid: &SeatingGrid,
+    locale: &str,
+) -> String {
+    let summary = if is_zh_locale(locale) {
+        "完整座位分配"
+    } else {
+        "Complete assignments"
+    };
+    let mut table = format!(
+        "<style>.assignment-values{{max-width:{}pt;margin:1rem auto;padding:1rem;background:white}}.assignment-values table{{width:100%;border-collapse:collapse}}.assignment-values th,.assignment-values td{{padding:.4rem;text-align:left;border:1px solid #b2b8ab;overflow-wrap:anywhere}}@media print{{.assignment-values{{display:none}}}}</style><details class=\"assignment-values\"><summary>{summary}</summary><table><caption>{}</caption><thead><tr>",
+        scene.width,
+        escape_text(&grid.title)
+    );
+    for header in assignment_headers(locale) {
+        table.push_str(&format!("<th scope=\"col\">{header}</th>"));
+    }
+    table.push_str("</tr></thead><tbody>");
+    for cell in grid
+        .cells
+        .iter()
+        .filter(|cell| cell.enabled && cell.student.is_some())
+    {
+        table.push_str("<tr>");
+        for text in [
+            cell.student_key.as_deref().unwrap_or_default(),
+            cell.student.as_deref().unwrap_or_default(),
+            &cell.seat_id,
+            cell.detail.as_deref().unwrap_or_default(),
+        ] {
+            table.push_str(&format!("<td>{}</td>", escape_text(text)));
+        }
+        table.push_str("</tr>");
+    }
+    table.push_str("</tbody></table></details>");
+    render_scene_html(scene, &grid.title, locale).replacen("</body>", &format!("{table}</body>"), 1)
 }
 
 /// The web page embeds the scene rather than running a second CSS table layout.
@@ -983,6 +1080,7 @@ mod tests {
     #[test]
     fn disabled_seats_render_as_unused() {
         let mut request = sample_request();
+        request.seat_positions.pop();
         let mut disabled = Seat::new("R2C3", 2, 3);
         disabled.enabled = false;
         request.layout = Some(Layout::new(vec![
@@ -997,6 +1095,54 @@ mod tests {
         assert!(!grid.cell_at(2, 3).unwrap().enabled);
         assert!(render_svg(&grid, "en").contains("Unavailable"));
         assert!(render_html(&grid, "en").contains("Unavailable"));
+    }
+
+    #[test]
+    fn assignments_follow_enabled_layout_order_with_disabled_leading_and_middle_seats() {
+        let mut request = sample_request();
+        request.student_count = 2;
+        request.students.truncate(2);
+        request.seat_positions = vec![[1.0, 1.0], [3.0, 1.0]];
+        let mut leading = Seat::new("A0", 7, 4);
+        leading.enabled = false;
+        let mut middle = Seat::new("A2", 7, 6);
+        middle.enabled = false;
+        request.layout = Some(Layout::new(vec![
+            leading,
+            Seat::new("A1", 2, 5),
+            middle,
+            Seat::new("A3", 4, 9),
+        ]));
+        let response = CoreSolveResponse {
+            assignment: vec![[0, 0], [1, 1]],
+            ..sample_response()
+        };
+        let grid = SeatingGrid::build(&request, &response).unwrap();
+        for (row, col, seat_id, index, name, key) in
+            [(2, 5, "A1", 0, "Alice", "S1"), (4, 9, "A3", 1, "Bob", "S2")]
+        {
+            let cell = grid.cell_at(row, col).unwrap();
+            assert_eq!(cell.seat_id, seat_id);
+            assert_eq!(cell.seat_index, index);
+            assert_eq!(cell.student.as_deref(), Some(name));
+            assert_eq!(cell.student_key.as_deref(), Some(key));
+            assert!(cell.enabled);
+        }
+        for cell in grid.cells.iter().filter(|cell| !cell.enabled) {
+            assert!(cell.seat_index >= request.seat_positions.len());
+            assert!(cell.student.is_none() && cell.student_key.is_none() && cell.detail.is_none());
+        }
+        assert!(render_svg(&grid, "en").contains("Alice"));
+        assert!(render_svg(&grid, "en").contains("Bob"));
+    }
+
+    #[test]
+    fn grid_rejects_layouts_outside_the_canonical_enabled_seat_domain() {
+        let mut request = sample_request();
+        request.layout = Some(Layout::new(vec![Seat::new("A1", 1, 1)]));
+        assert!(SeatingGrid::build(&request, &sample_response())
+            .unwrap_err()
+            .contains("enabled layout seats must match seat_positions"));
     }
 
     // V2/V3: the zh locale must render the same Chinese wording as PNG/PDF

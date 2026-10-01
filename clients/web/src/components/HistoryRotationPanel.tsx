@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type {
   HistorySnapshotPayload,
@@ -60,6 +60,7 @@ export function HistoryRotationPanel({
   onHistoryClear,
   onRestoreSnapshot,
 }: HistoryRotationPanelProps) {
+  const panelId = useId();
   const [view, setView] = useState<"review" | "plan">("review");
 
   return (
@@ -68,10 +69,21 @@ export function HistoryRotationPanel({
         <span className="eyebrow">{t("nav.history")}</span>
         <h1 id="history-panel-title">{t("history.title")}</h1>
         <p>{t("history.subtitle")}</p>
-        <div className="view-switch" role="tablist" aria-label={t("history.viewLabel")}>
+        <div className="view-switch" role="tablist" aria-label={t("history.viewLabel")}
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? "review" : event.key === "End" ? "plan" : view === "review" ? "plan" : "review";
+            setView(next);
+            event.currentTarget.querySelector<HTMLButtonElement>(`[data-view='${next}']`)?.focus();
+          }}>
           <button
             type="button"
             role="tab"
+            id={`${panelId}-review-tab`}
+            aria-controls={panelId}
+            data-view="review"
+            tabIndex={view === "review" ? 0 : -1}
             aria-selected={view === "review"}
             data-active={view === "review"}
             onClick={() => setView("review")}
@@ -81,6 +93,10 @@ export function HistoryRotationPanel({
           <button
             type="button"
             role="tab"
+            id={`${panelId}-plan-tab`}
+            aria-controls={panelId}
+            data-view="plan"
+            tabIndex={view === "plan" ? 0 : -1}
             aria-selected={view === "plan"}
             data-active={view === "plan"}
             onClick={() => setView("plan")}
@@ -90,7 +106,7 @@ export function HistoryRotationPanel({
         </div>
       </div>
 
-      <div className="panel-content history-content">
+      <div className="panel-content history-content" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${view}-tab`}>
         <HistoryFilesCard
           fileNames={historyFileNames}
           snapshotCount={historySnapshots.length}

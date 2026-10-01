@@ -33,6 +33,7 @@ struct Flag {
 pub enum ExportFormat {
     Svg,
     Html,
+    PrintHtml,
     Png,
     Pdf,
     Xlsx,
@@ -45,13 +46,14 @@ impl ExportFormat {
         match raw.to_ascii_lowercase().as_str() {
             "svg" => Ok(ExportFormat::Svg),
             "html" => Ok(ExportFormat::Html),
+            "print-html" => Ok(ExportFormat::PrintHtml),
             "png" => Ok(ExportFormat::Png),
             "pdf" => Ok(ExportFormat::Pdf),
-            "xlsx" => Ok(ExportFormat::Xlsx),
+            "xlsx" | "excel" => Ok(ExportFormat::Xlsx),
             "docx" => Ok(ExportFormat::Docx),
             "pptx" => Ok(ExportFormat::Pptx),
             other => Err(format!(
-                "unknown format '{other}' (expected svg, html, png, pdf, xlsx, docx or pptx)"
+                "unknown format '{other}' (expected svg, html, print-html, png, pdf, xlsx/excel, docx or pptx)"
             )),
         }
     }
@@ -818,6 +820,36 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
     if parsed.iter().any(|(name, _)| name == "--help") {
         return Ok(Command::Help);
     }
+    for (flag, _) in &parsed {
+        let allowed = match command {
+            "project-info" => ["--project"].contains(&flag.as_str()),
+            "project-validate" => ["--project", "--strict"].contains(&flag.as_str()),
+            "project-solve" => [
+                "--project",
+                "--seed",
+                "--output",
+                "--candidates",
+                "--report",
+            ]
+            .contains(&flag.as_str()),
+            "project-export" => [
+                "--project",
+                "--seed",
+                "--output",
+                "--snapshot",
+                "--format",
+                "--candidate",
+                "--template",
+                "--orientation",
+                "--locale",
+            ]
+            .contains(&flag.as_str()),
+            _ => false,
+        };
+        if !allowed {
+            return Err(format!("{command} does not support {flag}"));
+        }
+    }
     let project = flag_value(&parsed, "--project")?
         .ok_or_else(|| format!("{command} requires --project <file>"))?;
     let seed = match flag_value(&parsed, "--seed")? {
@@ -828,6 +860,9 @@ fn parse_project_command(command: &str, tokens: &[String]) -> Result<Command, St
         None => None,
     };
     let format = flag_value(&parsed, "--format")?.map(str::to_string);
+    if let Some(raw) = &format {
+        ExportFormat::parse(raw)?;
+    }
     let output = flag_value(&parsed, "--output")?.map(PathBuf::from);
     let snapshot = flag_value(&parsed, "--snapshot")?.map(PathBuf::from);
     let strict = parsed.iter().any(|(name, _)| name == "--strict");
@@ -2620,7 +2655,8 @@ mod tests {
         assert!(rendered.contains("<svg"), "expected an SVG document");
         assert!(rendered.contains("Alice"), "saved plan names are rendered");
 
-        // project-export without --snapshot explains the lifecycle.
+        // An explicitly saved plan outside outputs_dir needs --snapshot;
+        // automatic discovery cannot silently re-solve a missing artifact.
         let error = commands::run_project_export(&ProjectArgs {
             project: project.clone(),
             seed: None,
@@ -2635,7 +2671,7 @@ mod tests {
             orientation: None,
             locale: None,
         })
-        .expect_err("project-export without --snapshot must refuse to re-solve");
+        .expect_err("project-export without a default saved artifact must refuse to re-solve");
         assert!(
             error.contains("project-solve --output"),
             "unexpected error: {error}"

@@ -122,9 +122,17 @@ pub fn individual_cost(
         }
     }
     if rules.soft.randomize.enabled {
-        cost += i64::from(rules.soft.randomize.weight) * i64::from(rng.randint(0, 100));
+        cost = cost.saturating_add(
+            i64::from(rules.soft.randomize.weight).saturating_mul(i64::from(rng.randint(0, 100))),
+        );
     }
-    cost += fair_rotation_cost(student, seat, layout, &rules.soft.fair_rotation, history);
+    cost = cost.saturating_add(fair_rotation_cost(
+        student,
+        seat,
+        layout,
+        &rules.soft.fair_rotation,
+        history,
+    ));
     cost
 }
 
@@ -169,7 +177,7 @@ pub fn fair_rotation_cost(
         return 0;
     }
 
-    let recent_counts = student_history.recent_category_counts(rule.lookback);
+    let recent_counts = hist.recent_category_counts(student_history, rule.lookback);
     let mut total_cost: i64 = 0;
     for category in &candidate_categories {
         let total_count = student_history
@@ -184,12 +192,18 @@ pub fn fair_rotation_cost(
             .min()
             .unwrap_or(0);
         let repeated_recent_penalty =
-            i64::from(recent_counts.get(category).copied().unwrap_or(0) * 100);
-        let long_term_penalty = i64::from(0.max(total_count - min_count) * 25);
+            i64::from(recent_counts.get(category).copied().unwrap_or(0)).saturating_mul(100);
+        let long_term_penalty = (i64::from(total_count) - i64::from(min_count))
+            .max(0)
+            .saturating_mul(25);
         let compensation_bonus = if total_count == min_count { 10 } else { 0 };
-        total_cost += repeated_recent_penalty + long_term_penalty - compensation_bonus;
+        total_cost = total_cost.saturating_add(
+            repeated_recent_penalty
+                .saturating_add(long_term_penalty)
+                .saturating_sub(compensation_bonus),
+        );
     }
-    i64::from(rule.weight) * total_cost
+    i64::from(rule.weight).saturating_mul(total_cost)
 }
 
 /// `classify_seat_position` from `history.py`: the set of rotation categories a
@@ -330,9 +344,12 @@ pub fn avoid_recent_neighbors_cost(
     let Some(pair) = pair else {
         return 0;
     };
-    let recent_count = pair.recent_occurrence_count(&selected_relations, rule.lookback);
-    let excess = 0.max(recent_count - rule.max_recent_count);
-    i64::from(rule.weight) * i64::from(excess) * 100
+    let recent_count =
+        pair_history.recent_occurrence_count(pair, &selected_relations, rule.lookback);
+    let excess = (i64::from(recent_count) - i64::from(rule.max_recent_count)).max(0);
+    i64::from(rule.weight)
+        .saturating_mul(excess)
+        .saturating_mul(100)
 }
 
 /// `detect_neighbor_relation_types` from `history.py`.
@@ -368,19 +385,13 @@ pub fn detect_neighbor_relation_types(
         relations.insert("diagonal".to_string());
     }
 
-    let has_basic = relations.contains("horizontal")
-        || relations.contains("vertical")
-        || relations.contains("diagonal");
-    if has_basic {
+    let edge = normalize_edge(&first_seat.seat_id, &second_seat.seat_id);
+    let is_adjacent = match adjacency_edges {
+        Some(edges) => edges.contains(&edge),
+        None => build_adjacency_edges(layout).contains(&edge),
+    };
+    if is_adjacent {
         relations.insert("adjacent_any".to_string());
-    } else {
-        let edges = match adjacency_edges {
-            Some(edges) => edges.clone(),
-            None => build_adjacency_edges(layout),
-        };
-        if edges.contains(&normalize_edge(&first_seat.seat_id, &second_seat.seat_id)) {
-            relations.insert("adjacent_any".to_string());
-        }
     }
 
     if row_delta.max(col_delta) <= i64::from(within_distance) {
@@ -434,9 +445,9 @@ fn are_adjacent(first: &Seat, second: &Seat, config: &AdjacencyConfig) -> bool {
             let dy = first.y_default() - second.y_default();
             (dx * dx + dy * dy).sqrt()
         } else {
-            let dr = (first.row - second.row) as f64;
-            let dc = (first.col - second.col) as f64;
-            (dr * dr + dc * dc).sqrt()
+            let dr = f64::from(first.row) - f64::from(second.row);
+            let dc = f64::from(first.col) - f64::from(second.col);
+            dr.hypot(dc)
         };
         return distance <= max_distance;
     }

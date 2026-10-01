@@ -21,6 +21,7 @@ def audit(project: Path) -> dict:
         cwd=project,
         capture_output=True,
         text=True,
+        timeout=120,
     )
     try:
         report = json.loads(result.stdout)
@@ -97,8 +98,8 @@ def main() -> int:
     args = parser.parse_args()
 
     allowlist = json.loads(args.allowlist.read_text(encoding="utf-8"))
-    expiry = dt.date.fromisoformat(allowlist["expires"])
-    if expiry < dt.date.today():
+    expiry = dt.date.fromisoformat(allowlist["expires"]) if allowlist["advisories"] else None
+    if expiry is not None and expiry < dt.date.today():
         print(f"npm audit allowlist expired on {expiry}", file=sys.stderr)
         return 1
 
@@ -110,7 +111,7 @@ def main() -> int:
             project_problems, project_urls = check_project(project, allowlist)
             problems.extend(project_problems)
             observed_urls.update(project_urls)
-        except (OSError, RuntimeError, KeyError, json.JSONDecodeError) as error:
+        except (OSError, RuntimeError, KeyError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
             problems.append(str(error))
 
     missing = set(allowlist["advisories"]) - observed_urls

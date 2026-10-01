@@ -509,7 +509,7 @@ export type NormalUnsolvedStatus = Exclude<
 export type CandidateSummary = {
   candidate_id: string;
   recommended: boolean;
-  total_score: number;
+  total_score: number | null;
 };
 
 /** The `goal` object the server echoes in every generate response. */
@@ -874,6 +874,8 @@ export type ProjectRotationLoadResponse = {
   rotation_plan: RotationPlan;
   editor: EditorState;
   period_editors: EditorState[];
+  students?: Array<Record<string, unknown>>;
+  source_request?: Record<string, unknown>;
 };
 
 // ---------------------------------------------------------------------------
@@ -925,4 +927,49 @@ export type DraftAuditReport = {
     suggested_actions: SuggestedAction[];
     [key: string]: unknown;
   };
+};
+
+/** Portable class source, separate from the minimal editor projection. */
+export type ClassSource = {
+  name: string;
+  students: Student[];
+  selectedFileName: string | null;
+  selectedRoomId: string;
+  selectedGoalId: string;
+  advancedSettings: AdvancedSolveSettings;
+  roomSettings: CustomRoomSettings;
+  rotationSettings: RotationSettings;
+  detailedRules: DetailedRuleSettings;
+  historySnapshots: HistorySnapshotPayload[];
+  historyFileNames: string[];
+  constraints: CommonConstraint[];
+  groups: CommonGroupRule[];
+  preferences: CommonPreferenceId[];
+  sourceRevision: number;
+  generatedSourceRevision: number | null;
+  generationRepro?: { seed: string; solver: string; timeLimitSeconds: number; historyCount: number };
+  activeRotationPeriod: number;
+  scratchAssignments: SeatAssignment[];
+  exportSettings?: { format: string; anonymize: boolean; showStudentIds: boolean; orientation: "portrait" | "landscape"; paper: "a4" | "a3" | "letter"; margin: number };
+};
+
+export type ClassDocument = {
+  kind: "seattrellis_class_document";
+  schema_version: 1;
+  class_source: ClassSource;
+  drafts: Array<{
+    candidate_id: string | null;
+    solve_request: Record<string, unknown>;
+    assignments: Array<{ student_key: string; seat_id: string }>;
+    lock_state: { locked_students: string[]; locked_seats: string[] };
+  }>;
+  rotation_plan?: RotationPlan;
+};
+
+export type OpenClassDocumentResponse = {
+  class_source: ClassSource;
+  editor: EditorState | null;
+  candidates: CandidateSummary[];
+  period_editors: EditorState[];
+  rotation_plan?: RotationPlan;
 };

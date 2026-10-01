@@ -250,10 +250,9 @@ pub enum PairRelation {
 
 /// `WeightedRule` base: `enabled: bool = False`, `weight: int = 1`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WeightedRule {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
     pub weight: i32,
 }
 
@@ -268,12 +267,10 @@ impl Default for WeightedRule {
 
 /// `ScorePositionRule` (`models/rules.py`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ScorePositionRule {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
     pub weight: i32,
-    #[serde(default)]
     pub direction: ScoreDirection,
 }
 
@@ -289,12 +286,10 @@ impl Default for ScorePositionRule {
 
 /// `ScoreDistributionRule` (`models/rules.py`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ScoreDistributionRule {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
     pub weight: i32,
-    #[serde(default)]
     pub scope: DistributionScope,
 }
 
@@ -310,20 +305,14 @@ impl Default for ScoreDistributionRule {
 
 /// `MentorPairingRule` (`models/rules.py`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MentorPairingRule {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
     pub weight: i32,
-    #[serde(default)]
     pub mentor_percentile: f64,
-    #[serde(default)]
     pub learner_percentile: f64,
-    #[serde(default)]
     pub relation: PairRelation,
-    #[serde(default)]
     pub avoid_recent_repeats: bool,
-    #[serde(default)]
     pub history_lookback: i32,
 }
 
@@ -343,15 +332,12 @@ impl Default for MentorPairingRule {
 
 /// `FairRotationRule` (`models/rules.py`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FairRotationRule {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
     pub weight: i32,
-    #[serde(default)]
     pub avoid_repeating_categories: Vec<String>,
     /// `None` means "all history", mirroring the cost port's `int | None`.
-    #[serde(default)]
     pub lookback: Option<i32>,
 }
 
@@ -376,19 +362,14 @@ impl Default for FairRotationRule {
 
 /// `AvoidRecentNeighborsRule` (`models/rules.py`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AvoidRecentNeighborsRule {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
     pub weight: i32,
-    #[serde(default)]
     pub relation_types: Vec<String>,
     /// `None` means "all history", mirroring the cost port's `int | None`.
-    #[serde(default)]
     pub lookback: Option<i32>,
-    #[serde(default)]
     pub max_recent_count: i32,
-    #[serde(default)]
     pub within_distance: i32,
 }
 
@@ -407,16 +388,12 @@ impl Default for AvoidRecentNeighborsRule {
 
 /// `CoolingRule` (`models/rules.py`) — consumed by `effective_neighbor_rule`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CoolingRule {
-    #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
     pub weight: i32,
-    #[serde(default)]
     pub cooling_period: i32,
-    #[serde(default)]
     pub relation_types: Vec<String>,
-    #[serde(default)]
     pub within_distance: i32,
 }
 
@@ -435,26 +412,17 @@ impl Default for CoolingRule {
 /// `SoftRules` (`models/rules.py`) — the full set read across the cost
 /// functions and the score soft objectives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SoftRules {
-    #[serde(default)]
     pub vision_front: WeightedRule,
-    #[serde(default)]
     pub height_back: WeightedRule,
-    #[serde(default)]
     pub randomize: WeightedRule,
-    #[serde(default)]
     pub score_balance: WeightedRule,
-    #[serde(default)]
     pub score_position: ScorePositionRule,
-    #[serde(default)]
     pub score_distribution: ScoreDistributionRule,
-    #[serde(default)]
     pub mentor_pairing: MentorPairingRule,
-    #[serde(default)]
     pub fair_rotation: FairRotationRule,
-    #[serde(default)]
     pub avoid_recent_neighbors: AvoidRecentNeighborsRule,
-    #[serde(default)]
     pub cooling: CoolingRule,
 }
 
@@ -583,6 +551,9 @@ pub fn effective_neighbor_rule(rules: &RuleSet) -> AvoidRecentNeighborsRule {
 pub struct SeatHistoryRecord {
     #[serde(default)]
     pub categories: Vec<String>,
+    /// One-based global period, absent on legacy occurrence-window histories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period_index: Option<i32>,
 }
 
 /// `StudentSeatHistory` (`models/history.py`).
@@ -609,7 +580,8 @@ impl StudentSeatHistory {
         };
         for record in records {
             for category in &record.categories {
-                *counts.entry(category.clone()).or_insert(0) += 1;
+                let count = counts.entry(category.clone()).or_insert(0);
+                *count = count.saturating_add(1);
             }
         }
         counts
@@ -626,6 +598,43 @@ pub struct SeatHistory {
 }
 
 impl SeatHistory {
+    pub fn recent_category_counts(
+        &self,
+        student: &StudentSeatHistory,
+        lookback: Option<i32>,
+    ) -> HashMap<String, i32> {
+        if !student
+            .records
+            .iter()
+            .all(|record| record.period_index.is_some())
+        {
+            return student.recent_category_counts(lookback);
+        }
+        let mut counts: HashMap<String, i32> = HashMap::new();
+        if lookback.is_some_and(|lookback| lookback <= 0) {
+            return counts;
+        }
+        let first_period = lookback
+            .map(|lookback| {
+                self.history_count
+                    .saturating_sub(lookback)
+                    .saturating_add(1)
+            })
+            .unwrap_or(1);
+        for record in &student.records {
+            if record
+                .period_index
+                .is_some_and(|index| index >= first_period && index <= self.history_count)
+            {
+                for category in &record.categories {
+                    let count = counts.entry(category.clone()).or_insert(0);
+                    *count = count.saturating_add(1);
+                }
+            }
+        }
+        counts
+    }
+
     pub fn new_empty() -> Self {
         Self {
             history_count: 0,
@@ -640,12 +649,17 @@ impl SeatHistory {
 pub struct PairHistoryRecord {
     #[serde(default)]
     pub relations: Vec<String>,
+    /// One-based global period number. Absent in legacy occurrence-window
+    /// histories; indexed histories count periods with no relation as well.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period_index: Option<i32>,
 }
 
 impl PairHistoryRecord {
     pub fn new(relations: Vec<&str>) -> Self {
         Self {
             relations: relations.into_iter().map(str::to_string).collect(),
+            period_index: None,
         }
     }
 }
@@ -689,7 +703,8 @@ impl StudentPairHistory {
                     .iter()
                     .any(|relation| relation_types.contains(relation))
             })
-            .count() as i32
+            .count()
+            .min(i32::MAX as usize) as i32
     }
 }
 
@@ -708,6 +723,47 @@ pub struct PairHistory {
 }
 
 impl PairHistory {
+    /// Count occurrences in the last global periods when indices are available.
+    /// Legacy records keep their original occurrence-window interpretation.
+    pub fn recent_occurrence_count(
+        &self,
+        pair: &StudentPairHistory,
+        relation_types: &HashSet<String>,
+        lookback: Option<i32>,
+    ) -> i32 {
+        if pair
+            .records
+            .iter()
+            .all(|record| record.period_index.is_some())
+        {
+            if lookback.is_some_and(|lookback| lookback <= 0) {
+                return 0;
+            }
+            let first_period = lookback
+                .map(|lookback| {
+                    self.history_count
+                        .saturating_sub(lookback)
+                        .saturating_add(1)
+                })
+                .unwrap_or(1);
+            pair.records
+                .iter()
+                .filter(|record| {
+                    record
+                        .period_index
+                        .is_some_and(|index| index >= first_period && index <= self.history_count)
+                        && record
+                            .relations
+                            .iter()
+                            .any(|relation| relation_types.contains(relation))
+                })
+                .count()
+                .min(i32::MAX as usize) as i32
+        } else {
+            pair.recent_occurrence_count(relation_types, lookback)
+        }
+    }
+
     pub fn new_empty() -> Self {
         Self {
             history_count: 0,

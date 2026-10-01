@@ -14,8 +14,8 @@ use crate::engine::{
     solve_partial_assignment_valid, validate_solve_request,
 };
 use crate::evaluation::{
-    assigned_students_are_adjacent, assigned_students_meet_distance, build_graph_distance_matrix,
-    build_index_adjacency,
+    assigned_students_are_adjacent, assigned_students_meet_distance, build_index_adjacency,
+    build_required_graph_distances, seat_distance, CoreDistanceMetric,
 };
 use crate::solver::{parse_core_solve_request, resolve_group_rules, CoreSolveRequest};
 /// The UI consumes this to explain a candidate: which hard rules were
@@ -36,7 +36,7 @@ pub fn audit_report_json(request_json: &str, assignment: &[[usize; 2]]) -> Resul
     validate_solve_request(&request)?;
     let resolved = resolve_group_rules(&request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
-    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let graph_distances = build_required_graph_distances(&adjacency, &request.min_distance);
 
     // Rebuild the student->seat probe and validate independently (M3-05),
     // so the audit never blesses an illegal assignment. The assignment must
@@ -341,7 +341,7 @@ pub fn diagnostics_report_json(
     validate_solve_request(&request)?;
     let resolved = resolve_group_rules(&request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
-    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let graph_distances = build_required_graph_distances(&adjacency, &request.min_distance);
     let seat_ids: Vec<String> = (0..request.seat_positions.len())
         .map(|index| seat_id_for_index(&request, index))
         .collect();
@@ -418,6 +418,7 @@ pub fn diagnostics_report_json(
             probe[*b].unwrap_or(usize::MAX),
             &adjacency,
             &graph_distances,
+            &request.seat_positions,
             FixKind::MustBeAdjacent,
             0.0,
         );
@@ -443,6 +444,7 @@ pub fn diagnostics_report_json(
             probe[*b].unwrap_or(usize::MAX),
             &adjacency,
             &graph_distances,
+            &request.seat_positions,
             FixKind::CannotBeAdjacent,
             0.0,
         );
@@ -469,7 +471,11 @@ pub fn diagnostics_report_json(
             probe[rule.students[1]].unwrap_or(usize::MAX),
             &adjacency,
             &graph_distances,
-            FixKind::MinDistance,
+            &request.seat_positions,
+            match rule.metric {
+                CoreDistanceMetric::Euclidean => FixKind::EuclideanMinDistance,
+                CoreDistanceMetric::Graph => FixKind::GraphMinDistance,
+            },
             rule.distance,
         );
         distance_witnesses.push(witness_pair(
@@ -671,7 +677,8 @@ pub fn diagnostics_report_json(
 enum FixKind {
     MustBeAdjacent,
     CannotBeAdjacent,
-    MinDistance,
+    GraphMinDistance,
+    EuclideanMinDistance,
 }
 
 /// First seat that resolves the violated rule for `student` given `other`'s
@@ -684,6 +691,7 @@ fn suggested_fix_seat(
     other_seat: usize,
     adjacency: &[Vec<usize>],
     graph_distances: &[Vec<Option<u32>>],
+    seat_positions: &[[f64; 2]],
     kind: FixKind,
     min_distance: f64,
 ) -> Option<usize> {
@@ -695,12 +703,18 @@ fn suggested_fix_seat(
         match kind {
             FixKind::MustBeAdjacent => adjacent,
             FixKind::CannotBeAdjacent => !adjacent,
-            FixKind::MinDistance => graph_distances[seat][other_seat]
+            FixKind::GraphMinDistance => graph_distances[seat][other_seat]
                 .map(|distance| (distance as f64) >= min_distance)
                 .unwrap_or(true),
+            FixKind::EuclideanMinDistance => {
+                let [x, y] = seat_positions[seat];
+                let [other_x, other_y] = seat_positions[other_seat];
+                seat_distance(x, y, other_x, other_y)
+                    .is_none_or(|distance| distance >= min_distance)
+            }
         }
     };
-    for seat in 0..probe.len() {
+    for seat in 0..adjacency.len() {
         if Some(seat) == current || seat == other_seat || !satisfies(seat) {
             continue;
         }
@@ -709,7 +723,7 @@ fn suggested_fix_seat(
         }
     }
     // Fall back to any satisfying seat (the editor unseats the occupant).
-    for seat in 0..probe.len() {
+    for seat in 0..adjacency.len() {
         if Some(seat) == current || seat == other_seat || !satisfies(seat) {
             continue;
         }
@@ -774,7 +788,7 @@ fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
     request
         .layout
         .as_ref()
-        .and_then(|layout| layout.seats.get(index))
+        .and_then(|layout| layout.seats.iter().filter(|seat| seat.enabled).nth(index))
         .map(|seat| seat.seat_id.clone())
         .unwrap_or_else(|| format!("seat-{}", index + 1))
 }
@@ -883,7 +897,7 @@ mod diagnostics_tests {
                 [7, 8],
             ],
         );
-        let distances = build_graph_distance_matrix(&adjacency);
+        let distances = crate::evaluation::build_graph_distance_matrix(&adjacency);
         let distance = distances[index][3].unwrap();
         assert!(
             distance >= 2,

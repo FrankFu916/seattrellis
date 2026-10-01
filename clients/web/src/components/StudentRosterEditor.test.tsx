@@ -74,3 +74,21 @@ describe("StudentRosterEditor", () => {
     expect(onUseDemo).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("editable student identity", () => {
+  it("keeps focus while typing an entire ID and after removing an earlier row", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const secondId = screen.getByRole("textbox", { name: "Student 2 ID" });
+    await user.clear(secondId);
+    await user.type(secondId, "B-2026-001");
+    expect(secondId).toHaveValue("B-2026-001");
+    expect(secondId).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Remove Alice" }));
+    expect(screen.getByRole("textbox", { name: "Student 1 ID" })).toBe(secondId);
+    await user.click(secondId);
+    await user.type(secondId, "X");
+    expect(secondId).toHaveValue("B-2026-001X");
+    expect(secondId).toHaveFocus();
+  });
+});

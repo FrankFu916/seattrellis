@@ -1,6 +1,12 @@
 name: Security and package hygiene
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+        description: Exact commit or tag to validate
   push:
     branches: [main]
   pull_request:
@@ -13,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: security-${{ github.event.pull_request.number || github.ref }}
+  group: security-${{ github.workflow }}-${{ inputs.ref || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
@@ -38,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v3
         env:
@@ -45,10 +54,12 @@ jobs:
 
   package-hygiene:
     name: Repository and package hygiene
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: inputs.ref != '' || github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"

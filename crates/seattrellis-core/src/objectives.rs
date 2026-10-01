@@ -112,6 +112,40 @@ pub fn compile_soft_objectives(
     rules: &RuleSet,
     pair_history: Option<&PairHistory>,
 ) -> SoftObjectiveContext {
+    compile_soft_objectives_with_adjacency(students, layout, rules, pair_history, None)
+}
+
+/// Compile objectives using the same topology as the hard-rule solver. The
+/// layout-derived graph is only a fallback for standalone callers.
+pub fn compile_soft_objectives_with_adjacency(
+    students: &[Student],
+    layout: &Layout,
+    rules: &RuleSet,
+    pair_history: Option<&PairHistory>,
+    adjacency: Option<&HashSet<(String, String)>>,
+) -> SoftObjectiveContext {
+    compile_soft_objectives_with_adjacency_controlled(
+        students,
+        layout,
+        rules,
+        pair_history,
+        adjacency,
+        &mut || false,
+    )
+    .expect("uncontrolled objective compilation cannot stop")
+}
+
+pub(crate) fn compile_soft_objectives_with_adjacency_controlled(
+    students: &[Student],
+    layout: &Layout,
+    rules: &RuleSet,
+    pair_history: Option<&PairHistory>,
+    adjacency: Option<&HashSet<(String, String)>>,
+    should_stop: &mut dyn FnMut() -> bool,
+) -> Option<SoftObjectiveContext> {
+    if should_stop() {
+        return None;
+    }
     let percentiles = score_rank_percentiles(students);
     let enabled_seats = layout.enabled_seats();
 
@@ -170,17 +204,20 @@ pub fn compile_soft_objectives(
         }
     }
 
-    let mentor_pairs = select_mentor_pairs(&percentiles, rules, pair_history);
+    let mentor_pairs =
+        select_mentor_pairs_controlled(&percentiles, rules, pair_history, should_stop)?;
     let seat_by_id: HashMap<String, Seat> = enabled_seats
         .iter()
         .map(|seat| (seat.seat_id.clone(), (*seat).clone()))
         .collect();
-    let adjacency_edges = build_adjacency_edges(layout);
+    let adjacency_edges = adjacency
+        .cloned()
+        .unwrap_or_else(|| build_adjacency_edges(layout));
 
     let mut sorted_student_keys: Vec<String> = percentiles.keys().cloned().collect();
     sorted_student_keys.sort_unstable();
 
-    SoftObjectiveContext {
+    Some(SoftObjectiveContext {
         score_percentiles: percentiles,
         seat_row_percentiles: seat_rows,
         distribution_buckets,
@@ -189,7 +226,7 @@ pub fn compile_soft_objectives(
         adjacency_edges,
         sorted_student_keys,
         warnings,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -417,9 +454,19 @@ pub fn select_mentor_pairs(
     rules: &RuleSet,
     pair_history: Option<&PairHistory>,
 ) -> Vec<MentorPair> {
+    select_mentor_pairs_controlled(percentiles, rules, pair_history, &mut || false)
+        .expect("uncontrolled mentor compilation cannot stop")
+}
+
+fn select_mentor_pairs_controlled(
+    percentiles: &HashMap<String, f64>,
+    rules: &RuleSet,
+    pair_history: Option<&PairHistory>,
+    should_stop: &mut dyn FnMut() -> bool,
+) -> Option<Vec<MentorPair>> {
     let rule = &rules.soft.mentor_pairing;
     if !rule.enabled || rule.weight == 0 || percentiles.is_empty() {
-        return Vec::new();
+        return Some(Vec::new());
     }
 
     let mut mentors: Vec<String> = percentiles
@@ -447,13 +494,16 @@ pub fn select_mentor_pairs(
     });
 
     if mentors.is_empty() || learners.is_empty() {
-        return Vec::new();
+        return Some(Vec::new());
     }
 
     let mut occurrence_by_pair: HashMap<(String, String), usize> = HashMap::new();
     let mut costs: HashMap<(String, String), i64> = HashMap::new();
     for (mentor_index, mentor_key) in mentors.iter().enumerate() {
         for (learner_index, learner_key) in learners.iter().enumerate() {
+            if should_stop() {
+                return None;
+            }
             let occurrences = if rule.avoid_recent_repeats {
                 recent_pair_occurrences(
                     mentor_key,
@@ -477,7 +527,8 @@ pub fn select_mentor_pairs(
         }
     }
 
-    let selected = minimum_cost_bipartite_pairs(&mentors, &learners, &costs);
+    let selected =
+        minimum_cost_bipartite_pairs_controlled(&mentors, &learners, &costs, should_stop)?;
     let mut pairs: Vec<MentorPair> = selected
         .into_iter()
         .map(|(mentor_key, learner_key)| MentorPair {
@@ -491,7 +542,7 @@ pub fn select_mentor_pairs(
             .cmp(&b.mentor_key)
             .then_with(|| a.learner_key.cmp(&b.learner_key))
     });
-    pairs
+    Some(pairs)
 }
 
 /// Return a deterministic minimum-cost matching using the Hungarian method
@@ -501,8 +552,18 @@ pub fn minimum_cost_bipartite_pairs(
     learners: &[String],
     costs: &HashMap<(String, String), i64>,
 ) -> Vec<(String, String)> {
+    minimum_cost_bipartite_pairs_controlled(mentors, learners, costs, &mut || false)
+        .expect("uncontrolled Hungarian matching cannot stop")
+}
+
+fn minimum_cost_bipartite_pairs_controlled(
+    mentors: &[String],
+    learners: &[String],
+    costs: &HashMap<(String, String), i64>,
+    should_stop: &mut dyn FnMut() -> bool,
+) -> Option<Vec<(String, String)>> {
     if mentors.is_empty() || learners.is_empty() {
-        return Vec::new();
+        return Some(Vec::new());
     }
 
     let rows_are_mentors = mentors.len() <= learners.len();
@@ -521,6 +582,9 @@ pub fn minimum_cost_bipartite_pairs(
     for row in &rows {
         let mut matrix_row: Vec<i64> = Vec::with_capacity(columns.len());
         for column in &columns {
+            if should_stop() {
+                return None;
+            }
             let key = if rows_are_mentors {
                 ((*row).clone(), (*column).clone())
             } else {
@@ -547,6 +611,9 @@ pub fn minimum_cost_bipartite_pairs(
         let mut minimum = vec![infinity; column_count + 1];
         let mut used = vec![false; column_count + 1];
         loop {
+            if should_stop() {
+                return None;
+            }
             used[column0] = true;
             let current_row = matched_row[column0];
             let mut delta = infinity;
@@ -603,7 +670,7 @@ pub fn minimum_cost_bipartite_pairs(
             pairs.push((column.clone(), row.clone()));
         }
     }
-    pairs
+    Some(pairs)
 }
 
 fn recent_pair_occurrences(
@@ -631,7 +698,7 @@ fn recent_pair_occurrences(
     };
     let mut relation_types = HashSet::new();
     relation_types.insert(relation_type);
-    history.recent_occurrence_count(&relation_types, Some(lookback)) as usize
+    pair_history.recent_occurrence_count(history, &relation_types, Some(lookback)) as usize
 }
 
 // ---------------------------------------------------------------------------
@@ -814,5 +881,43 @@ mod tests {
         assert_eq!(p["A10"], 0.25);
         assert_eq!(p["A2"], 0.25);
         assert_eq!(p["B"], 1.0);
+    }
+
+    #[test]
+    fn mentor_preparation_and_hungarian_matching_are_interruptible() {
+        let percentiles: HashMap<String, f64> = (0..100)
+            .map(|index| (format!("s{index}"), index as f64 / 99.0))
+            .collect();
+        let mut rules = RuleSet::default();
+        rules.soft.mentor_pairing.enabled = true;
+        let mut checkpoints = 0;
+        assert!(
+            select_mentor_pairs_controlled(&percentiles, &rules, None, &mut || {
+                checkpoints += 1;
+                checkpoints >= 20
+            })
+            .is_none()
+        );
+        assert_eq!(checkpoints, 20, "stop while costs are being compiled");
+        let keys = vec!["a".to_string(), "b".to_string()];
+        let costs: HashMap<(String, String), i64> = keys
+            .iter()
+            .flat_map(|first| {
+                keys.iter()
+                    .map(move |second| ((first.clone(), second.clone()), 1))
+            })
+            .collect();
+        let mut checkpoints = 0;
+        assert!(
+            minimum_cost_bipartite_pairs_controlled(&keys, &keys, &costs, &mut || {
+                checkpoints += 1;
+                checkpoints >= 5
+            })
+            .is_none()
+        );
+        assert_eq!(
+            checkpoints, 5,
+            "stop after matrix compilation inside Hungarian search"
+        );
     }
 }

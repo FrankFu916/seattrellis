@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { SeatAssignment, Student } from "../api/types";
 import { nextCanvasZoom } from "../domain/canvasEdit";
@@ -49,6 +49,7 @@ export function SeatingCanvasEditor({
   onUndo,
   onRedo,
 }: SeatingCanvasEditorProps) {
+  const panelId = useId();
   const [view, setView] = useState<CanvasView>("canvas");
   const [zoom, setZoom] = useState(1);
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
@@ -132,6 +133,7 @@ export function SeatingCanvasEditor({
       <div className={`seating-editor${focusMode ? " is-focus-mode" : ""}`}>
       <SeatingToolbar
         view={view}
+        panelId={panelId}
         zoom={zoom}
         focusMode={focusMode}
         selectedCount={selectedSeatIds.length}
@@ -146,7 +148,7 @@ export function SeatingCanvasEditor({
         onUndo={onUndo}
         onRedo={onRedo}
       />
-      <div className="canvas-zoom-target" ref={zoomTargetRef}>
+      <div className="canvas-zoom-target" ref={zoomTargetRef} role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${view}-tab`}>
         {view === "canvas" ? (
           <SeatingCanvas
             assignments={assignments}

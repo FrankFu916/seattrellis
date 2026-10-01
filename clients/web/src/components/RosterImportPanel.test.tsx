@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchTrustedRoot,
+  deleteRosterDraft,
   previewRosterUpdate,
   readTrustedFile,
   uploadRosterDraft,
@@ -18,6 +19,7 @@ import { RosterImportPanel } from "./RosterImportPanel";
 
 vi.mock("../api/client", () => ({
   fetchTrustedRoot: vi.fn(),
+  deleteRosterDraft: vi.fn().mockResolvedValue(undefined),
   previewRosterUpdate: vi.fn(),
   readTrustedFile: vi.fn(),
   uploadRosterDraft: vi.fn(),
@@ -287,4 +289,31 @@ describe("RosterImportPanel", () => {
     expect(screen.getByRole("button", { name: "确认导入" })).toBeDisabled();
     expect(onImportConfirmed).not.toHaveBeenCalled();
   });
+
+  it("invalidates a confirmed preview when the source roster changes", async () => {
+    const user = userEvent.setup();
+    const confirmed = vi.fn();
+    const props = { locale: "zh-CN" as const, t: createTranslator("zh-CN"), currentStudents: [], currentRevision: 0, onImportConfirmed: confirmed };
+    const { container, rerender } = render(<RosterImportPanel {...props} />);
+    await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(["Alice,S1"], "roster.csv", { type: "text/csv" }));
+    await user.click(await screen.findByRole("button", { name: "检查导入变化" }));
+    expect(screen.getByRole("button", { name: "确认导入" })).toBeEnabled();
+    rerender(<RosterImportPanel {...props} currentStudents={[{ id: "S1", name: "Changed" }]} currentRevision={1} />);
+    expect(screen.getByRole("button", { name: "确认导入" })).toBeDisabled();
+    expect(confirmed).not.toHaveBeenCalled();
+  });
+
+  it("deletes an uploaded roster that arrives after the panel unmounts", async () => {
+    const response = await uploadRosterDraft(new File([], "template.csv"));
+    vi.mocked(uploadRosterDraft).mockClear();
+    let finish!: (value: typeof response) => void;
+    vi.mocked(uploadRosterDraft).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const user = userEvent.setup();
+    const { container, unmount } = render(<RosterImportPanel locale="zh-CN" t={createTranslator("zh-CN")} currentStudents={[]} currentRevision={0} onImportConfirmed={vi.fn()} />);
+    await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(["Alice,S1"], "roster.csv", { type: "text/csv" }));
+    unmount();
+    await act(async () => finish(response));
+    expect(deleteRosterDraft).toHaveBeenCalledWith("roster-1");
+  });
+
 });

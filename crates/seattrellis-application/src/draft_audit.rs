@@ -45,13 +45,18 @@ pub fn audit_draft(
     let request_json = request_value.to_string();
     let assignment = &response.assignment;
 
-    let score =
-        score_assignment_json(&request_json, assignment, "[]", None).map_err(|message| {
-            AppError::unprocessable(
-                "invalid_assignment",
-                format!("plan cannot be scored: {message}"),
-            )
-        })?;
+    let score = score_assignment_json(
+        &request_json,
+        assignment,
+        "[]",
+        peer_diversity_score(&request_value, &state, editor_store),
+    )
+    .map_err(|message| {
+        AppError::unprocessable(
+            "invalid_assignment",
+            format!("plan cannot be scored: {message}"),
+        )
+    })?;
     // Diagnostics (not the strict audit): a hand-edited plan that violates a
     // hard rule is *reported* with witnesses, never rejected — the strict
     // audit stays the CLI's blessing validator (M3-06).
@@ -66,8 +71,59 @@ pub fn audit_draft(
     Ok(json!({
         "api_version": "1",
         "draft_id": draft_id,
-        "feasible": true,
+        "feasible": audit_value.pointer("/hard_constraint_summary/all_satisfied").and_then(Value::as_bool).unwrap_or(false),
         "score": score_value,
         "audit": audit_value,
     }))
+}
+
+/// Mean moved-student percentage against complete live peers; missing or
+/// incomplete peers are unavailable rather than fabricated as zero diversity.
+fn peer_diversity_score(
+    source: &Value,
+    state: &editing::EditorState,
+    editors: &EditorDraftStore,
+) -> Option<f64> {
+    let peers = source
+        .pointer("/metadata/_seattrellis_application/candidate_peer_ids")?
+        .as_array()?;
+    if !(2..=20).contains(&peers.len()) {
+        return None;
+    }
+    let current: std::collections::HashMap<_, _> = state
+        .students
+        .iter()
+        .map(|student| Some((student.student_key.as_str(), student.seat_id.as_deref()?)))
+        .collect::<Option<_>>()?;
+    if current.is_empty() {
+        return None;
+    }
+    let mut total = 0.0;
+    let mut count = 0usize;
+    for id in peers
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|id| *id != state.draft_id)
+    {
+        let Ok(peer) = editing::fetch_state(editors, id) else {
+            continue;
+        };
+        if peer.students.len() != current.len()
+            || peer.students.iter().any(|student| {
+                student.seat_id.is_none() || !current.contains_key(student.student_key.as_str())
+            })
+        {
+            continue;
+        }
+        let changed = peer
+            .students
+            .iter()
+            .filter(|student| {
+                current.get(student.student_key.as_str()).copied() != student.seat_id.as_deref()
+            })
+            .count();
+        total += changed as f64 / current.len() as f64 * 100.0;
+        count += 1;
+    }
+    (count > 0).then(|| total / count as f64)
 }

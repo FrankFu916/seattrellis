@@ -9,7 +9,7 @@ This directory contains frozen byte-stable test fixtures consumed by the Rust te
 | Directory | Consumed By | Purpose |
 | :--- | :--- | :--- |
 | `artifact-parity/` | `crates/seattrellis-io/tests/artifact_parity.rs` | Verifies artifact comparison, serialization, and restoration. |
-| `cli-goldens/` | `crates/seattrellis-cli` | Golden tests for CLI standard output and exit code contracts. |
+| `cli-goldens/` | Archived reference only | Retired oracle outputs; no current automated consumer or regeneration recipe. Current CLI regression tests are `cli_arg_sweep.rs` and `lifecycle_regressions.rs`. |
 | `parity/goldens/` | `crates/seattrellis-io/tests/artifact_parity.rs` | Cross-version schema golden artifacts. |
 | `roster-mapping/` | `crates/seattrellis-io/tests/roster_mapping_parity.rs` | Roster header detection and column mapping heuristics. |
 

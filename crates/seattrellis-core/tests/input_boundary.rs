@@ -140,9 +140,8 @@ fn non_finite_height_is_rejected() {
     }
 }
 
-/// A huge-but-finite height (1e300) must not overflow the cost chain:
-/// the solve completes and reports a finite total_cost. Before the fix the
-/// i64 product weight * round(height) * row-penalty overflowed (debug panic).
+/// A huge-but-finite height is invalid input rather than a saturated cost
+/// that could overflow when combined with randomization or history costs.
 #[test]
 fn huge_finite_height_does_not_overflow_cost() {
     let request = r#"{
@@ -155,17 +154,9 @@ fn huge_finite_height_does_not_overflow_cost() {
         ],
         "rules": {"seed": 1, "soft": {"height_back": {"enabled": true, "weight": 3}}}
     }"#;
-    let response_json = solve_problem_json(request).expect("huge height must validate");
-    let response: seattrellis_core::CoreSolveResponse =
-        serde_json::from_str(&response_json).expect("response is valid JSON");
-    assert_eq!(response.status, SolveStatus::Solved);
-    let total_cost = response
-        .total_cost
-        .expect("feasible solve reports total_cost");
-    assert!(
-        total_cost.is_finite(),
-        "total_cost must be finite, got {total_cost}"
-    );
+    let error =
+        solve_problem_json(request).expect_err("height must have a meaningful centimetre range");
+    assert!(error.contains("between 0 and 300"), "{error}");
 }
 
 /// The pair report computes row/col deltas over every historical pair; the
@@ -180,8 +171,8 @@ fn extreme_rows_do_not_panic_pair_report() {
     }"#;
     let snapshots = r#"[
         {"assignments": [
-            {"student_key": "S1", "seat_id": "seat_0"},
-            {"student_key": "S2", "seat_id": "seat_1"}
+            {"student_key": "S1", "seat_id": "seat-1"},
+            {"student_key": "S2", "seat_id": "seat-2"}
         ]}
     ]"#;
     let report = pair_report_json(request, snapshots, 10, 2).expect("pair report must not panic");

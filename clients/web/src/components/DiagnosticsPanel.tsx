@@ -112,7 +112,11 @@ export function DiagnosticsPanel({
                     {issue.seatIds.length > 0 ? (
                       <div className="i-seats">
                         {issue.seatIds.map((seatId) => (
-                          <code key={seatId}>{seatId}</code>
+                          <button type="button" className="text-button" key={seatId}
+                            aria-label={t("diagnostics.focusSeat", { seat: seatId })}
+                            onClick={(event) => { event.stopPropagation(); onFocusChange(focusSeatId === seatId ? null : seatId); }}>
+                            <code>{seatId}</code>
+                          </button>
                         ))}
                       </div>
                     ) : null}

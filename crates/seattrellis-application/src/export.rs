@@ -260,47 +260,23 @@ pub(crate) fn editor_solve_response(
     request_value: &Value,
     state: &editing::EditorState,
 ) -> Result<(CoreSolveRequest, CoreSolveResponse), AppError> {
-    let request: CoreSolveRequest = serde_json::from_value(request_value.clone())
+    let request = seattrellis_core::parse_core_solve_request(&request_value.to_string())
         .map_err(|_| AppError::internal("stored solve request is not a valid CoreSolveRequest"))?;
 
-    // student key -> index, using the same fallback keys as the draft builder.
-    let students = request_value.get("students").and_then(Value::as_array);
-    let student_count = request_value
-        .get("student_count")
-        .and_then(Value::as_u64)
-        .unwrap_or(0) as usize;
-    let mut student_index: HashMap<String, usize> = HashMap::new();
-    for index in 0..student_count {
-        let key = students
-            .and_then(|list| list.get(index))
-            .and_then(|student| student.get("key"))
-            .and_then(Value::as_str)
-            .map(|key| key.trim().to_string())
-            .filter(|key| !key.is_empty())
-            .unwrap_or_else(|| format!("student-{}", index + 1));
-        student_index.insert(key, index);
-    }
-
-    // seat_id -> index, using the same seat ids as the draft builder.
-    let layout_seats = request_value
-        .get("layout")
-        .and_then(|layout| layout.get("seats"))
-        .and_then(Value::as_array);
-    let seat_count = request_value
-        .get("seat_positions")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-    let mut seat_index: HashMap<String, usize> = HashMap::new();
-    for index in 0..seat_count {
-        let seat_id = layout_seats
-            .and_then(|list| list.get(index))
-            .and_then(|seat| seat.get("seat_id"))
-            .and_then(Value::as_str)
-            .map(|seat_id| seat_id.to_string())
-            .unwrap_or_else(|| format!("seat-{}", index + 1));
-        seat_index.insert(seat_id, index);
-    }
+    // Reuse the same effective roster and enabled-seat domain as generation and repair.
+    let student_index: HashMap<String, usize> = crate::class_generation::student_keys(&request)
+        .into_iter()
+        .enumerate()
+        .map(|(index, key)| (key, index))
+        .collect();
+    let seat_index: HashMap<String, usize> = (0..request.seat_positions.len())
+        .map(|index| {
+            (
+                crate::class_generation::seat_id_for_index(&request, index),
+                index,
+            )
+        })
+        .collect();
 
     let mut assignment: Vec<[usize; 2]> = Vec::new();
     // Fail closed on entries the stored request cannot resolve, naming each

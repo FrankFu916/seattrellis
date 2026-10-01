@@ -36,6 +36,24 @@ seattrellis export --problem problem.json --solution plan.json --format png --ou
 
 ---
 
+## Project artifacts
+
+Project commands honor `outputs_dir`, `default_candidates`,
+`default_candidate`, and all eight export formats. `excel` remains an alias
+for `xlsx`. A single candidate saves `latest.snapshot.json`; multiple
+candidates save `latest.candidates.json`. Edit, repair, and export can open
+the latest saved artifact without an explicit `--snapshot`.
+
+Saved project artifacts include the full roster, layout, rules and original
+solve request. Editing and repair preserve provenance and student/seat locks
+across subsequent commands. A comparison report requested with `--report`
+is committed in the same file transaction as its candidate set.
+
+`schema-migrate --dry-run` validates both legacy inputs and current v2
+envelopes without creating or replacing files. Legacy JSON rosters and
+layouts need no `kind` field. Migrated roster/layout/project files remain
+usable by project commands.
+
 ## 📄 License
 
 Licensed under [Apache-2.0](../../LICENSE).

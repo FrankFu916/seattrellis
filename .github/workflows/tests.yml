@@ -1,6 +1,12 @@
 name: Tests
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+        description: Exact commit or tag to validate
   push:
     branches: [main]
   pull_request:
@@ -10,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.event.pull_request.number || github.ref }}
+  group: tests-${{ github.workflow }}-${{ inputs.ref || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,45 +30,16 @@ jobs:
         working-directory: clients/web
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: clients/web/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-
-  rust-msrv:
-    name: Rust workspace / 1.88 MSRV
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install minimum supported Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88
-      - name: Install CJK fonts (Linux)
-        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
-      - name: Install Tauri system libraries (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            libappindicator3-dev \
-            librsvg2-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf
-      - name: Build the React workbench (server embeds clients/web/dist)
-        run: |
-          npm ci
-          npm run build
-        working-directory: clients/web
-      # Test the whole workspace at MSRV, not just core: a per-crate list
-      # previously skipped other crates and let an MSRV compile break ship
-      # undetected.
-      - name: Test the Rust workspace at MSRV
-        run: cargo test --locked --workspace
 
   web-e2e-rust:
     # M2 §5.7 item 2: the NO_PYTHON_RUNTIME browser E2E. The whole
@@ -79,9 +56,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: clients/web/package-lock.json
       - name: Build the React workbench
@@ -91,7 +70,7 @@ jobs:
         working-directory: clients/web
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88
+          toolchain: 1.88.0
       - name: Build the Rust server and CLI (release)
         run: cargo build --locked --release -p seattrellis_web -p seattrellis
       - uses: actions/setup-python@v7

@@ -1,13 +1,5 @@
-//! Boundary regression for the pair-report `recent_occurrences` lookback
-//! (ledger §19.3.3/§19.33): the Python oracle computes the recent count on
-//! the *pair's own records* (`records[-lookback:]`, models/history.py:138),
-//! not on a global snapshot window. A pair whose only occurrence is in an
-//! old snapshot still reports one recent occurrence when it has fewer than
-//! `PAIR_REPORT_RECENT_LOOKBACK` records total. The old Rust code used a
-//! global window (`snapshot_index >= len - lookback + 1`), which undercounted
-//! exactly that case; the fixture corpus (<= 4 snapshots) could not tell the
-//! two apart. `recent_occurrences` is emitted in the anonymous `top_pairs`
-//! compatibility view, mirroring the oracle report.
+//! Recent pair counts use the last four global snapshot periods.
+//! Periods without a relationship age out earlier occurrences.
 
 use seattrellis_core::pair_report_json;
 use serde_json::json;
@@ -53,11 +45,10 @@ fn legacy_recent_occurrences(report: &serde_json::Value, total: u64) -> Option<u
 
 /// Six snapshots; `STU001`/`STU002` sit within distance 1 only in snapshot 1
 /// (the other five put them at the two ends of the row, distance 2). With
-/// the per-pair lookback the pair keeps `min(1, 4) = 1` recent occurrence;
-/// the old global-window code reported 0 (snapshot 1 falls outside the
-/// last-4 window).
+/// the global lookback the old occurrence has expired because snapshot 1
+/// falls outside the last-four-period window.
 #[test]
-fn recent_occurrences_use_the_pair_own_record_window() {
+fn recent_occurrences_expire_after_global_snapshot_window() {
     let request = request_doc();
     let separated = snapshot("STU001", "STU003", "STU002");
     let snapshots = json!([
@@ -84,15 +75,13 @@ fn recent_occurrences_use_the_pair_own_record_window() {
     );
     assert_eq!(
         legacy_recent_occurrences(&report, 1),
-        Some(1),
-        "per-pair lookback: one record in total -> one recent occurrence \
-         (old global-window code reported 0)"
+        Some(0),
+        "an occurrence in period 1 expires after five non-neighbor periods"
     );
 }
 
 /// A pair with more than `PAIR_REPORT_RECENT_LOOKBACK` records is capped at
-/// the lookback, never inflated by the full history (Python
-/// `records[-lookback:]`).
+/// the lookback, never inflated by the full history.
 #[test]
 fn recent_occurrences_cap_at_the_lookback() {
     let request = request_doc();

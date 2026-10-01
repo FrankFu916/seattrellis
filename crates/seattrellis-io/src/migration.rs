@@ -39,7 +39,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
-use crate::transaction::{recover_leftover_transactions_with_roots, FileTransaction};
+use crate::transaction::FileTransaction;
 use serde_json::{json, Map, Value};
 
 /// Wire `api_version` reported by every migration response.
@@ -1180,8 +1180,10 @@ pub fn migration_batch_apply_json(
         .iter()
         .filter_map(|(_, target, _)| target.parent().map(std::path::Path::to_path_buf))
         .collect();
-    recover_leftover_transactions_with_roots(&journal_dir, &roots)?;
-    let mut transaction = FileTransaction::begin_with_roots(&journal_dir, &roots)?;
+    let mut transaction =
+        FileTransaction::begin_with_roots(&journal_dir, &roots).map_err(|error| {
+            format!("The migration batch was not completed; no changes were written: {error}")
+        })?;
     for (_, target, contents) in &planned {
         transaction.stage(target, contents).map_err(|error| {
             format!("The migration batch was not completed; no changes were written: {error}")
@@ -1769,7 +1771,7 @@ mod tests {
             .unwrap();
         // Simulate a crash: forget the transaction so no rollback runs and
         // the journal + temps survive on disk, exactly like a killed process.
-        std::mem::forget(crashed);
+        crashed.abandon_for_crash_test();
 
         // Recovery rolls back only what the crashed transaction did (remove
         // its temps and journal). The committed first batch is the durable

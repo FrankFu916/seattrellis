@@ -574,13 +574,8 @@ def test_rotation_save_reopen_workflow(
     # the checkbox and fires the change React listens to).
     page.get_by_test_id("rotation-toggle").evaluate("(el) => el.click()")
 
-    page.get_by_test_id("rotation-period-count").evaluate(
-        """(el) => {
-          el.value = "2";
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        }"""
-    )
+    page.get_by_test_id("rotation-period-count").fill("2")
+    expect(page.get_by_test_id("rotation-period-count")).to_have_value("2")
 
     generate_seating_plan(page)
 
@@ -613,19 +608,12 @@ def test_rotation_save_reopen_workflow(
     # selected and the button is enabled, or the click can land during the
     # re-render and be swallowed.
     expect(load_button).to_be_enabled(timeout=15_000)
-    load_button.click()
-    page.wait_for_timeout(1500)
-    print("STATE:", page.evaluate("""() => {
-      const main = document.querySelector('.main-workspace');
-      const labels = [...document.querySelectorAll('[data-seat-id]')].map(el => el.getAttribute('aria-label')).filter(Boolean).slice(0, 6);
-      return { view: main?.className ?? 'none', seats: document.querySelectorAll('[data-seat-id]').length,
-               labels,
-               err: document.querySelector('[role=alert]')?.textContent ?? '' };
-    }"""))
-    # The canvas must show an occupied seat after reload (period 1 applied).
-    s1 = seat(page, "Student001")
-    s1.scroll_into_view_if_needed()
-    expect(s1).to_be_visible(timeout=15_000)
+    page.on("dialog", lambda dialog: dialog.accept())
+    with page.expect_response(lambda response: response.url.endswith("/api/v1/projects/rotation/load")) as loaded:
+        load_button.click()
+    assert loaded.value.ok, loaded.value.text()
+    assert len(loaded.value.json()["rotation_plan"]["periods"]) == 2
+    expect(page.get_by_role("tabpanel", name="Canvas").get_by_role("button", name=re.compile("Student001"))).to_be_visible(timeout=15_000)
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +629,8 @@ def test_context_switch_then_regenerate_still_works(
     `compact` template, so the next generate always failed with
     'Unknown room template "compact"'. Reset must pick a real catalog room."""
 
+    page.add_init_script("Object.defineProperty(window, 'showSaveFilePicker', {value: undefined, configurable: true})")
+    page.on("dialog", lambda dialog: dialog.accept())
     page.goto(rust_server.url)
     expect(page.get_by_text("Your local class is ready")).to_be_visible(
         timeout=15_000
@@ -655,10 +645,12 @@ def test_context_switch_then_regenerate_still_works(
     # context without resetting the draft.
     page.get_by_role("button", name="Save as class", exact=True).click()
     page.get_by_placeholder("e.g. Class 8–3").fill("My class")
-    page.get_by_role("button", name="Save & open", exact=True).click()
-    expect(
-        page.get_by_role("button", name="My class created this session")
-    ).to_be_visible(timeout=15_000)
+    with page.expect_download() as downloaded:
+        page.get_by_role("button", name="Save & open", exact=True).click()
+    artifact = downloaded.value.path()
+    assert artifact is not None
+    page.locator('input[type="file"][aria-label="Open class"]').set_input_files(str(artifact))
+    expect(page.get_by_role("button", name="My class saved file")).to_be_visible(timeout=15_000)
 
     # Switch back to the scratch workspace — this triggers resetWorkbench(),
     # the path that used to hard-reset the room id to "compact".
@@ -676,3 +668,51 @@ def test_context_switch_then_regenerate_still_works(
     page.get_by_role("button", name="Choose classroom", exact=True).click()
     go_to_generate_step(page)
     generate_seating_plan(page)
+
+
+def test_portable_class_file_reopens_with_source_locks_repair_and_audit(
+    page: Page, rust_server: RustServer
+) -> None:
+    """A downloaded class file is usable after page reload, not just a canvas copy."""
+    import json
+
+    # Exercise the supported download/upload path without a native save picker.
+    page.add_init_script("Object.defineProperty(window, 'showSaveFilePicker', {value: undefined, configurable: true})")
+    page.on("dialog", lambda dialog: dialog.accept())
+    page.goto(rust_server.url)
+    upload_and_confirm_roster(page)
+    go_to_generate_step(page)
+    generate_seating_plan(page)
+    seat(page, "Student001").click()
+    page.get_by_role("button", name="Lock selected seat").click()
+    expect(seat(page, "Student001")).to_have_attribute("aria-label", re.compile(r", locked$"))
+
+    with page.expect_download() as downloaded:
+        page.get_by_role("button", name="Save class", exact=True).click()
+    artifact = downloaded.value.path()
+    assert artifact is not None
+    document = json.loads(artifact.read_text(encoding="utf-8"))
+    assert document["kind"] == "seattrellis_class_document"
+    assert document["class_source"]["students"][0]["heightCm"] == 154
+    assert document["class_source"]["students"][0]["score"] == 92
+    assert document["drafts"][0]["lock_state"]["locked_seats"]
+    assert document["drafts"][0]["solve_request"]["students"][0]["height_cm"] == 154
+
+    page.reload()
+    expect(page.get_by_text("Your local class is ready")).to_be_visible(timeout=15_000)
+    with page.expect_response(lambda response: response.url.endswith("/api/v1/classes/document/open")) as opened:
+        page.locator('input[type="file"][aria-label="Open class"]').set_input_files(str(artifact))
+    result = opened.value.json()
+    assert opened.value.ok
+    draft_id = result["editor"]["draft_id"]
+    expect(seat(page, "Student001")).to_have_attribute("aria-label", re.compile(r", locked$"), timeout=15_000)
+    seat(page, "Student002").click()
+    with page.expect_response(lambda response: response.url.endswith(f"/api/v1/editing/drafts/{draft_id}/repair")) as repaired:
+        page.get_by_role("button", name="Repair plan (keep locks)", exact=True).click()
+    assert repaired.value.ok, repaired.value.text()
+    expect(seat(page, "Student001")).to_have_attribute("aria-label", re.compile(r", locked$"))
+    page.get_by_role("button", name="Export", exact=True).click()
+    page.get_by_role("combobox", name="File format").select_option("svg")
+    page.get_by_role("button", name="Generate preview", exact=True).click()
+    expect(page.get_by_role("button", name="Save file", exact=True)).to_be_enabled(timeout=60_000)
+    rust_server.assert_healthy()

@@ -1,0 +1,25 @@
+{
+  "invalid_fixed_assignment_python_rejected": true,
+  "invalid_fixed_assignment_rust_audit_rejected": true,
+  "rust_audit_exit": 2,
+  "infeasible_graph_controls": [
+    {
+      "students": 40,
+      "seat_graph_triangles": 0,
+      "required_clique_size": 3,
+      "independent_infeasibility_proof": true
+    },
+    {
+      "students": 80,
+      "seat_graph_triangles": 0,
+      "required_clique_size": 3,
+      "independent_infeasibility_proof": true
+    },
+    {
+      "students": 60,
+      "seat_graph_triangles": 0,
+      "required_clique_size": 3,
+      "independent_infeasibility_proof": true
+    }
+  ]
+}

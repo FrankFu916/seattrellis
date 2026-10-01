@@ -85,3 +85,7 @@ All file operations are local by default. The product has no cloud sync or
 telemetry. The Python v1 line is frozen at 1.9.0 on `v1.x-maintenance` and is a
 legacy package only; its migration-era oracle/differential infrastructure was
 removed after v2.0.0 and is not part of the v2 tree.
+
+## Durable source and platform adapters
+
+The complete class source and solve request are independent of the editor projection. Portable class documents capture assignments, all locks and revisions coherently; restore validates every draft before publishing contexts. Save/Save As require completed file writes, and browser download fallback retains the unsaved state until the file is reopened. Shared repair uses the same hard-rule closure and expected revision. See [native clients](native-ui.md), [technology decisions](technology-decisions.md) and [audit repairs](audit-remediation.md).

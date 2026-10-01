@@ -58,3 +58,7 @@ Web 前端使用 TypeScript 7，因为当前 Vite 工具链已支持，并已通
 - 集中存储学生数据或强制用户账号体系。
 - 第三方广告、行为分析或商业遥测。
 - 把“服务端处理后删除”宣传成与浏览器本地计算等价的隐私保证。
+
+## 原生客户端
+
+平台方向确定为 macOS SwiftUI/AppKit、iOS SwiftUI/UIKit、Windows WinUI 3 + Fluent、KDE Qt 6/Kirigami、GNOME GTK4/libadwaita、Android Kotlin/Compose Material3。业务规则与可携文档继续由共享 Rust 管控；完整客户端切片与目标平台验收通过后，才替换现有工作台。参见[原生客户端方向](native-ui.md)。

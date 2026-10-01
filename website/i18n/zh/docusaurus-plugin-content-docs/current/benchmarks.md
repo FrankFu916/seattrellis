@@ -7,7 +7,7 @@
 
 ## ⏱️ 1. 求解器性能基准门禁
 
-基准测试使用标准合成测试集（`synthetic-classroom` / `synthetic-v1`），覆盖 40 人、50 人、60 人与 80 人规模的真实教学场景：
+项目固定样例使用合成数据（`synthetic-classroom` / `synthetic-v1`）；CLI 性能生成器另有下述独立版本，覆盖 40 人、50 人、60 人与 80 人的虚构班级：
 
 ```bash
 # 1. 构建 Release 高性能二进制
@@ -27,6 +27,8 @@ python3 scripts/bench_solver.py --check
 | **80 人大班** | ≤ 6.0 秒 | ≤ 1.10 × baseline |
 
 每个规模执行 5 次并取中位数，以降低共享 CI 机器瞬时抖动造成的误报。基准只在多个无代码差异的干净运行显示持续硬件漂移时更新；绝对上限不会随 runner 漂移放宽。
+
+语料版本 `planted-hard-v1-explicit-soft` 明确关闭全部软目标，保留旧基准实际测量的纯硬约束任务。原来的 `soft={}` 依赖反序列化缺陷，默认值修复后会改变任务。CLI 现在写出明确的 JSON 响应文件，在计时结束后验证 `Solved`；墙钟时间包含该原子输出。旧基线缺少这些元数据，仍作为回归阈值，不能视为受控对照实验。
 
 ---
 
@@ -53,3 +55,8 @@ cargo test --release --locked -p seattrellis-application \
 - [系统架构解析](architecture.md)
 - [开发与测试指南](development.md)
 - [v1.4 历史性能基准归档](benchmark-baseline-v1.4.md)
+
+
+## 当前对照实验与计时限制
+
+2026-10-01 的 Rust/OR-Tools CP-SAT 硬规则实验独立于已退役 oracle，冻结语料、原始计时和独立验证保存在 `benchmarks/solver-comparison/`。它不比较全部软目标，也不能证明语言层面谁更快。中位数减轻瞬时噪声，但 10% 容差不能把不同机器变成等价环境；现行性能门禁同时检查相对基线及明确的绝对上限。旧基线没有记录机器/编译器信息，新记录包括输入与二进制哈希、编译器、提交和机器信息。参见[技术决策](technology-decisions.md)。

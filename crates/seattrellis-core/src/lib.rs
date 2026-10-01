@@ -1723,8 +1723,8 @@ mod tests {
         let request = r#"{
             "api_version": 2,
             "student_count": 4,
-            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0]],
-            "edges": [[0,1],[1,2],[2,3]],
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0]],
+            "edges": [[0,1],[2,3]],
             "students": [
                 {"key":"S1","display_name":"A","score":100.0,"height_cm":150.0,"vision":"poor"},
                 {"key":"S2","display_name":"B","score":90.0,"height_cm":160.0,"vision":"poor"},
@@ -1804,8 +1804,8 @@ mod tests {
         let fixed_request = r#"{
             "api_version": 2,
             "student_count": 4,
-            "seat_positions": [[0.0,0.0],[1.0,0.0],[2.0,0.0],[3.0,0.0]],
-            "edges": [[0,1],[1,2],[2,3]],
+            "seat_positions": [[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0]],
+            "edges": [[0,1],[2,3]],
             "fixed_seats": [[0, 1]],
             "students": [
                 {"key":"S1","display_name":"A","score":100.0,"height_cm":150.0,"vision":"poor"},

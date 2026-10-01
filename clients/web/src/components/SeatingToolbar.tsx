@@ -9,6 +9,7 @@ export type CanvasView = "canvas" | "table";
 
 type SeatingToolbarProps = {
   view: CanvasView;
+  panelId?: string;
   zoom: number;
   focusMode: boolean;
   selectedCount: number;
@@ -30,6 +31,7 @@ type SeatingToolbarProps = {
  */
 export function SeatingToolbar({
   view,
+  panelId = "seating-view-panel",
   zoom,
   focusMode,
   selectedCount,
@@ -46,10 +48,21 @@ export function SeatingToolbar({
 }: SeatingToolbarProps) {
   return (
     <div className="canvas-toolbar">
-      <div className="view-switch" role="tablist" aria-label={t("canvas.viewLabel")}>
+      <div className="view-switch" role="tablist" aria-label={t("canvas.viewLabel")}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? "canvas" : event.key === "End" ? "table" : view === "canvas" ? "table" : "canvas";
+          onViewChange(next);
+          event.currentTarget.querySelector<HTMLButtonElement>(`[data-view='${next}']`)?.focus();
+        }}>
         <button
           type="button"
           role="tab"
+          id={`${panelId}-canvas-tab`}
+          aria-controls={panelId}
+          data-view="canvas"
+          tabIndex={view === "canvas" ? 0 : -1}
           aria-selected={view === "canvas"}
           data-active={view === "canvas"}
           onClick={() => onViewChange("canvas")}
@@ -59,6 +72,10 @@ export function SeatingToolbar({
         <button
           type="button"
           role="tab"
+          id={`${panelId}-table-tab`}
+          aria-controls={panelId}
+          data-view="table"
+          tabIndex={view === "table" ? 0 : -1}
           aria-selected={view === "table"}
           data-active={view === "table"}
           onClick={() => onViewChange("table")}

@@ -8,7 +8,7 @@
 use serde_json::{json, Value};
 
 use crate::engine::{build_candidate_domains, maximum_candidate_matching, validate_solve_request};
-use crate::evaluation::{build_graph_distance_matrix, build_index_adjacency};
+use crate::evaluation::{build_index_adjacency, build_required_graph_distances};
 use crate::solver::{parse_core_solve_request, resolve_group_rules};
 use crate::NATIVE_API_VERSION;
 
@@ -17,7 +17,7 @@ pub fn precheck_report_json(request_json: &str) -> Result<String, String> {
     validate_solve_request(&request)?;
     let resolved = resolve_group_rules(&request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
-    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let graph_distances = build_required_graph_distances(&adjacency, &request.min_distance);
     let domains = build_candidate_domains(&request, &resolved, &adjacency, &graph_distances);
     let matching_size = maximum_candidate_matching(&domains);
 

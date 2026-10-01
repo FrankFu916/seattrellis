@@ -22,7 +22,13 @@
       "enum": [
         "html",
         "excel",
-        "png"
+        "png",
+        "svg",
+        "print-html",
+        "pdf",
+        "xlsx",
+        "docx",
+        "pptx"
       ],
       "type": "string"
     },

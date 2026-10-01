@@ -38,6 +38,53 @@ fn write_output_atomically(path: &Path, contents: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Stage the entire command output before publishing any of it. Each
+/// target's parent is an explicit trusted root, including reports outside
+/// the project's output directory.
+fn write_output_batch_atomically(
+    writes: &[seattrellis_io::transaction::AtomicFileWrite],
+) -> Result<(), String> {
+    let mut roots = Vec::new();
+    for write in writes {
+        let parent = write
+            .target
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+        let root = std::fs::canonicalize(parent)
+            .map_err(|error| format!("could not resolve {}: {error}", parent.display()))?;
+        if !roots.contains(&root) {
+            roots.push(root);
+        }
+    }
+    if roots.len() == 1 {
+        seattrellis_io::transaction::atomic_write_files(&roots[0], writes)?;
+        return Ok(());
+    }
+    roots.sort();
+    // Single-file writers recover only journals beneath their own trusted
+    // parent. A cross-directory batch has a separate journal namespace and
+    // is recovered by the same multi-root command on retry.
+    let journal_dir = roots
+        .first()
+        .ok_or("output batch must not be empty")?
+        .join(".seattrellis-output-batches");
+    let mut transaction =
+        seattrellis_io::transaction::FileTransaction::begin_with_roots(&journal_dir, &roots)?;
+    for write in writes {
+        transaction.stage(&write.target, &write.contents)?;
+    }
+    transaction.commit(|_| Ok(()))?;
+    Ok(())
+}
+
+fn project_output_path(project_path: &Path, name: &str) -> Result<PathBuf, String> {
+    let outputs = seattrellis_io::projects::project_outputs_dir(project_path)?;
+    Ok(outputs.join(name))
+}
+
 pub fn run_validate(args: &ValidateArgs) -> Result<(), String> {
     let styler = Styler::stdout();
     let problem_text = read_text(&args.problem)?;
@@ -222,10 +269,19 @@ pub fn run_project_solve(args: &ProjectArgs) -> Result<SolveStatus, String> {
         styler.bold("students seated"),
         styler.cyan(&response.assignment.len().to_string())
     );
-    if let Some(output) = &args.output {
-        write_output_atomically(output, response_json.as_bytes())?;
-        println!("wrote result JSON to '{}'", output.display());
+    let output = match &args.output {
+        Some(output) => output.clone(),
+        None => project_output_path(&args.project, "latest.snapshot.json")?,
+    };
+    let mut document: serde_json::Value = serde_json::from_str(&response_json)
+        .map_err(|error| format!("solver returned malformed JSON: {error}"))?;
+    let source = seattrellis_io::projects::load_project_source_documents(&args.project)?;
+    for field in ["students", "layout", "rules"] {
+        document[field] = source[field].clone();
     }
+    document["original_request"] = request;
+    write_output_atomically(&output, document.to_string().as_bytes())?;
+    println!("wrote result JSON to '{}'", output.display());
     Ok(response.status)
 }
 
@@ -239,27 +295,43 @@ fn run_project_solve_candidates(
     request_json: &str,
     candidates: usize,
 ) -> Result<SolveStatus, String> {
-    let report_json = generate_candidates_json_with_latest_snapshot(request_json, candidates, "")
-        .map_err(|error| format!("candidate generation failed: {error}"))?;
-    let report: serde_json::Value = serde_json::from_str(&report_json)
+    let history = seattrellis_io::projects::load_project_history_snapshots(&args.project)?;
+    let latest = history
+        .last()
+        .map(serde_json::Value::to_string)
+        .unwrap_or_default();
+    let report_json =
+        generate_candidates_json_with_latest_snapshot(request_json, candidates, &latest)
+            .map_err(|error| format!("candidate generation failed: {error}"))?;
+    let mut report: serde_json::Value = serde_json::from_str(&report_json)
         .map_err(|error| format!("candidate report is malformed: {error}"))?;
+    let source = seattrellis_io::projects::load_project_source_documents(&args.project)?;
+    for field in ["students", "layout", "rules"] {
+        report[field] = source[field].clone();
+    }
+    report["original_request"] = serde_json::from_str::<serde_json::Value>(request_json)
+        .map_err(|error| format!("compiled request is malformed: {error}"))?;
+    let report_json = report.to_string();
 
     let output = match &args.output {
         Some(path) => path.clone(),
-        None => {
-            let (_, root) = seattrellis_io::projects::load_project_document(&args.project)?;
-            let outputs = root.join("outputs");
-            std::fs::create_dir_all(&outputs)
-                .map_err(|error| format!("could not create {}: {error}", outputs.display()))?;
-            outputs.join("latest.candidates.json")
-        }
+        None => project_output_path(&args.project, "latest.candidates.json")?,
     };
-    write_output_atomically(&output, report_json.as_bytes())?;
+    let mut writes = vec![seattrellis_io::transaction::AtomicFileWrite::replace(
+        &output,
+        report_json.as_bytes(),
+    )];
+    if let Some(report_path) = &args.report {
+        let comparison = build_plan_comparison_artifact(&report)?;
+        writes.push(seattrellis_io::transaction::AtomicFileWrite::replace(
+            report_path,
+            comparison.as_bytes(),
+        ));
+    }
+    write_output_batch_atomically(&writes)?;
     println!("Candidate set written to '{}'", output.display());
     println!("{}", format_candidate_set_summary(&report));
     if let Some(report_path) = &args.report {
-        let comparison = build_plan_comparison_artifact(&report)?;
-        write_output_atomically(report_path, comparison.as_bytes())?;
         println!("\nFull report written to '{}'", report_path.display());
     }
     Ok(SolveStatus::Solved)
@@ -344,9 +416,9 @@ fn format_candidate_set_summary(report: &serde_json::Value) -> String {
 
 /// Build the v2 `plan_comparison_report` artifact (schema dto
 /// `PlanComparisonReportArtifact`) from a generated candidate report.
-/// Entry fields mirror Python's `build_plan_comparison_report` (scoring.py);
-/// explanation/history-comparison text generation has no Rust builder yet,
-/// so those stay empty lists (a registered M4 decision item).
+/// Each explanation comes from an available score dimension; tradeoffs
+/// compare that dimension with the recommended candidate using the same
+/// 0..100 scale. History counts describe the input evidence for the scores.
 fn build_plan_comparison_artifact(report: &serde_json::Value) -> Result<String, String> {
     use seattrellis_schema::dto::plan_comparison::PlanComparisonReportArtifact;
     let candidates = report
@@ -368,6 +440,15 @@ fn build_plan_comparison_artifact(report: &serde_json::Value) -> Result<String, 
         })
         .and_then(|candidate| candidate["plan_score"]["total"].as_f64())
         .unwrap_or(0.0);
+    let recommended_breakdown = candidates
+        .iter()
+        .find(|candidate| {
+            candidate
+                .get("candidate_id")
+                .and_then(serde_json::Value::as_str)
+                == Some(recommended.as_str())
+        })
+        .map(|candidate| &candidate["plan_score"]["breakdown"]);
     let mut entries = Vec::with_capacity(candidates.len());
     for candidate in candidates {
         let id = candidate
@@ -405,6 +486,68 @@ fn build_plan_comparison_artifact(report: &serde_json::Value) -> Result<String, 
                 );
             }
         }
+        let mut explanations = Vec::new();
+        let mut advantages = Vec::new();
+        let mut costs = Vec::new();
+        let mut dimension_names: Vec<&String> = dimension_scores.keys().collect();
+        dimension_names.sort();
+        for name in dimension_names {
+            let dimension = breakdown
+                .get(name)
+                .or_else(|| breakdown["rule_scores"].get(name));
+            let Some(dimension) = dimension.filter(|dimension| dimension["status"] == "available")
+            else {
+                continue;
+            };
+            let Some(score) = dimension.get("score").and_then(serde_json::Value::as_f64) else {
+                continue;
+            };
+            explanations.push(
+                seattrellis_schema::dto::plan_comparison::PlanComparisonExplanation {
+                    kind: "score_dimension".to_string(),
+                    dimension: name.clone(),
+                    score,
+                    rating: dimension
+                        .get("rating")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("not_available")
+                        .to_string(),
+                },
+            );
+            if let Some(other_score) = recommended_breakdown
+                .and_then(|other| other.get(name).or_else(|| other["rule_scores"].get(name)))
+                .and_then(|other| other.get("score"))
+                .and_then(serde_json::Value::as_f64)
+            {
+                let difference = score - other_score;
+                if difference > 0.005 {
+                    advantages.push(format!(
+                        "{name}: {difference:.2} points above the recommended plan"
+                    ));
+                }
+                if difference < -0.005 {
+                    costs.push(format!(
+                        "{name}: {:.2} points below the recommended plan",
+                        -difference
+                    ));
+                }
+            }
+        }
+        let mut history_comparison = HashMap::new();
+        for (name, pointer) in [
+            ("seating_history", "/original_request/history/history_count"),
+            (
+                "pair_history",
+                "/original_request/pair_history/history_count",
+            ),
+        ] {
+            if let Some(count) = report.pointer(pointer).and_then(serde_json::Value::as_u64) {
+                history_comparison.insert(
+                    name.to_string(),
+                    format!("{count} prior seating periods considered"),
+                );
+            }
+        }
         let hard = &breakdown["hard_constraint_summary"];
         entries.push(
             seattrellis_schema::dto::plan_comparison::PlanComparisonEntry {
@@ -424,10 +567,10 @@ fn build_plan_comparison_artifact(report: &serde_json::Value) -> Result<String, 
                     .and_then(serde_json::Value::as_u64)
                     .map(|count| count as u32),
                 dimension_scores,
-                explanations: Vec::new(),
-                advantages: Vec::new(),
-                costs: Vec::new(),
-                history_comparison: HashMap::new(),
+                explanations,
+                advantages,
+                costs,
+                history_comparison,
             },
         );
     }
@@ -476,24 +619,20 @@ fn response_from_snapshot(
             .map_err(|message| format!("saved plan is not valid for this project: {message}"))?;
         return Ok(response);
     }
-    let student_index: HashMap<&str, usize> = request
-        .students
+    let keys = seattrellis_application::class_generation::student_keys(request);
+    let student_index: HashMap<&str, usize> = keys
         .iter()
         .enumerate()
-        .map(|(index, student)| (student.key.as_str(), index))
+        .map(|(index, key)| (key.as_str(), index))
         .collect();
-    let seat_index: HashMap<&str, usize> = request
-        .layout
-        .as_ref()
-        .map(|layout| {
-            layout
-                .seats
-                .iter()
-                .enumerate()
-                .map(|(index, seat)| (seat.seat_id.as_str(), index))
-                .collect()
+    let seat_index: HashMap<String, usize> = (0..request.seat_positions.len())
+        .map(|index| {
+            (
+                seattrellis_application::class_generation::seat_id_for_index(request, index),
+                index,
+            )
         })
-        .unwrap_or_default();
+        .collect();
     let mut assignment: Vec<[usize; 2]> = Vec::new();
     if let Some(entries) = snapshot
         .get("assignments")
@@ -545,19 +684,11 @@ fn response_from_snapshot(
 /// which omits the field so the export layer applies its per-format default
 /// (print-html → landscape A4, everything else portrait).
 pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
+    let defaults = seattrellis_io::projects::project_defaults(&args.project)
+        .map_err(|error| format!("could not read project defaults: {error}"))?;
     let format = match &args.format {
         Some(raw) => normalize_export_format(raw)?,
-        None => {
-            let defaults = seattrellis_io::projects::project_defaults(&args.project)
-                .map_err(|error| format!("could not read project defaults: {error}"))?;
-            match defaults.export_format.as_str() {
-                // The project default is html/excel/png (oracle
-                // `default_export_format`); excel routes through the xlsx
-                // renderer like the explicit `--format excel`.
-                "excel" => "xlsx".to_string(),
-                other => other.to_string(),
-            }
-        }
+        None => normalize_export_format(defaults.export_format.as_str())?,
     };
     let template = args.template.as_deref().unwrap_or("teacher");
     if template != "teacher" && template != "public" {
@@ -578,18 +709,30 @@ pub fn run_project_export(args: &ProjectArgs) -> Result<(), String> {
         .output
         .clone()
         .ok_or("project-export requires --output <file>")?;
-    let snapshot_path = args.snapshot.clone().ok_or(
-        "project-export renders a saved plan: run 'project-solve --output <snapshot.json>' first, then pass --snapshot <file>",
-    )?;
-    let mut request_value = crate::project::build_request(&args.project)?;
+    let snapshot_path = match &args.snapshot {
+        Some(path) => path.clone(),
+        None => latest_snapshot_artifact(&args.project)?,
+    };
+    let snapshot: serde_json::Value = serde_json::from_str(&read_text(&snapshot_path)?)
+        .map_err(|error| format!("'{}' is not valid JSON: {error}", snapshot_path.display()))?;
+    let selected =
+        select_project_artifact_plan(&args.project, &snapshot, args.candidate.as_deref())?;
+    let mut request_value = match selected
+        .get("original_request")
+        .or_else(|| selected.pointer("/metadata/original_request"))
+    {
+        Some(request) => {
+            validate_solve_request_json(&request.to_string())
+                .map_err(|error| format!("saved snapshot original_request is invalid: {error}"))?;
+            request.clone()
+        }
+        None => crate::project::build_request(&args.project)?,
+    };
     if let Some(seed) = args.seed {
         request_value["seed"] = serde_json::Value::from(seed);
     }
     let request: CoreSolveRequest = serde_json::from_value(request_value.clone())
         .map_err(|error| format!("compiled request is malformed: {error}"))?;
-    let snapshot: serde_json::Value = serde_json::from_str(&read_text(&snapshot_path)?)
-        .map_err(|error| format!("'{}' is not valid JSON: {error}", snapshot_path.display()))?;
-    let selected = select_artifact_plan(&snapshot, args.candidate.as_deref())?;
     let response = response_from_snapshot(&request, &selected)?;
 
     // `orientation: auto` stays absent so the export layer's per-format
@@ -652,6 +795,35 @@ fn select_artifact_plan(
     artifact: &serde_json::Value,
     candidate: Option<&str>,
 ) -> Result<serde_json::Value, String> {
+    let kind = artifact.get("kind").and_then(serde_json::Value::as_str);
+    if kind == Some("seattrellis_snapshot") {
+        if let Some(version) = artifact.get("schema_version") {
+            if version.as_u64() != Some(2) {
+                return Err(
+                    "unsupported legacy CLI snapshot schema_version (expected 2)".to_string(),
+                );
+            }
+        }
+    }
+    let payload;
+    let artifact = if artifact.get("data").is_some()
+        || kind == Some("seating_snapshot")
+        || (kind == Some("candidate_set")
+            && artifact
+                .get("schema_version")
+                .is_some_and(serde_json::Value::is_number))
+    {
+        let kind = match artifact.get("kind").and_then(serde_json::Value::as_str) {
+            Some("candidate_set") => seattrellis_schema::ArtifactKind::CandidateSet,
+            Some("seating_snapshot") => seattrellis_schema::ArtifactKind::SeatingSnapshot,
+            _ => return Err("expected a seating snapshot or candidate set artifact".to_string()),
+        };
+        seattrellis_schema::validate_artifact_document(artifact)?;
+        payload = seattrellis_io::projects::read_artifact_payload(artifact.clone(), kind)?;
+        &payload
+    } else {
+        artifact
+    };
     let is_candidate_set = artifact.get("kind").and_then(serde_json::Value::as_str)
         == Some("candidate_set")
         || (artifact.get("candidates").is_some()
@@ -698,7 +870,15 @@ fn select_artifact_plan(
         format!("Unknown candidate ID '{wanted}'. Available candidates: {available}.")
     })?;
     if let Some(snapshot) = selected.get("snapshot") {
-        return Ok(snapshot.clone());
+        let mut snapshot = snapshot.clone();
+        for field in ["students", "layout", "rules", "original_request"] {
+            if snapshot.get(field).is_none() {
+                if let Some(value) = artifact.get(field) {
+                    snapshot[field] = value.clone();
+                }
+            }
+        }
+        return Ok(snapshot);
     }
     // CLI candidate reports carry index-pair `assignment` lists; wrap them
     // into the CoreSolveResponse shape `response_from_snapshot` reads.
@@ -706,14 +886,41 @@ fn select_artifact_plan(
         .get("assignment")
         .cloned()
         .ok_or("candidate entry has no assignment pairs")?;
-    Ok(json!({
+    let mut plan = json!({
         "api_version": seattrellis_core::NATIVE_API_VERSION,
         "feasible": true,
         "status": "Solved",
         "assignment": assignment,
         "attempts_used": selected.get("attempts_used").cloned().unwrap_or(json!(0)),
         "hard_constraints_satisfied": true,
-    }))
+    });
+    for field in ["students", "layout", "rules", "original_request"] {
+        if let Some(value) = artifact.get(field) {
+            plan[field] = value.clone();
+        }
+    }
+    plan["metadata"] = selected.get("metadata").cloned().unwrap_or(json!({}));
+    plan["metadata"]["candidate_id"] = selected["candidate_id"].clone();
+    Ok(plan)
+}
+
+fn select_project_artifact_plan(
+    project: &Path,
+    artifact: &serde_json::Value,
+    explicit_candidate: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let is_candidates = artifact.get("candidates").is_some()
+        || artifact.get("kind").and_then(serde_json::Value::as_str) == Some("candidate_set");
+    let default;
+    let candidate = match explicit_candidate {
+        Some(candidate) => Some(candidate),
+        None if is_candidates => {
+            default = seattrellis_io::projects::project_defaults(project)?.candidate;
+            Some(default.as_str())
+        }
+        None => None,
+    };
+    select_artifact_plan(artifact, candidate)
 }
 
 /// `project-rotate`: generate future seating periods for a project workspace
@@ -735,7 +942,9 @@ pub fn run_project_rotate(args: &ProjectRotateArgs) -> Result<(), String> {
             labels: Vec::new(),
             base_seed: args.seed.unwrap_or(42),
             plan_name: format!("{project_name} Rotation Plan"),
-            base_snapshots: Vec::new(),
+            base_snapshots: seattrellis_io::projects::load_project_history_snapshots(
+                &args.project,
+            )?,
         },
         &editor_store,
         &solve_requests,
@@ -802,39 +1011,9 @@ pub fn run_project_edit(args: &ProjectEditArgs) -> Result<(), String> {
         .map_err(|error| format!("'{}' is not valid JSON: {error}", snapshot_path.display()))?;
 
     // Recover the draft from the saved plan (same shape project-export reads).
-    let assignment = editor_assignment_pairs(&request, &snapshot)?;
-    let assignment_refs: Vec<(&str, &str)> = assignment
-        .iter()
-        .map(|(student, seat)| (student.as_str(), seat.as_str()))
-        .collect();
-    let keys = seattrellis_application::class_generation::student_keys(&request);
-    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let seats = seattrellis_application::class_generation::seat_specs(&request);
-    let display_names: HashMap<String, String> = request
-        .students
-        .iter()
-        .map(|student| {
-            (
-                student.key.clone(),
-                student
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| student.key.clone()),
-            )
-        })
-        .collect();
-
+    let snapshot = select_project_artifact_plan(&args.project, &snapshot, None)?;
     let store = seattrellis_domain::editing::new_draft_store();
-    let mut state = seattrellis_domain::editing::create_draft(
-        &store,
-        "project-edit",
-        None,
-        &key_refs,
-        seats,
-        &assignment_refs,
-        Some(&display_names),
-    )
-    .map_err(|error| format!("could not open the plan for editing: {error}"))?;
+    let mut state = restore_cli_draft(&request_value, &snapshot, "project-edit", &store)?;
 
     let operations = parse_edit_operations(&args.operations, args.operations_file.as_deref())?;
     for (index, operation) in operations.iter().enumerate() {
@@ -863,7 +1042,12 @@ pub fn run_project_edit(args: &ProjectEditArgs) -> Result<(), String> {
         Some(path) => path.clone(),
         None => edited_snapshot_output_path(&snapshot_path, &args.project)?,
     };
-    let document = edited_snapshot_document(&request, &state);
+    let mut source = snapshot.clone();
+    let project_source = seattrellis_io::projects::load_project_source_documents(&args.project)?;
+    for field in ["students", "layout", "rules"] {
+        source[field] = project_source[field].clone();
+    }
+    let document = edited_snapshot_document(&request, &request_value, &state, &source);
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("could not serialize the edited plan: {error}"))?;
     write_output_atomically(&output, text.as_bytes())?;
@@ -888,15 +1072,33 @@ pub fn run_project_repair(args: &ProjectRepairArgs) -> Result<(), String> {
         None => latest_snapshot_artifact(&args.project)?,
     };
     let snapshot_text = read_text(&snapshot_path)?;
+    let snapshot: serde_json::Value = serde_json::from_str(&snapshot_text)
+        .map_err(|error| format!("snapshot is not valid JSON: {error}"))?;
+    let mut snapshot = select_project_artifact_plan(&args.project, &snapshot, None)?;
+    let source = seattrellis_io::projects::load_project_source_documents(&args.project)?;
+    for field in ["students", "layout", "rules"] {
+        snapshot[field] = source[field].clone();
+    }
+    if !args.ignore_saved_locks {
+        saved_locks(&snapshot)?;
+    }
     let repaired = repair_json_with_options(
         &request_json,
-        &snapshot_text,
+        &snapshot.to_string(),
         &args.affected,
         &args.locked_students,
         &args.locked_seats,
         !args.ignore_saved_locks,
     )
     .map_err(|error| format!("repair failed: {error}"))?;
+    let repaired = preserve_repair_context(
+        &request_value,
+        &snapshot,
+        &repaired,
+        &args.locked_students,
+        &args.locked_seats,
+        !args.ignore_saved_locks,
+    )?;
     let output = match &args.output {
         Some(path) => path.clone(),
         None => repaired_snapshot_output_path(&snapshot_path, &args.project)?,
@@ -945,20 +1147,33 @@ pub fn run_schema_migrate(args: &SchemaMigrateArgs) -> Result<(), String> {
     let input_text = read_text(&args.input)?;
     let document: serde_json::Value = serde_json::from_str(&input_text)
         .map_err(|error| format!("'{}' is not valid JSON: {error}", args.input.display()))?;
-    let kind_name = document
-        .get("kind")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("artifact is missing a 'kind' field")?;
-    let kind = artifact_kind_from_name(kind_name)
-        .ok_or_else(|| format!("unknown artifact kind {kind_name:?}"))?;
-    let version = document
-        .get("schema_version")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(1);
+    let kind = migration_artifact_kind(&document)?;
+    let kind_name = serde_json::to_value(kind)
+        .map_err(|error| format!("could not encode artifact kind: {error}"))?;
+    let kind_name = kind_name.as_str().ok_or("invalid artifact kind")?;
+    let version = match document.get("schema_version") {
+        None => 1,
+        Some(value) => value
+            .as_u64()
+            .ok_or("schema_version must be a positive integer")?,
+    };
+    if version != 1 && version != 2 {
+        return Err(format!(
+            "unsupported schema_version {version}; supported versions are 1 and 2"
+        ));
+    }
 
     // v1 artifacts are envelope-less documents (`{"students": [...]}`); if a
     // caller wrapped one in an envelope, unwrap the `data` part first.
-    let migration_source = if version == 1 && document.get("kind").is_some() {
+    let migration_source = if version == 1 && document.get("data").is_some() {
+        if let Some(object) = document.as_object() {
+            if object
+                .keys()
+                .any(|key| !["kind", "schema_version", "data"].contains(&key.as_str()))
+            {
+                return Err("unknown field in v1 artifact envelope".to_string());
+            }
+        }
         document
             .get("data")
             .cloned()
@@ -966,24 +1181,24 @@ pub fn run_schema_migrate(args: &SchemaMigrateArgs) -> Result<(), String> {
     } else {
         document.clone()
     };
-    let migrated = if version == 2 {
-        document.clone()
+    let (migrated, warning_count) = if version == 2 {
+        seattrellis_schema::validate_artifact_document(&document)
+            .map_err(|error| format!("invalid v2 artifact: {error}"))?;
+        (document.clone(), 0)
     } else {
         let (migrated, report) = seattrellis_schema::migrate_v1_to_v2(kind, &migration_source)
             .map_err(|error| format!("migration failed: {error}"))?;
-        if args.dry_run {
-            println!(
-                "would migrate {kind_name} v{version} -> v2 ({} warning(s)): {}",
-                report.warnings.len(),
-                args.output
-                    .as_ref()
-                    .map(|path| format!("target {path}", path = path.display()))
-                    .unwrap_or_else(|| "no target".to_string())
-            );
-            return Ok(());
-        }
-        migrated
+        seattrellis_schema::validate_artifact_document(&migrated)
+            .map_err(|error| format!("invalid migration result: {error}"))?;
+        (migrated, report.warnings.len())
     };
+
+    if args.dry_run {
+        println!(
+            "validated {kind_name} v{version} -> v2 ({warning_count} warning(s)); no files written"
+        );
+        return Ok(());
+    }
 
     let output = if args.in_place {
         args.input.clone()
@@ -1006,64 +1221,59 @@ pub fn run_schema_migrate(args: &SchemaMigrateArgs) -> Result<(), String> {
     Ok(())
 }
 
+fn migration_artifact_kind(
+    document: &serde_json::Value,
+) -> Result<seattrellis_schema::ArtifactKind, String> {
+    use seattrellis_schema::ArtifactKind;
+    if let Some(value) = document.get("kind") {
+        let name = value.as_str().ok_or("artifact kind must be a string")?;
+        return artifact_kind_from_name(name)
+            .ok_or_else(|| format!("unknown artifact kind {name:?}"));
+    }
+    let object = document
+        .as_object()
+        .ok_or("artifact must be a JSON object")?;
+    if document
+        .get("students")
+        .is_some_and(serde_json::Value::is_array)
+        && !object.contains_key("layout")
+        && !object.contains_key("assignments")
+    {
+        return Ok(ArtifactKind::StudentRoster);
+    }
+    if document
+        .get("seats")
+        .is_some_and(serde_json::Value::is_array)
+    {
+        return Ok(ArtifactKind::ClassroomLayout);
+    }
+    Err("cannot identify legacy artifact; expected a students roster or seats layout, or an explicit kind".to_string())
+}
+
 // ---------------------------------------------------------------------------
 // project-edit / project-repair helpers
 // ---------------------------------------------------------------------------
 
-/// The latest `*.snapshot.json` artifact in a project's outputs directory.
+/// Discover saved plans by their content through the shared IO boundary.
 fn latest_snapshot_artifact(project_path: &Path) -> Result<PathBuf, String> {
-    let (_, root) = seattrellis_io::projects::load_project_document(project_path)?;
-    let outputs = root.join("outputs");
-    if !outputs.is_dir() {
-        return Err(format!(
-            "project has no outputs directory yet: {}",
-            outputs.display()
-        ));
-    }
-    let mut candidates: Vec<PathBuf> = std::fs::read_dir(&outputs)
-        .map_err(|error| format!("could not read {}: {error}", outputs.display()))?
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension().and_then(|extension| extension.to_str()) == Some("json")
-                && path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().contains("snapshot"))
-                    .unwrap_or(false)
-        })
-        .collect();
-    candidates.sort_by_key(|path| {
-        std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .ok()
-    });
-    candidates
-        .pop()
-        .ok_or_else(|| format!("no snapshot artifact found under {}", outputs.display()))
+    seattrellis_io::projects::latest_project_plan_artifact(project_path)
+        .map_err(|error| format!("{error}; run 'project-solve' first, or pass --snapshot from 'project-solve --output <file>'"))
 }
 
 fn edited_snapshot_output_path(source: &Path, project_path: &Path) -> Result<PathBuf, String> {
-    let (_, root) = seattrellis_io::projects::load_project_document(project_path)?;
-    let outputs = root.join("outputs");
-    std::fs::create_dir_all(&outputs)
-        .map_err(|error| format!("could not create {}: {error}", outputs.display()))?;
     let name = source
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "snapshot.json".to_string());
-    Ok(outputs.join(format!("edited-{name}")))
+    project_output_path(project_path, &format!("edited-{name}"))
 }
 
 fn repaired_snapshot_output_path(source: &Path, project_path: &Path) -> Result<PathBuf, String> {
-    let (_, root) = seattrellis_io::projects::load_project_document(project_path)?;
-    let outputs = root.join("outputs");
-    std::fs::create_dir_all(&outputs)
-        .map_err(|error| format!("could not create {}: {error}", outputs.display()))?;
     let name = source
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "snapshot.json".to_string());
-    Ok(outputs.join(format!("repaired-{name}")))
+    project_output_path(project_path, &format!("repaired-{name}"))
 }
 
 /// Convert a saved plan document into `(student_key, seat_id)` assignment
@@ -1129,7 +1339,7 @@ fn editor_assignment_pairs(
             .get("seat_id")
             .and_then(serde_json::Value::as_str)
             .ok_or("snapshot assignment is missing seat_id")?;
-        if !request.students.iter().any(|item| item.key == student) {
+        if !keys.iter().any(|key| key == student) {
             return Err(format!("snapshot references unknown student {student:?}"));
         }
         if !seat_ids.iter().any(|item| item == seat) {
@@ -1187,7 +1397,9 @@ fn editor_response(
 /// `project-export` renders.
 fn edited_snapshot_document(
     request: &CoreSolveRequest,
+    request_value: &serde_json::Value,
     state: &seattrellis_domain::editing::EditorState,
+    source: &serde_json::Value,
 ) -> serde_json::Value {
     let entries: Vec<serde_json::Value> = state
         .students
@@ -1202,13 +1414,174 @@ fn edited_snapshot_document(
             })
         })
         .collect();
-    json!({
-        "kind": "seattrellis_snapshot",
-        "schema_version": 2,
-        "assignments": entries,
-        "student_count": request.student_count,
-        "edited": true,
-    })
+    let mut document = source.clone();
+    for field in [
+        "assignment",
+        "api_version",
+        "feasible",
+        "status",
+        "attempts_used",
+        "hard_constraints_satisfied",
+        "total_cost",
+    ] {
+        document
+            .as_object_mut()
+            .expect("validated snapshot object")
+            .remove(field);
+    }
+    document["kind"] = json!("seattrellis_snapshot");
+    document["schema_version"] = json!(2);
+    document["assignments"] = json!(entries);
+    document["student_count"] = json!(request.student_count);
+    document["edited"] = json!(true);
+    document["original_request"] = request_value.clone();
+    let hard_satisfied = editor_response(request, state)
+        .and_then(|response| validate_solve_response(request, &response))
+        .is_ok();
+    document["solver_status"] = json!(if hard_satisfied { "Solved" } else { "Unknown" });
+    if !document
+        .get("metadata")
+        .is_some_and(serde_json::Value::is_object)
+    {
+        document["metadata"] = json!({});
+    }
+    document["metadata"]["lock_state"] = json!({
+        "locked_students": state.students.iter().filter(|student| student.locked)
+            .map(|student| &student.student_key).collect::<Vec<_>>(),
+        "locked_seats": state.seats.iter().filter(|seat| seat.locked)
+            .map(|seat| &seat.seat_id).collect::<Vec<_>>(),
+    });
+    document["metadata"]["editor_revision"] = json!(state.revision);
+    if !document["metadata"]
+        .get("manual_edit")
+        .is_some_and(serde_json::Value::is_object)
+    {
+        document["metadata"]["manual_edit"] = json!({});
+    }
+    let previous_operation_count = source
+        .pointer("/metadata/manual_edit/operation_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    document["metadata"]["manual_edit"]["operation_count"] =
+        json!(previous_operation_count.saturating_add(state.revision));
+    if let Some(candidate_id) = &state.candidate_id {
+        document["metadata"]["candidate_id"] = json!(candidate_id);
+    }
+    document
+}
+
+fn saved_locks(snapshot: &serde_json::Value) -> Result<(Vec<String>, Vec<String>), String> {
+    let Some(metadata) = snapshot.get("metadata") else {
+        return Ok((vec![], vec![]));
+    };
+    let metadata = metadata
+        .as_object()
+        .ok_or("snapshot metadata must be an object")?;
+    let Some(locks) = metadata
+        .get("lock_state")
+        .or_else(|| metadata.get("manual_edit"))
+        .or_else(|| metadata.get("repair"))
+    else {
+        return Ok((vec![], vec![]));
+    };
+    let locks = locks
+        .as_object()
+        .ok_or("snapshot lock state must be an object")?;
+    let read = |field: &str| -> Result<Vec<String>, String> {
+        let Some(value) = locks.get(field) else {
+            return Ok(vec![]);
+        };
+        let values = value
+            .as_array()
+            .ok_or_else(|| format!("snapshot {field} must be an array"))?;
+        let mut result = Vec::new();
+        for value in values {
+            let value = value
+                .as_str()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    format!("snapshot {field} must contain nonempty string identifiers")
+                })?;
+            if !result.iter().any(|entry| entry == value.trim()) {
+                result.push(value.trim().to_string());
+            }
+        }
+        Ok(result)
+    };
+    Ok((read("locked_students")?, read("locked_seats")?))
+}
+
+fn restore_cli_draft(
+    request_value: &serde_json::Value,
+    snapshot: &serde_json::Value,
+    draft_id: &str,
+    store: &seattrellis_domain::editing::EditorDraftStore,
+) -> Result<seattrellis_domain::editing::EditorState, String> {
+    let request: CoreSolveRequest = serde_json::from_value(request_value.clone())
+        .map_err(|error| format!("snapshot request is malformed: {error}"))?;
+    let assignment = editor_assignment_pairs(&request, snapshot)?;
+    let assignment_refs: Vec<(&str, &str)> = assignment
+        .iter()
+        .map(|(student, seat)| (student.as_str(), seat.as_str()))
+        .collect();
+    let (students, seats) = saved_locks(snapshot)?;
+    let draft = seattrellis_application::class_document::restored_draft(
+        request_value,
+        draft_id,
+        snapshot
+            .pointer("/metadata/candidate_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        &assignment_refs,
+        &students,
+        &seats,
+    )
+    .map_err(|error| error.message)?;
+    seattrellis_domain::editing::store_draft(store, draft)?;
+    seattrellis_domain::editing::fetch_state(store, draft_id)
+}
+
+fn preserve_repair_context(
+    request: &serde_json::Value,
+    source: &serde_json::Value,
+    repaired: &str,
+    locked_students: &[String],
+    locked_seats: &[String],
+    reuse_saved_locks: bool,
+) -> Result<String, String> {
+    let result: serde_json::Value = serde_json::from_str(repaired)
+        .map_err(|error| format!("repair returned malformed JSON: {error}"))?;
+    let mut document = source.clone();
+    let object = document
+        .as_object_mut()
+        .ok_or("snapshot must be an object")?;
+    object.remove("assignment");
+    for (field, value) in result.as_object().ok_or("repair returned a non-object")? {
+        object.insert(field.clone(), value.clone());
+    }
+    let (mut students, mut seats) = if reuse_saved_locks {
+        saved_locks(source)?
+    } else {
+        (vec![], vec![])
+    };
+    for (existing, additional) in [(&mut students, locked_students), (&mut seats, locked_seats)] {
+        for value in additional {
+            if !existing.contains(value) {
+                existing.push(value.clone());
+            }
+        }
+    }
+    document["original_request"] = request.clone();
+    if !document
+        .get("metadata")
+        .is_some_and(serde_json::Value::is_object)
+    {
+        document["metadata"] = json!({});
+    }
+    document["metadata"]["lock_state"] =
+        json!({"locked_students": students, "locked_seats": seats});
+    document["metadata"]["repair"] = result["summary"].clone();
+    Ok(document.to_string())
 }
 
 /// The v2 JSON Schema document embedded for one artifact kind (the same
@@ -1267,15 +1640,31 @@ pub fn v2_schema_for_kind(kind: &str) -> Result<String, String> {
 pub fn run_repair(args: &RepairArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
     let snapshot_text = read_text(&args.snapshot)?;
+    let request: serde_json::Value = serde_json::from_str(&problem_text)
+        .map_err(|error| format!("problem is not valid JSON: {error}"))?;
+    let snapshot: serde_json::Value = serde_json::from_str(&snapshot_text)
+        .map_err(|error| format!("snapshot is not valid JSON: {error}"))?;
+    let snapshot = select_artifact_plan(&snapshot, None)?;
+    if !args.ignore_saved_locks {
+        saved_locks(&snapshot)?;
+    }
     let repaired = repair_json_with_options(
         &problem_text,
-        &snapshot_text,
+        &snapshot.to_string(),
         &args.affected,
         &args.locked_students,
         &args.locked_seats,
         !args.ignore_saved_locks,
     )
     .map_err(|error| format!("repair failed: {error}"))?;
+    let repaired = preserve_repair_context(
+        &request,
+        &snapshot,
+        &repaired,
+        &args.locked_students,
+        &args.locked_seats,
+        !args.ignore_saved_locks,
+    )?;
     if let Some(output) = &args.output {
         write_output_atomically(output, repaired.as_bytes())?;
         println!("wrote repaired snapshot to '{}'", output.display());
@@ -1303,44 +1692,9 @@ pub fn run_edit(args: &EditArgs) -> Result<(), String> {
     let request: CoreSolveRequest = serde_json::from_value(request_value.clone())
         .map_err(|error| format!("artifact is not core-compatible: {error}"))?;
 
-    let assignment = editor_assignment_pairs(&request, &artifact)?;
-    let assignment_refs: Vec<(&str, &str)> = assignment
-        .iter()
-        .map(|(student, seat)| (student.as_str(), seat.as_str()))
-        .collect();
-    let keys: Vec<String> = request
-        .students
-        .iter()
-        .map(|student| student.key.clone())
-        .collect();
-    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let seats = seattrellis_application::class_generation::seat_specs(&request);
-    let display_names: HashMap<String, String> = request
-        .students
-        .iter()
-        .map(|student| {
-            (
-                student.key.clone(),
-                student
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| student.key.clone()),
-            )
-        })
-        .collect();
-
     let operations = parse_edit_operations(&args.operations, args.operations_file.as_deref())?;
     let store = seattrellis_domain::editing::new_draft_store();
-    let mut state = seattrellis_domain::editing::create_draft(
-        &store,
-        "edit",
-        None,
-        &key_refs,
-        seats,
-        &assignment_refs,
-        Some(&display_names),
-    )
-    .map_err(|error| format!("could not open the plan for editing: {error}"))?;
+    let mut state = restore_cli_draft(&request_value, &artifact, "edit", &store)?;
     for (index, operation) in operations.iter().enumerate() {
         let envelope = seattrellis_domain::editing::EditorCommandEnvelope {
             kind: "seattrellis_editor_command".to_string(),
@@ -1368,7 +1722,7 @@ pub fn run_edit(args: &EditArgs) -> Result<(), String> {
         .output
         .clone()
         .unwrap_or_else(|| PathBuf::from("outputs/edited.snapshot.json"));
-    let document = edited_snapshot_document(&request, &state);
+    let document = edited_snapshot_document(&request, &request_value, &state, &artifact);
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("could not serialize the edited plan: {error}"))?;
     write_output_atomically(&output, text.as_bytes())?;
@@ -1443,40 +1797,20 @@ fn select_edit_artifact(
     artifact: &serde_json::Value,
     candidate: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    if artifact.get("kind").and_then(serde_json::Value::as_str) != Some("candidate_set") {
-        if candidate.is_some() {
-            return Err(
-                "--candidate can only be used when --snapshot is a candidate set.".to_string(),
-            );
-        }
-        return Ok(artifact.clone());
-    }
-    let candidates = artifact
-        .get("candidates")
-        .and_then(serde_json::Value::as_array)
-        .ok_or("candidate set has no candidates array")?;
-    let recommended = artifact
-        .get("recommended_candidate_id")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("recommended");
-    let wanted = candidate.unwrap_or("recommended");
-    let selected = candidates.iter().find(|plan| {
-        let plan_id = plan
-            .get("candidate_id")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("");
-        plan_id == wanted || (wanted == "recommended" && plan_id == recommended)
-    });
-    let selected = selected.ok_or_else(|| format!("candidate set has no candidate {wanted:?}"))?;
-    selected
-        .get("snapshot")
-        .cloned()
-        .ok_or_else(|| "selected candidate has no snapshot document".to_string())
+    select_artifact_plan(artifact, candidate)
 }
 
 /// Compile a core request from the artifact's embedded students/layout/rules
 /// through the same io path project plans use.
 fn compile_edit_request(artifact: &serde_json::Value) -> Result<serde_json::Value, String> {
+    if let Some(request) = artifact
+        .get("original_request")
+        .or_else(|| artifact.pointer("/metadata/original_request"))
+    {
+        validate_solve_request_json(&request.to_string())
+            .map_err(|error| format!("snapshot original_request is invalid: {error}"))?;
+        return Ok(request.clone());
+    }
     let students = artifact
         .get("students")
         .ok_or("snapshot has no students array (edit needs a seating snapshot or candidate set)")?;
@@ -1752,10 +2086,34 @@ pub fn run_candidates(args: &CandidatesArgs) -> Result<(), String> {
 /// Run the solution audit and print the JSON report (plan §6.5).
 pub fn run_audit(args: &AuditArgs) -> Result<(), String> {
     let problem_text = read_text(&args.problem)?;
+    validate_solve_request_json(&problem_text)
+        .map_err(|error| format!("audit problem is invalid: {error}"))?;
+    let request: CoreSolveRequest = serde_json::from_str(&problem_text)
+        .map_err(|error| format!("audit problem is malformed: {error}"))?;
     let solution_text = read_text(&args.solution)?;
-    let solution: CoreSolveResponse = serde_json::from_str(&solution_text)
+    let solution: serde_json::Value = serde_json::from_str(&solution_text)
         .map_err(|error| format!("'{}' is not valid JSON: {error}", args.solution.display()))?;
-    let report = audit_report_json(&problem_text, &solution.assignment)
+    let selected = select_artifact_plan(&solution, None)?;
+    let pairs = editor_assignment_pairs(&request, &selected)?;
+    let keys = seattrellis_application::class_generation::student_keys(&request);
+    let key_index: HashMap<&str, usize> = keys
+        .iter()
+        .enumerate()
+        .map(|(index, key)| (key.as_str(), index))
+        .collect();
+    let seat_index: HashMap<String, usize> = (0..request.seat_positions.len())
+        .map(|index| {
+            (
+                seattrellis_application::class_generation::seat_id_for_index(&request, index),
+                index,
+            )
+        })
+        .collect();
+    let assignment: Vec<[usize; 2]> = pairs
+        .iter()
+        .map(|(student, seat)| [key_index[student.as_str()], seat_index[seat]])
+        .collect();
+    let report = audit_report_json(&problem_text, &assignment)
         .map_err(|error| format!("audit failed: {error}"))?;
     println!("{report}");
     Ok(())
@@ -2008,6 +2366,8 @@ pub fn run_solve(args: &SolveArgs) -> Result<SolveStatus, String> {
 pub fn run_export(args: &ExportArgs) -> Result<(), String> {
     let styler = Styler::stdout();
     let problem_text = read_text(&args.problem)?;
+    validate_solve_request_json(&problem_text)
+        .map_err(|error| format!("export problem is invalid: {error}"))?;
     let problem_value: serde_json::Value = serde_json::from_str(&problem_text)
         .map_err(|error| format!("'{}' is not valid JSON: {error}", args.problem.display()))?;
     let request: CoreSolveRequest =
@@ -2026,13 +2386,8 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
                 args.solution.display()
             )
         })?;
-    let response: CoreSolveResponse =
-        serde_json::from_value(solution_value.clone()).map_err(|error| {
-            format!(
-                "'{}' is not a valid solve result (CoreSolveResponse): {error}",
-                args.solution.display()
-            )
-        })?;
+    let selected = select_artifact_plan(&solution_value, None)?;
+    let response = response_from_snapshot(&request, &selected)?;
 
     validate_solve_response(&request, &response)
         .map_err(|message| format!("refusing to export an invalid solved plan: {message}"))?;
@@ -2045,6 +2400,7 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
         "format": match args.format {
             ExportFormat::Svg => "svg",
             ExportFormat::Html => "html",
+            ExportFormat::PrintHtml => "print-html",
             ExportFormat::Png => "png",
             ExportFormat::Pdf => "pdf",
             ExportFormat::Xlsx => "xlsx",
@@ -2064,7 +2420,7 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
         "page_scale": 1.0,
         "locale": "zh",
         "request": problem_value,
-        "response": solution_value,
+        "response": response,
     });
     let (bytes, warnings) = export_plan_with_warnings(&export_request.to_string())?;
     // Non-fatal quality warnings (e.g. PNG/PDF without a usable system font)
@@ -2078,6 +2434,7 @@ pub fn run_export(args: &ExportArgs) -> Result<(), String> {
     let format_name = match args.format {
         ExportFormat::Svg => styler.cyan("SVG"),
         ExportFormat::Html => styler.cyan("HTML"),
+        ExportFormat::PrintHtml => styler.cyan("Print HTML"),
         ExportFormat::Png => styler.cyan("PNG"),
         ExportFormat::Pdf => styler.cyan("PDF"),
         ExportFormat::Xlsx => styler.cyan("XLSX"),

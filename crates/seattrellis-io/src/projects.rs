@@ -42,12 +42,14 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use seattrellis_schema::dto::project::ExportFormat;
+use seattrellis_schema::dto::project::{ExportFormat, SeatTrellisProjectArtifact};
+use seattrellis_schema::dto::rule_set::RuleSetArtifact;
 use seattrellis_schema::dto::snapshot::SeatingSnapshotArtifact;
 use seattrellis_schema::{
     aggregate_verdicts, classify_findings, classify_scan, classify_unscanned, is_sensitive_key,
     scan_document, PrivacyVerdict,
 };
+use seattrellis_schema::{ArtifactEnvelope, ArtifactKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -225,32 +227,65 @@ struct ResolvedProject {
     outputs_dir: PathBuf,
 }
 
+/// Read a durable v2 envelope or retain a legacy payload. The envelope
+/// header is checked before callers interpret its typed data.
+pub fn read_artifact_payload(value: Value, expected_kind: ArtifactKind) -> Result<Value, String> {
+    if value.get("data").is_some() || value.get("schema_version").and_then(Value::as_u64) == Some(2)
+    {
+        let envelope: ArtifactEnvelope<Value> = serde_json::from_value(value)
+            .map_err(|error| format!("invalid artifact envelope: {error}"))?;
+        if envelope.kind != expected_kind {
+            return Err(format!(
+                "unexpected artifact kind {:?}; expected {:?}",
+                envelope.kind, expected_kind
+            ));
+        }
+        seattrellis_schema::check_version(envelope.kind, envelope.schema_version)?;
+        if envelope.schema_version != 2 {
+            return Err("artifact envelope requires schema_version 2".to_string());
+        }
+        Ok(envelope.data)
+    } else {
+        Ok(value)
+    }
+}
+
+fn project_payload(value: Value) -> Result<Value, String> {
+    let is_envelope = value.get("data").is_some()
+        || value.get("schema_version").and_then(Value::as_u64) == Some(2);
+    let payload = read_artifact_payload(value, ArtifactKind::Project)?;
+    if is_envelope {
+        let project: SeatTrellisProjectArtifact = serde_json::from_value(payload.clone())
+            .map_err(|error| format!("invalid project payload: {error}"))?;
+        if project.kind != "seattrellis_project" || project.schema_version != 1 {
+            return Err(
+                "expected project payload kind seattrellis_project and schema_version 1"
+                    .to_string(),
+            );
+        }
+    } else {
+        // Legacy projects permitted custom fields. Preserve that compatibility
+        // while the v2 DTO keeps its explicit extensions contract.
+        if payload.get("kind").and_then(Value::as_str) != Some("seattrellis_project") {
+            return Err("expected kind seattrellis_project".to_string());
+        }
+        if let Some(version) = payload.get("schema_version") {
+            if version.as_u64() != Some(1) {
+                return Err(format!("unsupported project schema_version {version}"));
+            }
+        }
+    }
+    Ok(payload)
+}
+
 /// Load and validate a project file without touching any referenced inputs.
 fn load_project(path: &Path) -> Result<ProjectFile, String> {
     let bytes = read_file_capped(path, MAX_PROJECT_FILE_BYTES)
         .map_err(|e| format!("Invalid project file: {} ({e})", path.display()))?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid project file: {} ({e})", path.display()))?;
-    let obj = value.as_object().ok_or_else(|| {
-        format!(
-            "Invalid project file: {} (not a JSON object)",
-            path.display()
-        )
-    })?;
-    if obj.get("kind").and_then(Value::as_str) != Some("seattrellis_project") {
-        return Err(format!(
-            "Invalid project file: {} (expected kind \"seattrellis_project\")",
-            path.display()
-        ));
-    }
-    if let Some(version) = obj.get("schema_version") {
-        if version.as_i64() != Some(1) {
-            return Err(format!(
-                "Invalid project file: {} (unsupported schema_version {version})",
-                path.display()
-            ));
-        }
-    }
+    let value = project_payload(value)
+        .map_err(|error| format!("Invalid project file: {} ({error})", path.display()))?;
     let project: ProjectFile = serde_json::from_value(value)
         .map_err(|e| format!("Invalid project file: {} ({e})", path.display()))?;
     require_relative_path(project.students.as_deref(), "students")?;
@@ -433,6 +468,69 @@ pub fn resolve_project_workspace(project_path: &Path) -> Result<ResolvedProjectW
     })
 }
 
+/// Resolve the configured output directory without requiring current source
+/// inputs, so a self-contained saved artifact can still be reopened/exported.
+pub fn project_outputs_dir(project_path: &Path) -> Result<PathBuf, String> {
+    Ok(resolve_project(project_path, false)?.1.outputs_dir)
+}
+
+/// Discover the newest seating plan by its bounded JSON contents, including
+/// user-chosen filenames. Canonical containment also protects symlink aliases.
+pub fn latest_project_plan_artifact(project_path: &Path) -> Result<PathBuf, String> {
+    let outputs = project_outputs_dir(project_path)?;
+    let missing = || {
+        format!(
+            "no saved plan found under {}; run project-solve first or pass an explicit snapshot",
+            outputs.display()
+        )
+    };
+    if !outputs.is_dir() {
+        return Err(missing());
+    }
+    let mut paths = fs::read_dir(&outputs)
+        .map_err(|error| format!("could not list outputs {}: {error}", outputs.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .filter_map(|path| fs::canonicalize(path).ok())
+        .filter(|path| path.starts_with(&outputs) && path.is_file())
+        .collect::<Vec<_>>();
+    paths.sort_by(|left, right| (mtime_nanos(right), right).cmp(&(mtime_nanos(left), left)));
+    for path in paths {
+        let named_plan = path.file_name().is_some_and(|name| {
+            let name = name.to_string_lossy();
+            name.contains("snapshot") || name.contains("candidates")
+        });
+        let document = read_file_capped(&path, MAX_BUNDLE_FILE_BYTES)
+            .and_then(|bytes| {
+                serde_json::from_slice::<Value>(&bytes)
+                    .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))
+            })
+            .and_then(project_artifact_payload);
+        let document = match document {
+            Ok(document) => document,
+            Err(error) if named_plan => return Err(error),
+            Err(_) => continue,
+        };
+        if matches!(
+            artifact_kind(&document).as_str(),
+            "snapshot" | "candidate_set"
+        ) {
+            return Ok(path);
+        }
+        if named_plan {
+            return Err(format!(
+                "saved plan has no snapshot or candidates: {}",
+                path.display()
+            ));
+        }
+    }
+    Err(missing())
+}
+
 /// Resolve a single project reference relative to `root` with canonical
 /// containment. Fails when the file is missing or escapes the root.
 pub fn resolve_project_reference(
@@ -441,6 +539,23 @@ pub fn resolve_project_reference(
     label: &str,
 ) -> Result<PathBuf, String> {
     resolve_reference(root, relative, label, true)
+}
+
+/// Read an existing JSON reference only after canonical project containment.
+/// Limits bound the bytes actually read even if a file grows during reading.
+pub fn read_project_reference_json(
+    root: &Path,
+    relative: &str,
+    label: &str,
+    max_bytes: u64,
+) -> Result<Value, String> {
+    if max_bytes == 0 || max_bytes > MAX_BUNDLE_FILE_BYTES {
+        return Err("project JSON read limit must be between 1 and 100 MiB".to_string());
+    }
+    let path = resolve_project_reference(root, relative, label)?;
+    let bytes = read_file_capped(&path, max_bytes)?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| format!("invalid {label} JSON in {}: {error}", path.display()))
 }
 
 /// Load a project document without requiring referenced inputs to exist.
@@ -461,10 +576,10 @@ pub fn load_project_document(project_path: &Path) -> Result<(Value, PathBuf), St
     // Reuse the same document validation as resolve_project, then hand back
     // the raw JSON so callers can render their own views of the workspace.
     load_project(&project_file)?;
-    let bytes = fs::read(&project_file)
-        .map_err(|error| format!("could not read {}: {error}", project_file.display()))?;
+    let bytes = read_file_capped(&project_file, MAX_PROJECT_FILE_BYTES)?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("Invalid project file: {} ({error})", project_file.display()))?;
+    let value = project_payload(value)?;
     let root = project_file
         .parent()
         .map(Path::to_path_buf)
@@ -506,25 +621,248 @@ pub fn project_defaults(project_path: &Path) -> Result<ProjectDefaults, String> 
 /// This is the single workspace -> request conversion used by the CLI
 /// project commands (plan §5.5: CLI and local API call the same library).
 pub fn build_project_solve_request(project_path: &Path) -> Result<Value, String> {
-    let workspace = resolve_project_workspace(project_path)?;
+    let source = load_project_source_documents(project_path)?;
+    let mut request =
+        compile_solve_request_from_json(&source["students"], &source["layout"], &source["rules"])?;
+    let snapshots = load_project_history_snapshots(project_path)?;
+    if !snapshots.is_empty() {
+        let request_json = serde_json::to_string(&request).map_err(|error| error.to_string())?;
+        let snapshots_json =
+            serde_json::to_string(&snapshots).map_err(|error| error.to_string())?;
+        let seat_report: Value = serde_json::from_str(&seattrellis_core::history_report_json(
+            &request_json,
+            &snapshots_json,
+        )?)
+        .map_err(|error| error.to_string())?;
+        let pair_report: Value = serde_json::from_str(&seattrellis_core::pair_report_json(
+            &request_json,
+            &snapshots_json,
+            10,
+            1,
+        )?)
+        .map_err(|error| error.to_string())?;
+        let students = seat_report["students"]
+            .as_array()
+            .ok_or("invalid seat history report")?
+            .iter()
+            .filter_map(|student| {
+                Some((
+                    student["student_key"].as_str()?.to_string(),
+                    student.clone(),
+                ))
+            })
+            .collect::<serde_json::Map<String, Value>>();
+        let pairs = pair_report["pairs"]
+            .as_array()
+            .ok_or("invalid pair history report")?
+            .iter()
+            .filter_map(|pair| Some((pair["pair_key"].as_str()?.to_string(), pair.clone())))
+            .collect::<serde_json::Map<String, Value>>();
+        request["history"] = json!({"history_count": snapshots.len(), "students": students});
+        request["pair_history"] = json!({
+            "history_count": snapshots.len(), "pairs": pairs,
+            "within_distance": 1, "within_distance_metric": "chebyshev",
+        });
+    }
+    Ok(request)
+}
 
-    // Roster CSV -> roster-style student records (automatic header mapping),
-    // then the shared JSON compile path (the same shapes seating snapshots
-    // embed, so `edit` validates edited artifacts identically).
-    let roster_bytes = fs::read(&workspace.students)
-        .map_err(|error| format!("could not read {}: {error}", workspace.students.display()))?;
-    let students = crate::roster::parse_roster_students(&roster_bytes)?;
-    let students_value = serde_json::to_value(&students)
-        .map_err(|error| format!("could not serialize the roster: {error}"))?;
-    let layout_text = fs::read_to_string(&workspace.layout)
-        .map_err(|error| format!("could not read {}: {error}", workspace.layout.display()))?;
-    let layout: Value = serde_json::from_str(&layout_text)
-        .map_err(|error| format!("layout file is not valid JSON: {error}"))?;
-    let rules_text = fs::read_to_string(&workspace.rules)
-        .map_err(|error| format!("could not read {}: {error}", workspace.rules.display()))?;
-    let rules: Value = serde_json::from_str(&rules_text)
-        .map_err(|error| format!("rules file is not valid JSON: {error}"))?;
-    compile_solve_request_from_json(&students_value, &layout, &rules)
+/// Complete source documents for persistence adapters. Do not reconstruct
+/// these from the solver's smaller cost-ranking projection.
+pub fn load_project_source_documents(project_path: &Path) -> Result<Value, String> {
+    let workspace = resolve_project_workspace(project_path)?;
+    let roster_bytes = read_file_capped(&workspace.students, MAX_BUNDLE_FILE_BYTES)?;
+    let students = if workspace
+        .students
+        .extension()
+        .is_some_and(|extension| extension == "json")
+    {
+        let document: Value = serde_json::from_slice(&roster_bytes)
+            .map_err(|error| format!("roster file is not valid JSON: {error}"))?;
+        let document = read_artifact_payload(document, ArtifactKind::StudentRoster)?;
+        let students = document
+            .get("students")
+            .cloned()
+            .ok_or("roster has no students array")?;
+        normalize_roster_students(&students)?
+    } else {
+        serde_json::to_value(crate::roster::parse_roster_students(&roster_bytes)?)
+            .map_err(|error| format!("could not serialize the roster: {error}"))?
+    };
+    let layout = read_artifact_payload(
+        serde_json::from_slice(&read_file_capped(&workspace.layout, MAX_BUNDLE_FILE_BYTES)?)
+            .map_err(|error| format!("layout file is not valid JSON: {error}"))?,
+        ArtifactKind::ClassroomLayout,
+    )?;
+    let rules = read_artifact_payload(
+        serde_json::from_slice(&read_file_capped(&workspace.rules, MAX_BUNDLE_FILE_BYTES)?)
+            .map_err(|error| format!("rules file is not valid JSON: {error}"))?,
+        ArtifactKind::RuleSet,
+    )?;
+    Ok(json!({"students": students, "layout": layout, "rules": rules}))
+}
+
+/// Load deterministic oldest-first history inside the configured project
+/// directory. Symlink escapes, malformed artifacts and over-budget files
+/// fail explicitly instead of silently dropping historical constraints.
+pub fn load_project_history_snapshots(project_path: &Path) -> Result<Vec<Value>, String> {
+    let workspace = resolve_project_workspace(project_path)?;
+    let Some(directory) = workspace.history_dir.filter(|path| path.exists()) else {
+        return Ok(Vec::new());
+    };
+    let mut files = Vec::new();
+    add_directory_files(
+        &mut files,
+        &mut HashSet::new(),
+        &directory,
+        &workspace.root,
+        "history_dir",
+    )?;
+    files.retain(|path| {
+        path.extension()
+            .is_some_and(|extension| extension == "json")
+    });
+    files.sort_by(|left, right| (mtime_nanos(left), left).cmp(&(mtime_nanos(right), right)));
+    let mut snapshots = Vec::new();
+    let mut total_bytes = 0u64;
+    for path in files {
+        let bytes = read_file_capped(&path, MAX_BUNDLE_FILE_BYTES)?;
+        total_bytes = total_bytes
+            .checked_add(bytes.len() as u64)
+            .ok_or("history size overflow")?;
+        if total_bytes > MAX_BUNDLE_TOTAL_BYTES {
+            return Err("project history exceeds the 500 MiB read limit".to_string());
+        }
+        let document: Value = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("invalid history JSON {}: {error}", path.display()))?;
+        let kind = document
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("snapshot");
+        let document = match kind {
+            "snapshot" | "seating_snapshot" | "seattrellis_snapshot" => {
+                project_artifact_payload(document)?
+            }
+            "candidate_set" => read_artifact_payload(document, ArtifactKind::CandidateSet)?,
+            "rotation_plan" => read_artifact_payload(document, ArtifactKind::RotationPlan)?,
+            "history_archive" => read_artifact_payload(document, ArtifactKind::HistoryArchive)?,
+            _ => continue,
+        };
+        if document.get("assignments").is_some() || document.get("assignment").is_some() {
+            snapshots.push(normalize_history_snapshot(&document, &document)?);
+        } else if let Some(candidates) = document.get("candidates").and_then(Value::as_array) {
+            let recommended = document
+                .get("recommended_candidate_id")
+                .and_then(Value::as_str);
+            let candidate = candidates
+                .iter()
+                .find(|candidate| {
+                    candidate.get("candidate_id").and_then(Value::as_str) == recommended
+                })
+                .or_else(|| candidates.first())
+                .ok_or("history candidate set has no candidates")?;
+            snapshots.push(normalize_history_snapshot(
+                candidate.get("snapshot").unwrap_or(candidate),
+                &document,
+            )?);
+        } else if let Some(periods) = document.get("periods").and_then(Value::as_array) {
+            for period in periods {
+                snapshots.push(normalize_history_snapshot(
+                    period
+                        .get("snapshot")
+                        .ok_or("history rotation period has no snapshot")?,
+                    &document,
+                )?);
+            }
+        } else if let Some(archive) = document.get("snapshots").and_then(Value::as_array) {
+            for entry in archive {
+                snapshots.push(normalize_history_snapshot(
+                    entry
+                        .get("snapshot")
+                        .ok_or("history archive entry has no snapshot")?,
+                    &document,
+                )?);
+            }
+        } else {
+            return Err(format!(
+                "history artifact has no snapshots: {}",
+                path.display()
+            ));
+        }
+    }
+    Ok(snapshots)
+}
+
+fn normalize_history_snapshot(snapshot: &Value, context: &Value) -> Result<Value, String> {
+    let mut snapshot = project_artifact_payload(snapshot.clone())?;
+    if snapshot.get("assignments").is_some() {
+        return Ok(snapshot);
+    }
+    let assignment = snapshot
+        .get("assignment")
+        .and_then(Value::as_array)
+        .ok_or("history snapshot has no assignments")?;
+    let request = if let Some(request) = snapshot
+        .get("original_request")
+        .or_else(|| snapshot.pointer("/metadata/original_request"))
+        .or_else(|| context.get("original_request"))
+        .or_else(|| context.pointer("/metadata/original_request"))
+    {
+        request.clone()
+    } else {
+        let field = |name| snapshot.get(name).or_else(|| context.get(name));
+        compile_solve_request_from_json(
+            field("students").ok_or("index-based history needs its original student records")?,
+            field("layout").ok_or("index-based history needs its original layout")?,
+            field("rules").ok_or("index-based history needs its original rules")?,
+        )?
+    };
+    seattrellis_core::validate_solve_request_json(&request.to_string())?;
+    let request = seattrellis_core::parse_core_solve_request(&request.to_string())?;
+    let layout = request
+        .layout
+        .ok_or("index-based history needs its original layout")?;
+    let mut assignments = Vec::with_capacity(assignment.len());
+    for pair in assignment {
+        let pair: [usize; 2] = serde_json::from_value(pair.clone())
+            .map_err(|error| format!("invalid history assignment pair: {error}"))?;
+        let student = request
+            .students
+            .get(pair[0])
+            .ok_or("history assignment references unknown original student")?;
+        let seat = layout
+            .seats
+            .iter()
+            .filter(|seat| seat.enabled)
+            .nth(pair[1])
+            .ok_or("history assignment references unknown original seat")?;
+        assignments.push(json!({"student_key":student.key,"student_name":student.display_name.as_deref().unwrap_or(&student.key),"seat_id":seat.seat_id}));
+    }
+    snapshot
+        .as_object_mut()
+        .ok_or("history snapshot must be an object")?
+        .insert("assignments".to_string(), json!(assignments));
+    Ok(snapshot)
+}
+
+fn normalize_roster_students(students: &Value) -> Result<Value, String> {
+    let mut normalized = students.clone();
+    let entries = normalized
+        .as_array_mut()
+        .ok_or("students must be a JSON array")?;
+    for student in entries {
+        let object = student
+            .as_object_mut()
+            .ok_or("student must be a JSON object")?;
+        if let Some(Value::Number(vision)) = object.get("vision") {
+            object.insert("vision".to_string(), json!(vision.to_string()));
+        }
+        serde_json::from_value::<seattrellis_schema::dto::student_roster::RosterStudent>(
+            student.clone(),
+        )
+        .map_err(|error| format!("invalid roster student: {error}"))?;
+    }
+    Ok(normalized)
 }
 
 /// Compile a core `CoreSolveRequest` JSON from roster-style student objects,
@@ -537,8 +875,13 @@ pub fn compile_solve_request_from_json(
     layout_value: &Value,
     rules_value: &Value,
 ) -> Result<Value, String> {
-    let layout = layout_value;
-    let rules = rules_value;
+    let layout_document =
+        read_artifact_payload(layout_value.clone(), ArtifactKind::ClassroomLayout)?;
+    let rules_document = read_artifact_payload(rules_value.clone(), ArtifactKind::RuleSet)?;
+    let layout = &layout_document;
+    let rules = &rules_document;
+    let normalized_students = normalize_roster_students(students_value)?;
+    let students_value = &normalized_students;
 
     // Roster-style student objects -> core student records. `key` mirrors the
     // Python `student_id or name or ""` resolution; numeric vision values are
@@ -587,20 +930,31 @@ pub fn compile_solve_request_from_json(
         .get("seats")
         .and_then(Value::as_array)
         .ok_or_else(|| "layout has no seats array".to_string())?;
+    let typed_seats: Vec<seattrellis_core::models::Seat> = seats
+        .iter()
+        .map(|seat| {
+            serde_json::from_value(seat.clone())
+                .map_err(|error| format!("layout seat is invalid: {error}"))
+        })
+        .collect::<Result<_, _>>()?;
+    let mut seat_ids = HashSet::new();
+    for seat in &typed_seats {
+        if seat.seat_id.is_empty() || !seat_ids.insert(seat.seat_id.as_str()) {
+            return Err("layout seat_id values must be nonempty and unique".to_string());
+        }
+    }
     let enabled: Vec<&Value> = seats
         .iter()
-        .filter(|seat| seat.get("enabled").and_then(Value::as_bool).unwrap_or(true))
+        .zip(&typed_seats)
+        .filter_map(|(value, seat)| seat.enabled.then_some(value))
         .collect();
     if enabled.is_empty() {
         return Err("layout has no enabled seats".to_string());
     }
-    let seat_positions: Vec<[f64; 2]> = enabled
+    let seat_positions: Vec<[f64; 2]> = typed_seats
         .iter()
-        .map(|seat| {
-            let x = seat.get("x").and_then(Value::as_f64).unwrap_or(0.0);
-            let y = seat.get("y").and_then(Value::as_f64).unwrap_or(0.0);
-            [x, y]
-        })
+        .filter(|seat| seat.enabled)
+        .map(|seat| [seat.x_default(), seat.y_default()])
         .collect();
     let seat_index_by_id: HashMap<&str, usize> = enabled
         .iter()
@@ -665,6 +1019,9 @@ pub fn compile_solve_request_from_json(
     // Strict schema mirroring the Python RuleSet models (extra="forbid"):
     // unknown rule kinds / soft objectives must never be silently dropped —
     // a dropped constraint changes the plan the teacher asked for.
+    if !rules.is_object() {
+        return Err("rules must be a JSON object".to_string());
+    }
     if let Some(object) = rules.as_object() {
         const KNOWN_TOP: [&str; 5] = ["schema_version", "seed", "hard", "soft", "groups"];
         for key in object.keys() {
@@ -674,6 +1031,9 @@ pub fn compile_solve_request_from_json(
         }
     }
     let hard = rules.get("hard").cloned().unwrap_or_else(|| json!({}));
+    if !hard.is_object() {
+        return Err("rules.hard must be a JSON object".to_string());
+    }
     if let Some(object) = hard.as_object() {
         const KNOWN_HARD: [&str; 4] = [
             "fixed_seats",
@@ -688,6 +1048,9 @@ pub fn compile_solve_request_from_json(
         }
     }
     let soft = rules.get("soft").cloned().unwrap_or_else(|| json!({}));
+    if !soft.is_object() {
+        return Err("rules.soft must be a JSON object".to_string());
+    }
     if let Some(object) = soft.as_object() {
         const KNOWN_SOFT: [&str; 10] = [
             "vision_front",
@@ -705,6 +1068,28 @@ pub fn compile_solve_request_from_json(
             if !KNOWN_SOFT.contains(&key.as_str()) {
                 return Err(format!("unknown soft objective {key:?} in rules file"));
             }
+        }
+    }
+    let mut strict_rules = rules.clone();
+    for key in ["must_be_adjacent", "cannot_be_adjacent"] {
+        if let Some(pairs) = strict_rules
+            .get_mut("hard")
+            .and_then(|hard| hard.get_mut(key))
+            .and_then(Value::as_array_mut)
+        {
+            for pair in pairs {
+                if pair.is_array() {
+                    *pair = json!({"students": pair.clone()});
+                }
+            }
+        }
+    }
+    serde_json::from_value::<RuleSetArtifact>(strict_rules)
+        .map_err(|error| format!("invalid rules document: {error}"))?;
+    let mut student_keys = HashSet::new();
+    for student in &core_students {
+        if !student_keys.insert(student["key"].as_str().unwrap_or_default()) {
+            return Err("student identifiers must be unique".to_string());
         }
     }
     let student_index: HashMap<&str, usize> = core_students
@@ -888,19 +1273,31 @@ fn validate_limit(limit: usize) -> Result<(), String> {
 fn list_projects_in(directory: &Path, limit: usize) -> Result<Vec<RecentProject>, String> {
     let mut results: Vec<RecentProject> = Vec::new();
     let mut stack: Vec<PathBuf> = vec![directory.to_path_buf()];
+    let mut visited = HashSet::new();
     while let Some(dir) = stack.pop() {
+        let Ok(dir) = fs::canonicalize(dir) else {
+            continue;
+        };
+        if !dir.starts_with(directory) || !visited.insert(dir.clone()) {
+            continue;
+        }
         let entries = match fs::read_dir(&dir) {
             Ok(entries) => entries,
             Err(_) => continue,
         };
         for entry in entries.flatten() {
-            let path = entry.path();
+            let Ok(path) = fs::canonicalize(entry.path()) else {
+                continue;
+            };
+            if !path.starts_with(directory) {
+                continue;
+            }
             if entry.file_name().to_string_lossy().starts_with('.') {
                 continue;
             }
             if path.is_dir() {
                 stack.push(path);
-            } else if is_project_file_name(&path) {
+            } else if is_project_file_name(&path) && visited.insert(path.clone()) {
                 if let Ok(project) = load_project(&path) {
                     let name = project
                         .name
@@ -1028,8 +1425,13 @@ fn artifact_items(dir: &Path, warnings: &mut Vec<String>) -> Vec<ProjectArtifact
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
-                paths.push(path);
+            if let Ok(canonical) = fs::canonicalize(&path) {
+                if canonical.starts_with(dir)
+                    && canonical.is_file()
+                    && path.extension().is_some_and(|ext| ext == "json")
+                {
+                    paths.push(canonical);
+                }
             }
         }
     }
@@ -1056,6 +1458,7 @@ fn artifact_from_file(path: &Path) -> Result<ProjectArtifact, String> {
         fs::metadata(path).map_err(|e| format!("Could not stat {}: {e}", path.display()))?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid JSON in {}: {e}", path.display()))?;
+    let value = project_artifact_payload(value)?;
     let kind = artifact_kind(&value);
     let provenance = artifact_provenance(&value, &kind);
     let created_at = value
@@ -1079,13 +1482,49 @@ fn artifact_from_file(path: &Path) -> Result<ProjectArtifact, String> {
     })
 }
 
+fn project_artifact_payload(value: Value) -> Result<Value, String> {
+    // Older CLI edits used this flat kind with numeric schema_version 2,
+    // before the registry envelope existed. Keep this exact legacy alias;
+    // registered v2 snapshots still require a complete strict envelope.
+    if value.get("kind").and_then(Value::as_str) == Some("seattrellis_snapshot")
+        && value.get("data").is_none()
+    {
+        if value
+            .get("schema_version")
+            .is_some_and(|version| version.as_u64() != Some(2))
+        {
+            return Err(
+                "unsupported legacy seattrellis_snapshot schema_version; expected 2".to_string(),
+            );
+        }
+        return Ok(value);
+    }
+
+    let kind = match value.get("kind").and_then(Value::as_str) {
+        Some("seating_snapshot" | "snapshot" | "seattrellis_snapshot") => {
+            ArtifactKind::SeatingSnapshot
+        }
+        Some("candidate_set") => ArtifactKind::CandidateSet,
+        Some("rotation_plan") => ArtifactKind::RotationPlan,
+        _ => return Ok(value),
+    };
+    read_artifact_payload(value, kind)
+}
+
 fn artifact_kind(value: &Value) -> String {
     match value.get("kind").and_then(Value::as_str) {
         Some("candidate_set") => "candidate_set".to_string(),
         Some("rotation_plan") => "rotation_plan".to_string(),
-        Some("snapshot") => "snapshot".to_string(),
+        Some("snapshot" | "seattrellis_snapshot" | "seating_snapshot") => "snapshot".to_string(),
         Some(_) => "unknown".to_string(),
-        None if value.get("assignments").is_some() => "snapshot".to_string(),
+        None if value.get("assignments").is_some() || value.get("assignment").is_some() => {
+            "snapshot".to_string()
+        }
+        None if value.get("candidates").is_some()
+            && value.get("recommended_candidate_id").is_some() =>
+        {
+            "candidate_set".to_string()
+        }
         None => "unknown".to_string(),
     }
 }
@@ -1096,11 +1535,30 @@ fn student_count_of(value: &Value) -> Option<usize> {
     if let Some(students) = value.get("students").and_then(Value::as_array) {
         return Some(students.len());
     }
-    if let Some(periods) = value.get("periods").and_then(Value::as_array) {
-        if let Some(snapshot) = periods.first().and_then(|period| period.get("snapshot")) {
-            if let Some(students) = snapshot.get("students").and_then(Value::as_array) {
-                return Some(students.len());
-            }
+    if let Some(count) = value
+        .get("student_count")
+        .or_else(|| {
+            value
+                .get("original_request")
+                .and_then(|request| request.get("student_count"))
+        })
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+    {
+        return Some(count);
+    }
+    for key in ["assignments", "assignment"] {
+        if let Some(assignments) = value.get(key).and_then(Value::as_array) {
+            return Some(assignments.len());
+        }
+    }
+    for key in ["periods", "candidates"] {
+        if let Some(entry) = value
+            .get(key)
+            .and_then(Value::as_array)
+            .and_then(|entries| entries.first())
+        {
+            return student_count_of(entry.get("snapshot").unwrap_or(entry));
         }
     }
     None
@@ -1155,7 +1613,10 @@ fn artifact_provenance(value: &Value, kind: &str) -> Option<ProjectArtifactProve
         source = Some("restored");
     }
     if source.is_none() {
-        let generated = value.get("solver_status").is_some_and(|v| !v.is_null())
+        let generated = value
+            .get("solver_status")
+            .or_else(|| value.get("status"))
+            .is_some_and(|v| !v.is_null())
             || kind == "candidate_set"
             || kind == "rotation_plan";
         source = Some(if generated { "generated" } else { "unknown" });
@@ -1363,7 +1824,18 @@ fn add_directory_files(
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.file_name().is_some_and(|name| name == ".DS_Store") {
+            if path.file_name().is_some_and(|name| {
+                let name = name.to_string_lossy();
+                matches!(
+                    name.as_ref(),
+                    ".DS_Store"
+                        | ".seattrellis-transactions"
+                        | ".seattrellis-output-batches"
+                        | ".seattrellis-transaction.lock"
+                        | ".seattrellis-transactions.lock"
+                        | ".seattrellis-output-batches.lock"
+                )
+            }) {
                 continue;
             }
             if path.is_dir() && !is_symlink(&path) {
@@ -1517,6 +1989,7 @@ pub fn pack_project(project_path: &str) -> Result<Vec<u8>, String> {
     let (_, paths) = resolve_project(Path::new(project_path), true)?;
     let files = collect_project_files(&paths, true)?;
     let root = &paths.root;
+    validate_bundle_files(&files, root)?;
     let privacy = privacy_report(&paths, true)?;
     let manifest = json!({
         "kind": "seattrellis_project_bundle",
@@ -1559,7 +2032,39 @@ pub fn default_bundle_name(project_path: &str) -> Result<String, String> {
     Ok(format!("{name}.seattrellis.zip"))
 }
 
+fn validate_bundle_files(files: &[PathBuf], root: &Path) -> Result<(), String> {
+    let mut total = 0u64;
+    for path in files {
+        let name = rel_posix(path, root);
+        safe_archive_name(&name)?;
+        if name == "manifest.json" {
+            return Err(
+                "project bundle reserves the root name manifest.json; rename the referenced file"
+                    .to_string(),
+            );
+        }
+        let size = fs::metadata(path)
+            .map_err(|error| format!("Could not read project file {}: {error}", path.display()))?
+            .len();
+        if size > MAX_BUNDLE_FILE_BYTES {
+            return Err(format!("Project bundle file is too large: {name}"));
+        }
+        total = total
+            .checked_add(size)
+            .ok_or("project bundle size overflow")?;
+        if total > MAX_BUNDLE_TOTAL_BYTES {
+            return Err("Project bundle is too large to restore safely.".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn pack_files_zip(files: &[PathBuf], root: &Path, manifest: &[u8]) -> Result<Vec<u8>, String> {
+    validate_bundle_files(files, root)?;
+    if manifest.len() as u64 > MAX_MANIFEST_BYTES {
+        return Err("Project bundle manifest is unexpectedly large.".to_string());
+    }
+    let mut total_bytes = 0u64;
     let mut cursor = Cursor::new(Vec::new());
     {
         let mut writer = ZipWriter::new(&mut cursor);
@@ -1574,8 +2079,13 @@ fn pack_files_zip(files: &[PathBuf], root: &Path, manifest: &[u8]) -> Result<Vec
             .map_err(|e| format!("Could not write project bundle manifest: {e}"))?;
         for path in files {
             let name = rel_posix(path, root);
-            let bytes = fs::read(path)
-                .map_err(|e| format!("Could not read project file {}: {e}", path.display()))?;
+            let bytes = read_file_capped(path, MAX_BUNDLE_FILE_BYTES)?;
+            total_bytes = total_bytes
+                .checked_add(bytes.len() as u64)
+                .ok_or("project bundle size overflow")?;
+            if total_bytes > MAX_BUNDLE_TOTAL_BYTES {
+                return Err("Project bundle is too large to restore safely.".to_string());
+            }
             writer
                 .start_file(&name, options)
                 .map_err(|e| format!("Could not create project bundle: {e}"))?;
@@ -1654,6 +2164,9 @@ pub fn restore_project_bundle(
         )
     })?;
     let dest_abs = parent_abs.join(&dest_name);
+    let journal_dir = parent_abs.join(crate::transaction::JOURNAL_DIR_NAME);
+    let mut transaction =
+        crate::transaction::FileTransaction::begin_with_root(&journal_dir, &parent_abs)?;
 
     if dest_abs.exists() {
         let non_empty = fs::read_dir(&dest_abs)
@@ -1695,10 +2208,6 @@ pub fn restore_project_bundle(
     // destination (if any) moves to a unique backup, and the batch commits
     // only after the final path re-validates. A failure or crash never
     // leaves a partial destination.
-    let journal_dir = parent_abs.join(crate::transaction::JOURNAL_DIR_NAME);
-    crate::transaction::recover_leftover_transactions_with_root(&journal_dir, &parent_abs)?;
-    let mut transaction =
-        crate::transaction::FileTransaction::begin_with_root(&journal_dir, &parent_abs)?;
     if dest_abs.exists() {
         transaction.stage_directory(&dest_abs, &staging)?;
     } else {
@@ -1734,6 +2243,82 @@ pub fn restore_project_json(bundle_bytes: &[u8], output_dir: &str) -> Result<Str
 // Artifact compare + restore (M2 parity, ledger A.2/A.3)
 // ---------------------------------------------------------------------------
 
+/// Normalize supported CLI plans into the durable snapshot DTO while keeping
+/// complete source records, locks and the original compiled request.
+fn canonical_project_snapshot(
+    snapshot: &Value,
+    context: &Value,
+) -> Result<SeatingSnapshotArtifact, String> {
+    let snapshot = normalize_history_snapshot(snapshot, context)?;
+    let is_cli = snapshot.get("kind").and_then(Value::as_str) == Some("seattrellis_snapshot")
+        || snapshot.get("assignment").is_some()
+        || snapshot.get("original_request").is_some()
+        || context.get("original_request").is_some();
+    let value = if is_cli {
+        let field = |name| snapshot.get(name).or_else(|| context.get(name));
+        let students = normalize_roster_students(
+            field("students").ok_or("saved CLI plan has no original roster")?,
+        )?;
+        let layout = read_artifact_payload(
+            field("layout")
+                .cloned()
+                .ok_or("saved CLI plan has no original layout")?,
+            ArtifactKind::ClassroomLayout,
+        )?;
+        let mut rules = read_artifact_payload(
+            field("rules")
+                .cloned()
+                .ok_or("saved CLI plan has no original rules")?,
+            ArtifactKind::RuleSet,
+        )?;
+        for key in ["must_be_adjacent", "cannot_be_adjacent"] {
+            if let Some(pairs) = rules
+                .get_mut("hard")
+                .and_then(|hard| hard.get_mut(key))
+                .and_then(Value::as_array_mut)
+            {
+                for pair in pairs {
+                    if pair.is_array() {
+                        *pair = json!({"students":pair.clone()});
+                    }
+                }
+            }
+        }
+        let mut metadata = context
+            .get("metadata")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        if let Some(entries) = snapshot.get("metadata").and_then(Value::as_object) {
+            metadata.extend(entries.clone());
+        }
+        if let Some(request) = field("original_request") {
+            metadata.insert("original_request".to_string(), request.clone());
+        }
+        json!({
+            "schema_version":"1.0",
+            "created_at":field("created_at").and_then(Value::as_str).unwrap_or_default(),
+            "seed":field("seed").and_then(Value::as_u64).or_else(|| field("original_request").and_then(|request| request.get("seed")).and_then(Value::as_u64)).unwrap_or(42),
+            "metadata":metadata, "students":students, "layout":layout,"rules":rules,
+            "assignments":snapshot["assignments"],
+            "solver_status":field("solver_status").or_else(|| field("status")).and_then(Value::as_str).unwrap_or("Unknown"),
+            "objective_value":field("objective_value").or_else(|| field("total_cost")).cloned().unwrap_or(Value::Null),
+            "metrics":field("metrics").filter(|value| value.is_object()).cloned().unwrap_or_else(|| json!({})),
+        })
+    } else {
+        let mut value = snapshot;
+        if let Some(object) = value.as_object_mut() {
+            object.remove("kind");
+            object.remove("restored_at");
+            object
+                .entry("schema_version".to_string())
+                .or_insert_with(|| json!("1.0"));
+        }
+        value
+    };
+    serde_json::from_value(value).map_err(|error| format!("invalid snapshot: {error}"))
+}
+
 /// The comparable view of a project artifact: kind, metadata and the
 /// assignment map, extracted from a snapshot / candidate_set / rotation_plan
 /// document (mirrors Python's `_snapshot_for_artifact`).
@@ -1754,6 +2339,7 @@ fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
     let bytes = read_file_capped(path, MAX_BUNDLE_FILE_BYTES)?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid JSON in {}: {e}", path.display()))?;
+    let value = project_artifact_payload(value)?;
     let kind = artifact_kind(&value);
     let created_at = value
         .get("created_at")
@@ -1781,7 +2367,7 @@ fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
                         .and_then(Value::as_array)
                         .and_then(|candidates| candidates.first())
                 })
-                .and_then(|candidate| candidate.get("snapshot"))
+                .map(|candidate| candidate.get("snapshot").unwrap_or(candidate))
                 .ok_or_else(|| format!("Candidate set has no snapshot: {}", path.display()))?
         }
         "rotation_plan" => value
@@ -1800,15 +2386,7 @@ fn artifact_snapshot_view(path: &Path) -> Result<ArtifactSnapshotView, String> {
     // Compare the typed semantic model, not raw JSON spelling. This mirrors
     // Python/Pydantic: omitting a field and explicitly writing its default
     // must not be reported as a layout/rules change.
-    let mut snapshot_value = snapshot.clone();
-    if let Some(object) = snapshot_value.as_object_mut() {
-        object.remove("kind");
-        object.remove("restored_at");
-        object
-            .entry("schema_version".to_string())
-            .or_insert_with(|| json!("1.0"));
-    }
-    let snapshot: SeatingSnapshotArtifact = serde_json::from_value(snapshot_value)
+    let snapshot = canonical_project_snapshot(snapshot, &value)
         .map_err(|error| format!("Invalid snapshot in {}: {error}", path.display()))?;
     let assignments = snapshot
         .assignments
@@ -1979,6 +2557,7 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
     let bytes = read_file_capped(&source_path, MAX_BUNDLE_FILE_BYTES)?;
     let source_document: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("Invalid JSON in {}: {e}", source_path.display()))?;
+    let source_document = project_artifact_payload(source_document)?;
     let source_kind = artifact_kind(&source_document);
     if source_kind == "rotation_plan" {
         return Err(
@@ -2006,13 +2585,13 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
                         .and_then(Value::as_array)
                         .and_then(|candidates| candidates.first())
                 })
-                .and_then(|candidate| candidate.get("snapshot"))
+                .map(|candidate| candidate.get("snapshot").unwrap_or(candidate))
                 .cloned()
                 .ok_or_else(|| {
                     format!("Candidate set has no snapshot: {}", source_path.display())
                 })?
         }
-        "snapshot" => source_document,
+        "snapshot" => source_document.clone(),
         _ => {
             return Err(format!(
                 "Unsupported project artifact kind for restoration: {source_kind}"
@@ -2022,19 +2601,7 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
     fs::create_dir_all(&paths.outputs_dir)
         .map_err(|e| format!("Could not create outputs directory: {e}"))?;
 
-    // Mirror the Python oracle: every restorable artifact becomes a typed
-    // SeatingSnapshot, including a candidate set's recommended snapshot.
-    // Legacy Rust restores carried a top-level `restored_at`; Python's typed
-    // model ignores that field, so remove it before strict Rust parsing.
-    let mut snapshot_value = snapshot_value;
-    if let Some(object) = snapshot_value.as_object_mut() {
-        object.remove("kind");
-        object.remove("restored_at");
-        object
-            .entry("schema_version".to_string())
-            .or_insert_with(|| json!("1.0"));
-    }
-    let mut snapshot: SeatingSnapshotArtifact = serde_json::from_value(snapshot_value)
+    let mut snapshot = canonical_project_snapshot(&snapshot_value, &source_document)
         .map_err(|error| format!("Invalid snapshot in {}: {error}", source_path.display()))?;
     let source_name = source_path
         .file_name()
@@ -2053,35 +2620,31 @@ pub fn restore_artifact_json(project_path: &str, artifact_path: &str) -> Result<
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_else(|| "artifact".to_string());
     let clean_stem = stem.strip_suffix(".snapshot").unwrap_or(&stem);
+    let journal_dir = paths.outputs_dir.join(crate::transaction::JOURNAL_DIR_NAME);
+    let mut transaction =
+        crate::transaction::FileTransaction::begin_with_root(&journal_dir, &paths.outputs_dir)?;
     let mut target = paths
         .outputs_dir
         .join(format!("restored-{clean_stem}.snapshot.json"));
-    let mut index = 2;
-    while target.exists() {
+    let mut index = 2u64;
+    while fs::symlink_metadata(&target).is_ok() {
         target = paths
             .outputs_dir
             .join(format!("restored-{clean_stem}-{index}.snapshot.json"));
-        index += 1;
+        index = index
+            .checked_add(1)
+            .ok_or("restored artifact suffix overflow")?;
     }
-    // Test-only fault injection (revised plan §17.2.4): artifact restore writes a
-    // fresh create-new file; an injected failure must leave the outputs dir
-    // without a partial artifact.
-    #[cfg(test)]
-    if crate::transaction::inject_commit_failure() {
-        return Err(
-            "injected artifact restore failure (SEATTRELLIS fault-injection test)".to_string(),
-        );
-    }
-    fs::write(
-        &target,
-        serde_json::to_vec(&snapshot)
-            .map_err(|e| format!("Could not serialize restored artifact: {e}"))?,
-    )
-    .map_err(|e| {
-        format!(
-            "Could not write restored artifact {}: {e}",
-            target.display()
-        )
+    let contents = serde_json::to_vec(&snapshot)
+        .map_err(|error| format!("Could not serialize restored artifact: {error}"))?;
+    transaction.stage_new(&target, &contents)?;
+    transaction.commit(|path| {
+        serde_json::from_slice::<SeatingSnapshotArtifact>(&read_file_capped(
+            path,
+            MAX_BUNDLE_FILE_BYTES,
+        )?)
+        .map(|_| ())
+        .map_err(|error| format!("Invalid restored snapshot: {error}"))
     })?;
 
     let response = json!({
@@ -2102,8 +2665,13 @@ fn read_manifest(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Manifest, St
         return Err("Project bundle manifest is unexpectedly large.".to_string());
     }
     let mut bytes: Vec<u8> = Vec::new();
-    file.read_to_end(&mut bytes)
+    file.by_ref()
+        .take(MAX_MANIFEST_BYTES + 1)
+        .read_to_end(&mut bytes)
         .map_err(|e| format!("Could not read project bundle manifest: {e}"))?;
+    if bytes.len() as u64 > MAX_MANIFEST_BYTES {
+        return Err("Project bundle manifest is unexpectedly large.".to_string());
+    }
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| "Project bundle manifest is not valid UTF-8 JSON.".to_string())?;
     let obj = value
@@ -2131,6 +2699,11 @@ fn read_manifest(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<Manifest, St
         .map(|item| item.as_str().map(str::to_string))
         .collect::<Option<Vec<String>>>()
         .ok_or_else(|| "Project bundle manifest files must be strings.".to_string())?;
+    if files.iter().any(|name| name == "manifest.json") {
+        return Err(
+            "Project bundle manifest cannot list reserved manifest.json as a payload.".to_string(),
+        );
+    }
     let unique: HashSet<&String> = files.iter().collect();
     if unique.len() != files.len() {
         return Err("Project bundle manifest contains duplicate file entries.".to_string());
@@ -2178,7 +2751,7 @@ fn safe_archive_name(value: &str) -> Result<String, String> {
     if value.is_empty() {
         return Err("Unsafe project bundle path: empty entry name".to_string());
     }
-    if value.contains('\\') || value.contains('\0') {
+    if value.contains('\\') || value.contains('\0') || value.contains(':') {
         return Err(format!("Unsafe project bundle path: {value:?}"));
     }
     let path = Path::new(value);
@@ -2251,7 +2824,19 @@ fn read_file_capped(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
             metadata.len()
         ));
     }
-    fs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))
+    if !metadata.is_file() {
+        return Err(format!("not a regular file: {}", path.display()));
+    }
+    let file = fs::File::open(path)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!("File is too large to read: {}", path.display()));
+    }
+    Ok(bytes)
 }
 
 fn rel_posix(path: &Path, root: &Path) -> String {
@@ -2534,7 +3119,7 @@ mod tests {
                 "students": "students.csv",
                 "layout": "layout.json",
                 "rules": "rules.json",
-                "default_export_format": "pdf"
+                "default_export_format": "unknown-format"
             }"#,
         )
         .unwrap();
@@ -2993,6 +3578,271 @@ mod tests {
     }
 
     #[test]
+    fn index_history_uses_original_roster_order_and_candidate_source() {
+        let students = json!([{ "student_id":"A" }, {"student_id":"B"}]);
+        let layout = json!({"seats":[
+            {"seat_id":"disabled","row":1,"col":0,"enabled":false},
+            {"seat_id":"s1","row":1,"col":1},
+            {"seat_id":"s2","row":1,"col":2}
+        ]});
+        let request = compile_solve_request_from_json(&students, &layout, &json!({})).unwrap();
+        let root = temp_root("index-history-source");
+        let project = write_project(&root, "history source", "id,name\nB,Bob\nA,Alice\n", true);
+        fs::write(root.join("classroom.json"), layout.to_string()).unwrap();
+        fs::write(root.join("rules.json"), "{}").unwrap();
+        write_snapshot(
+            &root,
+            "original.snapshot.json",
+            &json!({
+                "kind":"seattrellis_snapshot","schema_version":2,"assignment":[[0,0],[1,1]],"original_request":request
+            }),
+        );
+        write_snapshot(
+            &root,
+            "candidates.json",
+            &json!({
+                "kind":"candidate_set","original_request":request,"recommended_candidate_id":"c1",
+                "candidates":[{"candidate_id":"c1","assignment":[[0,1],[1,0]]}]
+            }),
+        );
+        let snapshots = load_project_history_snapshots(&project).unwrap();
+        assert_eq!(snapshots.len(), 2);
+        assert_eq!(snapshots[0]["assignments"][0]["student_key"], "A");
+        assert_eq!(snapshots[1]["assignments"][0]["student_key"], "A");
+        assert_eq!(snapshots[0]["assignments"][0]["seat_id"], "s1");
+        assert_eq!(snapshots[1]["assignments"][0]["seat_id"], "s2");
+        let current_request = build_project_solve_request(&project).unwrap();
+        assert_eq!(current_request["students"][0]["key"], "B");
+        assert_eq!(current_request["history"]["history_count"], 2);
+        assert_eq!(
+            current_request["history"]["students"]["A"]["records"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn latest_plan_and_history_recognize_arbitrary_cli_output_filenames() {
+        let root = temp_root("latest-arbitrary-output");
+        let project = write_project(&root, "latest", "id,name\nA,Alice\n", false);
+        let outputs = root.join("outputs");
+        fs::create_dir(&outputs).unwrap();
+        let result = outputs.join("result.json");
+        fs::write(
+            &result,
+            json!({"kind":"seattrellis_snapshot","schema_version":2,
+            "assignment":[[0,0]],"status":"Solved"})
+            .to_string(),
+        )
+        .unwrap();
+        fs::remove_file(root.join("students.csv")).unwrap();
+        assert_eq!(latest_project_plan_artifact(&project).unwrap(), result);
+        let history = project_history(project.to_str().unwrap()).unwrap();
+        assert_eq!(history.outputs[0].kind, "snapshot");
+        assert_eq!(history.outputs[0].student_count, Some(1));
+        assert_eq!(
+            artifact_kind(&json!({"assignment":[[0,0]],"status":"Solved"})),
+            "snapshot"
+        );
+        assert_eq!(
+            artifact_kind(&json!({"candidates":[],"recommended_candidate_id":"c1"})),
+            "candidate_set"
+        );
+        fs::remove_file(&result).unwrap();
+        fs::write(outputs.join("latest.snapshot.json"), "invalid JSON").unwrap();
+        assert!(latest_project_plan_artifact(&project)
+            .unwrap_err()
+            .contains("invalid JSON"));
+    }
+
+    #[test]
+    fn legacy_project_custom_fields_remain_readable_after_local_migration() {
+        let root = temp_root("legacy-project-custom-fields");
+        let project = write_project(&root, "custom", "id,name\nA,Alice\n", false);
+        let mut document: Value = serde_json::from_slice(&fs::read(&project).unwrap()).unwrap();
+        document["teacher_label"] = json!("local custom value");
+        fs::write(&project, document.to_string()).unwrap();
+        let (loaded, _) = load_project_document(&project).unwrap();
+        assert_eq!(loaded["teacher_label"], "local custom value");
+        // Durable v2 data must use the explicit extension namespace instead.
+        fs::write(
+            &project,
+            json!({"kind":"project","schema_version":2,"data":document}).to_string(),
+        )
+        .unwrap();
+        assert!(load_project_document(&project).is_err());
+    }
+
+    #[test]
+    fn compiler_rejects_present_rules_with_wrong_shapes() {
+        let students = json!([{ "student_id": "A" }, { "student_id": "B" }]);
+        let layout = json!({"seats": [
+            {"seat_id":"s1","row":1,"col":1},
+            {"seat_id":"s2","row":1,"col":2}
+        ]});
+        for rules in [
+            json!(null),
+            json!({"hard": []}),
+            json!({"hard": null}),
+            json!({"hard": {"cannot_be_adjacent": "A,B"}}),
+            json!({"hard": {"fixed_seats": {"student":"A","seat_id":"s1"}}}),
+            json!({"hard": {"min_distance": [{"students":["A","B","A"],"distance":1}]}}),
+            json!({"hard": {"must_be_adjacent": [{"students":["A","B","A"]}]}}),
+            json!({"hard": {"cannot_be_adjacent": [["A","B","A"]]}}),
+            json!({"hard": {"must_be_adjacent": [{"students":["A",1]}]}}),
+            json!({"hard": {"min_distance": [{"students":["A","B"],"distance":1,"metric":null}]}}),
+            json!({"hard": {"min_distance": [{"students":["A","B"],"distance":1,"metric":1}]}}),
+            json!({"hard": {"min_distance": [{"students":["A","B"],"distance":1,"metric":"taxicab"}]}}),
+            json!({"soft": []}),
+            json!({"soft": {"vision_front": true}}),
+            json!({"seed": "42"}),
+            json!({"groups": "ignored"}),
+        ] {
+            assert!(
+                compile_solve_request_from_json(&students, &layout, &rules).is_err(),
+                "accepted {rules}"
+            );
+        }
+        // Legacy pair arrays are a deliberate compatibility format.
+        let request = compile_solve_request_from_json(
+            &students,
+            &layout,
+            &json!({
+                "hard": {"cannot_be_adjacent": [["A","B"]]}
+            }),
+        )
+        .unwrap();
+        assert_eq!(request["cannot_be_adjacent"], json!([[0, 1]]));
+        let mut bad_layout = layout.clone();
+        bad_layout["adjacency"] = json!({"custom_edges":[["s1","s2","s1"]]});
+        assert!(compile_solve_request_from_json(&students, &bad_layout, &json!({})).is_err());
+    }
+
+    #[test]
+    fn compiler_defaults_coordinates_from_typed_row_and_column() {
+        let students = json!([{ "student_id": "A" }, { "student_id": "B" }]);
+        let layout = json!({"seats": [
+            {"seat_id":"s1","row":1,"col":1},
+            {"seat_id":"s2","row":1,"col":2}
+        ]});
+        let request = compile_solve_request_from_json(
+            &students,
+            &layout,
+            &json!({
+                "hard": {"min_distance": [{"students":["A","B"],"distance":0.5}]}
+            }),
+        )
+        .unwrap();
+        assert_eq!(request["seat_positions"], json!([[1.0, 1.0], [2.0, 1.0]]));
+        let result: Value = serde_json::from_str(
+            &seattrellis_core::solve_problem_json(&request.to_string()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["status"], "Solved");
+    }
+
+    #[test]
+    fn migrated_project_and_referenced_envelopes_work_with_history() {
+        let root = temp_root("project-envelopes-history");
+        let project_file = root.join("demo.project.json");
+        let project = json!({"kind":"seattrellis_project","schema_version":1,
+            "students":"students.json","layout":"layout.json","rules":"rules.json",
+            "history_dir":"history","outputs_dir":"outputs"});
+        fs::write(
+            &project_file,
+            json!({"kind":"project","schema_version":2,"data":project}).to_string(),
+        )
+        .unwrap();
+        let students = json!([{ "student_id": "A", "name":"Alice", "notes":"retain me",
+            "gender":"F","attributes":{"class":"one"},"score":80}, {"student_id":"B"}]);
+        fs::write(
+            root.join("students.json"),
+            json!({"kind":"student_roster","schema_version":2,
+            "data":{"students":students}})
+            .to_string(),
+        )
+        .unwrap();
+        let layout = json!({"layout_id":"room","seats":[
+            {"seat_id":"s1","row":1,"col":1,"zone":"front"},
+            {"seat_id":"s2","row":1,"col":2,"zone":"front"}
+        ]});
+        fs::write(
+            root.join("layout.json"),
+            json!({"kind":"classroom_layout","schema_version":2,"data":layout}).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            root.join("rules.json"),
+            json!({"kind":"rule_set","schema_version":2,"data":{"soft":{}}}).to_string(),
+        )
+        .unwrap();
+        fs::create_dir(root.join("history")).unwrap();
+        fs::write(
+            root.join("history/period1.json"),
+            json!({"kind":"snapshot","assignments":[
+                {"student_key":"A","seat_id":"s1"},{"student_key":"B","seat_id":"s2"}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        let source = load_project_source_documents(&project_file).unwrap();
+        assert_eq!(source["students"][0]["notes"], "retain me");
+        assert_eq!(source["students"][0]["attributes"]["class"], "one");
+        let request = build_project_solve_request(&project_file).unwrap();
+        assert_eq!(request["history"]["history_count"], 1);
+        assert_eq!(request["pair_history"]["history_count"], 1);
+        assert!(
+            request["pair_history"]["pairs"]["A|B"]["records"][0]["relations"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("adjacent_any"))
+        );
+        assert_eq!(project_defaults(&project_file).unwrap().candidates, 5);
+        assert_eq!(list_projects(root.to_str().unwrap(), 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn pack_rejects_file_over_restore_limit_and_reserved_manifest() {
+        let root = temp_root("pack-shared-limit");
+        let project = write_project(&root, "limits", "id,name\nA,Alice\n", false);
+        fs::create_dir(root.join("outputs")).unwrap();
+        let large = fs::File::create(root.join("outputs/large.bin")).unwrap();
+        large.set_len(MAX_BUNDLE_FILE_BYTES + 1).unwrap();
+        assert!(pack_project(project.to_str().unwrap())
+            .unwrap_err()
+            .contains("too large"));
+        fs::remove_file(root.join("outputs/large.bin")).unwrap();
+        fs::rename(root.join("students.csv"), root.join("manifest.json")).unwrap();
+        let mut document: Value = serde_json::from_slice(&fs::read(&project).unwrap()).unwrap();
+        document["students"] = json!("manifest.json");
+        fs::write(&project, document.to_string()).unwrap();
+        assert!(pack_project(project.to_str().unwrap())
+            .unwrap_err()
+            .contains("reserves"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn listing_is_root_contained_and_deduplicates_symlink_cycles() {
+        use std::os::unix::fs::symlink;
+        let parent = temp_root("listing-symlinks");
+        let root = parent.join("inside");
+        let outside = parent.join("outside");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let inside_project = write_project(&root, "inside", "id,name\nA,A\n", false);
+        write_project(&outside, "outside", "id,name\nA,A\n", false);
+        symlink(&outside, root.join("outside-link")).unwrap();
+        symlink(&root, root.join("cycle")).unwrap();
+        symlink(&inside_project, root.join("alias.project.json")).unwrap();
+        let projects = list_projects(root.to_str().unwrap(), 10).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].name, "inside");
+    }
+
+    #[test]
     fn workspace_request_builder_rejects_unknown_rules_and_bad_adjacency() {
         // The workspace compiler mirrors Python's extra="forbid" rule models:
         // unknown rule kinds / soft objectives and bad adjacency references
@@ -3290,6 +4140,90 @@ mod tests {
             err.contains("Unsafe") || err.contains("duplicate"),
             "got: {err}"
         );
+    }
+
+    #[test]
+    fn self_contained_cli_artifacts_compare_and_restore_complete_sources() {
+        let root = temp_root("cli-artifact-canonical-restore");
+        let project = write_project(&root, "CLI restore", "id,name\nA,Alice\nB,Bob\n", true);
+        let students = json!([{ "student_id":"A","name":"Alice","notes":"keep notes","attributes":{"custom":7}}, {"student_id":"B","name":"Bob"}]);
+        let layout =
+            json!({"seats":[{"seat_id":"s1","row":1,"col":1},{"seat_id":"s2","row":1,"col":2}]});
+        let rules = json!({});
+        let request = compile_solve_request_from_json(&students, &layout, &rules).unwrap();
+        let original = json!({"kind":"seattrellis_snapshot","schema_version":2,
+            "students":students,"layout":layout,"rules":rules,"original_request":request,
+            "assignments":[{"student_key":"A","student_name":"Alice","seat_id":"s1"},{"student_key":"B","student_name":"Bob","seat_id":"s2"}],
+            "solver_status":"Solved","student_count":2,"edited":true,
+            "metadata":{"lock_state":{"locked_students":["A"],"locked_seats":[]}}
+        });
+        let artifact = write_snapshot(&root, "edited.snapshot.json", &original);
+        let response: Value = serde_json::from_str(
+            &restore_artifact_json(project.to_str().unwrap(), artifact.to_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let restored = response["restored_artifact"].as_str().unwrap();
+        let saved: SeatingSnapshotArtifact =
+            serde_json::from_slice(&fs::read(restored).unwrap()).unwrap();
+        assert_eq!(saved.students[0].notes.as_deref(), Some("keep notes"));
+        assert_eq!(saved.students[0].attributes["custom"], 7);
+        assert_eq!(saved.metadata["original_request"], request);
+        assert_eq!(
+            saved.metadata["lock_state"]["locked_students"],
+            json!(["A"])
+        );
+        let comparison: Value = serde_json::from_str(
+            &compare_artifacts_json(
+                project.to_str().unwrap(),
+                artifact.to_str().unwrap(),
+                restored,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(comparison["diff"]["assignment_changes"], 0);
+        let candidate = write_snapshot(
+            &root,
+            "candidates.json",
+            &json!({
+                "candidates":[{"candidate_id":"c1","assignment":[[0,0],[1,1]],"hard_constraints_satisfied":true}],
+                "recommended_candidate_id":"c1","students":students,"layout":layout,"rules":rules,"original_request":request
+            }),
+        );
+        assert!(
+            restore_artifact_json(project.to_str().unwrap(), candidate.to_str().unwrap()).is_ok()
+        );
+    }
+
+    #[test]
+    fn simultaneous_artifact_restores_publish_distinct_complete_outputs() {
+        let root = temp_root("restore-artifact-concurrent");
+        let project = write_project(&root, "concurrent", "id,name\nS1,Alice\nS2,Bob\n", true);
+        let source: Value = serde_json::from_str(SNAPSHOT_A).unwrap();
+        let artifact = write_snapshot(&root, "source.snapshot.json", &source);
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let project = project.clone();
+                let artifact = artifact.clone();
+                std::thread::spawn(move || {
+                    restore_artifact_json(project.to_str().unwrap(), artifact.to_str().unwrap())
+                })
+            })
+            .collect();
+        let mut outputs = HashSet::new();
+        for handle in handles {
+            let response: Value = serde_json::from_str(&handle.join().unwrap().unwrap()).unwrap();
+            let target = response["restored_artifact"].as_str().unwrap();
+            assert!(
+                outputs.insert(target.to_string()),
+                "restore overwrote another output"
+            );
+            let snapshot: SeatingSnapshotArtifact =
+                serde_json::from_slice(&fs::read(target).unwrap()).unwrap();
+            assert_eq!(snapshot.assignments.len(), 2);
+            assert_eq!(snapshot.metadata["restored_from"], "source.snapshot.json");
+        }
+        assert_eq!(outputs.len(), 8);
     }
 
     // ---- M2 parity: artifact compare + restore (ledger A.2/A.3) ----

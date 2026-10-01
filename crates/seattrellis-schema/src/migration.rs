@@ -606,7 +606,7 @@ mod tests {
     #[test]
     fn project_v1_unknown_export_format_blocks_the_migration() {
         let mut source: Value = serde_json::from_str(V1_PROJECT).unwrap();
-        source["default_export_format"] = Value::String("pdf".to_string());
+        source["default_export_format"] = Value::String("unknown-format".to_string());
         let error = migrate_v1_to_v2(ArtifactKind::Project, &source).unwrap_err();
         assert!(error.contains("invalid v1 project"), "error: {error}");
     }

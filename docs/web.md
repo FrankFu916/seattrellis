@@ -105,3 +105,7 @@ Open the **Class Project** panel in the sidebar for long-term class management:
 - **Keyboard Navigation**: Use `Tab` to navigate through import, configuration, solving, and export controls with high-contrast focus outlines.
 - **Responsive Layout**: Adapts gracefully to compact screens with touch targets exceeding 44px.
 - **Instant Language Switching**: Toggle between Simplified Chinese and English seamlessly without losing current working state.
+
+## Portable class files
+
+Save and Save As capture the full roster, room/rules/settings, every active draft and its locks; Open restores the file and full audit/export context. These `.seattrellis.json` documents are separate from referenced `.project.json` workspaces and ZIP backups. A completed native or File System Access write establishes a saved baseline. Browser download fallback retains unsaved protection until reopening the downloaded file. Rotation saves capture current period assignments and recompute summaries. Local Repair honors locks and applies one revision-checked undo step. Generated snapshots/heatmaps remain generation-time views during editing, and are refreshed by save/open.

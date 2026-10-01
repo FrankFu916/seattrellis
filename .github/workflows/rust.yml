@@ -1,11 +1,14 @@
 name: Rust
 
-# The Rust core, CLI, and desktop app are the primary distribution path going
-# forward; the Python package is a compatibility/library option.  This
-# workflow keeps the native workspace and the desktop server tested on every
-# supported platform and builds release binaries for the CLI and App server.
+# The shared release gates run on the exact source ref for CLI, server and desktop.
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+        description: Exact commit or tag to validate
   push:
     branches: [main]
   pull_request:
@@ -19,12 +22,37 @@ permissions:
   contents: read
 
 concurrency:
-  group: rust-${{ github.event.pull_request.number || github.ref }}
+  group: rust-${{ github.workflow }}-${{ inputs.ref || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  web-quality:
+    uses: ./.github/workflows/tests.yml
+    with:
+      ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
+
+  security-quality:
+    uses: ./.github/workflows/security.yml
+    with:
+      ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
+
+  release-version:
+    if: startsWith(github.event.release.tag_name, 'v2.') || startsWith(github.event.release.tag_name, 'desktop-v') || startsWith(inputs.ref, 'refs/tags/') || startsWith(inputs.ref, 'v2.') || startsWith(inputs.ref, 'desktop-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Verify release tag matches every product version
+        env:
+          RELEASE_TAG: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
+        run: python scripts/check_release_version.py "$RELEASE_TAG"
+
   test:
-    name: Rust test / ${{ matrix.os }}
+    name: Rust MSRV 1.88.0 test / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,7 +60,11 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - name: Install CJK fonts (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
@@ -51,6 +83,12 @@ jobs:
       # The server build script embeds clients/web/dist (M6 decoupling), so
       # the React workbench must exist before any crate that pulls in
       # seattrellis-server can compile.
+      - name: Set up the pinned Node.js toolchain
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
       - name: Build the React workbench (server embeds clients/web/dist)
         run: |
           npm ci
@@ -73,7 +111,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - name: Check generated contract artifacts are up to date
         run: cargo run -p xtask -- contract check
 
@@ -82,7 +124,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - name: Check formatting
         run: cargo fmt --check
 
@@ -91,44 +137,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check all
-
-  msrv:
-    name: Rust workspace / 1.88 MSRV
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      # Keep the action ref on its stable channel and pin the compiler through
-      # its input. Otherwise Dependabot mistakes 1.88 for an action release
-      # and proposes nonexistent Rust versions (for example 1.120).
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88
-      - name: Install CJK fonts (Linux)
-        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
-      - name: Install Tauri system libraries (Linux)
-        # The workspace includes the Tauri desktop shell (seattrellis_desktop),
-        # whose glib-sys/gtk-sys build scripts need the WebKitGTK stack.
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            libappindicator3-dev \
-            librsvg2-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf
-      # The full workspace must compile at MSRV, not just core: testing only
-      # core previously let an MSRV compile break in another crate ship
-      # undetected (see the workspace test matrix note above).
-      - name: Build the React workbench (server embeds clients/web/dist)
-        run: |
-          npm ci
-          npm run build
-        working-directory: clients/web
-      - name: Test the workspace at MSRV
-        run: cargo test --locked --workspace
 
   long-run-gates:
     # M3 evidence that is release-only (the 80x20 candidate combination and
@@ -141,9 +157,17 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - name: Candidate + long-run gates
         run: cargo test --release --locked -p seattrellis_core --test candidates_gate --test long_run_gate -- --ignored
+      - name: Install independent Office reader and fonts
+        run: sudo apt-get update && sudo apt-get install -y libreoffice-writer poppler-utils fonts-noto-cjk
+      - name: Word pagination and complete-text reader gate
+        run: cargo test --release --locked -p seattrellis-export --test export_options word_reader -- --ignored
       - name: Rotation gate
         run: cargo test --release --locked -p seattrellis-application --test rotation_gate -- --ignored
       - name: Solver performance regression gate
@@ -159,6 +183,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@nightly
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
@@ -182,7 +208,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Set up the pinned Node.js toolchain
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
       - name: Build the React workbench (server embeds clients/web/dist)
         run: |
           npm ci
@@ -203,7 +239,7 @@ jobs:
     # + desktop bundles from the maintenance branch, and must not receive
     # Rust binaries (the v1.9.0 release initially did — fixed).
     if: >-
-      github.event_name == 'release' &&
+      inputs.ref == '' && github.event_name == 'release' &&
       startsWith(github.event.release.tag_name, 'v2.')
     runs-on: ${{ matrix.os }}
     strategy:
@@ -212,7 +248,17 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Set up the pinned Node.js toolchain
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
       - name: Build the React workbench (server embeds clients/web/dist)
         run: |
           npm ci
@@ -241,16 +287,18 @@ jobs:
 
   publish-assets:
     name: Publish release binaries
-    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v2.')
+    if: inputs.ref == '' && github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v2.')
     # Building alone is not a release gate. Every quality job must succeed
     # before any Rust binary or checksum is attached to the published release.
     needs:
       - build-binaries
+      - release-version
+      - web-quality
+      - security-quality
       - test
       - contract-drift
       - fmt
       - dependency-audit
-      - msrv
       - long-run-gates
       - fuzz-targets
       - no-python-runtime

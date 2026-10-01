@@ -174,3 +174,21 @@ describe("SeatingCanvasEditor", () => {
     expect(document.querySelector(".seating-editor.is-focus-mode")).toBeNull();
   });
 });
+
+it("implements tab keyboard navigation and labels the current panel", async () => {
+  const user = userEvent.setup();
+  renderEditor();
+  const canvas = screen.getByRole("tab", { name: "Canvas" });
+  const table = screen.getByRole("tab", { name: "Table" });
+  expect(canvas).toHaveAttribute("tabindex", "0");
+  expect(table).toHaveAttribute("tabindex", "-1");
+  canvas.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(table).toHaveFocus();
+  expect(table).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", table.id);
+  expect(screen.getByRole("table")).toBeInTheDocument();
+  await user.keyboard("{Home}");
+  expect(canvas).toHaveFocus();
+  expect(canvas).toHaveAttribute("aria-selected", "true");
+});

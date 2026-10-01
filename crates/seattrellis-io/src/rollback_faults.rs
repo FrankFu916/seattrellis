@@ -223,10 +223,24 @@ fn rotation_save_rolls_back_leaving_no_partial_artifact() {
         .unwrap()
         .flatten()
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| {
+            !matches!(
+                name.as_str(),
+                ".seattrellis-transactions"
+                    | ".seattrellis-transaction.lock"
+                    | ".seattrellis-transactions.lock"
+            )
+        })
         .collect();
     assert!(
         leftovers.is_empty(),
         "outputs must be empty after rollback: {leftovers:?}"
+    );
+    let journal = outputs.join(".seattrellis-transactions");
+    assert_eq!(
+        std::fs::read_dir(journal).unwrap().count(),
+        0,
+        "rollback left a journal"
     );
     let _ = dir;
 }

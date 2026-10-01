@@ -49,6 +49,310 @@ fn base_request(extra: serde_json::Value) -> String {
     doc.to_string()
 }
 
+fn text_parts(bytes: &[u8], format: &str) -> Vec<String> {
+    use std::io::Read;
+    if matches!(format, "docx" | "xlsx" | "pptx") {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        (0..archive.len())
+            .filter_map(|index| {
+                let mut part = archive.by_index(index).unwrap();
+                if !part.name().ends_with(".xml") && !part.name().ends_with(".rels") {
+                    return None;
+                }
+                let mut text = String::new();
+                part.read_to_string(&mut text).unwrap();
+                Some(text)
+            })
+            .collect()
+    } else {
+        vec![String::from_utf8(bytes.to_vec()).unwrap()]
+    }
+}
+
+#[test]
+fn every_format_keeps_assignments_on_the_enabled_layout_seats() {
+    let mut request: serde_json::Value = serde_json::from_str(&base_request(serde_json::json!({
+        "locale": "en", "privacy": {"show_height": false, "show_vision": false}
+    })))
+    .unwrap();
+    request["request"]["student_count"] = serde_json::json!(2);
+    request["request"]["students"] = serde_json::json!([
+        {"key": "s0", "display_name": "Alice"},
+        {"key": "s1", "display_name": "Bob"}
+    ]);
+    request["request"]["student_scores"] = serde_json::json!([]);
+    request["request"]["seat_positions"] = serde_json::json!([[1.0, 1.0], [3.0, 1.0]]);
+    request["request"]["edges"] = serde_json::json!([]);
+    request["request"]["layout"]["seats"] = serde_json::json!([
+        {"seat_id":"A0", "row":7, "col":4, "x":0.0, "y":1.0, "enabled":false},
+        {"seat_id":"A1", "row":2, "col":5, "x":1.0, "y":1.0, "enabled":true},
+        {"seat_id":"A2", "row":7, "col":6, "x":2.0, "y":1.0, "enabled":false},
+        {"seat_id":"A3", "row":4, "col":9, "x":3.0, "y":1.0, "enabled":true}
+    ]);
+    request["response"]["assignment"] = serde_json::json!([[0, 0], [1, 1]]);
+    for format in [
+        "svg",
+        "html",
+        "print-html",
+        "docx",
+        "xlsx",
+        "pptx",
+        "png",
+        "pdf",
+    ] {
+        request["format"] = serde_json::json!(format);
+        let (preview, _) =
+            seattrellis_export::export::export_preview_with_warnings(&request.to_string()).unwrap();
+        let preview = String::from_utf8(preview).unwrap();
+        assert!(
+            preview.contains("Alice") && preview.contains("Bob"),
+            "{format}"
+        );
+        assert!(preview.contains("A1") && preview.contains("A3"), "{format}");
+        let bytes = export_plan(&request.to_string()).unwrap();
+        if format == "png" {
+            assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        } else if format == "pdf" {
+            assert!(bytes.starts_with(b"%PDF-"));
+        } else {
+            let text = text_parts(&bytes, format).join("\n");
+            assert!(text.contains("Alice") && text.contains("Bob"), "{format}");
+            assert!(text.contains("A1") && text.contains("A3"), "{format}");
+            if matches!(format, "html" | "print-html") {
+                assert!(
+                    text.contains("<td>s0</td><td>Alice</td><td>A1</td>"),
+                    "{format}"
+                );
+                assert!(
+                    text.contains("<td>s1</td><td>Bob</td><td>A3</td>"),
+                    "{format}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn forbidden_xml_characters_are_removed_from_every_export_field_with_a_private_safe_warning() {
+    let mut request: serde_json::Value =
+        serde_json::from_str(&base_request(serde_json::json!({}))).unwrap();
+    request["title"] = serde_json::json!("Title\u{fffe}\u{ffff}");
+    request["request"]["students"][0]["display_name"] =
+        serde_json::json!("PrivateName\u{fffe}\u{ffff}");
+    request["request"]["students"][0]["vision"] = serde_json::json!("PrivateVision\u{ffff}");
+    request["request"]["students"][0]["key"] = serde_json::json!("PrivateKey\u{fffe}");
+    request["request"]["layout"]["seats"][0]["seat_id"] = serde_json::json!("Seat\u{ffff}");
+    for format in ["svg", "html", "print-html", "docx", "xlsx", "pptx"] {
+        request["format"] = serde_json::json!(format);
+        let (bytes, warnings) =
+            seattrellis_export::export::export_plan_with_warnings(&request.to_string()).unwrap();
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("characters were removed")),
+            "{format}: {warnings:?}"
+        );
+        assert!(warnings.iter().all(|warning| !warning.contains("Private")));
+        for text in text_parts(&bytes, format) {
+            assert!(
+                !text.contains('\u{fffe}') && !text.contains('\u{ffff}'),
+                "{format}"
+            );
+            if !matches!(format, "html" | "print-html") {
+                let mut reader = quick_xml::Reader::from_str(&text);
+                loop {
+                    if matches!(
+                        reader
+                            .read_event()
+                            .expect("independent XML reader accepts exported part"),
+                        quick_xml::events::Event::Eof
+                    ) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn id_only_records_have_localized_neutral_labels_when_ids_are_off() {
+    let mut request: serde_json::Value = serde_json::from_str(&base_request(
+        serde_json::json!({"show_student_ids": false}),
+    ))
+    .unwrap();
+    let identifier = "IDENTIFIER_ONLY_012345";
+    request["request"]["students"][0]["key"] = serde_json::json!(identifier);
+    request["request"]["students"][0]["display_name"] = serde_json::Value::Null;
+    for (locale, label) in [("en", "Student 1"), ("zh", "学生 1")] {
+        request["locale"] = serde_json::json!(locale);
+        for format in [
+            "svg",
+            "html",
+            "print-html",
+            "docx",
+            "xlsx",
+            "pptx",
+            "png",
+            "pdf",
+        ] {
+            request["format"] = serde_json::json!(format);
+            let (preview, _) =
+                seattrellis_export::export::export_preview_with_warnings(&request.to_string())
+                    .unwrap();
+            let preview = String::from_utf8(preview).unwrap();
+            assert!(preview.contains(label), "{locale}/{format}");
+            assert!(!preview.contains(identifier), "{locale}/{format}");
+            if !matches!(format, "png" | "pdf") {
+                let bytes = export_plan(&request.to_string()).unwrap();
+                let text = text_parts(&bytes, format).join("\n");
+                assert!(!text.contains(identifier), "{locale}/{format}");
+                assert!(text.contains(label), "{locale}/{format}");
+            }
+        }
+    }
+    request["show_student_ids"] = serde_json::json!(true);
+    request["format"] = serde_json::json!("xlsx");
+    assert!(
+        text_parts(&export_plan(&request.to_string()).unwrap(), "xlsx")
+            .join("\n")
+            .contains(identifier)
+    );
+}
+
+#[test]
+fn public_sanitization_warnings_do_not_inspect_hidden_student_values() {
+    let mut request: serde_json::Value = serde_json::from_str(&base_request(
+        serde_json::json!({"template": "public", "format": "xlsx"}),
+    ))
+    .unwrap();
+    request["request"]["students"][0]["display_name"] = serde_json::json!("Private\u{ffff}");
+    request["request"]["students"][0]["key"] = serde_json::json!("Identifier\u{fffe}");
+    request["request"]["students"][0]["vision"] = serde_json::json!("Vision\u{ffff}");
+    let (bytes, warnings) =
+        seattrellis_export::export::export_plan_with_warnings(&request.to_string()).unwrap();
+    assert!(!warnings
+        .iter()
+        .any(|warning| warning.contains("characters were removed")));
+    let text = text_parts(&bytes, "xlsx").join("\n");
+    assert!(!text.contains("Private") && !text.contains("Identifier") && !text.contains("Vision"));
+}
+
+#[test]
+fn html_complete_assignments_preserve_long_values_and_the_public_privacy_boundary() {
+    let mut request: serde_json::Value = serde_json::from_str(&base_request(
+        serde_json::json!({"format": "html", "locale": "en"}),
+    ))
+    .unwrap();
+    let name = "Long <private> student & name ".repeat(20);
+    request["request"]["students"][0]["display_name"] = serde_json::json!(name);
+    let html = String::from_utf8(export_plan(&request.to_string()).unwrap()).unwrap();
+    assert!(html.contains("<details class=\"assignment-values\">"));
+    assert!(html.contains("<th scope=\"col\">Student name</th>"));
+    assert!(html.contains(&"Long &lt;private&gt; student &amp; name ".repeat(20)));
+    assert!(html.contains("@media print{.assignment-values{display:none}}"));
+    request["template"] = serde_json::json!("public");
+    let html = String::from_utf8(export_plan(&request.to_string()).unwrap()).unwrap();
+    assert!(!html.contains("private") && !html.contains("150 cm") && !html.contains(">s0<"));
+    assert!(html.contains("student 01"));
+}
+
+fn classroom_request(count: usize, landscape: bool, show_ids: bool, margin_mm: f64) -> String {
+    let mut request: serde_json::Value = serde_json::from_str(&base_request(serde_json::json!({
+        "format": "docx", "orientation": if landscape { "landscape" } else { "portrait" },
+        "show_student_ids": show_ids, "margin_mm": margin_mm,
+        "privacy": {"show_height": false, "show_vision": false}
+    })))
+    .unwrap();
+    request["request"]["student_count"] = serde_json::json!(count);
+    request["request"]["seat_positions"] = serde_json::json!((0..count)
+        .map(|index| [index % 6, index / 6])
+        .collect::<Vec<_>>());
+    request["request"]["students"] = serde_json::json!((0..count).map(|index| serde_json::json!({"key":format!("ID{index:02}"),"display_name":format!("学生{index:02}")})).collect::<Vec<_>>());
+    request["request"]["student_scores"] = serde_json::json!([]);
+    request["request"]["edges"] = serde_json::json!([]);
+    request["request"]["layout"] = serde_json::Value::Null;
+    request["response"]["assignment"] =
+        serde_json::json!((0..count).map(|index| [index, index]).collect::<Vec<_>>());
+    request["response"]["total_cost"] = serde_json::json!(0.0);
+    request.to_string()
+}
+
+/// Independent reader acceptance, deliberately separate from XML geometry tests.
+/// Requires LibreOffice and Poppler plus CJK fonts on PATH, no product runtime.
+#[test]
+#[ignore = "requires LibreOffice/Poppler; run the Word reader acceptance gate explicitly"]
+fn word_reader_keeps_ordinary_40_and_60_student_charts_on_one_page() {
+    use std::process::Command;
+    let tmp = tempfile::tempdir().unwrap();
+    for (index, (count, landscape, show_ids, margin)) in [
+        (40, true, false, 12.0),
+        (40, false, true, 12.0),
+        (60, true, false, 12.0),
+        (60, true, true, 12.0),
+        (60, false, false, 12.0),
+        (60, false, true, 12.0),
+        (60, true, true, 25.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let request = classroom_request(count, landscape, show_ids, margin);
+        let docx = tmp.path().join(format!("chart-{index}.docx"));
+        std::fs::write(&docx, export_plan(&request).unwrap()).unwrap();
+        let conversion = Command::new("soffice")
+            .arg(format!(
+                "-env:UserInstallation=file://{}",
+                tmp.path().join("lo-profile").display()
+            ))
+            .args(["--headless", "--convert-to", "pdf", "--outdir"])
+            .arg(tmp.path())
+            .arg(&docx)
+            .env("XDG_CACHE_HOME", tmp.path().join("lo-cache"))
+            .output()
+            .expect("LibreOffice must be installed for this explicit reader gate");
+        assert!(
+            conversion.status.success(),
+            "{}",
+            String::from_utf8_lossy(&conversion.stderr)
+        );
+        let pdf = docx.with_extension("pdf");
+        let info = Command::new("pdfinfo").arg(&pdf).output().unwrap();
+        assert!(info.status.success());
+        let info = String::from_utf8(info.stdout).unwrap();
+        let pages = info
+            .lines()
+            .find(|line| line.starts_with("Pages:"))
+            .unwrap()
+            .split_whitespace()
+            .last()
+            .unwrap();
+        assert_eq!(
+            pages, "1",
+            "count={count} landscape={landscape} ids={show_ids} margin={margin}\n{info}"
+        );
+        let text = Command::new("pdftotext")
+            .args(["-layout"])
+            .arg(&pdf)
+            .arg("-")
+            .output()
+            .unwrap();
+        assert!(text.status.success());
+        let text = String::from_utf8(text.stdout).unwrap();
+        // Readers may separate CJK and Latin runs during PDF extraction.
+        let normalized: String = text
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect();
+        for student in 0..count {
+            assert!(
+                normalized.contains(&format!("学生{student:02}")),
+                "student {student} was clipped or lost: {text}"
+            );
+        }
+    }
+}
+
 #[test]
 fn every_format_rejects_seats_that_collapse_to_one_rendered_coordinate() {
     let mut request: serde_json::Value =

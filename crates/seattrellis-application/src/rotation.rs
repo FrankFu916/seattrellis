@@ -13,7 +13,7 @@ use crate::class_generation::{
     build_history_json, frontend_class_request_to_core, new_draft_id, seat_id_for_index,
     seat_specs, student_keys, DEFAULT_SEED,
 };
-use crate::{store_solve_request, AppError, SolveRequestStore};
+use crate::{AppError, SolveRequestStore};
 use seattrellis_domain::editing::{self, EditorDraftStore};
 
 /// The result of a rotation-plan request: the plan document plus an editable
@@ -144,9 +144,20 @@ pub fn generate_rotation_plan_from_core(
         plan_name,
         base_snapshots,
     } = options;
-    let request: seattrellis_core::CoreSolveRequest = serde_json::from_value(core_request.clone())
-        .map_err(|_| AppError::bad_request("request body is not a valid solve problem"))?;
+    let request = seattrellis_core::parse_core_solve_request(&core_request.to_string())
+        .map_err(AppError::solve_invalid_input)?;
+    if !(1..=20).contains(&period_count) {
+        return Err(AppError::bad_request(
+            "period_count must be between 1 and 20",
+        ));
+    }
 
+    if core_request.to_string().len().saturating_mul(period_count) > crate::MAX_CONTEXT_SOURCE_BYTES
+    {
+        return Err(AppError::bad_request(
+            "rotation source exceeds context capacity",
+        ));
+    }
     // Rebuild the grid and student records for history accumulation; the
     // base snapshots come from the draft exactly as class generation sees them.
     let grid = grid_from_layout(
@@ -164,7 +175,8 @@ pub fn generate_rotation_plan_from_core(
     let mut snapshots = base_snapshots.clone();
     let mut periods = Vec::with_capacity(period_count);
     let warnings: Vec<String> = Vec::new();
-    let mut period_assignments: Vec<(usize, Vec<[usize; 2]>)> = Vec::with_capacity(period_count);
+    let mut period_assignments: Vec<(usize, Vec<[usize; 2]>, Value)> =
+        Vec::with_capacity(period_count);
     let class_name = request
         .layout
         .as_ref()
@@ -178,7 +190,7 @@ pub fn generate_rotation_plan_from_core(
             .cloned()
             .unwrap_or_else(|| format!("Period {period}"));
         let mut period_request = core_request.clone();
-        period_request["seed"] = json!(base_seed + period as u64 - 1);
+        period_request["seed"] = json!(base_seed.wrapping_add((period - 1) as u64));
         if !snapshots.is_empty() {
             if let Some((history, pair_history)) = build_history_json(&students, &grid, &snapshots)
             {
@@ -188,9 +200,9 @@ pub fn generate_rotation_plan_from_core(
         }
 
         let typed_period_request: seattrellis_core::CoreSolveRequest =
-            serde_json::from_value(period_request).map_err(|_| {
-                AppError::internal("rotation produced a malformed period solve request")
-            })?;
+            seattrellis_core::parse_core_solve_request(&period_request.to_string()).map_err(
+                |_| AppError::internal("rotation produced a malformed period solve request"),
+            )?;
         // The shared solve use case (solver + independent validation) keeps
         // every rotation period on the same path as /api/v2/solve.
         let response = crate::class_generation::solve_core(&typed_period_request)?;
@@ -207,10 +219,21 @@ pub fn generate_rotation_plan_from_core(
             });
         }
 
-        let snapshot = build_period_snapshot(&typed_period_request, &response, period, &label);
+        let mut snapshot = build_period_snapshot(&typed_period_request, &response, period, &label);
+        snapshot["original_request"] = period_request.clone();
         snapshots.push(snapshot.clone());
         periods.push(json!({ "period": period, "label": label, "snapshot": snapshot }));
-        period_assignments.push((period, response.assignment.clone()));
+        period_assignments.push((period, response.assignment.clone(), period_request.clone()));
+        if period_assignments
+            .iter()
+            .map(|(_, _, source)| source.to_string().len())
+            .sum::<usize>()
+            > crate::MAX_CONTEXT_SOURCE_BYTES
+        {
+            return Err(AppError::bad_request(
+                "rotation history exceeds context capacity",
+            ));
+        }
     }
 
     // Build the full-plan history (base + every generated period) once, so
@@ -238,6 +261,7 @@ pub fn generate_rotation_plan_from_core(
         "name": plan_name,
         "periods": periods,
         "base_history_count": base_snapshots.len(),
+        "base_history_snapshots": base_snapshots,
         "fairness_summary": fairness_summary,
         "pair_repeat_summary": pair_summary,
         "warnings": warnings,
@@ -260,9 +284,10 @@ pub fn generate_rotation_plan_from_core(
     let seats = seat_specs(&request);
     let display_names = rotation_display_names(&request);
 
+    let mut ready = Vec::new();
     let mut period_editors: Vec<Value> = Vec::with_capacity(period_count);
     let mut first_editor: Option<Value> = None;
-    for (period, assignment) in &period_assignments {
+    for (period, assignment, period_request) in &period_assignments {
         let period_draft_id = if *period == 1 {
             draft_id.clone()
         } else {
@@ -273,8 +298,7 @@ pub fn generate_rotation_plan_from_core(
             .filter(|[student, seat]| *student < key_refs.len() && *seat < seat_ids.len())
             .map(|[student, seat]| (key_refs[*student], seat_ids[*seat].as_str()))
             .collect();
-        let editor = match editing::create_draft(
-            editor_store,
+        let editor = match editing::EditorDraft::new(
             period_draft_id.clone(),
             Some(format!("period-{period}")),
             &key_refs,
@@ -290,15 +314,16 @@ pub fn generate_rotation_plan_from_core(
         // capped FIFO store (`store_solve_request`): a direct insert here
         // would let long rotation runs accumulate PII-bearing requests
         // without bound.
-        store_solve_request(solve_requests, period_draft_id, core_request.clone())
-            .map_err(AppError::internal)?;
+        let state = editing::build_editor_state(&editor);
+        ready.push((editor, period_request.clone()));
         let editor_value =
-            serde_json::to_value(editor).map_err(|error| AppError::internal(error.to_string()))?;
+            serde_json::to_value(state).map_err(|error| AppError::internal(error.to_string()))?;
         if first_editor.is_none() {
             first_editor = Some(editor_value.clone());
         }
         period_editors.push(editor_value);
     }
+    crate::store_draft_contexts(editor_store, solve_requests, ready)?;
     let editor =
         first_editor.ok_or_else(|| AppError::internal("rotation plan has no validated periods"))?;
 
@@ -394,7 +419,7 @@ const ROTATION_POSITION_CATEGORIES: [&str; 10] = [
 /// cell absent from the history document counts as 0 participation (the
 /// oracle's `category_counts.get(key, 0)`), so students who never reached a
 /// category pull its minimum down instead of being silently skipped.
-fn fairness_summary_from_history(
+pub(crate) fn fairness_summary_from_history(
     history: &Value,
     snapshot_count: usize,
     roster_keys: &[String],
@@ -459,7 +484,10 @@ fn fairness_summary_from_history(
 /// Pair-repeat summary from the final pair-history document (mirrors
 /// `history.build_pair_history_report`): total pairs, repeated pairs, max
 /// occurrences and per-relation totals.
-fn pair_repeat_summary_from_history(pair_history: &Value, snapshot_count: usize) -> Value {
+pub(crate) fn pair_repeat_summary_from_history(
+    pair_history: &Value,
+    snapshot_count: usize,
+) -> Value {
     if pair_history.is_null() {
         return json!({
             "history_count": snapshot_count,

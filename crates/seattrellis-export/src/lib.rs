@@ -10,3 +10,4 @@ pub mod office;
 pub mod print_html;
 pub mod render;
 pub mod scene;
+mod xml;

@@ -306,13 +306,14 @@ pub fn render_usage(styler: &Styler) -> String {
     out.push_str("        or zh.\n      ");
     out.push_str(&styler.bold("--candidate"));
     out.push_str(" <id>   project-export only: candidate ID for a candidate-set\n      ");
-    out.push_str("        snapshot (default: recommended).\n      ");
+    out.push_str("        snapshot (default: the project's default_candidate).\n      ");
     out.push_str(&styler.bold("--output"));
     out.push_str(" <file>   project-solve/export write their artifact here.\n      ");
+    out.push_str("        project-solve defaults to the configured outputs_dir.\n      ");
     out.push_str(&styler.bold("--snapshot"));
-    out.push_str(" <file>  project-export only: the saved plan to render (the\n      ");
-    out.push_str("        result of 'project-solve --output <snapshot.json>'). Exporting\n      ");
-    out.push_str("        never re-solves; it renders exactly the saved plan.\n\n");
+    out.push_str(" <file>  project-export only: the saved plan to render\n      ");
+    out.push_str("        (default: latest snapshot/candidate set in outputs_dir).\n      ");
+    out.push_str("        Exporting renders the saved plan and its original source.\n\n");
 
     out.push_str(&styler.bold("SOLVE:"));
     out.push_str("\n    ");

@@ -1,4 +1,5 @@
 // ---------------------------------------------------------------------------
+
 // evaluation.rs — split from the former lib.rs monolith (plan 1.2: separate
 // solver / evaluator / validation responsibilities into independent
 // modules, each unit-testable).
@@ -89,7 +90,7 @@ pub fn seat_distance(first_x: f64, first_y: f64, second_x: f64, second_y: f64) -
     }
     let x_delta = first_x - second_x;
     let y_delta = first_y - second_y;
-    Some((x_delta * x_delta + y_delta * y_delta).sqrt())
+    Some(x_delta.hypot(y_delta))
 }
 
 pub fn evaluate_problem_json(request_json: &str) -> Result<String, String> {
@@ -184,6 +185,20 @@ fn validate_request(request: &CoreEvaluationRequest) -> Result<(), String> {
     if request.seat_positions.is_empty() {
         return Err("native evaluation requires at least one seat".to_string());
     }
+    if request.student_count == 0 || request.student_count > 1_000 {
+        return Err(
+            "invalid student_count: native evaluation requires between 1 and 1000 students"
+                .to_string(),
+        );
+    }
+    // Evaluation explicitly returns its matrix in the wire contract. Bound
+    // that required output rather than allocating an unbounded quadratic DTO.
+    if request.seat_positions.len() > 2_000 {
+        return Err("invalid native evaluation: supports at most 2000 seats".to_string());
+    }
+    if request.edges.len() > 100_000 {
+        return Err("invalid adjacency graph: supports at most 100000 input edges".to_string());
+    }
     if request
         .seat_positions
         .iter()
@@ -199,9 +214,11 @@ fn validate_request(request: &CoreEvaluationRequest) -> Result<(), String> {
         .student_scores
         .iter()
         .flatten()
-        .any(|score| !score.is_finite())
+        .any(|score| !score.is_finite() || score.abs() > 1_000_000_000.0)
     {
-        return Err("student scores must be finite numbers".to_string());
+        return Err(
+            "student scores must be finite and between -1000000000 and 1000000000".to_string(),
+        );
     }
     let seat_count = request.seat_positions.len();
     for [first_seat, second_seat] in &request.edges {
@@ -247,26 +264,53 @@ fn validate_request(request: &CoreEvaluationRequest) -> Result<(), String> {
 pub(crate) fn build_index_adjacency(seat_count: usize, edges: &[[usize; 2]]) -> Vec<Vec<usize>> {
     let mut adjacency = vec![Vec::new(); seat_count];
     for [first_seat, second_seat] in edges {
-        if !adjacency[*first_seat].contains(second_seat) {
-            adjacency[*first_seat].push(*second_seat);
-        }
-        if !adjacency[*second_seat].contains(first_seat) {
-            adjacency[*second_seat].push(*first_seat);
-        }
+        adjacency[*first_seat].push(*second_seat);
+        adjacency[*second_seat].push(*first_seat);
     }
     for neighbors in &mut adjacency {
         neighbors.sort_unstable();
+        neighbors.dedup();
     }
     adjacency
 }
 
 pub(crate) fn build_graph_distance_matrix(adjacency: &[Vec<usize>]) -> Vec<Vec<Option<u32>>> {
+    build_graph_distance_matrix_controlled(adjacency, || false)
+        .expect("uncontrolled graph construction cannot stop")
+}
+
+/// Only graph-distance hard rules need an all-pairs matrix. Other solve,
+/// scoring and audit paths keep an empty matrix and avoid quadratic work.
+pub(crate) fn build_required_graph_distances(
+    adjacency: &[Vec<usize>],
+    rules: &[CoreMinDistanceRule],
+) -> Vec<Vec<Option<u32>>> {
+    if rules
+        .iter()
+        .any(|rule| matches!(rule.metric, CoreDistanceMetric::Graph))
+    {
+        build_graph_distance_matrix(adjacency)
+    } else {
+        Vec::new()
+    }
+}
+
+pub(crate) fn build_graph_distance_matrix_controlled(
+    adjacency: &[Vec<usize>],
+    mut should_stop: impl FnMut() -> bool,
+) -> Option<Vec<Vec<Option<u32>>>> {
     let mut matrix = Vec::with_capacity(adjacency.len());
     for source_index in 0..adjacency.len() {
+        if should_stop() {
+            return None;
+        }
         let mut distances = vec![None; adjacency.len()];
         distances[source_index] = Some(0);
         let mut queue = VecDeque::from([source_index]);
         while let Some(seat_index) = queue.pop_front() {
+            if should_stop() {
+                return None;
+            }
             let next_distance = distances[seat_index].unwrap_or(0) + 1;
             for neighbor_index in &adjacency[seat_index] {
                 if distances[*neighbor_index].is_none() {
@@ -277,7 +321,27 @@ pub(crate) fn build_graph_distance_matrix(adjacency: &[Vec<usize>]) -> Vec<Vec<O
         }
         matrix.push(distances);
     }
-    matrix
+    Some(matrix)
+}
+
+/// A fixed-seat conflict needs one shortest path, not an all-pairs matrix.
+pub(crate) fn graph_distance(adjacency: &[Vec<usize>], first: usize, second: usize) -> Option<u32> {
+    let mut distances = vec![None; adjacency.len()];
+    distances[first] = Some(0);
+    let mut queue = VecDeque::from([first]);
+    while let Some(seat) = queue.pop_front() {
+        if seat == second {
+            return distances[seat];
+        }
+        let next = distances[seat].unwrap_or(0) + 1;
+        for &neighbor in &adjacency[seat] {
+            if distances[neighbor].is_none() {
+                distances[neighbor] = Some(next);
+                queue.push_back(neighbor);
+            }
+        }
+    }
+    None
 }
 
 fn assignment_by_student(
@@ -369,3 +433,34 @@ fn peer_mixing_score(
 }
 
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+
+    #[test]
+    fn graph_preparation_checks_control_during_breadth_first_search() {
+        let adjacency = build_index_adjacency(
+            100,
+            &(0..99).map(|seat| [seat, seat + 1]).collect::<Vec<_>>(),
+        );
+        let mut checkpoints = 0;
+        let result = build_graph_distance_matrix_controlled(&adjacency, || {
+            checkpoints += 1;
+            checkpoints >= 5
+        });
+        assert!(result.is_none(), "stop after preparation has started");
+        assert_eq!(checkpoints, 5);
+    }
+
+    #[test]
+    fn non_graph_rules_never_allocate_all_pairs_distances() {
+        let adjacency = vec![Vec::new(); 10_000];
+        let rules = [CoreMinDistanceRule {
+            students: [0, 1],
+            distance: 2.0,
+            metric: CoreDistanceMetric::Euclidean,
+        }];
+        assert!(build_required_graph_distances(&adjacency, &rules).is_empty());
+    }
+}

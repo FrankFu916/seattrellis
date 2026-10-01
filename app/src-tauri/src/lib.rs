@@ -33,13 +33,23 @@ const MAX_BRIDGE_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// React's inline `style` attributes; `ipc:` / `http://ipc.localhost` are the
 /// Tauri IPC transports on Windows/Linux; everything else stays same-origin
 /// to the loopback backend.
-const WORKBENCH_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:* http://localhost:* http://ipc.localhost ipc:; font-src 'self' data:";
+use seattrellis_server::http::WORKBENCH_CSP;
 
 /// Canonical paths granted through a native dialog in this session.
 ///
 /// Only the dialog commands insert into this set, so membership proves the
 /// path came from an explicit user choice inside the OS picker.
-struct GrantedFiles(Mutex<HashSet<PathBuf>>);
+#[derive(Default)]
+struct FileGrants {
+    readable: HashSet<PathBuf>,
+    writable: HashSet<PathBuf>,
+}
+struct GrantedFiles(Mutex<FileGrants>);
+#[derive(Clone, Copy)]
+enum FileAccess {
+    Read,
+    Write,
+}
 
 /// Resolve a picked path to its canonical form for the grant registry.
 ///
@@ -70,14 +80,21 @@ fn canonicalize_candidate(path: &Path) -> Result<PathBuf, String> {
 /// path on success; any mismatch (never picked, renamed, deleted parent,
 /// traversal alias) is rejected with one opaque message so the renderer learns
 /// nothing about the filesystem beyond "denied".
-fn ensure_granted(granted: &GrantedFiles, raw: &str) -> Result<PathBuf, String> {
+fn ensure_granted(
+    granted: &GrantedFiles,
+    raw: &str,
+    access: FileAccess,
+) -> Result<PathBuf, String> {
     let canonical = canonicalize_candidate(Path::new(raw))?;
-    if granted
+    let grants = granted
         .0
         .lock()
-        .map_err(|_| "grant registry unavailable".to_string())?
-        .contains(&canonical)
-    {
+        .map_err(|_| "grant registry unavailable".to_string())?;
+    let allowed = match access {
+        FileAccess::Read => grants.readable.contains(&canonical),
+        FileAccess::Write => grants.writable.contains(&canonical),
+    };
+    if allowed {
         Ok(canonical)
     } else {
         Err("path was not granted through the file dialog".to_string())
@@ -123,8 +140,9 @@ async fn pick_open_file(
         .0
         .lock()
         .map_err(|_| "grant registry unavailable".to_string())?
+        .readable
         .insert(canonical.clone());
-    eprintln!("[seattrellis] pick_open_file granted: {canonical:?}");
+
     Ok(Some(canonical.to_string_lossy().into_owned()))
 }
 
@@ -151,6 +169,7 @@ async fn pick_save_file(
         .0
         .lock()
         .map_err(|_| "grant registry unavailable".to_string())?
+        .writable
         .insert(canonical.clone());
     Ok(Some(canonical.to_string_lossy().into_owned()))
 }
@@ -161,7 +180,7 @@ async fn pick_save_file(
 /// session; anything else is rejected before touching the disk.
 #[tauri::command]
 fn read_user_file(path: String, granted: State<'_, GrantedFiles>) -> Result<Vec<u8>, String> {
-    let canonical = ensure_granted(&granted, &path)?;
+    let canonical = ensure_granted(&granted, &path, FileAccess::Read)?;
     let metadata =
         std::fs::metadata(&canonical).map_err(|error| format!("cannot stat file: {error}"))?;
     if !metadata.is_file() {
@@ -170,7 +189,17 @@ fn read_user_file(path: String, granted: State<'_, GrantedFiles>) -> Result<Vec<
     if metadata.len() > MAX_BRIDGE_FILE_BYTES {
         return Err("file is too large".to_string());
     }
-    std::fs::read(&canonical).map_err(|error| format!("cannot read file: {error}"))
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(&canonical)
+        .map_err(|error| format!("cannot read file: {error}"))?
+        .take(MAX_BRIDGE_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("cannot read file: {error}"))?;
+    if bytes.len() as u64 > MAX_BRIDGE_FILE_BYTES {
+        return Err("file is too large".into());
+    }
+    Ok(bytes)
 }
 
 /// Write export bytes to a path the user chose in a native save dialog
@@ -184,8 +213,8 @@ fn write_user_file(
     if content.len() as u64 > MAX_BRIDGE_FILE_BYTES {
         return Err("file is too large".to_string());
     }
-    let canonical = ensure_granted(&granted, &path)?;
-    std::fs::write(&canonical, content).map_err(|error| format!("cannot write file: {error}"))
+    let canonical = ensure_granted(&granted, &path, FileAccess::Write)?;
+    seattrellis_io::transaction::atomic_write_file(&canonical, &content).map(|_| ())
 }
 
 /// Bind the backend, spawn its accept loop on a background thread, then open
@@ -248,7 +277,7 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(GrantedFiles(Mutex::new(HashSet::new())))
+        .manage(GrantedFiles(Mutex::new(FileGrants::default())))
         .invoke_handler(tauri::generate_handler![
             pick_open_file,
             pick_save_file,
@@ -297,13 +326,61 @@ pub fn run() {
     app.run(move |_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { .. } = event {
             shutdown_flag.store(true, Ordering::Relaxed);
-            if let Some(thread) = backend_handle
-                .lock()
-                .ok()
-                .and_then(|mut guard| guard.take())
-            {
-                let _ = thread.join();
-            }
         }
     });
+    // Join only after the native event loop has closed. Active requests observe
+    // shutdown and cooperative cancellation; the backend also has a finite grace period.
+    if let Some(thread) = backend_handle
+        .lock()
+        .ok()
+        .and_then(|mut guard| guard.take())
+    {
+        let _ = thread.join();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn opening_a_file_never_grants_overwrite_permission() {
+        let directory = std::env::temp_dir().join(format!(
+            "seattrellis-grants-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let target = directory.join("class.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let canonical = target.canonicalize().unwrap();
+        let granted = GrantedFiles(Mutex::new(FileGrants::default()));
+        granted.0.lock().unwrap().readable.insert(canonical.clone());
+        let raw = canonical.to_str().unwrap();
+        assert_eq!(
+            ensure_granted(&granted, raw, FileAccess::Read).unwrap(),
+            canonical
+        );
+        assert!(ensure_granted(&granted, raw, FileAccess::Write).is_err());
+        granted.0.lock().unwrap().writable.insert(canonical.clone());
+        assert_eq!(
+            ensure_granted(&granted, raw, FileAccess::Write).unwrap(),
+            canonical
+        );
+        assert!(ensure_granted(
+            &granted,
+            directory.join("other.json").to_str().unwrap(),
+            FileAccess::Read
+        )
+        .is_err());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn desktop_config_and_http_use_identical_csp() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(config["app"]["security"]["csp"], WORKBENCH_CSP);
+    }
 }

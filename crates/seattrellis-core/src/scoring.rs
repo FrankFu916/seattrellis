@@ -10,8 +10,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::cost::{
-    avoid_recent_neighbors_cost, build_adjacency_edges, detect_neighbor_relation_types,
-    fair_rotation_cost, student_needs_front,
+    avoid_recent_neighbors_cost, detect_neighbor_relation_types, fair_rotation_cost,
+    student_needs_front,
 };
 use crate::models::{effective_neighbor_rule, Seat};
 use crate::objectives::evaluate_soft_objectives;
@@ -24,8 +24,8 @@ use crate::objectives::evaluate_soft_objectives;
 /// score.
 use crate::engine::{assignment_by_key, build_cost_context, validate_solve_request};
 use crate::evaluation::{
-    assigned_students_are_adjacent, assigned_students_meet_distance, build_graph_distance_matrix,
-    build_index_adjacency,
+    assigned_students_are_adjacent, assigned_students_meet_distance, build_index_adjacency,
+    build_required_graph_distances,
 };
 use crate::solver::{parse_core_solve_request, resolve_group_rules};
 
@@ -93,6 +93,11 @@ pub fn score_assignment_json(
     latest_snapshot_json: &str,
     diversity_score: Option<f64>,
 ) -> Result<String, String> {
+    if diversity_score.is_some_and(|score| !score.is_finite() || !(0.0..=100.0).contains(&score)) {
+        return Err(
+            "invalid diversity_score: expected a finite percentage between 0 and 100".to_string(),
+        );
+    }
     let request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
 
@@ -128,7 +133,7 @@ pub fn score_assignment_json(
     let ctx = build_cost_context(&request);
     let assignment_vec: Vec<usize> = probe.iter().map(|seat| seat.unwrap()).collect();
     let by_key = assignment_by_key(&probe, &ctx);
-    let adjacency_edges = build_adjacency_edges(&ctx.layout);
+    let adjacency_edges = &ctx.adjacency_edges;
     let seat_by_id: HashMap<&str, &Seat> = ctx
         .layout
         .seats
@@ -160,7 +165,7 @@ pub fn score_assignment_json(
                     ctx.history.as_ref(),
                 )
             })
-            .sum();
+            .fold(0i64, i64::saturating_add);
         let penalty_units = penalty as f64 / (i64::from(fair_rule.weight.max(1)) * 100) as f64;
         let score = 100.0 / (1.0 + penalty_units / student_count.max(1) as f64);
         score_dimension(
@@ -202,7 +207,7 @@ pub fn score_assignment_json(
                     first_seat,
                     second_seat,
                     &ctx.layout,
-                    Some(&adjacency_edges),
+                    Some(adjacency_edges),
                     neighbor_rule.within_distance,
                 );
                 if current_relations
@@ -211,7 +216,7 @@ pub fn score_assignment_json(
                 {
                     relevant_pairs += 1;
                 }
-                penalty += avoid_recent_neighbors_cost(
+                penalty = penalty.saturating_add(avoid_recent_neighbors_cost(
                     &ctx.students[first].key,
                     &ctx.students[second].key,
                     first_seat,
@@ -219,8 +224,8 @@ pub fn score_assignment_json(
                     &ctx.layout,
                     &neighbor_rule,
                     ctx.pair_history.as_ref(),
-                    Some(&adjacency_edges),
-                );
+                    Some(adjacency_edges),
+                ));
             }
         }
         let excess_units = penalty as f64 / (i64::from(neighbor_rule.weight.max(1)) * 100) as f64;
@@ -262,7 +267,7 @@ pub fn score_assignment_json(
                 .filter_map(|student| student.score.map(|score| (student.key.as_str(), score)))
                 .collect();
             let mut gaps: Vec<f64> = Vec::new();
-            for (first_seat, second_seat) in &adjacency_edges {
+            for (first_seat, second_seat) in adjacency_edges {
                 let first_key = seat_by_id
                     .get(first_seat.as_str())
                     .and_then(|seat| by_key.iter().find(|(_, id)| *id == &seat.seat_id));
@@ -544,7 +549,7 @@ pub fn score_assignment_json(
     // --- hard_constraint_summary ---------------------------------------------
     let resolved = resolve_group_rules(&request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
-    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let graph_distances = build_required_graph_distances(&adjacency, &request.min_distance);
     let mut violations: Vec<String> = Vec::new();
     let mut checked = 3usize;
     let mut student_seats: std::collections::HashSet<usize> = std::collections::HashSet::new();

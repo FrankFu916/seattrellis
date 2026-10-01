@@ -2,11 +2,11 @@
 """Solver performance regression gate (plan §6.6 item 7).
 
 Records release-mode wall-clock baselines for planted-feasible instances
-(n = 40/50/60/80, the same construction the Rust long-run gate uses) and
+(n = 40/50/60/80, a separate frozen Python-generated corpus) and
 asserts a run stays within the registered baseline (+10% tolerance) plus
 an absolute interactive bound. The baseline JSON is committed so CI can
-detect regressions deterministically; wall-clock noise on CI hardware is
-absorbed by the tolerance, while a real algorithmic regression (the kind
+detect large timing regressions; the +10% margin does not guarantee immunity
+to different hardware or runner noise, while a real algorithmic regression (the kind
 that took n=80 from 8s to 0.41s) breaks the bound by a wide margin.
 
 Usage:
@@ -17,6 +17,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import platform
+import os
 import json
 import statistics
 import subprocess
@@ -36,7 +39,7 @@ TOLERANCE = 1.10
 
 
 class Lcg:
-    """SplitMix-style LCG matching the long-run gate's deterministic RNG."""
+    """Frozen SplitMix64 generator for this benchmark corpus."""
 
     def __init__(self, seed: int) -> None:
         self.state = seed & 0xFFFFFFFFFFFFFFFF
@@ -74,7 +77,7 @@ def adjacent(edges: list[list[int]], first: int, second: int) -> bool:
 
 
 def planted_request(count: int, seed: int) -> dict:
-    """Same planted-feasible construction as the Rust long-run gate."""
+    """Frozen planted-feasible corpus; distinct from the Rust long-run corpus."""
     positions = grid_positions(count)
     edges = grid_edges(positions)
     rng = Lcg(seed ^ (count << 32))
@@ -116,7 +119,14 @@ def planted_request(count: int, seed: int) -> dict:
         "cannot_be_adjacent": cannot,
         "min_distance": min_distance,
         "seed": seed,
-        "rules": {"seed": seed, "soft": {}},
+        # Preserve the historical effective hard-only workload. An empty
+        # object now correctly enables model defaults, including randomize.
+        "rules": {"seed": seed, "soft": {
+            name: {"enabled": False, "weight": 1}
+            for name in ("vision_front", "height_back", "randomize", "score_balance",
+                         "score_position", "score_distribution", "mentor_pairing",
+                         "fair_rotation", "avoid_recent_neighbors", "cooling")
+        }},
     }
 
 
@@ -124,18 +134,23 @@ def median_solve_ms(count: int, seed: int, runs: int) -> float:
     request = planted_request(count, seed)
     with tempfile_dir() as tmp:
         problem = Path(tmp) / "problem.json"
+        solution = Path(tmp) / "solution.json"
         problem.write_text(json.dumps(request), encoding="utf-8")
         timings = []
         for _ in range(runs):
             started = time.monotonic()
             result = subprocess.run(
-                [str(CLI), "solve", "--problem", str(problem)],
+                [str(CLI), "solve", "--problem", str(problem), "--output", str(solution)],
                 capture_output=True,
                 text=True,
+                timeout=30,
             )
             elapsed = (time.monotonic() - started) * 1000.0
             if result.returncode != 0:
                 raise SystemExit(f"solve failed for n={count}: {result.stderr.strip()}")
+            response = json.loads(solution.read_text(encoding="utf-8"))
+            if response.get("status") != "Solved":
+                raise SystemExit(f"benchmark expected a valid solution, got {response.get('status')}")
             timings.append(elapsed)
         return statistics.median(timings)
 
@@ -144,6 +159,23 @@ def tempfile_dir() -> object:
     import tempfile
 
     return tempfile.TemporaryDirectory()
+
+
+def corpus_hash() -> str:
+    encoded = json.dumps([planted_request(count, 42) for count in SIZES], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def metadata() -> dict:
+    def output(command):
+        return subprocess.run(command, capture_output=True, text=True, timeout=10).stdout.strip()
+    return {"corpus_sha256": corpus_hash(), "seed": 42, "runs_per_size": RUNS_PER_SIZE,
+            "corpus_revision": "planted-hard-v1-explicit-soft",
+            "measurement": "release CLI wall-clock including atomic response-file output; status checked after timing",
+            "rustc": output(["rustc", "--version"]), "commit": output(["git", "rev-parse", "HEAD"]),
+            "git_dirty": bool(output(["git", "status", "--porcelain"])),
+            "platform": platform.platform(), "machine": platform.machine(), "cpu_count": os.cpu_count(),
+            "binary_sha256": hashlib.sha256(CLI.read_bytes()).hexdigest()}
 
 
 def measure_all() -> dict:
@@ -174,6 +206,7 @@ def main() -> int:
             "tool": "scripts/bench_solver.py",
             "note": "median wall-clock of the release CLI solve on planted-feasible instances",
             "sizes_ms": measured,
+            "metadata": metadata(),
         }
         args.output.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
         print(f"baseline recorded: {args.output}")
@@ -183,7 +216,14 @@ def main() -> int:
 
     if not args.baseline.is_file():
         raise SystemExit(f"baseline not found: {args.baseline}; run with --record first")
-    baseline = json.loads(args.baseline.read_text(encoding="utf-8"))["sizes_ms"]
+    baseline_document = json.loads(args.baseline.read_text(encoding="utf-8"))
+    recorded_hash = baseline_document.get("metadata", {}).get("corpus_sha256")
+    if recorded_hash and recorded_hash != corpus_hash():
+        raise SystemExit("benchmark corpus changed; review the workload before recording a new baseline")
+    if not recorded_hash:
+        print("Legacy baseline has no machine/compiler metadata; comparison is a timing gate, not a controlled experiment")
+    print(json.dumps(metadata(), sort_keys=True))
+    baseline = baseline_document["sizes_ms"]
 
     failures = []
     for size, timing in measured.items():

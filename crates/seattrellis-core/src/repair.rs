@@ -15,9 +15,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 ///
 /// Returns the repaired snapshot document (`assignments` + `solver_status`)
 /// plus a short summary of moved/unseated students.
-use crate::engine::{effective_students, validate_solve_request};
+use crate::engine::{effective_layout, effective_students, validate_solve_request};
 use crate::solver::{
-    parse_core_solve_request, solve_problem, validate_solve_response, CoreSolveRequest,
+    parse_core_solve_request, resolve_group_rules, solve_problem_with_control,
+    validate_solve_response, CoreSolveRequest, SolveControl,
 };
 
 #[derive(Debug, Clone)]
@@ -134,7 +135,7 @@ fn request_seat_ids(request: &CoreSolveRequest) -> Vec<String> {
             request
                 .layout
                 .as_ref()
-                .and_then(|layout| layout.seats.get(index))
+                .and_then(|layout| layout.seats.iter().filter(|seat| seat.enabled).nth(index))
                 .map(|seat| seat.seat_id.clone())
                 .unwrap_or_else(|| format!("seat-{}", index + 1))
         })
@@ -170,8 +171,30 @@ pub fn repair_json_with_options(
     locked_seats: &[String],
     reuse_saved_locks: bool,
 ) -> Result<String, String> {
+    repair_json_with_control(
+        request_json,
+        snapshot_json,
+        affected_students,
+        locked_students,
+        locked_seats,
+        reuse_saved_locks,
+        &SolveControl::new(),
+    )
+}
+
+/// Constrained repair with the caller's cooperative cancellation control.
+pub fn repair_json_with_control(
+    request_json: &str,
+    snapshot_json: &str,
+    affected_students: &[String],
+    locked_students: &[String],
+    locked_seats: &[String],
+    reuse_saved_locks: bool,
+    control: &SolveControl,
+) -> Result<String, String> {
     let mut request = parse_core_solve_request(request_json)?;
     validate_solve_request(&request)?;
+    request.layout = Some(effective_layout(&request));
     let snapshot: Value = serde_json::from_str(snapshot_json)
         .map_err(|error| format!("invalid snapshot document: {error}"))?;
     let snapshot_assignments =
@@ -331,6 +354,7 @@ pub fn repair_json_with_options(
     // Fixed set: locked students + locked-seat occupants + (when a local
     // scope is requested) every student outside the affected closure.
     let mut fixed_students: Vec<usize> = Vec::new();
+    let mut expanded_affected_students: Vec<String> = Vec::new();
     for student in &effective_locked_students {
         let index = index_by_key[student.as_str()];
         if !fixed_students.contains(&index) {
@@ -351,12 +375,15 @@ pub fn repair_json_with_options(
             .iter()
             .map(|student| index_by_key[student.as_str()])
             .collect();
-        // One-hop closure via hard pair rules.
-        let pair_rules: Vec<[usize; 2]> = request
+        // Transitive closure over every compiled relational hard rule, including
+        // groups and distance rules, before freezing students outside the scope.
+        let resolved = resolve_group_rules(&request)?;
+        let pair_rules: Vec<[usize; 2]> = resolved
             .must_be_adjacent
             .iter()
-            .chain(request.cannot_be_adjacent.iter())
+            .chain(resolved.cannot_be_adjacent.iter())
             .copied()
+            .chain(request.min_distance.iter().map(|rule| rule.students))
             .collect();
         let mut grew = true;
         while grew {
@@ -372,6 +399,11 @@ pub fn repair_json_with_options(
                 }
             }
         }
+        expanded_affected_students = affected_indices
+            .iter()
+            .map(|index| students[*index].key.clone())
+            .collect();
+        expanded_affected_students.sort();
         for index in 0..request.student_count {
             if !affected_indices.contains(&index) && !fixed_students.contains(&index) {
                 fixed_students.push(index);
@@ -455,7 +487,7 @@ pub fn repair_json_with_options(
     validate_solve_request(&request)
         .map_err(|error| format!("Repair constraints are invalid: {error}"))?;
 
-    let response = solve_problem(&request)?;
+    let response = solve_problem_with_control(&request, control)?;
     if !response.feasible {
         return Err(format!(
             "Repair solve did not find a legal seating (status {}).",
@@ -502,6 +534,7 @@ pub fn repair_json_with_options(
             "unseated_students": unseated,
             "locked_students": effective_locked_students.len(),
             "locked_seats": effective_locked_seats.len(),
+            "affected_students": expanded_affected_students,
         },
     });
     serde_json::to_string(&repaired)

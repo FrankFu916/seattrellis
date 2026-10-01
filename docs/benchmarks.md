@@ -1,7 +1,8 @@
 # Benchmarks
 
 SeatTrellis tracks large-class performance with fixed synthetic data. The
-dataset is `synthetic-classroom` / `synthetic-v1`; all students, seats, and
+fixture dataset is `synthetic-classroom` / `synthetic-v1`; the CLI performance
+generator has its own revision recorded below. All students, seats, and
 metrics are fictional.
 
 ## Solver regression gate
@@ -30,10 +31,13 @@ transient load on shared CI runners. Refresh the relative baseline only after
 several clean, code-equivalent runs show persistent runner drift; never loosen
 the absolute bounds to accommodate runner drift.
 
-The tolerance absorbs normal CI hardware noise while the absolute bound catches
-a major algorithmic regression. Baselines are recorded on comparable runners;
-Apple Silicon local runs are expected to be faster. Updating a baseline is a
+The median reduces transient noise; neither it nor the 10% margin makes
+different hardware equivalent. Compare like-for-like runners. Legacy baseline
+machine/compiler metadata was not recorded; new records include input and binary
+hashes, compiler, commit and machine information. Updating a baseline is a
 reviewed release-maintenance operation, not an ordinary documentation change.
+
+The corpus revision `planted-hard-v1-explicit-soft` explicitly disables every soft objective to preserve the historical effective hard-only workload. Previously `soft={}` relied on a deserialization defect; corrected defaults would change that workload. The CLI now writes an explicit JSON response file and checks `Solved` after timing. Wall-clock measurements include that atomic output; the legacy baseline lacks these details and remains a regression threshold rather than a controlled comparison.
 
 ## Long-run quality gates
 
@@ -70,9 +74,13 @@ than changing `synthetic-v1`; historical reports must remain comparable.
 
 The long-run gates run on the main and pull-request paths. Regression review
 compares like-for-like runners and also watches feasibility rate, candidate
-yield, and candidate diversity; ordinary CI does not fail on an arbitrary fixed
-number of seconds.
+yield, and candidate diversity. The performance gate enforces both the reviewed
+relative baseline and the explicit absolute bounds above.
 
 [v1.4 performance baseline](benchmark-baseline-v1.4.md) is retained as a
 historical Python/OR-Tools measurement record. v2.0.0 quality and performance
 are governed by the Rust gates described here.
+
+## Current backend experiment
+
+The 2026-10-01 hard-only Rust/OR-Tools CP-SAT experiment is separate from the retired oracle comparison. Its reproducible corpus, raw trials and independent validation are under `benchmarks/solver-comparison/`; see [technology decisions](technology-decisions.md). It does not compare weighted objectives or establish a language-level speed claim.

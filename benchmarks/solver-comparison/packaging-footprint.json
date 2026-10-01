@@ -1,0 +1,41 @@
+{
+  "scope": "installed Linux x86_64 wheel only; not standalone deployment equivalence",
+  "ortools_installed_bytes": 76810260,
+  "native_library_bytes": 72857162,
+  "native_library_count": 125,
+  "rust_comparison_harness_bytes": 1049344,
+  "largest_native_files": [
+    {
+      "file": "ortools/.libs/libortools.so.9",
+      "bytes": 30640368
+    },
+    {
+      "file": "ortools/.libs/libscip.so.9.2",
+      "bytes": 12757320
+    },
+    {
+      "file": "ortools/.libs/libhighs.so.1",
+      "bytes": 4862384
+    },
+    {
+      "file": "ortools/.libs/libprotobuf.so.31.1.0",
+      "bytes": 4127808
+    },
+    {
+      "file": "ortools/.libs/libClp.so.1",
+      "bytes": 2102920
+    },
+    {
+      "file": "ortools/constraint_solver/_pywrapcp.so",
+      "bytes": 2088056
+    },
+    {
+      "file": "ortools/.libs/libCoinUtils.so.2",
+      "bytes": 1514304
+    },
+    {
+      "file": "ortools/.libs/libCbc.so.2",
+      "bytes": 1413992
+    }
+  ]
+}

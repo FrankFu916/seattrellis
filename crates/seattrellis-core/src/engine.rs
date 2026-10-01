@@ -7,23 +7,24 @@
 // ---------------------------------------------------------------------------
 
 use std::collections::{HashMap, HashSet};
-#[cfg(test)]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::cost::{avoid_recent_neighbors_cost, individual_cost, normalize_edge};
 use crate::models::{effective_neighbor_rule, Layout, Seat, Student};
-use crate::objectives::{compile_soft_objectives, evaluate_soft_objectives};
+use crate::objectives::{
+    compile_soft_objectives_with_adjacency_controlled, evaluate_soft_objectives,
+};
 use crate::rng::SplitMix64;
 #[cfg(test)]
 use crate::solver::SolveControl;
 
 use crate::evaluation::{
-    assigned_students_are_adjacent, assigned_students_meet_distance, build_graph_distance_matrix,
-    build_index_adjacency, seat_distance, CoreDistanceMetric,
+    assigned_students_are_adjacent, assigned_students_meet_distance, build_index_adjacency,
+    graph_distance, seat_distance, CoreDistanceMetric,
 };
 use crate::solver::{
-    resolve_group_rules, CoreSolveRequest, CostContext, ResolvedHardRules, SolveRunControl,
-    StopReason,
+    resolve_group_rules_controlled, CoreSolveRequest, CostContext, ResolvedHardRules,
+    SolveRunControl, StopReason,
 };
 use crate::NATIVE_API_VERSION;
 
@@ -57,16 +58,33 @@ pub fn validate_solve_request_json(request_json: &str) -> Result<(), String> {
 /// Build the cost context for a solve request, degrading gracefully when the
 /// optional cost data is absent.
 pub(crate) fn build_cost_context(request: &CoreSolveRequest) -> CostContext {
+    build_cost_context_controlled(request, None).expect("uncontrolled cost compilation cannot stop")
+}
+
+pub(crate) fn build_cost_context_controlled(
+    request: &CoreSolveRequest,
+    run: Option<&SolveRunControl<'_>>,
+) -> Result<CostContext, StopReason> {
     let students = effective_students(request);
     let layout = effective_layout(request);
     let rules = request.rules.clone().unwrap_or_default();
     let adjacency_edges = adjacency_edges_by_seat_id(&layout, &request.edges);
-    let objective_context =
-        compile_soft_objectives(&students, &layout, &rules, request.pair_history.as_ref());
+    let objective_context = compile_soft_objectives_with_adjacency_controlled(
+        &students,
+        &layout,
+        &rules,
+        request.pair_history.as_ref(),
+        Some(&adjacency_edges),
+        &mut || run.and_then(SolveRunControl::stop_reason).is_some(),
+    )
+    .ok_or_else(|| {
+        run.and_then(SolveRunControl::stop_reason)
+            .unwrap_or(StopReason::Deadline)
+    })?;
     let enabled_seats = layout.enabled_seats();
     let min_row = enabled_seats.iter().map(|seat| seat.row).min().unwrap_or(1);
     let max_row = enabled_seats.iter().map(|seat| seat.row).max().unwrap_or(1);
-    CostContext {
+    Ok(CostContext {
         students,
         layout,
         rules,
@@ -76,7 +94,7 @@ pub(crate) fn build_cost_context(request: &CoreSolveRequest) -> CostContext {
         objective_context,
         min_row,
         max_row,
-    }
+    })
 }
 
 /// Placeholder students when the request carries no records: index-derived keys
@@ -98,14 +116,20 @@ pub(crate) fn effective_students(request: &CoreSolveRequest) -> Vec<Student> {
 /// otherwise a grid derived from the coordinates (row = round(y), col = round(x)).
 pub(crate) fn effective_layout(request: &CoreSolveRequest) -> Layout {
     if let Some(layout) = &request.layout {
-        return layout.clone();
+        let mut layout = layout.clone();
+        layout.seats.retain(|seat| seat.enabled);
+        for (seat, position) in layout.seats.iter_mut().zip(&request.seat_positions) {
+            seat.x = Some(position[0]);
+            seat.y = Some(position[1]);
+        }
+        return layout;
     }
     let seats: Vec<Seat> = request
         .seat_positions
         .iter()
         .enumerate()
         .map(|(index, position)| Seat {
-            seat_id: format!("seat_{index}"),
+            seat_id: format!("seat-{}", index + 1),
             row: position[1].round() as i32,
             col: position[0].round() as i32,
             x: Some(position[0]),
@@ -124,7 +148,10 @@ pub(crate) fn effective_layout(request: &CoreSolveRequest) -> Layout {
 
 /// Convert the index-pair request edges into the normalized seat-id edge set the
 /// cost functions expect (mirrors passing `adjacency_edges=problem.edges`).
-fn adjacency_edges_by_seat_id(layout: &Layout, edges: &[[usize; 2]]) -> HashSet<(String, String)> {
+pub(crate) fn adjacency_edges_by_seat_id(
+    layout: &Layout,
+    edges: &[[usize; 2]],
+) -> HashSet<(String, String)> {
     let mut result = HashSet::new();
     for [first, second] in edges {
         if let (Some(first_seat), Some(second_seat)) =
@@ -744,6 +771,17 @@ pub fn build_candidate_domains(
     adjacency: &[Vec<usize>],
     graph_distances: &[Vec<Option<u32>>],
 ) -> Vec<CandidateDomain> {
+    build_candidate_domains_controlled(request, resolved, adjacency, graph_distances, None)
+        .expect("uncontrolled domain construction cannot stop")
+}
+
+pub(crate) fn build_candidate_domains_controlled(
+    request: &CoreSolveRequest,
+    resolved: &ResolvedHardRules,
+    adjacency: &[Vec<usize>],
+    graph_distances: &[Vec<Option<u32>>],
+    run: Option<&SolveRunControl<'_>>,
+) -> Result<Vec<CandidateDomain>, StopReason> {
     // Pre-place every fixed student so pair rules involving them constrain the
     // probed student exactly like in a real assignment (mirrors the strict
     // compile-time fixed/pair interaction checks in Python).
@@ -762,6 +800,9 @@ pub fn build_candidate_domains(
         let mut seats = Vec::new();
         let mut excluded = Vec::new();
         for seat in 0..request.seat_positions.len() {
+            if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+                return Err(reason);
+            }
             if let Some(fixed_seat) = fixed {
                 if seat != fixed_seat {
                     excluded.push((seat, format!("fixed to seat {fixed_seat}")));
@@ -791,7 +832,7 @@ pub fn build_candidate_domains(
             excluded,
         });
     }
-    domains
+    Ok(domains)
 }
 
 /// Global matching precheck (plan §6.1 third layer): maximum bipartite
@@ -803,45 +844,66 @@ pub fn build_candidate_domains(
 /// asserted: a full matching does not prove feasibility, because pair rules
 /// may still conflict across students (that is the hard search's job).
 pub fn maximum_candidate_matching(domains: &[CandidateDomain]) -> usize {
+    maximum_candidate_matching_controlled(domains, None).expect("uncontrolled matching cannot stop")
+}
+
+pub(crate) fn maximum_candidate_matching_controlled(
+    domains: &[CandidateDomain],
+    run: Option<&SolveRunControl<'_>>,
+) -> Result<usize, StopReason> {
     let seat_count = domains
         .iter()
         .flat_map(|domain| domain.seats.iter().copied())
         .max()
         .map_or(0, |max| max + 1);
     let mut seat_owner: Vec<Option<usize>> = vec![None; seat_count];
+    let mut student_seat: Vec<Option<usize>> = vec![None; domains.len()];
     let mut matched = 0;
-    for student in 0..domains.len() {
-        let mut visited = vec![false; seat_count];
-        if augment_matching(student, domains, &mut visited, &mut seat_owner) {
+    for source in 0..domains.len() {
+        // Iterative augmenting paths avoid a recursion depth proportional to
+        // the input class size and check cancellation throughout matching.
+        let mut predecessor: Vec<Option<usize>> = vec![None; seat_count];
+        let mut visited_students = vec![false; domains.len()];
+        let mut queue = std::collections::VecDeque::from([source]);
+        visited_students[source] = true;
+        let mut free_seat = None;
+        'search: while let Some(student) = queue.pop_front() {
+            for &seat in &domains[student].seats {
+                if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+                    return Err(reason);
+                }
+                if predecessor[seat].is_some() {
+                    continue;
+                }
+                predecessor[seat] = Some(student);
+                match seat_owner[seat] {
+                    None => {
+                        free_seat = Some(seat);
+                        break 'search;
+                    }
+                    Some(owner) if !visited_students[owner] => {
+                        visited_students[owner] = true;
+                        queue.push_back(owner);
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+        if let Some(mut seat) = free_seat {
+            loop {
+                let student = predecessor[seat].expect("an augmenting path has a predecessor");
+                let previous_seat = student_seat[student];
+                seat_owner[seat] = Some(student);
+                student_seat[student] = Some(seat);
+                match previous_seat {
+                    Some(previous_seat) => seat = previous_seat,
+                    None => break,
+                }
+            }
             matched += 1;
         }
     }
-    matched
-}
-
-/// Kuhn's augmenting-path step: try to reassign seats so `student` gets one.
-fn augment_matching(
-    student: usize,
-    domains: &[CandidateDomain],
-    visited: &mut [bool],
-    seat_owner: &mut [Option<usize>],
-) -> bool {
-    for &seat in &domains[student].seats {
-        if visited[seat] {
-            continue;
-        }
-        visited[seat] = true;
-        if let Some(previous) = seat_owner[seat] {
-            if augment_matching(previous, domains, visited, seat_owner) {
-                seat_owner[seat] = Some(student);
-                return true;
-            }
-        } else {
-            seat_owner[seat] = Some(student);
-            return true;
-        }
-    }
-    false
+    Ok(matched)
 }
 
 /// Exhaustive hard search outcome (plan §6.1 fourth layer).
@@ -907,11 +969,18 @@ pub(crate) fn hard_search_controlled(
     for [student, seat] in &request.fixed_seats {
         assignment[*student] = Some(*seat);
     }
-    let mut domains: Vec<Vec<usize>> =
-        build_candidate_domains(request, resolved, adjacency, graph_distances)
-            .into_iter()
-            .map(|domain| domain.seats)
-            .collect();
+    let domains = match build_candidate_domains_controlled(
+        request,
+        resolved,
+        adjacency,
+        graph_distances,
+        Some(run),
+    ) {
+        Ok(domains) => domains,
+        Err(StopReason::Deadline) => return SearchOutcome::DeadlineExceeded,
+        Err(StopReason::Cancelled) => return SearchOutcome::Cancelled,
+    };
+    let mut domains: Vec<Vec<usize>> = domains.into_iter().map(|domain| domain.seats).collect();
     let mut budget = budget;
     backtrack(
         request,
@@ -1188,6 +1257,13 @@ fn first_hard_rule_violation(
 }
 
 pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), String> {
+    validate_solve_request_controlled(request, None).map(|_| ())
+}
+
+pub(crate) fn validate_solve_request_controlled(
+    request: &CoreSolveRequest,
+    run: Option<&SolveRunControl<'_>>,
+) -> Result<Option<StopReason>, String> {
     if request.api_version != NATIVE_API_VERSION {
         return Err(format!(
             "unsupported native solve api_version {}; expected {}",
@@ -1196,6 +1272,24 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
     }
     if request.student_count == 0 {
         return Err("native solve requires at least one student".to_string());
+    }
+    if request.student_count > 1_000 {
+        return Err(
+            "invalid student_count: native solve supports at most 1000 students".to_string(),
+        );
+    }
+    if request
+        .fixed_seats
+        .len()
+        .saturating_add(request.must_be_adjacent.len())
+        .saturating_add(request.cannot_be_adjacent.len())
+        .saturating_add(request.min_distance.len())
+        > 100_000
+    {
+        return Err("invalid hard rules: supports at most 100000 input constraints".to_string());
+    }
+    if request.edges.len() > 100_000 {
+        return Err("invalid adjacency graph: supports at most 100000 input edges".to_string());
     }
     if request.seat_positions.is_empty() {
         return Err("native solve requires at least one seat".to_string());
@@ -1212,14 +1306,24 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
     if request.student_count > seat_count {
         return Err("native solve cannot seat more students than available seats".to_string());
     }
-    // Scale guard (core audit 2026-08-12): validation and search build
-    // O(V^2) distance matrices, so an unbounded seat count is a memory
-    // DoS surface on the loopback API. Classroom grids are far below this.
+    // Bound the seat domain independently of the optional graph matrix.
+    // Classroom grids are far below this; graph-distance inputs have their
+    // own stricter memory bound below.
     const MAX_SOLVE_SEATS: usize = 10_000;
     if seat_count > MAX_SOLVE_SEATS {
         return Err(format!(
             "native solve supports at most {MAX_SOLVE_SEATS} seats, got {seat_count}"
         ));
+    }
+    // Bound the quadratic structure that is required only by graph-distance
+    // rules (~32 MiB at this limit). Ordinary seating may use 10,000 seats.
+    if seat_count > 2_000
+        && request
+            .min_distance
+            .iter()
+            .any(|rule| matches!(rule.metric, CoreDistanceMetric::Graph))
+    {
+        return Err("invalid graph-distance problem: supports at most 2000 seats".to_string());
     }
     if !request.students.is_empty() && request.students.len() != request.student_count {
         return Err("students must be empty or match student_count".to_string());
@@ -1227,6 +1331,9 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
     if !request.students.is_empty() {
         let mut student_keys: HashSet<&str> = HashSet::new();
         for student in &request.students {
+            if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+                return Ok(Some(reason));
+            }
             if student.key.trim().is_empty() {
                 return Err("students require non-empty keys".to_string());
             }
@@ -1237,15 +1344,21 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
             // richer student records must be held to the same contract, or a
             // NaN/inf score silently propagates NaN costs and percentiles
             // into the response (serializing as JSON null).
-            if student.score.is_some_and(|score| !score.is_finite()) {
+            if student
+                .score
+                .is_some_and(|score| !score.is_finite() || score.abs() > 1_000_000_000.0)
+            {
                 return Err(format!(
-                    "invalid student {:?} score: must be a finite number",
+                    "invalid student {:?} score: must be finite and between -1000000000 and 1000000000",
                     student.key
                 ));
             }
-            if student.height_cm.is_some_and(|height| !height.is_finite()) {
+            if student
+                .height_cm
+                .is_some_and(|height| !height.is_finite() || !(0.0..=300.0).contains(&height))
+            {
                 return Err(format!(
-                    "invalid student {:?} height_cm: must be a finite number",
+                    "invalid student {:?} height_cm: must be finite and between 0 and 300 centimetres",
                     student.key
                 ));
             }
@@ -1258,9 +1371,11 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
         .student_scores
         .iter()
         .flatten()
-        .any(|score| !score.is_finite())
+        .any(|score| !score.is_finite() || score.abs() > 1_000_000_000.0)
     {
-        return Err("student scores must be finite numbers".to_string());
+        return Err(
+            "student scores must be finite and between -1000000000 and 1000000000".to_string(),
+        );
     }
     if request
         .time_limit_seconds
@@ -1270,14 +1385,38 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
             "invalid time_limit_seconds: expected a finite value greater than zero".to_string(),
         );
     }
+    if let Some(seconds) = request.time_limit_seconds {
+        let duration = Duration::try_from_secs_f64(seconds)
+            .map_err(|_| "invalid time_limit_seconds: duration is out of range".to_string())?;
+        Instant::now()
+            .checked_add(duration)
+            .ok_or_else(|| "invalid time_limit_seconds: deadline is out of range".to_string())?;
+    }
     if let Some(layout) = &request.layout {
-        if layout.seats.len() < seat_count {
-            return Err(
-                "layout must describe at least as many seats as seat_positions".to_string(),
-            );
+        if layout.seats.iter().filter(|seat| seat.enabled).count() != seat_count {
+            return Err("enabled layout seats must match seat_positions one-to-one; every seat in the solve index domain must be enabled".to_string());
+        }
+        let mut seat_ids = HashSet::new();
+        for seat in &layout.seats {
+            if seat.seat_id.trim().is_empty() || !seat_ids.insert(seat.seat_id.as_str()) {
+                return Err("layout seats must have unique non-empty seat_id values".to_string());
+            }
+        }
+        for (index, seat) in layout.seats.iter().filter(|seat| seat.enabled).enumerate() {
+            let position = request.seat_positions[index];
+            if seat.x.is_some_and(|x| x != position[0]) || seat.y.is_some_and(|y| y != position[1])
+            {
+                return Err(format!(
+                    "invalid layout seat {:?}: coordinates must match seat_positions[{index}]",
+                    seat.seat_id
+                ));
+            }
         }
     }
     for [first_seat, second_seat] in &request.edges {
+        if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+            return Ok(Some(reason));
+        }
         if first_seat == second_seat || *first_seat >= seat_count || *second_seat >= seat_count {
             return Err("edges must reference two different known seats".to_string());
         }
@@ -1313,6 +1452,9 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
         }
     }
     for rule in &request.min_distance {
+        if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+            return Ok(Some(reason));
+        }
         if rule.students[0] >= request.student_count || rule.students[1] >= request.student_count {
             return Err("min_distance references an unknown student".to_string());
         }
@@ -1347,7 +1489,6 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
         }
     }
     let adjacency = build_index_adjacency(seat_count, &request.edges);
-    let graph_distances = build_graph_distance_matrix(&adjacency);
     let must_pairs: HashSet<[usize; 2]> = request.must_be_adjacent.iter().copied().collect();
     let cannot_pairs: HashSet<[usize; 2]> = request.cannot_be_adjacent.iter().copied().collect();
     if let Some(pair) = must_pairs.intersection(&cannot_pairs).next() {
@@ -1383,6 +1524,9 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
         }
     }
     for rule in &request.min_distance {
+        if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+            return Ok(Some(reason));
+        }
         if let (Some(first_seat), Some(second_seat)) = (
             fixed_by_student.get(&rule.students[0]),
             fixed_by_student.get(&rule.students[1]),
@@ -1393,9 +1537,8 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
                     let second = request.seat_positions[*second_seat];
                     seat_distance(first[0], first[1], second[0], second[1])
                 }
-                CoreDistanceMetric::Graph => {
-                    graph_distances[*first_seat][*second_seat].map(|distance| distance as f64)
-                }
+                CoreDistanceMetric::Graph => graph_distance(&adjacency, *first_seat, *second_seat)
+                    .map(|distance| distance as f64),
             };
             // A disconnected graph pair has no finite distance: the Python
             // oracle treats it as infinite (inf < d is false), and the
@@ -1477,9 +1620,118 @@ pub(crate) fn validate_solve_request(request: &CoreSolveRequest) -> Result<(), S
                 ));
             }
         }
+        let mentor = &soft.mentor_pairing;
+        if mentor.enabled
+            && (!mentor.mentor_percentile.is_finite()
+                || !mentor.learner_percentile.is_finite()
+                || !(0.0..=1.0).contains(&mentor.mentor_percentile)
+                || !(0.0..=1.0).contains(&mentor.learner_percentile))
+        {
+            return Err(
+                "invalid mentor_pairing percentiles: must be finite values between 0 and 1"
+                    .to_string(),
+            );
+        }
+        for (name, lookback) in [
+            ("fair_rotation", soft.fair_rotation.lookback),
+            (
+                "avoid_recent_neighbors",
+                soft.avoid_recent_neighbors.lookback,
+            ),
+            ("mentor_pairing", Some(mentor.history_lookback)),
+        ] {
+            if lookback.is_some_and(|value| value < 0) {
+                return Err(format!("invalid {name} lookback: must be non-negative"));
+            }
+        }
+        if soft.avoid_recent_neighbors.max_recent_count < 0 {
+            return Err(
+                "invalid avoid_recent_neighbors max_recent_count: must be non-negative".to_string(),
+            );
+        }
+        if soft.cooling.enabled && soft.cooling.weight > 0 && soft.cooling.cooling_period <= 0 {
+            return Err("invalid cooling_period: must be positive".to_string());
+        }
+        const RELATIONS: [&str; 6] = [
+            "desk_mate",
+            "horizontal",
+            "vertical",
+            "diagonal",
+            "adjacent_any",
+            "within_distance",
+        ];
+        for (name, relations) in [
+            (
+                "avoid_recent_neighbors",
+                &soft.avoid_recent_neighbors.relation_types,
+            ),
+            ("cooling", &soft.cooling.relation_types),
+        ] {
+            if let Some(relation) = relations
+                .iter()
+                .find(|relation| !RELATIONS.contains(&relation.as_str()))
+            {
+                return Err(format!("unrecognized {name} relation type: {relation:?}"));
+            }
+        }
     }
-    resolve_group_rules(request)?;
-    Ok(())
+    if let Some(history) = &request.history {
+        if history.history_count < 0
+            || history
+                .students
+                .values()
+                .any(|student| student.category_counts.values().any(|count| *count < 0))
+        {
+            return Err("invalid seat history: counts must be non-negative".to_string());
+        }
+        for student in history.students.values() {
+            let indexed = student
+                .records
+                .iter()
+                .any(|record| record.period_index.is_some());
+            let mut previous = 0;
+            for record in &student.records {
+                if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+                    return Ok(Some(reason));
+                }
+                if indexed {
+                    let index = record.period_index.ok_or_else(|| "invalid seat history: cannot mix indexed periods and legacy occurrence records for one student".to_string())?;
+                    if index <= previous || index > history.history_count {
+                        return Err("invalid seat history: period_index must increase within 1..=history_count".to_string());
+                    }
+                    previous = index;
+                }
+            }
+        }
+    }
+    if let Some(history) = &request.pair_history {
+        if history.history_count < 0 {
+            return Err("invalid pair history: history_count must be non-negative".to_string());
+        }
+        for pair in history.pairs.values() {
+            if let Some(reason) = run.and_then(SolveRunControl::stop_reason) {
+                return Ok(Some(reason));
+            }
+            let mut previous = 0;
+            let indexed = pair
+                .records
+                .iter()
+                .any(|record| record.period_index.is_some());
+            for record in &pair.records {
+                if indexed {
+                    let index = record.period_index.ok_or_else(|| "invalid pair history: cannot mix indexed periods and legacy occurrence records in one pair".to_string())?;
+                    if index <= previous || index > history.history_count {
+                        return Err("invalid pair history: period_index must increase within 1..=history_count".to_string());
+                    }
+                    previous = index;
+                }
+            }
+        }
+    }
+    if resolve_group_rules_controlled(request, run)?.is_none() {
+        return Ok(run.and_then(SolveRunControl::stop_reason));
+    }
+    Ok(None)
 }
 
 fn shuffle<T>(items: &mut [T], rng: &mut SplitMix64) {

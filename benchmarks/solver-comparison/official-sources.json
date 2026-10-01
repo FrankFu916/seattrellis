@@ -1,0 +1,17 @@
+[
+  {
+    "url": "https://developers.google.com/optimization/cp/cp_solver",
+    "fetched": false,
+    "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+    "url": "https://developers.google.com/optimization/install/cpp",
+    "fetched": false,
+    "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+    "url": "https://developers.google.com/optimization/cp/cp_tasks",
+    "fetched": false,
+    "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "Name": "ortools",
+    "Version": "9.14.6206",
+    "Summary": "Google OR-Tools python libraries and modules",
+    "Home-page": "https://developers.google.com/optimization/",
+    "License": "Apache 2.0",
+    "Requires-Python": ">= 3.9"
+  },
+  "native_libraries": [
+    "ortools/algorithms/python/knapsack_solver.cpython-312-x86_64-linux-gnu.so",
+    "ortools/constraint_solver/_pywrapcp.so",
+    "ortools/graph/python/linear_sum_assignment.cpython-312-x86_64-linux-gnu.so",
+    "ortools/graph/python/max_flow.cpython-312-x86_64-linux-gnu.so",
+    "ortools/graph/python/min_cost_flow.cpython-312-x86_64-linux-gnu.so",
+    "ortools/init/python/init.cpython-312-x86_64-linux-gnu.so",
+    "ortools/linear_solver/_pywraplp.so",
+    "ortools/linear_solver/python/model_builder_helper.cpython-312-x86_64-linux-gnu.so",
+    "ortools/math_opt/core/python/solver.cpython-312-x86_64-linux-gnu.so",
+    "ortools/math_opt/elemental/python/cpp_elemental.cpython-312-x86_64-linux-gnu.so",
+    "ortools/math_opt/io/python/mps_converter.cpython-312-x86_64-linux-gnu.so",
+    "ortools/pdlp/python/pdlp.cpython-312-x86_64-linux-gnu.so",
+    "ortools/sat/python/cp_model_helper.cpython-312-x86_64-linux-gnu.so",
+    "ortools/scheduling/python/rcpsp.cpython-312-x86_64-linux-gnu.so",
+    "ortools/set_cover/python/set_cover.cpython-312-x86_64-linux-gnu.so",
+    "ortools/util/python/sorted_interval_list.cpython-312-x86_64-linux-gnu.so",
+    "pybind11_abseil/status.cpython-312-x86_64-linux-gnu.so"
+  ],
+  "python_requirements": [
+    "absl-py>=2.0.0",
+    "numpy>=1.13.3",
+    "pandas>=2.0.0",
+    "protobuf<6.32,>=6.31.1",
+    "typing-extensions>=4.12",
+    "immutabledict>=3.0.0"
+  ]
+}

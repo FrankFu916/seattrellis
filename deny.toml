@@ -7,8 +7,10 @@ yanked = "deny"
 ignore = [
     # gtk-rs GTK3 bindings carry a family of unmaintained advisories; they
     # are pinned transitively by the Tauri 2 Linux stack (tauri/tao/wry) and
-    # have no patched GTK3 successor. The desktop shell targets macOS and
-    # Windows in practice.
+    # have no patched GTK3 successor. Linux desktop bundles currently use this stack; macOS/Windows
+    # builds do not. This exception covers unmaintained bindings, not a
+    # claim that Linux is unaffected; GTK4/native or a supported WebView
+    # migration must be re-evaluated before the next desktop architecture change.
     "RUSTSEC-2024-0370",
     "RUSTSEC-2024-0411",
     "RUSTSEC-2024-0412",

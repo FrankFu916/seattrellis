@@ -11,6 +11,9 @@ import {
   generateRotationPlan,
   listRecentProjects,
   loadBootstrap,
+  serializeClassDocument,
+  openClassDocument,
+  repairEditorDraft,
 } from "./api/client";
 import {
   createSeatAssignments,
@@ -19,6 +22,10 @@ import {
 } from "./api/demo";
 import type {
   BootstrapData,
+  ClassSource,
+  ClassDocument,
+  OpenClassDocumentResponse,
+  NormalUnsolvedStatus,
   CommonConstraint,
   CommonGroupRule,
   CommonPreferenceId,
@@ -52,6 +59,11 @@ import { SaveAsClassDialog } from "./components/SaveAsClassDialog";
 import { CandidatesPanel, type CandidateMeta, type ReproInfo } from "./components/CandidatesPanel";
 import { SeatingCanvasEditor } from "./components/SeatingCanvasEditor";
 import { Sidebar } from "./components/Sidebar";
+import { chooseClassSaveTarget, writeClassFile, type ClassSaveTarget } from "./domain/classFiles";
+import { readClassSource } from "./domain/classSource";
+import type { ExportSettings } from "./domain/export";
+import { snapshotStudents } from "./domain/snapshots";
+import { isTauriDesktop, pickFileWithDialog } from "./domain/desktop";
 import { consumeGeneratedDrafts } from "./domain/generatedDrafts";
 import {
   rosterIsValid,
@@ -200,6 +212,7 @@ function friendlyError(err: unknown, t?: Translate): string {
       session_required: "app.sessionExpired",
       editor_revision_conflict: "app.revisionConflict",
       layout_revision_conflict: "app.revisionConflict",
+      revision_conflict: "app.revisionConflict",
     };
     const key = localizedKey[err.code];
     return t && key ? t(key) : t ? t("app.operationFailed") : err.message;
@@ -209,6 +222,15 @@ function friendlyError(err: unknown, t?: Translate): string {
     return t ? t("app.operationFailed") : err.message;
   }
   return t ? t("app.operationFailed") : "The operation could not be completed.";
+}
+
+export function unsolvedMessageKey(status: NormalUnsolvedStatus): Parameters<Translate>[0] {
+  return {
+    ProvenInfeasible: "generate.infeasible",
+    Timeout: "generate.timeout",
+    Unknown: "generate.unknown",
+    Cancelled: "generate.cancelled",
+  }[status] as Parameters<Translate>[0];
 }
 
 /**
@@ -225,17 +247,17 @@ export function isRevisionConflict(error: unknown): boolean {
 }
 
 /** Convert the authoritative editor state into the canvas plan model. */
-export function editorToPlan(editor: EditorState): {
+export function editorToPlan(editor: EditorState, roster: Student[] = []): {
   students: Student[];
   assignments: SeatAssignment[];
 } {
+  const sourceById = new Map(roster.map((student) => [student.id, student]));
   const students: Student[] = editor.students.map((student) => ({
+    ...sourceById.get(student.student_key),
     id: student.student_key,
     name: student.display_name,
   }));
-  const nameById = new Map(
-    editor.students.map((student) => [student.student_key, student.display_name]),
-  );
+  const studentById = new Map(students.map((student) => [student.id, student]));
   const assignments: SeatAssignment[] = editor.seats
     .filter((seat) => seat.enabled)
     .map((seat) => ({
@@ -243,10 +265,7 @@ export function editorToPlan(editor: EditorState): {
       row: seat.row - 1,
       column: seat.col - 1,
       student: seat.student_key
-        ? {
-            id: seat.student_key,
-            name: nameById.get(seat.student_key) ?? "",
-          }
+        ? studentById.get(seat.student_key)
         : undefined,
       locked: seat.locked,
     }));
@@ -286,6 +305,7 @@ export function App() {
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [visitedViews, setVisitedViews] = useState<string[]>([]);
   const [generationDone, setGenerationDone] = useState(false);
+  const [exportSettings, setExportSettings] = useState<ExportSettings | undefined>();
   const [exportedOnce, setExportedOnce] = useState(false);
   const [firstRunDismissed, setFirstRunDismissed] = useState(
     () => window.localStorage.getItem(FIRST_RUN_KEY) === "done",
@@ -320,10 +340,23 @@ export function App() {
   const [assignments, setAssignments] = useState<SeatAssignment[]>(() =>
     createSeatAssignments(4, 5, demoStudents, 16),
   );
+  const assignmentsRef = useRef(assignments);
+  assignmentsRef.current = assignments;
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
   const [history, setHistory] = useState<SeatAssignment[][]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
+  const [sourceRevision, setSourceRevision] = useState(0);
+  const [savedSourceRevision, setSavedSourceRevision] = useState(0);
+  const [generatedSourceRevision, setGeneratedSourceRevision] = useState<number | null>(null);
+  const [generationRepro, setGenerationRepro] = useState<ReproInfo | undefined>();
+  const [draftRevisions, setDraftRevisions] = useState<Record<string, number>>({});
+  const [savedDraftRevisions, setSavedDraftRevisions] = useState<Record<string, number>>({});
+  const [scratchDirty, setScratchDirty] = useState(false);
+  const isDirty = sourceRevision !== savedSourceRevision || scratchDirty ||
+    Object.entries(draftRevisions).some(([id, value]) => savedDraftRevisions[id] !== value);
+  const [isSavingClass, setIsSavingClass] = useState(false);
+  const [classFileStatus, setClassFileStatus] = useState<string | null>(null);
+  const [isRepairing, setIsRepairing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editorDraftId, setEditorDraftId] = useState<string | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
@@ -337,6 +370,13 @@ export function App() {
    * plan for a class the teacher already left.
    */
   const generationTokenRef = useRef(0);
+  const generationAbortRef = useRef<AbortController | null>(null);
+  const repairAbortRef = useRef<AbortController | null>(null);
+  const classOperationRef = useRef(0);
+  const historyImportRef = useRef(0);
+  const classFileInputRef = useRef<HTMLInputElement>(null);
+  const classSaveTargetRef = useRef<ClassSaveTarget | null>(null);
+  const savedClassesRef = useRef(new Map<string, { document: ClassDocument; target: ClassSaveTarget | null }>());
   /** Same idea for async draft switches (period cards, candidate picks). */
   const draftSwitchRef = useRef(0);
   const liveDraftIdsRef = useRef<string[]>([]);
@@ -366,6 +406,9 @@ export function App() {
   useEffect(
     () => () => {
       generationTokenRef.current += 1;
+      generationAbortRef.current?.abort();
+      repairAbortRef.current?.abort();
+      classOperationRef.current += 1;
       draftSwitchRef.current += 1;
       releaseEditorDrafts(liveDraftIdsRef.current);
     },
@@ -556,13 +599,24 @@ export function App() {
     if (draftIds.length === 0) {
       return;
     }
+    setDraftRevisions((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !draftIds.includes(id))));
+    setSavedDraftRevisions((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !draftIds.includes(id))));
     void Promise.allSettled(draftIds.map((draftId) => deleteEditorDraft(draftId)));
   }
 
   function invalidatePendingWork(): void {
     generationTokenRef.current += 1;
+    generationAbortRef.current?.abort();
+    repairAbortRef.current?.abort();
+    setIsRepairing(false);
     draftSwitchRef.current += 1;
     setIsGenerating(false);
+  }
+
+  function markSourceChanged(): void {
+    invalidatePendingWork();
+    setSourceRevision((value) => value + 1);
+    setClassFileStatus(null);
   }
 
   /** Restore the initial workbench draft (context switch, D1). */
@@ -570,6 +624,13 @@ export function App() {
     // Invalidate any in-flight generate so its result cannot resurrect the
     // previous class's plan after the context has been reset.
     invalidatePendingWork();
+    classOperationRef.current += 1;
+    historyImportRef.current += 1;
+    classSaveTargetRef.current = null;
+    setClassFileStatus(null);
+    setExportSettings(undefined);
+    setIsSavingClass(false);
+    setIsRepairing(false);
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(demoStudents);
     setRevision(0);
@@ -606,7 +667,13 @@ export function App() {
     setHistorySnapshots([]);
     setHistoryFileNames([]);
     setHistoryError(null);
-    setIsDirty(false);
+    setScratchDirty(false);
+    setSourceRevision(0);
+    setSavedSourceRevision(0);
+    setGeneratedSourceRevision(null);
+    setGenerationRepro(undefined);
+    setDraftRevisions({});
+    setSavedDraftRevisions({});
     setView("roster");
   }
 
@@ -621,6 +688,11 @@ export function App() {
     if (isDirty && !window.confirm(t("app.discardDraft"))) {
       return;
     }
+    const saved = next.kind === "class" ? savedClassesRef.current.get(next.id) : undefined;
+    if (saved && saved.target?.kind !== "download") {
+      void restoreClassDocument(saved.document, saved.target, next);
+      return;
+    }
     setClassContext(next);
     resetWorkbench();
   }
@@ -629,14 +701,14 @@ export function App() {
     if (isDirty && !window.confirm(t("app.discardDraft"))) {
       return;
     }
-    invalidatePendingWork();
-    releaseEditorDrafts(currentEditorDraftIds());
     const { students: restoredStudents, assignments: restoredAssignments } =
       restoreSnapshotPlan(snapshot, assignments);
     if (restoredStudents.length === 0) {
       setSaveError(t("history.notRestorable"));
       return;
     }
+    markSourceChanged();
+    releaseEditorDrafts(currentEditorDraftIds());
     setStudents(restoredStudents);
     setAssignments(restoredAssignments);
     setEditorDraftId(null);
@@ -649,19 +721,204 @@ export function App() {
     setActiveRotationPeriod(1);
     setSelectedSeatId(null);
     setSaveError(null);
-    setIsDirty(true);
+    setScratchDirty(true);
     switchView("canvas");
   }
 
+  function currentClassSource(name?: string): ClassSource {
+    return {
+      name: name ?? (classContext.kind === "class" ? classContext.name : t("classFile.defaultName")),
+      students, selectedFileName, selectedRoomId, selectedGoalId, advancedSettings,
+      roomSettings, rotationSettings, detailedRules, historySnapshots, historyFileNames,
+      constraints, groups, preferences, sourceRevision, generatedSourceRevision, generationRepro,
+      activeRotationPeriod, scratchAssignments: assignments, exportSettings,
+    };
+  }
+
+  async function handleSaveClass(name?: string, saveAs = false) {
+    const token = ++classOperationRef.current;
+    const source = currentClassSource(name);
+    const filename = `${source.name.replace(/[\\/:*?"<>|]/g, "_")}.seattrellis.json`;
+    const refs = (rotationEditors.length ? rotationEditors.map((editor) => editor.draft_id) : currentEditorDraftIds())
+      .map((draft_id) => ({ draft_id, revision: draftRevisions[draft_id] ?? 0 }));
+    setIsSavingClass(true);
+    setSaveError(null);
+    try {
+      // Choose the destination while this call still has user activation.
+      const target = await chooseClassSaveTarget(filename, saveAs ? null : classSaveTargetRef.current);
+      if (!target || token !== classOperationRef.current) return;
+      const document = await serializeClassDocument(source, refs, rotationPlan);
+      if (token !== classOperationRef.current) return;
+      const outcome = await writeClassFile(target, filename, new Blob([JSON.stringify(document, null, 2)], { type: "application/json" }));
+      if (token !== classOperationRef.current) return;
+      classSaveTargetRef.current = target;
+      setSaveAsOpen(false);
+      setClassFileStatus(t(outcome === "saved" ? "classFile.saved" : "classFile.downloaded"));
+      if (outcome === "saved") {
+        const id = saveAs || classContext.kind === "temp" ? newCommandId() : classContext.id;
+        savedClassesRef.current.set(id, { document, target });
+        setSessionClasses((entries) => [...entries.filter((entry) => entry.id !== id), { id, name: source.name }]);
+        setClassContext({ kind: "class", id, name: source.name });
+        // Baseline the exact captured source/drafts, preserving changes made during the write.
+        setSavedSourceRevision(source.sourceRevision);
+        setSavedDraftRevisions(Object.fromEntries(refs.map(({ draft_id, revision }) => [draft_id, revision])));
+        if (assignmentsRef.current === source.scratchAssignments) setScratchDirty(false);
+      }
+    } catch (error) {
+      if (token === classOperationRef.current) {
+        setSaveError(friendlyError(error, t));
+        if (isRevisionConflict(error)) {
+          const results = await Promise.allSettled(refs.map(({ draft_id }) => fetchEditorState(draft_id)));
+          if (token === classOperationRef.current) results.forEach((result) => {
+            if (result.status === "fulfilled") {
+              rememberEditorState(result.value);
+              if (result.value.draft_id === editorDraftId) applyEditorState(result.value);
+            }
+          });
+        }
+      }
+    } finally {
+      if (token === classOperationRef.current) setIsSavingClass(false);
+    }
+  }
+
+  async function restoreClassDocument(document: unknown, target: ClassSaveTarget | null = null, context?: ClassContext) {
+    const token = ++classOperationRef.current;
+    setIsSavingClass(true);
+    setSaveError(null);
+    try {
+      const result = await openClassDocument(document);
+      if (token !== classOperationRef.current) {
+        releaseEditorDrafts([result.editor?.draft_id, ...result.period_editors.map((editor) => editor.draft_id), ...result.candidates.map((candidate) => candidate.candidate_id)].filter((id): id is string => !!id));
+        return;
+      }
+      await applyOpenedClass(result, document as ClassDocument, target, token, context);
+    } catch (error) {
+      if (token === classOperationRef.current) setSaveError(friendlyError(error, t));
+    } finally {
+      if (token === classOperationRef.current) setIsSavingClass(false);
+    }
+  }
+
+  async function applyOpenedClass(result: OpenClassDocumentResponse, document: ClassDocument, target: ClassSaveTarget | null, token: number, context?: ClassContext) {
+    let source: ClassSource;
+    try { source = readClassSource(result.class_source); }
+    catch (error) {
+      releaseEditorDrafts([result.editor?.draft_id, ...result.period_editors.map((editor) => editor.draft_id), ...result.candidates.map((candidate) => candidate.candidate_id)].filter((id): id is string => !!id));
+      throw error;
+    }
+    const owned = [...new Set([result.editor?.draft_id, ...result.period_editors.map((editor) => editor.draft_id), ...result.candidates.map((candidate) => candidate.candidate_id)].filter((id): id is string => !!id))];
+    let candidateEditors: EditorState[];
+    try {
+      candidateEditors = await Promise.all(result.candidates.map((candidate) => fetchEditorState(candidate.candidate_id)));
+      if (token !== classOperationRef.current) { releaseEditorDrafts(owned); return; }
+    } catch (error) {
+      releaseEditorDrafts(owned);
+      throw error;
+    }
+    invalidatePendingWork();
+    releaseEditorDrafts(currentEditorDraftIds());
+    setStudents(source.students);
+    setSelectedFileName(source.selectedFileName);
+    setSelectedRoomId(source.selectedRoomId);
+    setSelectedGoalId(source.selectedGoalId);
+    setAdvancedSettings(source.advancedSettings);
+    setRoomSettings(source.roomSettings);
+    setRotationSettings(source.rotationSettings);
+    setDetailedRules(source.detailedRules);
+    setHistorySnapshots(source.historySnapshots);
+    setHistoryFileNames(source.historyFileNames);
+    setConstraints(source.constraints);
+    setGroups(source.groups);
+    setPreferences(source.preferences);
+    setExportSettings(source.exportSettings);
+    setSourceRevision(source.sourceRevision);
+    setSavedSourceRevision(source.sourceRevision);
+    setGeneratedSourceRevision(source.generatedSourceRevision);
+    setGenerationRepro(source.generationRepro);
+    setRotationEditors(result.period_editors);
+    setRotationPlan(result.rotation_plan ?? null);
+    setActiveRotationPeriod(source.activeRotationPeriod);
+    setHistory([]);
+    setHistoryError(null);
+    setCandidateMetas(result.candidates.map((candidate, index) => ({
+      draft_id: candidate.candidate_id, revision: candidateEditors[index].revision,
+      total_score: candidate.total_score, recommended: candidate.recommended,
+      assignments: editorToPlan(candidateEditors[index], source.students).assignments,
+    })));
+    const allEditors = [...candidateEditors, ...result.period_editors, ...(result.editor ? [result.editor] : [])];
+    const versions = Object.fromEntries(allEditors.map((editor) => [editor.draft_id, editor.revision]));
+    setDraftRevisions(versions);
+    setSavedDraftRevisions(versions);
+    const active = result.period_editors[source.activeRotationPeriod - 1] ?? result.editor;
+    if (active) applyEditorState(active, source.students);
+    else {
+      setEditorDraftId(null);
+      setEditorRevision(0);
+      setEditorUndoDepth(0);
+      setEditorRedoDepth(0);
+      setAssignments(source.scratchAssignments);
+    }
+    setScratchDirty(false);
+    classSaveTargetRef.current = target;
+    const next = context ?? { kind: "class" as const, id: newCommandId(), name: source.name };
+    if (next.kind === "class") {
+      // Opening real file bytes establishes a persisted baseline, but grants
+      // no write authority. Preserve the validated document for class navigation;
+      // a later Save still chooses an authorized destination when target is null.
+      savedClassesRef.current.set(next.id, { document: { ...document, class_source: source }, target });
+      setSessionClasses((entries) => [...entries.filter((entry) => entry.id !== next.id), { id: next.id, name: source.name }]);
+    }
+    setClassContext(next);
+    setClassFileStatus(t("classFile.opened"));
+    setView(active ? "canvas" : "roster");
+  }
+
+  async function handleOpenClass(file?: File) {
+    const owner = classOperationRef.current;
+    try {
+      if (!file) {
+        if (isTauriDesktop()) file = (await pickFileWithDialog(["json"], t("classFile.open"))) ?? undefined;
+        else { classFileInputRef.current?.click(); return; }
+      }
+      if (!file || owner !== classOperationRef.current) return;
+      if (isDirty && !window.confirm(t("app.discardDraft"))) return;
+      if (file.size > 20 * 1024 * 1024) throw new Error("Class file too large");
+      const sourceToken = generationTokenRef.current;
+      const draftToken = draftSwitchRef.current;
+      const document = JSON.parse(await file.text());
+      if (owner !== classOperationRef.current || sourceToken !== generationTokenRef.current || draftToken !== draftSwitchRef.current) return;
+      await restoreClassDocument(document);
+    } catch (error) {
+      setSaveError(friendlyError(error, t));
+    }
+  }
+
   function handleSaveAsClass(name: string) {
-    const entry: SessionClass = { id: newCommandId(), name };
-    setSessionClasses((current) => [...current, entry]);
-    setSaveAsOpen(false);
-    // G-5: the scratch draft graduates into the new class context as-is.
-    setClassContext({ kind: "class", id: entry.id, name });
+    void handleSaveClass(name, true);
+  }
+
+  async function handleRepair() {
+    if (!editorDraftId || isRepairing) return;
+    const id = editorDraftId;
+    const controller = new AbortController();
+    repairAbortRef.current = controller;
+    const token = ++draftSwitchRef.current;
+    setIsRepairing(true);
+    setSaveError(null);
+    try {
+      const editor = await repairEditorDraft(id, editorRevision, [], controller.signal);
+      if (liveDraftIdsRef.current.includes(editor.draft_id)) rememberEditorState(editor);
+      if (token === draftSwitchRef.current) applyEditorState(editor);
+    } catch (error) {
+      if (token === draftSwitchRef.current) setSaveError(friendlyError(error, t));
+    } finally {
+      setIsRepairing(false);
+    }
   }
 
   function handleRoomChange(roomId: string) {
+    markSourceChanged();
     const room = catalogs.roomTemplates.find((item) => item.id === roomId);
     if (!room) {
       return;
@@ -691,6 +948,7 @@ export function App() {
   }
 
   function handleRoomSettingsChange(changes: Partial<CustomRoomSettings>) {
+    markSourceChanged();
     invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setRoomSettings((current) => ({ ...current, ...changes }));
@@ -706,6 +964,7 @@ export function App() {
   }
 
   function handleConstraintAdd() {
+    markSourceChanged();
     setConstraints((current) => [
       ...current,
       {
@@ -724,6 +983,7 @@ export function App() {
     id: string,
     changes: Partial<CommonConstraint>,
   ) {
+    markSourceChanged();
     setConstraints((current) =>
       current.map((constraint) =>
         constraint.id === id ? { ...constraint, ...changes } : constraint,
@@ -732,14 +992,17 @@ export function App() {
   }
 
   function handleConstraintRemove(id: string) {
+    markSourceChanged();
     setConstraints((current) => current.filter((constraint) => constraint.id !== id));
   }
 
   function handleConstraintBatchAdd(next: CommonConstraint[]) {
+    markSourceChanged();
     setConstraints((current) => [...current, ...next]);
   }
 
   function handleGroupAdd() {
+    markSourceChanged();
     setGroups((current) => [
       ...current,
       {
@@ -752,20 +1015,24 @@ export function App() {
   }
 
   function handleGroupChange(id: string, changes: Partial<CommonGroupRule>) {
+    markSourceChanged();
     setGroups((current) =>
       current.map((group) => (group.id === id ? { ...group, ...changes } : group)),
     );
   }
 
   function handleGroupRemove(id: string) {
+    markSourceChanged();
     setGroups((current) => current.filter((group) => group.id !== id));
   }
 
   function handleGroupBatchAdd(next: CommonGroupRule[]) {
+    markSourceChanged();
     setGroups((current) => [...current, ...next]);
   }
 
   function handlePreferenceToggle(id: CommonPreferenceId) {
+    markSourceChanged();
     setPreferences((current) =>
       current.includes(id)
         ? current.filter((value) => value !== id)
@@ -774,6 +1041,8 @@ export function App() {
   }
 
   async function handleHistoryFiles(files: File[]) {
+    const token = ++historyImportRef.current;
+    const owner = classOperationRef.current;
     const MAX_HISTORY_FILES = 40;
     const MAX_HISTORY_FILE_BYTES = 20 * 1024 * 1024;
     if (files.length > MAX_HISTORY_FILES) {
@@ -807,6 +1076,7 @@ export function App() {
         parsed.push(...(entries as HistorySnapshotPayload[]));
       }
     } catch (error) {
+      if (token !== historyImportRef.current || owner !== classOperationRef.current) return;
       console.error("History import failed", error);
       setHistoryError(
         error instanceof Error && error.message === "history_file_too_large"
@@ -816,12 +1086,16 @@ export function App() {
       return;
     }
 
+    if (token !== historyImportRef.current || owner !== classOperationRef.current) return;
+    markSourceChanged();
     setHistorySnapshots(parsed);
     setHistoryFileNames(files.map((file) => file.name));
     setHistoryError(null);
   }
 
   function clearHistoryFiles() {
+    historyImportRef.current += 1;
+    markSourceChanged();
     setHistorySnapshots([]);
     setHistoryFileNames([]);
     setHistoryError(null);
@@ -854,7 +1128,7 @@ export function App() {
       setHistory((previous) => [...previous, assignments]);
       setAssignments(updated);
       setSelectedSeatId(null);
-      setIsDirty(true);
+      setScratchDirty(true);
     } else {
       setSelectedSeatId(seatId);
     }
@@ -912,9 +1186,10 @@ export function App() {
         action: command.action,
         operations: command.operations,
       });
+      if (!liveDraftIdsRef.current.includes(editor.draft_id)) return;
+      rememberEditorState(editor);
       if (token !== draftSwitchRef.current) return;
       applyEditorState(editor);
-      setIsDirty(true);
     } catch (err) {
       if (token !== draftSwitchRef.current) return;
       setSelectedSeatId(null);
@@ -947,7 +1222,7 @@ export function App() {
       }
       setAssignments(latest);
       setSelectedSeatId(null);
-      setIsDirty(true);
+      setScratchDirty(true);
       return previous.slice(0, -1);
     });
   }
@@ -980,26 +1255,26 @@ export function App() {
     }
     setHistory((previous) => [...previous, assignments]);
     setAssignments((current) => toggleSeatLock(current, selectedSeatId));
-    setIsDirty(true);
+    setScratchDirty(true);
   }
 
-  function applyEditorState(editor: EditorState) {
-    const plan = editorToPlan(editor);
-    setStudents(plan.students);
+  function rememberEditorState(editor: EditorState, roster: Student[] = students) {
+    const plan = editorToPlan(editor, roster);
+    setDraftRevisions((versions) => ({ ...versions, [editor.draft_id]: editor.revision }));
+    setRotationEditors((editors) => editors.map((entry) => entry.draft_id === editor.draft_id ? editor : entry));
+    setCandidateMetas((current) => current.map((candidate) => candidate.draft_id === editor.draft_id
+      ? { ...candidate, assignments: plan.assignments, revision: editor.revision } : candidate));
+  }
+
+  function applyEditorState(editor: EditorState, roster: Student[] = students) {
+    const plan = editorToPlan(editor, roster);
+    rememberEditorState(editor, roster);
     setAssignments(plan.assignments);
-    setCandidateMetas((current) =>
-      current.map((candidate) =>
-        candidate.draft_id === editor.draft_id
-          ? { ...candidate, assignments: plan.assignments, revision: editor.revision }
-          : candidate,
-      ),
-    );
     setEditorDraftId(editor.draft_id);
     setEditorRevision(editor.revision);
     setEditorUndoDepth(editor.undo_depth);
     setEditorRedoDepth(editor.redo_depth);
     setSelectedSeatId(null);
-    setIsDirty(false);
   }
 
   /** Batch lock/unlock from the canvas box selection (one atomic command). */
@@ -1021,7 +1296,7 @@ export function App() {
         locked.has(seat.seatId) ? { ...seat, locked: lock } : seat,
       );
     });
-    setIsDirty(true);
+    setScratchDirty(true);
   }
 
   /** Batch move of a canvas multi-selection onto a drop seat. */
@@ -1054,7 +1329,7 @@ export function App() {
       }
       return next;
     });
-    setIsDirty(true);
+    setScratchDirty(true);
   }
 
   /**
@@ -1111,7 +1386,7 @@ export function App() {
       ? students.find((candidate) => candidate.id === studentId) ?? null
       : null;
     setAssignments(assignStudentToSeat(assignments, seatId, student));
-    setIsDirty(true);
+    setScratchDirty(true);
   }
 
   async function handleRotationPeriodSelect(period: number) {
@@ -1143,13 +1418,21 @@ export function App() {
   }
 
   function handleRotationLoad(result: ProjectRotationLoadResponse) {
+    if (isDirty && !window.confirm(t("app.discardDraft"))) {
+      releaseEditorDrafts(result.period_editors.map((editor) => editor.draft_id));
+      return;
+    }
     invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setCandidateMetas([]);
     const editors = result.period_editors.length
       ? result.period_editors
       : [result.editor];
-    applyEditorState(editors[0]);
+    const loadedStudents = result.students ? snapshotStudents({ students: result.students }) : [];
+    if (loadedStudents.length) setStudents(loadedStudents);
+    applyEditorState(editors[0], loadedStudents.length ? loadedStudents : students);
+    setDraftRevisions(Object.fromEntries(editors.map((editor) => [editor.draft_id, editor.revision])));
+    setGeneratedSourceRevision(null);
     setRotationEditors(editors);
     setRotationPlan(result.rotation_plan);
     setActiveRotationPeriod(1);
@@ -1162,7 +1445,11 @@ export function App() {
   async function handleGenerate() {
     // A stale result (context/roster changed mid-flight) must not overwrite
     // the workbench: every state-resetting handler bumps this token.
+    generationAbortRef.current?.abort();
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
     const token = ++generationTokenRef.current;
+    const requestedSourceRevision = sourceRevision;
     draftSwitchRef.current += 1;
     const supersededDraftIds = currentEditorDraftIds();
     setIsGenerating(true);
@@ -1192,13 +1479,14 @@ export function App() {
               ...requestArgs,
               rotation: rotationSettings,
             }),
+            controller.signal,
           )
-        : await generateClass(buildGenerateClassRequest(requestArgs));
+        : await generateClass(buildGenerateClassRequest(requestArgs), controller.signal);
       if (!response.feasible) {
         // ProvenInfeasible/Timeout/Unknown/Cancelled are successful transport
         // responses with no editable assignment, not HTTP failures.
         if (token === generationTokenRef.current) {
-          setSaveError(t("app.planNotFound"));
+          setSaveError(t(unsolvedMessageKey(response.status)));
         }
         return;
       }
@@ -1207,6 +1495,9 @@ export function App() {
         () => token === generationTokenRef.current,
         ({ editor, periodEditors, rotationPlan, candidates }) => {
           applyEditorState(editor);
+          setDraftRevisions(Object.fromEntries([editor, ...periodEditors, ...candidates.map((candidate) => candidate.editor)].map((draft) => [draft.draft_id, draft.revision])));
+          setGeneratedSourceRevision(requestedSourceRevision);
+          setGenerationRepro({ seed: requestArgs.settings.seed.trim(), solver: "native", timeLimitSeconds: requestArgs.settings.timeLimitSeconds, historyCount: requestArgs.historySnapshots.length });
           setRotationEditors(periodEditors);
           setActiveRotationPeriod(1);
           setRotationPlan(rotationPlan);
@@ -1215,14 +1506,14 @@ export function App() {
               draft_id: candidateEditor.draft_id,
               total_score: summary.total_score,
               recommended: summary.recommended,
-              assignments: editorToPlan(candidateEditor).assignments,
+              assignments: editorToPlan(candidateEditor, students).assignments,
               revision: candidateEditor.revision,
             })),
           );
           releaseEditorDrafts(supersededDraftIds);
           setHistory([]);
           setSelectedSeatId(null);
-          setIsDirty(false);
+          setScratchDirty(false);
           setGenerationDone(true);
           setFirstRunDismissed(true);
           setView("canvas");
@@ -1263,6 +1554,7 @@ export function App() {
   }
 
   function handleRosterImported(importedStudents: Student[]) {
+    markSourceChanged();
     invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(importedStudents);
@@ -1288,6 +1580,7 @@ export function App() {
 
   /** D10: fill an empty roster with the built-in sample roster. */
   function handleUseSampleRoster() {
+    markSourceChanged();
     invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(demoStudents);
@@ -1310,6 +1603,7 @@ export function App() {
   }
 
   function handleStudentsEdited(editedStudents: Student[]) {
+    markSourceChanged();
     invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(editedStudents);
@@ -1387,7 +1681,17 @@ export function App() {
             t={t}
             onAction={handleContextAction}
             onSaveAsClass={() => setSaveAsOpen(true)}
+            onSave={() => void handleSaveClass()}
+            onOpen={() => void handleOpenClass()}
+            onCancelGenerate={() => { invalidatePendingWork(); setSaveError(t("generate.cancelled")); }}
+            isSaving={isSavingClass}
           />
+          <input ref={classFileInputRef} type="file" accept=".json" aria-label={t("classFile.open")} hidden
+            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void handleOpenClass(file); }} />
+          {classFileStatus ? <p className="inline-status" role="status">{classFileStatus}</p> : null}
+          {saveError && view !== "canvas" && view !== "generate" ? <p className="inline-error" role="alert">{saveError}</p> : null}
+          {generatedSourceRevision !== null && generatedSourceRevision !== sourceRevision && hasPlan ?
+            <p className="inline-status" role="status">{t("generate.staleSource")}</p> : null}
           {showFirstRun ? (
             <FirstRunChecklist
               progress={firstRunProgress}
@@ -1412,6 +1716,7 @@ export function App() {
             id="main-workspace"
             className={`main-workspace view-${view}`}
             tabIndex={-1}
+            inert={isSavingClass}
           >
             {view === "history" ? (
               <HistoryRotationPanel
@@ -1448,9 +1753,12 @@ export function App() {
                 locale={locale}
                 t={t}
                 onExported={() => setExportedOnce(true)}
+                initialSettings={exportSettings}
+                onSettingsChange={(settings) => { setExportSettings(settings); setScratchDirty(true); }}
               />
             ) : (
               <WorkflowPanel
+                key={classContext.kind === "class" ? classContext.id : "temp"}
                 step={viewToStep(view)}
                 locale={locale}
                 t={t}
@@ -1505,18 +1813,21 @@ export function App() {
                     </details>
                   </div>
                 }
-                onFileSelected={setSelectedFileName}
+                onFileSelected={(name) => { markSourceChanged(); setSelectedFileName(name); }}
                 onRoomChange={handleRoomChange}
-                onGoalChange={setSelectedGoalId}
-                onAdvancedSettingsChange={(changes) =>
-                  setAdvancedSettings((current) => ({ ...current, ...changes }))
-                }
-                onRotationSettingsChange={(changes) =>
-                  setRotationSettings((current) => ({ ...current, ...changes }))
-                }
-                onDetailedRulesChange={(changes) =>
-                  setDetailedRules((current) => ({ ...current, ...changes }))
-                }
+                onGoalChange={(goal) => { markSourceChanged(); setSelectedGoalId(goal); }}
+                onAdvancedSettingsChange={(changes) => {
+                  markSourceChanged();
+                  setAdvancedSettings((current) => ({ ...current, ...changes }));
+                }}
+                onRotationSettingsChange={(changes) => {
+                  markSourceChanged();
+                  setRotationSettings((current) => ({ ...current, ...changes }));
+                }}
+                onDetailedRulesChange={(changes) => {
+                  markSourceChanged();
+                  setDetailedRules((current) => ({ ...current, ...changes }));
+                }}
                 onHistoryFilesChange={(files) => {
                   void handleHistoryFiles(files);
                 }}
@@ -1545,7 +1856,7 @@ export function App() {
             {view === "canvas" && candidateMetas.length > 1 ? (
               <CandidatesPanel
                 candidates={candidateMetas}
-                repro={{
+                repro={generationRepro ?? {
                   seed: advancedSettings.seed.trim(),
                   solver: "native",
                   timeLimitSeconds: advancedSettings.timeLimitSeconds,
@@ -1587,6 +1898,8 @@ export function App() {
                     {saveError}
                   </p>
                 ) : null}
+                <button type="button" className="secondary-button" disabled={!editorDraftId || isRepairing || isGenerating || generatedSourceRevision !== sourceRevision}
+                  onClick={() => void handleRepair()}>{t(isRepairing ? "repair.busy" : "repair.action")}</button>
                 <SeatingCanvasEditor
                   key={editorDraftId ?? `preview-${revision}`}
                   assignments={assignments}
@@ -1649,6 +1962,8 @@ export function App() {
         t={t}
         onClose={() => setSaveAsOpen(false)}
         onConfirm={handleSaveAsClass}
+        busy={isSavingClass}
+        error={saveError}
       />
     </>
   );

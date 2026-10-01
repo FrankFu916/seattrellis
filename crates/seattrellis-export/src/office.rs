@@ -18,24 +18,7 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 use crate::render::{GridCell, PdfLayout, SeatingGrid};
-
-/// XML-escape a text run (OOXML text elements).
-fn xml_escape(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for character in value.chars() {
-        match character {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            // Strip control characters that are illegal in XML 1.0.
-            '\u{0}'..='\u{8}' | '\u{B}'..='\u{C}' | '\u{E}'..='\u{1F}' => {}
-            other => out.push(other),
-        }
-    }
-    out
-}
+use crate::xml::escape_text as xml_escape;
 
 /// Build the zip container for one Office document.
 fn package(entries: &[(&str, &str)]) -> Result<Vec<u8>, String> {
@@ -338,16 +321,14 @@ fn xlsx_seating_sheet(grid: &SeatingGrid, locale: &str, warnings: &mut Vec<Strin
 }
 
 /// Assignment data remains complete even when student identifiers are hidden.
-fn xlsx_assignments_sheet(grid: &SeatingGrid, warnings: &mut Vec<String>) -> String {
+fn xlsx_assignments_sheet(grid: &SeatingGrid, locale: &str, warnings: &mut Vec<String>) -> String {
     let mut sheet = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="1" width="22" customWidth="1"/><col min="2" max="2" width="28" customWidth="1"/><col min="3" max="3" width="20" customWidth="1"/><col min="4" max="4" width="32" customWidth="1"/></cols><sheetData>"#,
     );
     sheet.push_str(r#"<row r="1" ht="28" customHeight="1">"#);
-    for (index, label) in ["student_key", "student_name", "seat_id", "details"]
-        .iter()
-        .enumerate()
-    {
+    let labels = crate::render::assignment_headers(locale);
+    for (index, label) in labels.iter().enumerate() {
         sheet.push_str(&styled_string_cell(
             &format!("{}1", excel_column(index)),
             label,
@@ -415,7 +396,7 @@ pub fn render_xlsx_with_warnings(
     let workbook = XLSX_WORKBOOK.replace("</workbook>", &format!(r#"<definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">'Seating'!$A$1:${last_col}${last_row}</definedName></definedNames></workbook>"#));
     let mut warnings = Vec::new();
     let seating = xlsx_seating_sheet(grid, locale, &mut warnings);
-    let assignments = xlsx_assignments_sheet(grid, &mut warnings);
+    let assignments = xlsx_assignments_sheet(grid, locale, &mut warnings);
     let bytes = package(&[
         ("[Content_Types].xml", XLSX_CONTENT_TYPES),
         ("_rels/.rels", XLSX_ROOT_RELS),
@@ -467,13 +448,23 @@ const DOCX_FONT_TABLE: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone
   <w:font w:name="Microsoft YaHei"><w:charset w:val="86"/><w:family w:val="swiss"/><w:pitch w:val="variable"/></w:font>
 </w:fonts>"#;
 
+fn docx_line_twips(size: f64) -> u32 {
+    (size * 25.0).ceil().max(20.0) as u32
+}
+
 fn docx_paragraph(text: &str, size: f64, color: &str, bold: bool, align: &str) -> String {
     let half_points = (size * 2.0).round().max(2.0) as u32;
-    let line_twips = (size * 25.0).ceil().max(20.0) as u32;
+    let line_twips = docx_line_twips(size);
     let weight = if bold { "<w:b/>" } else { "" };
     format!(
         r#"<w:p><w:pPr><w:jc w:val="{align}"/><w:spacing w:before="0" w:after="0" w:line="{line_twips}" w:lineRule="exact"/><w:rPr><w:sz w:val="{half_points}"/><w:szCs w:val="{half_points}"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos" w:eastAsia="Microsoft YaHei" w:cs="Arial"/><w:sz w:val="{half_points}"/><w:szCs w:val="{half_points}"/><w:color w:val="{color}"/>{weight}</w:rPr><w:t xml:space="preserve">{}</w:t></w:r></w:p>"#,
         xml_escape(text)
+    )
+}
+
+fn docx_empty_paragraph(line_twips: u32) -> String {
+    format!(
+        r#"<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="{line_twips}" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr><w:r><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr><w:t/></w:r></w:p>"#
     )
 }
 
@@ -516,6 +507,7 @@ fn docx_seat_table(
     grid: &SeatingGrid,
     layout: &PdfLayout,
     locale: &str,
+    surrounding_height_twips: u32,
     warnings: &mut Vec<String>,
 ) -> String {
     let cols = i64::from(grid.max_col - grid.min_col + 1).max(1);
@@ -523,7 +515,13 @@ fn docx_seat_table(
     let available_w = ((layout.page_w - 2.0 * layout.margin_pt) * 20.0)
         .round()
         .max(1.0) as i64;
-    let available_h = ((layout.page_h - 2.0 * layout.margin_pt - 100.0) * 20.0).max(1.0);
+    // Reserve the exact line heights emitted outside the table, including its
+    // required final paragraph. Vertical cell margins are zero: some Office
+    // readers add them to an "exact" row height, overflowing a fitted page.
+    let available_h = ((layout.page_h - 2.0 * layout.margin_pt) * 20.0
+        - f64::from(surrounding_height_twips)
+        - 40.0)
+        .max(1.0);
     let scale = layout.scale_multiplier.clamp(0.5, 1.0);
     let unit_w = available_w as f64 / (cols as f64 * 134.0 - 18.0);
     let unit_h = available_h / (rows as f64 * 88.0 - 18.0);
@@ -537,7 +535,7 @@ fn docx_seat_table(
     let small_size = (8.0 * unit / 20.0).clamp(1.0, 9.0);
     let text_width = (seat_w as f64 / 20.0 - 8.0).max(1.0);
     let mut table = format!(
-        r#"<w:tbl><w:tblPr><w:tblW w:w="{table_w}" w:type="dxa"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="60" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>"#
+        r#"<w:tbl><w:tblPr><w:tblW w:w="{table_w}" w:type="dxa"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="60" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>"#
     );
     for index in 0..cols * 2 - 1 {
         let width = if index % 2 == 0 { seat_w } else { gap };
@@ -676,16 +674,29 @@ pub fn render_docx_with_warnings(
         .collect::<String>();
     let subtitle = docx_paragraph(&chart_summary(grid, locale), 10.0, "676B63", false, "left");
     let front = docx_paragraph(front_label(locale), 9.0, "676B63", false, "center");
+    let spacer = docx_empty_paragraph(120);
+    let trailing = docx_empty_paragraph(20);
+    let surrounding_height_twips = title_lines.len() as u32 * docx_line_twips(title_size)
+        + docx_line_twips(10.0)
+        + docx_line_twips(9.0)
+        + 2 * 120
+        + 20;
     let document = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
-    {title}{subtitle}<w:p><w:pPr><w:spacing w:line="120" w:lineRule="exact"/></w:pPr></w:p>{front}<w:p><w:pPr><w:spacing w:line="120" w:lineRule="exact"/></w:pPr></w:p>
-    {table}
+    {title}{subtitle}{spacer}{front}{spacer}
+    {table}{trailing}
     <w:sectPr><w:pgSz w:w="{doc_w}" w:h="{doc_h}"/><w:pgMar w:top="{margin}" w:right="{margin}" w:bottom="{margin}" w:left="{margin}" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>
   </w:body>
 </w:document>"#,
-        table = docx_seat_table(grid, layout, locale, &mut warnings),
+        table = docx_seat_table(
+            grid,
+            layout,
+            locale,
+            surrounding_height_twips,
+            &mut warnings
+        ),
     );
     let bytes = package(&[
         ("[Content_Types].xml", DOCX_CONTENT_TYPES),
@@ -1069,7 +1080,7 @@ mod tests {
         assert!(seating.contains("R2C1\n"));
         assert!(seating.contains("停用"));
         let assignments = &entries["xl/worksheets/sheet2.xml"];
-        assert!(assignments.contains("student_key"));
+        assert!(assignments.contains("学生编号"));
         assert!(assignments.contains("S1"));
         assert!(assignments.contains("Alice"));
         // Sheet names in the workbook part.
@@ -1346,6 +1357,21 @@ mod tests {
         assert_eq!(attributes(assignments, "row").len(), 4);
         assert!(assignments.contains("R1C1"));
         assert!(!assignments.contains(">S1<"));
+    }
+
+    #[test]
+    fn xlsx_assignment_column_headings_follow_the_selected_locale() {
+        for (locale, headers) in [
+            ("en", ["Student ID", "Student name", "Seat ID", "Details"]),
+            ("zh", ["学生编号", "学生姓名", "座位编号", "详细信息"]),
+        ] {
+            let entries = unzip(&render_xlsx_with(&sample_grid(), locale).unwrap());
+            let assignments = &entries["xl/worksheets/sheet2.xml"];
+            for header in headers {
+                assert!(assignments.contains(header), "{locale}: {header}");
+            }
+            assert!(assignments.contains("Alice") && assignments.contains("S1"));
+        }
     }
 
     #[test]

@@ -158,7 +158,7 @@ describe("ContextBar", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("offers save-as-class only in the scratch workspace", () => {
+  it("offers save-as-class for scratch and existing classes", () => {
     const { rerender } = render(<ContextBar {...base} action={{ kind: "navigate", target: "export", label: "ctx.export" }} />);
     expect(screen.getByRole("button", { name: "另存为班级" })).toBeInTheDocument();
 
@@ -169,7 +169,7 @@ describe("ContextBar", () => {
         action={{ kind: "navigate", target: "export", label: "ctx.export" }}
       />,
     );
-    expect(screen.queryByRole("button", { name: "另存为班级" })).toBeNull();
+    expect(screen.getByRole("button", { name: "另存为班级" })).toBeInTheDocument();
   });
 
   it("disables generation while running or when the roster is invalid", () => {
@@ -260,5 +260,28 @@ describe("SaveAsClassDialog", () => {
       <SaveAsClassDialog open={false} t={t} onClose={() => undefined} onConfirm={() => undefined} />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("save dialog keyboard lifecycle", () => {
+  it("traps Tab, closes with Escape and restores the invoking control", async () => {
+    const user = userEvent.setup();
+    const close = vi.fn();
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const { rerender } = render(<SaveAsClassDialog open t={t} onClose={close} onConfirm={vi.fn()} />);
+    const input = screen.getByRole("textbox");
+    expect(input).toHaveFocus();
+    await user.type(input, "新班级");
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "保存并进入" })).toHaveFocus();
+    await user.tab();
+    expect(input).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(close).toHaveBeenCalledOnce();
+    rerender(<SaveAsClassDialog open={false} t={t} onClose={close} onConfirm={vi.fn()} />);
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 });

@@ -49,6 +49,34 @@ pub fn spec() -> Value {
 
 fn paths() -> Value {
     json!({
+        "/api/v1/classes/document/serialize": {"post": {
+            "tags":["classes"], "summary":"Capture a revision-checked portable class document",
+            "requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["class_source","draft_refs"],"properties":{
+                "class_source":{"type":"object","additionalProperties":true},
+                "draft_refs":{"type":"array","maxItems":20,"items":{"type":"object","additionalProperties":false,"required":["draft_id","revision"],"properties":{"draft_id":{"type":"string"},"revision":{"type":"integer","minimum":0}}}},
+                "rotation_plan":{"type":"object","nullable":true,"additionalProperties":true}
+            }}}}},
+            "responses":{"200":{"description":"Portable class document","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ClassDocument"}}}},"409":{"$ref":"#/components/responses/Conflict"},"400":{"$ref":"#/components/responses/InvalidInput"}}
+        }},
+        "/api/v1/classes/document/open": {"post": {
+            "tags":["classes"],"summary":"Validate and restore every class draft and full solve context atomically",
+            "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ClassDocument"}}}},
+            "responses":{"200":{"description":"Restored class","content":{"application/json":{"schema":{"type":"object","required":["class_source","editor","candidates","period_editors","rotation_plan"],"properties":{
+                "class_source":{"type":"object","additionalProperties":true},"editor":{"type":"object","nullable":true},
+                "candidates":{"type":"array","items":{"$ref":"#/components/schemas/CandidateSummary"}},"period_editors":{"type":"array","items":{"$ref":"#/components/schemas/EditorState"}},"rotation_plan":{"type":"object","nullable":true}
+            }}}}},"400":{"$ref":"#/components/responses/InvalidInput"}}
+        }},
+        "/api/v1/editing/drafts/{draft_id}/repair": {"post": {
+            "tags":["editing"],"summary":"Repair an assignment with persisted locks and one atomic undo step",
+            "parameters":[path_param("draft_id")],
+            "requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["base_revision"],"properties":{"base_revision":{"type":"integer","minimum":0},"affected_students":{"type":"array","items":{"type":"string"}}}}}}},
+            "responses":{"200":{"description":"Repaired editor state","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EditorState"}}}},"409":{"$ref":"#/components/responses/Conflict"},"422":{"$ref":"#/components/responses/Unprocessable"}}
+        }},
+        "/api/v1/jobs/{request_id}/cancel": {"post": {
+            "tags":["system"],"summary":"Cancel the job identified by its original X-Request-Id header",
+            "parameters":[path_param("request_id")],
+            "responses":{"200":{"description":"Whether a live job was cancelled","content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["cancelled"],"properties":{"cancelled":{"type":"boolean"}}}}}}}
+        }},
         "/": {
             "get": {
                 "tags": ["system"],
@@ -479,6 +507,18 @@ fn project_op(summary: &str, description: &str) -> Value {
 
 fn schemas() -> Value {
     json!({
+        "ClassDocument": {
+            "type":"object","additionalProperties":false,"required":["kind","schema_version","class_source","drafts"],
+            "properties":{
+                "kind":{"type":"string","enum":["seattrellis_class_document"]},"schema_version":{"type":"integer","enum":[1]},
+                "class_source":{"type":"object","additionalProperties":true},"rotation_plan":{"type":"object","nullable":true,"additionalProperties":true},
+                "drafts":{"type":"array","maxItems":20,"items":{"type":"object","additionalProperties":false,"required":["solve_request","assignments"],"properties":{
+                    "candidate_id":{"type":"string","nullable":true},"solve_request":{"$ref":"#/components/schemas/CoreSolveRequest"},
+                    "assignments":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["student_key","seat_id"],"properties":{"student_key":{"type":"string"},"seat_id":{"type":"string"}}}},
+                    "lock_state":{"type":"object","additionalProperties":false,"properties":{"locked_students":{"type":"array","items":{"type":"string"}},"locked_seats":{"type":"array","items":{"type":"string"}}}}
+                }}}
+            }
+        },
         "SessionResponse": {
             "type": "object",
             "required": ["api_version", "session_token"],
@@ -582,7 +622,7 @@ fn schemas() -> Value {
             "properties": {
                 "candidate_id": { "type": "string" },
                 "recommended": { "type": "boolean" },
-                "total_score": { "type": "number" }
+                "total_score": { "type": "number", "nullable": true }
             },
             "additionalProperties": false
         },

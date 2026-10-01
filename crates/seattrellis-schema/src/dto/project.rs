@@ -69,15 +69,33 @@ pub enum ExportFormat {
     Excel,
     #[serde(rename = "png")]
     Png,
+    #[serde(rename = "svg")]
+    Svg,
+    #[serde(rename = "print-html")]
+    PrintHtml,
+    #[serde(rename = "pdf")]
+    Pdf,
+    #[serde(rename = "xlsx")]
+    Xlsx,
+    #[serde(rename = "docx")]
+    Docx,
+    #[serde(rename = "pptx")]
+    Pptx,
 }
 
 impl ExportFormat {
-    /// The canonical wire label (`html` | `excel` | `png`).
+    /// The canonical wire label; `excel` remains a legacy alias of XLSX.
     pub fn as_str(self) -> &'static str {
         match self {
             ExportFormat::Html => "html",
             ExportFormat::Excel => "excel",
             ExportFormat::Png => "png",
+            ExportFormat::Svg => "svg",
+            ExportFormat::PrintHtml => "print-html",
+            ExportFormat::Pdf => "pdf",
+            ExportFormat::Xlsx => "xlsx",
+            ExportFormat::Docx => "docx",
+            ExportFormat::Pptx => "pptx",
         }
     }
 }

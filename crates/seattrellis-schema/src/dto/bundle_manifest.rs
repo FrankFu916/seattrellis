@@ -50,10 +50,12 @@ pub struct ManifestIssue {
 /// no absolute prefixes and no NUL bytes.
 pub fn is_safe_entry_path(path: &str) -> bool {
     if path.is_empty()
-        || path.contains('\0')
+        || path.contains(['\0', ':', '\\'])
         || path.starts_with('/')
         || path.starts_with('\\')
-        || path.split('/').any(|segment| segment == "..")
+        || path
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
     {
         return false;
     }
@@ -68,15 +70,41 @@ pub fn verify_manifest(
     base_dir: &std::path::Path,
 ) -> Vec<ManifestIssue> {
     let mut issues = Vec::new();
+    let root = match base_dir.canonicalize() {
+        Ok(root) => root,
+        Err(_) => {
+            return vec![ManifestIssue {
+                entry: String::new(),
+                problem: "bundle root missing".into(),
+            }]
+        }
+    };
+    let mut paths = std::collections::HashSet::new();
     for entry in &manifest.files {
-        if !is_safe_entry_path(&entry.path) {
+        if !is_safe_entry_path(&entry.path) || !paths.insert(entry.path.as_str()) {
             issues.push(ManifestIssue {
                 entry: entry.path.clone(),
                 problem: "unsafe entry path (absolute or escaping the bundle)".into(),
             });
             continue;
         }
-        let path = base_dir.join(&entry.path);
+        let path = match root.join(&entry.path).canonicalize() {
+            Ok(path) if path.starts_with(&root) => path,
+            Ok(_) => {
+                issues.push(ManifestIssue {
+                    entry: entry.path.clone(),
+                    problem: "entry escapes bundle root".into(),
+                });
+                continue;
+            }
+            Err(_) => {
+                issues.push(ManifestIssue {
+                    entry: entry.path.clone(),
+                    problem: "file missing".into(),
+                });
+                continue;
+            }
+        };
         let metadata = match std::fs::metadata(&path) {
             Ok(metadata) => metadata,
             Err(_) => {
@@ -234,6 +262,9 @@ mod tests {
         assert!(!is_safe_entry_path("a/../../b"));
         assert!(!is_safe_entry_path(""));
         assert!(!is_safe_entry_path("bad\0name"));
+        assert!(!is_safe_entry_path("C:/outside.json"));
+        assert!(!is_safe_entry_path("a\\..\\outside.json"));
+        assert!(!is_safe_entry_path("a//b.json"));
         assert!(is_safe_entry_path("project/students.json"));
         assert!(is_safe_entry_path("中文目录/名单.csv"));
     }

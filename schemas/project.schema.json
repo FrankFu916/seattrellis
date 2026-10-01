@@ -65,7 +65,13 @@
       "enum": [
         "html",
         "excel",
-        "png"
+        "png",
+        "svg",
+        "print-html",
+        "pdf",
+        "xlsx",
+        "docx",
+        "pptx"
       ],
       "title": "Default Export Format",
       "type": "string"

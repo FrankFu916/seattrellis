@@ -11,7 +11,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'none'; object-src 'none'; connect-src 'self' http://127.0.0.1:* http://localhost:* http://ipc.localhost ipc:; font-src 'self' data:"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'none'; object-src 'none'; connect-src 'self' http://ipc.localhost ipc:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     },
     "windows": []
   },

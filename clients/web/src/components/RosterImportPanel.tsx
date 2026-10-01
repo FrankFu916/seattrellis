@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   RosterApiError,
+  deleteRosterDraft,
   previewRosterUpdate,
   uploadRosterDraft,
 } from "../api/client";
@@ -94,6 +95,20 @@ export function RosterImportPanel({
   currentRevision,
   onImportConfirmed,
 }: RosterImportPanelProps) {
+  const mountedRef = useRef(true);
+  const operationRef = useRef(0);
+  const ownedDraftRef = useRef<string | null>(null);
+  const revisionRef = useRef(currentRevision);
+  revisionRef.current = currentRevision;
+  function releaseDraft() {
+    if (ownedDraftRef.current) void deleteRosterDraft(ownedDraftRef.current).catch(() => undefined);
+    ownedDraftRef.current = null;
+  }
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; operationRef.current += 1; releaseDraft(); };
+  }, []);
+  useEffect(() => { operationRef.current += 1; setPreview(null); setIsPreviewing(false); setPhase((phase) => phase === "previewing" ? "mapping" : phase === "uploading" ? "idle" : phase); }, [currentRevision, currentStudents]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +148,8 @@ export function RosterImportPanel({
   }, [t]);
 
   async function uploadFile(file: File) {
+    const token = ++operationRef.current;
+    releaseDraft();
     setSelectedFile(file.name);
     setPhase("uploading");
     setError(null);
@@ -140,6 +157,11 @@ export function RosterImportPanel({
     setPreview(null);
     try {
       const response = await uploadRosterDraft(file);
+      if (!mountedRef.current || token !== operationRef.current) {
+        void deleteRosterDraft(response.draft_id).catch(() => undefined);
+        return;
+      }
+      ownedDraftRef.current = response.draft_id;
       const initial: Record<number, RosterFieldName | null> = {};
       for (const col of response.columns) {
         const suggested = response.suggested_mapping.find(
@@ -151,12 +173,16 @@ export function RosterImportPanel({
       setDraft(response);
       setPhase("mapping");
     } catch (err) {
+      if (!mountedRef.current || token !== operationRef.current) return;
       setError(friendlyError(err));
       setPhase("error");
     }
   }
 
   function handleMappingChange(columnIndex: number, field: RosterFieldName | null) {
+    operationRef.current += 1;
+    setIsPreviewing(false);
+    setPhase((phase) => phase === "previewing" ? "mapping" : phase);
     setMapping((prev) => ({ ...prev, [columnIndex]: field }));
     // A preview belongs to the exact mapping and mode used to create it.
     // Clear it as soon as either input changes so the confirmation button can
@@ -176,6 +202,7 @@ export function RosterImportPanel({
       setError(t("roster.mappingIssueMissingIdentity"));
       return;
     }
+    const token = ++operationRef.current;
     setPhase("previewing");
     setIsPreviewing(true);
     setError(null);
@@ -196,10 +223,18 @@ export function RosterImportPanel({
         current_revision: currentRevision,
         updated_fields: updatedFields,
       });
+      if (!mountedRef.current || token !== operationRef.current) return;
+      if (result.base_revision !== revisionRef.current) {
+        setError(t("app.revisionConflict"));
+        setPhase("mapping");
+        setIsPreviewing(false);
+        return;
+      }
       setPreview(result);
       setPhase("mapping");
       setIsPreviewing(false);
     } catch (err) {
+      if (!mountedRef.current || token !== operationRef.current) return;
       setError(friendlyError(err));
       // Keep the draft and mapping visible so the teacher can correct the
       // selection and retry.  A preview failure is not an upload failure.
@@ -209,7 +244,7 @@ export function RosterImportPanel({
   }
 
   function handleConfirm() {
-    if (!preview?.can_apply || hasConflicts || !preview.resulting_students) {
+    if (!preview?.can_apply || preview.base_revision !== currentRevision || hasConflicts || !preview.resulting_students) {
       return;
     }
     onImportConfirmed(
@@ -230,6 +265,8 @@ export function RosterImportPanel({
   }
 
   function reset() {
+    operationRef.current += 1;
+    releaseDraft();
     setPhase("idle");
     setIsPreviewing(false);
     setDraft(null);
@@ -421,6 +458,9 @@ export function RosterImportPanel({
                 name="roster-mode"
                 checked={mode === "incremental"}
                 onChange={() => {
+                  operationRef.current += 1;
+                  setIsPreviewing(false);
+                  setPhase((phase) => phase === "previewing" ? "mapping" : phase);
                   setMode("incremental");
                   setPreview(null);
                   setError(null);
@@ -437,6 +477,9 @@ export function RosterImportPanel({
                 name="roster-mode"
                 checked={mode === "replace"}
                 onChange={() => {
+                  operationRef.current += 1;
+                  setIsPreviewing(false);
+                  setPhase((phase) => phase === "previewing" ? "mapping" : phase);
                   setMode("replace");
                   setPreview(null);
                   setError(null);

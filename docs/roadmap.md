@@ -58,3 +58,7 @@ The web application uses TypeScript 7 because its Vite toolchain supports it and
 - A centralized student-data store or mandatory user-account system.
 - Third-party advertising, behavioral analytics, or commercial telemetry.
 - Claiming that server-side deletion provides the same privacy guarantee as browser-local computation.
+
+## Native clients
+
+The selected platform direction is SwiftUI/AppKit on macOS, SwiftUI/UIKit on iOS, WinUI 3 with Fluent on Windows, Qt 6/Kirigami on KDE, GTK4/libadwaita on GNOME and Kotlin/Compose Material3 on Android. Shared Rust use cases and durable documents remain authoritative. Client slices and actual target-platform acceptance precede replacement of the workbench; see [native client direction](native-ui.md).

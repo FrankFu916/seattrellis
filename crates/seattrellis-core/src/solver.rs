@@ -41,12 +41,16 @@ use crate::rng::SplitMix64;
 // ---------------------------------------------------------------------------
 
 use crate::engine::{
-    build_candidate_domains, build_cost_context, effective_students, full_solution_total_cost,
-    greedy_attempt_controlled, hard_search_controlled, local_search_controlled,
-    maximum_candidate_matching, validate_assignment, validate_solve_request, GreedyOutcome,
-    SearchOutcome, GREEDY_STAGNATION_LIMIT, HARD_SEARCH_NODE_BUDGET,
+    build_candidate_domains_controlled, build_cost_context_controlled, effective_students,
+    full_solution_total_cost, greedy_attempt_controlled, hard_search_controlled,
+    local_search_controlled, maximum_candidate_matching_controlled, validate_assignment,
+    validate_solve_request, validate_solve_request_controlled, GreedyOutcome, SearchOutcome,
+    GREEDY_STAGNATION_LIMIT, HARD_SEARCH_NODE_BUDGET,
 };
-use crate::evaluation::{build_graph_distance_matrix, build_index_adjacency, CoreMinDistanceRule};
+use crate::evaluation::{
+    build_graph_distance_matrix_controlled, build_index_adjacency, build_required_graph_distances,
+    CoreDistanceMetric, CoreMinDistanceRule,
+};
 use crate::NATIVE_API_VERSION;
 
 #[derive(Debug, Deserialize)]
@@ -237,15 +241,23 @@ pub struct ResolvedHardRules {
 /// `tuple(dict.fromkeys(...))`. A group with fewer than two distinct members
 /// contributes no constraints, exactly like `itertools.combinations`.
 pub fn resolve_group_rules(request: &CoreSolveRequest) -> Result<ResolvedHardRules, String> {
+    resolve_group_rules_controlled(request, None)
+        .map(|rules| rules.expect("uncontrolled rule compilation cannot stop"))
+}
+
+pub(crate) fn resolve_group_rules_controlled(
+    request: &CoreSolveRequest,
+    run: Option<&SolveRunControl<'_>>,
+) -> Result<Option<ResolvedHardRules>, String> {
     let mut resolved = ResolvedHardRules {
         must_be_adjacent: request.must_be_adjacent.clone(),
         cannot_be_adjacent: request.cannot_be_adjacent.clone(),
     };
     let Some(rules) = &request.rules else {
-        return Ok(resolved);
+        return Ok(Some(resolved));
     };
     if rules.groups.is_empty() {
-        return Ok(resolved);
+        return Ok(Some(resolved));
     }
     let students = effective_students(request);
     let index_by_key: HashMap<&str, usize> = students
@@ -256,12 +268,26 @@ pub fn resolve_group_rules(request: &CoreSolveRequest) -> Result<ResolvedHardRul
     for group in &rules.groups {
         let mut members: Vec<&str> = Vec::new();
         for member in &group.students {
+            if run.and_then(SolveRunControl::stop_reason).is_some() {
+                return Ok(None);
+            }
             if !members.contains(&member.as_str()) {
                 members.push(member);
             }
         }
         for first_offset in 0..members.len() {
             for second in &members[first_offset + 1..] {
+                if run.and_then(SolveRunControl::stop_reason).is_some() {
+                    return Ok(None);
+                }
+                if resolved
+                    .must_be_adjacent
+                    .len()
+                    .saturating_add(resolved.cannot_be_adjacent.len())
+                    >= 100_000
+                {
+                    return Err("invalid hard rules: group expansion supports at most 100000 relational constraints".to_string());
+                }
                 let first_index = index_by_key
                     .get(members[first_offset])
                     .copied()
@@ -285,7 +311,7 @@ pub fn resolve_group_rules(request: &CoreSolveRequest) -> Result<ResolvedHardRul
             }
         }
     }
-    Ok(resolved)
+    Ok(Some(resolved))
 }
 
 /// Everything the cost-ranked greedy needs to score candidate seats and full
@@ -381,7 +407,16 @@ fn solve_problem_unchecked(
     cancellation: &SolveControl,
     excluded_assignments: &[Vec<usize>],
 ) -> Result<CoreSolveResponse, String> {
-    validate_solve_request(request)?;
+    // The clock starts at entry, so validation and precomputation consume the
+    // same user budget as search. Cancellation also covers preparation.
+    if request
+        .time_limit_seconds
+        .is_some_and(|seconds| !seconds.is_finite() || seconds <= 0.0)
+    {
+        return Err(
+            "invalid time_limit_seconds: expected a finite value greater than zero".to_string(),
+        );
+    }
     let duration = request
         .time_limit_seconds
         .map(Duration::try_from_secs_f64)
@@ -401,10 +436,40 @@ fn solve_problem_unchecked(
     if let Some(reason) = run.stop_reason() {
         return Ok(stopped_response(reason, 0));
     }
+    if let Some(reason) = validate_solve_request_controlled(request, Some(&run))? {
+        return Ok(stopped_response(reason, 0));
+    }
+    if let Some(reason) = run.stop_reason() {
+        return Ok(stopped_response(reason, 0));
+    }
 
-    let resolved = resolve_group_rules(request)?;
+    let resolved = match resolve_group_rules_controlled(request, Some(&run))? {
+        Some(resolved) => resolved,
+        None => {
+            return Ok(stopped_response(
+                run.stop_reason().unwrap_or(StopReason::Deadline),
+                0,
+            ))
+        }
+    };
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
-    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let graph_distances = if request
+        .min_distance
+        .iter()
+        .any(|rule| matches!(rule.metric, CoreDistanceMetric::Graph))
+    {
+        match build_graph_distance_matrix_controlled(&adjacency, || run.stop_reason().is_some()) {
+            Some(distances) => distances,
+            None => {
+                return Ok(stopped_response(
+                    run.stop_reason().unwrap_or(StopReason::Deadline),
+                    0,
+                ))
+            }
+        }
+    } else {
+        Vec::new()
+    };
     if let Some(reason) = run.stop_reason() {
         return Ok(stopped_response(reason, 0));
     }
@@ -412,7 +477,16 @@ fn solve_problem_unchecked(
     // Candidate-domain precheck (plan §6.1 second layer): a student with no
     // legal seat is a sound infeasibility proof — occupancy never *adds*
     // candidates. This is the only ProvenInfeasible the greedy path may emit.
-    let domains = build_candidate_domains(request, &resolved, &adjacency, &graph_distances);
+    let domains = match build_candidate_domains_controlled(
+        request,
+        &resolved,
+        &adjacency,
+        &graph_distances,
+        Some(&run),
+    ) {
+        Ok(domains) => domains,
+        Err(reason) => return Ok(stopped_response(reason, 0)),
+    };
     if let Some(reason) = run.stop_reason() {
         return Ok(stopped_response(reason, 0));
     }
@@ -432,7 +506,10 @@ fn solve_problem_unchecked(
     // student has candidates, they may not be jointly seatable. A maximum
     // bipartite matching smaller than the class size is a sound proof of
     // infeasibility (Hall's theorem); a full matching proves nothing yet.
-    let matching_size = maximum_candidate_matching(&domains);
+    let matching_size = match maximum_candidate_matching_controlled(&domains, Some(&run)) {
+        Ok(size) => size,
+        Err(reason) => return Ok(stopped_response(reason, 0)),
+    };
     if let Some(reason) = run.stop_reason() {
         return Ok(stopped_response(reason, 0));
     }
@@ -450,7 +527,10 @@ fn solve_problem_unchecked(
 
     let attempts = (request.student_count * 12).max(40);
     let mut rng = SplitMix64::new(request.seed);
-    let ctx = build_cost_context(request);
+    let ctx = match build_cost_context_controlled(request, Some(&run)) {
+        Ok(ctx) => ctx,
+        Err(reason) => return Ok(stopped_response(reason, 0)),
+    };
 
     // Mirror the Python fallback: attempt 0 seats each student on the cheapest
     // seat, later attempts sample randomly among the top-3 cheap seats, and the
@@ -660,6 +740,9 @@ pub fn validate_solve_response(
     if !response.hard_constraints_satisfied {
         return Err("Solved response must set hard_constraints_satisfied=true".to_string());
     }
+    if response.total_cost.is_some_and(|cost| !cost.is_finite()) {
+        return Err("Solved response total_cost must be finite when present".to_string());
+    }
     if response.assignment.len() != request.student_count {
         return Err(format!(
             "solve response assignment contains {} entries for {} students",
@@ -700,7 +783,7 @@ pub fn validate_solve_response(
         .collect::<Result<_, _>>()?;
     let resolved = resolve_group_rules(request)?;
     let adjacency = build_index_adjacency(request.seat_positions.len(), &request.edges);
-    let graph_distances = build_graph_distance_matrix(&adjacency);
+    let graph_distances = build_required_graph_distances(&adjacency, &request.min_distance);
     validate_assignment(
         request,
         &resolved,
@@ -714,10 +797,9 @@ pub fn validate_solve_response(
 /// Shape check for the non-Solved statuses (Solved responses take the full
 /// [`validate_solve_response`] path instead).
 fn validate_non_solved_response_shape(
-    request: &CoreSolveRequest,
+    _request: &CoreSolveRequest,
     response: &CoreSolveResponse,
 ) -> Result<(), String> {
-    validate_solve_request(request)?;
     if response.api_version != NATIVE_API_VERSION {
         return Err(format!(
             "solve response api_version {} does not match {}",
@@ -785,7 +867,7 @@ pub(crate) const KNOWN_SOFT_RULES: [&str; 10] = [
 ///    ignoring the teacher's constraints;
 /// 2. unrecognized `rules.soft` rule names are rejected (docs/rules.zh.md:
 ///    "未识别的 soft rule 名称也会报错").
-pub(crate) fn parse_core_solve_request(request_json: &str) -> Result<CoreSolveRequest, String> {
+pub fn parse_core_solve_request(request_json: &str) -> Result<CoreSolveRequest, String> {
     let value: serde_json::Value = serde_json::from_str(request_json)
         .map_err(|error| format!("invalid native solve request: {error}"))?;
     if let Some(hard) = value.get("rules").and_then(|rules| rules.get("hard")) {

@@ -38,7 +38,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -54,16 +54,11 @@ pub const ROTATION_PLAN_FILE: &str = "rotation-plan.json";
 /// Canonical output file name for a persisted group register.
 pub const GROUP_REGISTER_FILE: &str = "group-register.json";
 
-/// Maximum accepted project file size, in bytes (8 MiB).
-const MAX_PROJECT_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// Maximum accepted rotation-plan artifact size, in bytes (64 MiB).
 const MAX_ROTATION_PLAN_BYTES: u64 = 64 * 1024 * 1024;
 /// Upper bound on `-2`, `-3`, ... collision suffixes before a timestamped name
 /// is used instead (defensive; a real project never hits this).
 const MAX_OUTPUT_SUFFIX_ATTEMPTS: u32 = 10_000;
-
-/// Maximum number of atomic-write temp-name collisions to retry before giving up.
-const MAX_TEMP_WRITE_ATTEMPTS: u8 = 8;
 
 #[cfg(unix)]
 fn existing_permission_mode(metadata: &fs::Metadata) -> Option<u32> {
@@ -298,11 +293,24 @@ pub fn rotation_save_json(project_path: &str, rotation_plan_json: &str) -> Resul
     let (project_file, project) = load_project_file(project_path)?;
     let root = parent_dir(&project_file);
     let outputs_dir = resolve_outputs_dir(&root, &project)?;
+    fs::create_dir_all(&outputs_dir)
+        .map_err(|error| format!("Could not prepare outputs directory: {error}"))?;
+    let journal_dir = outputs_dir.join(crate::transaction::JOURNAL_DIR_NAME);
+    let mut transaction =
+        crate::transaction::FileTransaction::begin_with_root(&journal_dir, &outputs_dir)?;
     let output_path = next_rotation_output_path(&outputs_dir);
     let saved_at = now_iso8601();
     let mut plan = plan;
     stamp_saved_at(&mut plan, &saved_at);
-    atomic_write_json(&output_path, &plan)?;
+    let contents = serde_json::to_vec_pretty(&plan)
+        .map_err(|error| format!("Could not serialize rotation plan: {error}"))?;
+    transaction.stage_new(&output_path, &contents)?;
+    transaction.commit(|path| {
+        let value: Value =
+            serde_json::from_slice(&fs::read(path).map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?;
+        validate_rotation_plan(&value)
+    })?;
 
     let response = RotationSaveResponse {
         api_version: "1",
@@ -882,55 +890,11 @@ fn html_escape(value: &str) -> String {
 
 /// Load and validate a project file, returning it and its parsed JSON.
 fn load_project_file(project_path: &str) -> Result<(PathBuf, Value), String> {
-    let project_file = fs::canonicalize(project_path)
-        .map_err(|e| format!("Project file not found or unreadable: {project_path} ({e})"))?;
-    if !project_file.is_file() {
-        return Err(format!(
-            "Project file not found: {}",
-            project_file.display()
-        ));
-    }
-    let metadata = fs::metadata(&project_file).map_err(|e| {
-        format!(
-            "Could not stat project file {}: {e}",
-            project_file.display()
-        )
+    let project_file = fs::canonicalize(project_path).map_err(|error| {
+        format!("Project file not found or unreadable: {project_path} ({error})")
     })?;
-    if metadata.len() > MAX_PROJECT_FILE_BYTES {
-        return Err(format!(
-            "Project file too large: {}",
-            project_file.display()
-        ));
-    }
-    let bytes = fs::read(&project_file).map_err(|e| {
-        format!(
-            "Could not read project file {}: {e}",
-            project_file.display()
-        )
-    })?;
-    let value: Value = serde_json::from_slice(&bytes)
-        .map_err(|e| format!("Invalid project file: {} ({e})", project_file.display()))?;
-    let obj = value.as_object().ok_or_else(|| {
-        format!(
-            "Invalid project file: {} (not a JSON object)",
-            project_file.display()
-        )
-    })?;
-    if obj.get("kind").and_then(Value::as_str) != Some("seattrellis_project") {
-        return Err(format!(
-            "Invalid project file: {} (expected kind \"seattrellis_project\")",
-            project_file.display()
-        ));
-    }
-    if let Some(version) = obj.get("schema_version") {
-        if version.as_i64() != Some(1) {
-            return Err(format!(
-                "Invalid project file: {} (unsupported schema_version {version})",
-                project_file.display()
-            ));
-        }
-    }
-    Ok((project_file, value))
+    let (document, _) = crate::projects::load_project_document(&project_file)?;
+    Ok((project_file, document))
 }
 
 fn parent_dir(path: &Path) -> PathBuf {
@@ -1020,7 +984,7 @@ fn ensure_inside(path: &Path, root: &Path, label: &str) -> Result<(), String> {
 /// `rotation-plan-3.json`, ... without overwriting an existing artifact.
 fn next_rotation_output_path(outputs_dir: &Path) -> PathBuf {
     let base = outputs_dir.join(ROTATION_PLAN_FILE);
-    if !base.exists() {
+    if fs::symlink_metadata(&base).is_err() {
         return base;
     }
     let stem = base
@@ -1035,124 +999,36 @@ fn next_rotation_output_path(outputs_dir: &Path) -> PathBuf {
             Some(extension) => outputs_dir.join(format!("{stem}-{index}.{extension}")),
             None => outputs_dir.join(format!("{stem}-{index}")),
         };
-        if !candidate.exists() {
+        if fs::symlink_metadata(&candidate).is_err() {
             return candidate;
         }
     }
     outputs_dir.join(format!("{stem}-{}.json", now_nanos()))
 }
 
-/// Write a JSON value to a fresh sibling temp file and atomically rename it
-/// over `output`, preserving the destination's permissions when it exists.
+/// Publish JSON through the shared journal, preserving existing permissions.
 fn atomic_write_json(output: &Path, value: &Value) -> Result<(), String> {
     let parent = output.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent).map_err(|e| {
-        format!(
-            "Could not prepare output directory {}: {e}",
-            parent.display()
-        )
-    })?;
-    let existing_mode = fs::metadata(output)
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Could not prepare output directory: {error}"))?;
+    let mut transaction = crate::transaction::FileTransaction::begin_with_root(
+        &parent.join(crate::transaction::JOURNAL_DIR_NAME),
+        parent,
+    )?;
+    let mode = fs::metadata(output)
         .ok()
         .and_then(|metadata| existing_permission_mode(&metadata));
-
-    let mut temp = temp_sibling_path(output);
-    for _ in 0..MAX_TEMP_WRITE_ATTEMPTS {
-        match write_temp_then_rename(value, output, &temp, existing_mode) {
-            Ok(()) => return Ok(()),
-            Err(TempWriteError::AlreadyExists) => temp = temp_sibling_path(output),
-            Err(TempWriteError::Other(message)) => return Err(message),
+    let contents = serde_json::to_vec_pretty(value)
+        .map_err(|error| format!("Could not serialize JSON: {error}"))?;
+    transaction.stage(output, &contents)?;
+    transaction.commit(|path| {
+        serde_json::from_slice::<Value>(&fs::read(path).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+        if let Some(mode) = mode {
+            set_permission_mode(path, mode).map_err(|error| error.to_string())?;
         }
-    }
-    Err(format!(
-        "Could not allocate a temporary file next to {}",
-        output.display()
-    ))
-}
-
-/// A unique sibling temporary path next to `output` for an atomic rename.
-fn temp_sibling_path(output: &Path) -> PathBuf {
-    let name = output
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "artifact".to_string());
-    let parent = parent_dir(output);
-    parent.join(format!(
-        ".{name}.{}.{}.tmp",
-        std::process::id(),
-        now_nanos()
-    ))
-}
-
-/// Errors from a single atomic-write attempt.
-enum TempWriteError {
-    AlreadyExists,
-    Other(String),
-}
-
-/// Write `data` to a fresh temp file and atomically rename it over `output`.
-fn write_temp_then_rename(
-    data: &Value,
-    output: &Path,
-    temp: &Path,
-    existing_mode: Option<u32>,
-) -> Result<(), TempWriteError> {
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(temp)
-        .map_err(|error| {
-            if error.kind() == io::ErrorKind::AlreadyExists {
-                TempWriteError::AlreadyExists
-            } else {
-                TempWriteError::Other(format!(
-                    "Could not create temporary file {}: {error}",
-                    temp.display()
-                ))
-            }
-        })?;
-    let mut file = file;
-    let mut bytes = serde_json::to_vec_pretty(data)
-        .map_err(|error| TempWriteError::Other(format!("Could not serialize JSON: {error}")))?;
-    bytes.push(b'\n');
-    file.write_all(&bytes).map_err(|error| {
-        TempWriteError::Other(format!(
-            "Could not write JSON file {}: {error}",
-            output.display()
-        ))
-    })?;
-    file.sync_all().map_err(|error| {
-        TempWriteError::Other(format!(
-            "Could not flush JSON file {}: {error}",
-            output.display()
-        ))
-    })?;
-    drop(file);
-    if let Some(mode) = existing_mode {
-        set_permission_mode(temp, mode).map_err(|error| {
-            TempWriteError::Other(format!(
-                "Could not set permissions on JSON file {}: {error}",
-                output.display()
-            ))
-        })?;
-    }
-    // Test-only fault injection (revised plan §17.2.4): fail at the atomic rename
-    // so the single-file write paths (rotation save, group register) prove
-    // the old target survives and the temp is cleaned up.
-    #[cfg(test)]
-    if crate::transaction::inject_commit_failure() {
-        let _ = std::fs::remove_file(temp);
-        return Err(TempWriteError::Other(
-            "injected rename failure after staging (SEATTRELLIS fault-injection test)".to_string(),
-        ));
-    }
-    fs::rename(temp, output).map_err(|error| {
-        TempWriteError::Other(format!(
-            "Could not atomically write JSON file {}: {error}",
-            output.display()
-        ))
-    })?;
-    Ok(())
+        Ok(())
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1314,6 +1190,34 @@ mod tests {
         assert_eq!(plan["periods"].as_array().unwrap().len(), 2);
         // saved_at must have been stamped into the persisted metadata.
         assert!(plan["metadata"]["saved_at"].is_string());
+    }
+
+    #[test]
+    fn concurrent_rotation_saves_keep_every_distinct_plan() {
+        let root = temp_root("concurrent-save");
+        let project = write_project(&root, "outputs");
+        let handles: Vec<_> = (0..8)
+            .map(|index| {
+                let project = project.clone();
+                std::thread::spawn(move || {
+                    let mut plan = sample_plan();
+                    plan["name"] = json!(format!("plan-{index}"));
+                    let response: Value = serde_json::from_str(
+                        &rotation_save_json(project.to_str().unwrap(), &plan.to_string()).unwrap(),
+                    )
+                    .unwrap();
+                    let path = response["output_path"].as_str().unwrap().to_string();
+                    let saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                    assert_eq!(saved["name"], format!("plan-{index}"));
+                    path
+                })
+            })
+            .collect();
+        let paths: HashSet<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        assert_eq!(paths.len(), 8);
     }
 
     #[test]

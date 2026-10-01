@@ -211,3 +211,40 @@ describe("session token re-bootstrap", () => {
     expect(seen).toEqual([null, null, null, "Bearer fresh-token"]);
   });
 });
+
+describe("generation time budgets and server cancellation", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    window.history.replaceState({}, "", "/?session=generation-session");
+    window.sessionStorage.clear();
+  });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it("allows the selected budget plus overhead for every rotation period", async () => {
+    const { generationTimeoutMs } = await import("./client");
+    expect(generationTimeoutMs({ time_limit_seconds: 300, candidate_count: 20 })).toBe(315_000);
+    expect(generationTimeoutMs({ time_limit_seconds: 300 }, 4)).toBe(1_215_000);
+  });
+
+  it("authenticates an explicit cancel request with the same job ID", async () => {
+    const fetchMock = vi.fn((url: string, init: RequestInit) => {
+      if (url.endsWith("/cancel")) return Promise.resolve(new Response(JSON.stringify({ cancelled: true })));
+      return new Promise<Response>((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError"))));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { generateClass } = await import("./client");
+    const controller = new AbortController();
+    const pending = generateClass({ draft: { name: "Class", students: [], room: { template_id: "test" }, goal: { goal_id: "balanced" } }, options: { time_limit_seconds: 300 } }, controller.signal);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+    const id = headers.get("X-Request-Id");
+    expect(id).toBeTruthy();
+    controller.abort();
+    await rejected;
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toBe(`/api/v1/jobs/${id}/cancel`);
+    expect(new Headers(fetchMock.mock.calls[1][1].headers).get("Authorization")).toBe(headers.get("Authorization"));
+    expect(fetchMock.mock.calls[1][1].signal?.aborted).toBe(false);
+  });
+});

@@ -27,6 +27,8 @@ type Props = {
   locale: Locale;
   t: Translate;
   onExported: () => void;
+  initialSettings?: ExportSettings;
+  onSettingsChange?: (settings: ExportSettings) => void;
 };
 
 type PreparedExport = {
@@ -57,12 +59,14 @@ export function ExportWorkspace({
   locale,
   t,
   onExported,
+  initialSettings,
+  onSettingsChange,
 }: Props) {
   const supportedFormats = useMemo(
     () => availableExportFormats(formats),
     [formats],
   );
-  const [settings, setSettings] = useState<ExportSettings>(() => ({
+  const [settings, setSettings] = useState<ExportSettings>(() => initialSettings ?? ({
     format: supportedFormats.some(
       (format) => format.id === DEFAULT_EXPORT_FORMAT,
     )
@@ -131,7 +135,9 @@ export function ExportWorkspace({
     if (saving.current) return;
     pending.current?.abort();
     pending.current = null;
-    setSettings((previous) => ({ ...previous, ...changes }));
+    const next = { ...settings, ...changes };
+    setSettings(next);
+    onSettingsChange?.(next);
   }
 
   async function prepare() {

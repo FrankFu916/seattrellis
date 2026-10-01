@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Preserve complete class source through repeated generation; add real class
+  Save/Open/Save As and GUI local repair with persisted locks and revisions.
+- Unify strict input parsing, seat topology, diversity units, rule defaults,
+  repair relations and period-based history. Bound numerical inputs and work
+  during preparation; keep honest cancellation and timeout statuses.
+- Protect journal recovery with cross-process locks; atomically save result/report
+  batches, unique restores and rotations; honor configured outputs and history.
+- Restore full solve contexts after reopening, enforce HTTP read/shutdown budgets,
+  capacity and cancellation, and restrict desktop file grants.
+- Repair XML character/privacy handling, localize assignment headings and validate
+  Word pagination with an independent reader.
+- Patch both npm trees to zero advisories, gate all uploads on the exact release
+  tag, verify versions and pin Rust 1.88.0 / Node 24 builds.
+- Document platform-native UI choices and technology alternatives; native clients
+  and additional solver backends remain separate validated development work.
+
 ## 2.1.0 - 2026-09-12
 
 ### Export workspace and document quality

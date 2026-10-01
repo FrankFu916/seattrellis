@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 use serde_json::{json, Value};
+use std::time::{Duration, Instant};
 
 use crate::engine::validate_solve_request;
 use crate::scoring::score_assignment_json;
@@ -64,12 +65,38 @@ pub fn generate_candidates_json_with_latest_snapshot(
     candidate_count: usize,
     latest_snapshot_json: &str,
 ) -> Result<String, String> {
+    generate_candidates_json_with_latest_snapshot_and_control(
+        request_json,
+        candidate_count,
+        latest_snapshot_json,
+        &SolveControl::new(),
+    )
+}
+
+/// Candidate generation shares cancellation and one wall-clock budget across
+/// the entire set; it never grants a fresh full budget to every retry.
+pub fn generate_candidates_json_with_latest_snapshot_and_control(
+    request_json: &str,
+    candidate_count: usize,
+    latest_snapshot_json: &str,
+    control: &SolveControl,
+) -> Result<String, String> {
     if !(1..=20).contains(&candidate_count) {
         return Err(format!(
             "invalid candidate_count {candidate_count}: expected a value between 1 and 20"
         ));
     }
     let mut request = parse_core_solve_request(request_json)?;
+    let started = Instant::now();
+    let deadline = request
+        .time_limit_seconds
+        .map(|seconds| {
+            Duration::try_from_secs_f64(seconds)
+                .ok()
+                .and_then(|duration| started.checked_add(duration))
+                .ok_or_else(|| "invalid time_limit_seconds: duration is out of range".to_string())
+        })
+        .transpose()?;
     validate_solve_request(&request)?;
     let base_seed = request.seed;
     let attempt_limit = candidate_count * 12 + 8;
@@ -77,18 +104,39 @@ pub fn generate_candidates_json_with_latest_snapshot(
     let mut candidates: Vec<GeneratedCandidate> = Vec::new();
     let mut seen: Vec<Vec<usize>> = Vec::new();
     let mut failed_attempts = 0;
+    let mut stop_status = None;
 
     for attempt_index in 0..attempt_limit {
         if candidates.len() >= candidate_count {
             break;
         }
+        if control.is_cancelled() {
+            stop_status = Some(SolveStatus::Cancelled);
+            break;
+        }
+        if let Some(deadline) = deadline {
+            let remaining = deadline
+                .saturating_duration_since(Instant::now())
+                .as_secs_f64();
+            if remaining <= 0.0 {
+                stop_status = Some(SolveStatus::Timeout);
+                break;
+            }
+            request.time_limit_seconds = Some(remaining);
+        }
         // Seed derivation is independent for every attempt; never feed the
         // previous derived seed back into the next derivation.
         request.seed = derive_candidate_seed(base_seed, attempt_index);
-        let control = SolveControl::new();
-        let response = solve_problem_internal(&request, &control, &seen)?;
+        let response = solve_problem_internal(&request, control, &seen)?;
         if !response.feasible {
             failed_attempts += 1;
+            if matches!(
+                response.status,
+                SolveStatus::Cancelled | SolveStatus::Timeout
+            ) {
+                stop_status = Some(response.status);
+                break;
+            }
             // With exact no-goods installed, exhaustive infeasibility means
             // there are no additional distinct assignments to generate.
             if response.status == SolveStatus::ProvenInfeasible {
@@ -119,9 +167,18 @@ pub fn generate_candidates_json_with_latest_snapshot(
     }
 
     if candidates.is_empty() {
+        if let Some(status) = stop_status {
+            return Err(format!(
+                "candidate generation stopped with status {} before finding a feasible plan",
+                status.as_str()
+            ));
+        }
         return Err("candidate generation did not produce any feasible plan".to_string());
     }
     let mut warnings: Vec<String> = Vec::new();
+    if let Some(status) = stop_status {
+        warnings.push(format!("candidate generation stopped with status {}; returning the feasible plans already found", status.as_str()));
+    }
     if candidates.len() < candidate_count {
         warnings.push(format!(
             "requested {candidate_count} candidates but generated {} distinct feasible plans",
@@ -161,7 +218,7 @@ pub fn generate_candidates_json_with_latest_snapshot(
             &request_json,
             &candidate.assignment_pairs,
             latest_snapshot_json,
-            Some(diversities[index]),
+            (candidates.len() > 1).then_some(diversities[index] * 100.0),
         )
         .map_err(|error| format!("candidate {index} could not be scored: {error}"))?;
         plan_scores.push(serde_json::from_str(&score).map_err(|error| {
@@ -182,9 +239,9 @@ pub fn generate_candidates_json_with_latest_snapshot(
                 .partial_cmp(&right_total)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| {
-                    candidates[*left_index]
+                    candidates[*right_index]
                         .candidate_id
-                        .cmp(&candidates[*right_index].candidate_id)
+                        .cmp(&candidates[*left_index].candidate_id)
                 })
         })
         .map(|(index, _)| index)

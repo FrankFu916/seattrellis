@@ -297,6 +297,86 @@ impl EditorDraft {
         self.redo_stack.len()
     }
 
+    /// Restore persisted locks before publishing a draft, without creating user undo history.
+    pub fn restore_locks(&mut self, students: &[String], seats: &[String]) -> Result<(), String> {
+        let student_indices = students
+            .iter()
+            .map(|key| self.require_known_student(key))
+            .collect::<Result<Vec<_>, _>>()?;
+        let seat_indices = seats
+            .iter()
+            .map(|id| self.require_enabled_seat(id))
+            .collect::<Result<Vec<_>, _>>()?;
+        for index in student_indices {
+            self.students[index].locked = true;
+        }
+        for index in seat_indices {
+            self.seats[index].locked = true;
+        }
+        Ok(())
+    }
+
+    /// Replace an assignment as one undoable, revision-checked repair, preserving every lock.
+    pub fn apply_repair_assignment(
+        &mut self,
+        base_revision: u64,
+        assignment: &[(&str, &str)],
+    ) -> Result<EditorState, String> {
+        if self.revision != base_revision {
+            return Err("stale base revision".to_string());
+        }
+        let keys: Vec<&str> = self
+            .students
+            .iter()
+            .map(|student| student.student_key.as_str())
+            .collect();
+        let seats = self
+            .seats
+            .iter()
+            .map(|seat| EditorSeatSpec {
+                seat_id: seat.seat_id.clone(),
+                row: seat.row,
+                col: seat.col,
+                enabled: seat.enabled,
+            })
+            .collect();
+        let mut replacement = EditorDraft::new(
+            self.draft_id.clone(),
+            self.candidate_id.clone(),
+            &keys,
+            seats,
+            assignment,
+            None,
+        )?;
+        for (before, after) in self.students.iter().zip(&mut replacement.students) {
+            if before.locked && before.seat_id != after.seat_id {
+                return Err(format!(
+                    "repair changes locked student: {}",
+                    before.student_key
+                ));
+            }
+            after.display_name = before.display_name.clone();
+            after.locked = before.locked;
+        }
+        for (before, after) in self.seats.iter().zip(&mut replacement.seats) {
+            if before.locked && before.student_key != after.student_key {
+                return Err(format!("repair changes locked seat: {}", before.seat_id));
+            }
+            after.locked = before.locked;
+        }
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| "revision exhausted".to_string())?;
+        let previous = self.capture_snapshot();
+        push_bounded(&mut self.undo_stack, previous);
+        self.students = replacement.students;
+        self.seats = replacement.seats;
+        self.redo_stack.clear();
+        self.revision = next_revision;
+        Ok(build_editor_state(self))
+    }
+
     fn capture_snapshot(&self) -> EditorSnapshot {
         EditorSnapshot {
             students: self.students.clone(),

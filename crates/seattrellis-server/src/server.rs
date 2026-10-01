@@ -18,7 +18,9 @@
 //!   percent-encoded escapes are rejected, and canonical paths are re-checked.
 //! - Errors are coarse (`404 not found`) and never leak internal paths.
 //! - No unwrap/expect on the request path; all failures become HTTP errors.
-//! - Session/token/Host checks are the M1-05 milestone (not yet landed).
+//! - Authenticates Host/Origin/Bearer before reading request bodies.
+//! - Applies per-request and aggregate body budgets, cooperative cancellation,
+//!   and finite shutdown deadlines for browser and native-shell requests.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -26,7 +28,7 @@ use std::fs;
 use std::io;
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
@@ -119,6 +121,12 @@ pub struct Server {
 impl Server {
     /// Bind the loopback listener. Fails if the address/port is unavailable.
     pub fn bind(config: &ServerConfig) -> Result<Server, ServerError> {
+        if !config.host.is_loopback() {
+            return Err(ServerError::Bind(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "backend must bind to loopback",
+            )));
+        }
         let addr = SocketAddr::new(config.host, config.port);
         let listener = TcpListener::bind(addr).map_err(ServerError::Bind)?;
         let local_addr = listener.local_addr().map_err(ServerError::Bind)?;
@@ -130,7 +138,7 @@ impl Server {
             solve_requests: Arc::new(Mutex::new(HashMap::new())),
             trusted_root: Arc::new(config.trusted_root.clone()),
             shutdown: Arc::new(AtomicBool::new(false)),
-            session_token: generate_session_token(),
+            session_token: generate_session_token().map_err(ServerError::Bind)?,
         })
     }
 
@@ -162,7 +170,9 @@ impl Server {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()?;
-        runtime.block_on(self.serve_async())
+        let result = runtime.block_on(self.serve_async());
+        runtime.shutdown_timeout(crate::http::SHUTDOWN_GRACE);
+        result
     }
 
     async fn serve_async(&self) -> io::Result<()> {
@@ -180,19 +190,24 @@ impl Server {
             session_token: Arc::new(self.session_token.clone()),
             bound_host: self.local_addr.ip().to_string(),
             bound_port: self.local_addr.port(),
+            request_slots: Arc::new(tokio::sync::Semaphore::new(
+                crate::http::MAX_CONCURRENT_REQUESTS,
+            )),
+            body_bytes: Arc::new(tokio::sync::Semaphore::new(
+                crate::http::MAX_INFLIGHT_BODY_BYTES,
+            )),
         };
         let router = crate::http::build_router(state);
-        axum::serve(listener, router)
-            .with_graceful_shutdown(crate::http::shutdown_signal(Arc::clone(&self.shutdown)))
-            .await
+        crate::http::serve_router(listener, router, Arc::clone(&self.shutdown)).await
     }
 }
 
 /// Generate the 256-bit loopback session token (32 CSPRNG bytes, hex).
-fn generate_session_token() -> String {
+fn generate_session_token() -> io::Result<String> {
     let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).expect("the OS entropy source must be available");
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    getrandom::fill(&mut bytes)
+        .map_err(|error| io::Error::other(format!("OS entropy unavailable: {error}")))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 /// Locate a complete workbench build (`index.html` present) from, in order:
@@ -322,9 +337,7 @@ fn app_error_response(error: seattrellis_application::AppError) -> Response {
         "suggested_action": suggested_action,
     });
     if error.code == "invalid_solve_request" {
-        body["status"] = json!(seattrellis_core::classify_solve_error(
-            body["message"].as_str().unwrap_or_default(),
-        ));
+        body["status"] = json!(seattrellis_core::SolveStatus::InvalidInput);
     }
     Response::json(error.status, body)
 }
@@ -338,11 +351,19 @@ fn solve_v2_response(body: &[u8]) -> Response {
             "empty request body",
         ));
     }
-    let request: seattrellis_core::CoreSolveRequest = match serde_json::from_slice(body) {
-        Ok(request) => request,
+    let text = match std::str::from_utf8(body) {
+        Ok(text) => text,
         Err(_) => {
             return app_error_response(seattrellis_application::AppError::solve_invalid_input(
-                "request body is not a valid solve problem",
+                "request body is not UTF-8 JSON",
+            ))
+        }
+    };
+    let request = match seattrellis_core::parse_core_solve_request(text) {
+        Ok(request) => request,
+        Err(message) => {
+            return app_error_response(seattrellis_application::AppError::solve_invalid_input(
+                message,
             ))
         }
     };
@@ -565,6 +586,44 @@ pub(crate) fn route(
         ("POST", ["api", "v1", "classes", "generate"]) | ("POST", ["api", "v1", "solve"]) => {
             generate_response(&request.body, editor_store, solve_requests)
         }
+        ("POST", ["api", "v1", "classes", "document", action @ ("serialize" | "open")]) => {
+            match parse_body_json(&request.body) {
+                Ok(input) => {
+                    let result = if *action == "serialize" {
+                        seattrellis_application::class_document::serialize_document(
+                            &input,
+                            editor_store,
+                            solve_requests,
+                        )
+                    } else {
+                        seattrellis_application::class_document::open_document(
+                            &input,
+                            editor_store,
+                            solve_requests,
+                        )
+                    };
+                    match result {
+                        Ok(value) => Response::json(200, value),
+                        Err(error) => app_error_response(error),
+                    }
+                }
+                Err(response) => response,
+            }
+        }
+        ("POST", ["api", "v1", "editing", "drafts", draft_id, "repair"]) => {
+            match parse_body_json(&request.body) {
+                Ok(input) => match seattrellis_application::class_document::repair_draft(
+                    draft_id,
+                    &input,
+                    editor_store,
+                    solve_requests,
+                ) {
+                    Ok(value) => Response::json(200, value),
+                    Err(error) => app_error_response(error),
+                },
+                Err(response) => response,
+            }
+        }
         ("POST", ["api", "v1", "classes", "rotation"]) => {
             rotation_generate_response(&request.body, editor_store, solve_requests)
         }
@@ -642,7 +701,7 @@ pub(crate) fn route(
             rotation_save_response(&request.body)
         }
         ("POST", ["api", "v1", "projects", "rotation", "load"]) => {
-            rotation_load_response(&request.body, editor_store)
+            rotation_load_response(&request.body, editor_store, solve_requests)
         }
         ("POST", ["api", "v1", "projects", "rotation", "group-register"]) => {
             rotation_register_download_response(&request.body)
@@ -1712,7 +1771,11 @@ fn rotation_save_response(body: &[u8]) -> Response {
 /// (`{project_path, artifact_path?}`). `artifact_path` is accepted for
 /// workbench compatibility; the module locates `rotation-plan.json` in the
 /// project's outputs directory.
-fn rotation_load_response(body: &[u8], editor_store: &EditorDraftStore) -> Response {
+fn rotation_load_response(
+    body: &[u8],
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+) -> Response {
     let value = match parse_body_json(body) {
         Ok(value) => value,
         Err(response) => return response,
@@ -1724,7 +1787,13 @@ fn rotation_load_response(body: &[u8], editor_store: &EditorDraftStore) -> Respo
     let project_path = resolve_request_path(&project_path);
     match seattrellis_io::rotation::rotation_load_plan(&project_path) {
         Ok((project_file, artifact_path, plan)) => {
-            match rotation_load_drafts(&project_file, &artifact_path, &plan, editor_store) {
+            match rotation_load_drafts(
+                &project_file,
+                &artifact_path,
+                &plan,
+                editor_store,
+                solve_requests,
+            ) {
                 Ok(json) => Response::text(200, "application/json; charset=utf-8", json),
                 Err(message) => rotation_error_response(&message),
             }
@@ -1743,166 +1812,156 @@ fn rotation_load_drafts(
     artifact_path: &Path,
     plan: &Value,
     editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
 ) -> Result<String, String> {
-    let root = project_file
-        .parent()
-        .ok_or_else(|| "project file has no parent directory".to_string())?;
-    let project: Value = serde_json::from_slice(
-        &std::fs::read(project_file)
-            .map_err(|error| format!("could not read project file: {error}"))?,
-    )
-    .map_err(|error| format!("could not parse project file: {error}"))?;
-
-    // Roster: project["students"] (default students.csv) next to the file.
-    let students_rel = project
-        .get("students")
-        .and_then(Value::as_str)
-        .unwrap_or("students.csv");
-    let roster_bytes = std::fs::read(root.join(students_rel))
-        .map_err(|error| format!("could not read roster: {error}"))?;
-    let roster = seattrellis_io::roster::parse_roster_csv(&roster_bytes)?;
-    let mut id_col = None;
-    let mut name_col = None;
-    for item in &roster.suggested_mapping {
-        match item.field {
-            seattrellis_io::roster::RosterField::StudentId => id_col = Some(item.column_index),
-            seattrellis_io::roster::RosterField::Name => name_col = Some(item.column_index),
-            _ => {}
-        }
-    }
-    let id_col = id_col.ok_or_else(|| "roster has no student_id column".to_string())?;
-    let mut keys: Vec<String> = Vec::new();
-    let mut display_names = std::collections::HashMap::new();
-    for row in &roster.rows {
-        let id = row
-            .cells
-            .get(id_col)
-            .filter(|cell| !cell.is_empty())
-            .cloned();
-        if let Some(id) = id {
-            let name = name_col
-                .and_then(|column| row.cells.get(column))
-                .filter(|cell| !cell.is_empty())
-                .cloned()
-                .unwrap_or_else(|| id.clone());
-            keys.push(id.clone());
-            display_names.insert(id, name);
-        }
-    }
-    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
-
-    // Layout: project["layout"] (default layout.json) next to the file.
-    let layout_rel = project
-        .get("layout")
-        .and_then(Value::as_str)
-        .unwrap_or("layout.json");
-    let layout_bytes = std::fs::read(root.join(layout_rel))
-        .map_err(|error| format!("could not read layout: {error}"))?;
-    #[derive(serde::Deserialize)]
-    struct LayoutFile {
-        seats: Vec<LayoutSeat>,
-    }
-    #[derive(serde::Deserialize)]
-    struct LayoutSeat {
-        seat_id: String,
-        row: i64,
-        col: i64,
-        #[serde(default = "default_enabled")]
-        enabled: bool,
-    }
-    fn default_enabled() -> bool {
-        true
-    }
-    let layout: LayoutFile = serde_json::from_slice(&layout_bytes)
-        .map_err(|error| format!("could not parse layout: {error}"))?;
-    let seats: Vec<seattrellis_domain::editing::EditorSeatSpec> = layout
-        .seats
-        .iter()
-        .map(|seat| seattrellis_domain::editing::EditorSeatSpec {
-            seat_id: seat.seat_id.clone(),
-            row: seat.row as i32,
-            col: seat.col as i32,
-            enabled: seat.enabled,
-        })
-        .collect();
-
-    // One validated draft per period, rebuilt from the saved snapshot.
     let periods = plan
         .get("periods")
         .and_then(Value::as_array)
-        .ok_or_else(|| "rotation plan has no periods".to_string())?;
-    let mut period_editors: Vec<Value> = Vec::with_capacity(periods.len());
-    let mut first_editor: Option<Value> = None;
+        .filter(|v| !v.is_empty() && v.len() <= 20)
+        .ok_or_else(|| "rotation plan must contain 1 to 20 periods".to_string())?;
+    // Saved solve contexts are authoritative. A workspace's roster, layout,
+    // rules and history may have changed since generation; only older periods
+    // without a captured request need to reconstruct them from the project.
+    let needs_project_source = periods
+        .iter()
+        .any(|period| period["snapshot"].get("original_request").is_none());
+    let base_request = if needs_project_source {
+        let documents = seattrellis_io::projects::load_project_source_documents(project_file)?;
+        Some(seattrellis_io::projects::compile_solve_request_from_json(
+            &documents["students"],
+            &documents["layout"],
+            &documents["rules"],
+        )?)
+    } else {
+        None
+    };
+    let mut ready = Vec::new();
+    let mut prior = if needs_project_source {
+        if let Some(saved_history) = plan.get("base_history_snapshots") {
+            saved_history
+                .as_array()
+                .ok_or_else(|| "rotation base_history_snapshots must be an array".to_string())?
+                .clone()
+        } else {
+            let mut history =
+                seattrellis_io::projects::load_project_history_snapshots(project_file)?;
+            if let Some(base_count) = plan.get("base_history_count").and_then(Value::as_u64) {
+                history.truncate(usize::try_from(base_count).unwrap_or(usize::MAX));
+            }
+            history
+        }
+    } else {
+        Vec::new()
+    };
     for (index, period) in periods.iter().enumerate() {
-        let period_number = period
+        let number = period
             .get("period")
-            .and_then(Value::as_i64)
-            .unwrap_or(index as i64 + 1);
-        let assignments = period
-            .pointer("/snapshot/assignments")
+            .and_then(Value::as_u64)
+            .unwrap_or(index as u64 + 1);
+        let snapshot = &period["snapshot"];
+        let assignments = snapshot
+            .get("assignments")
             .and_then(Value::as_array)
-            .ok_or_else(|| format!("period {period_number} snapshot has no assignments"))?;
-        let pairs: Vec<(&str, &str)> = assignments
+            .ok_or_else(|| format!("period {number} snapshot has no assignments"))?;
+        let pairs = assignments
             .iter()
-            .filter_map(|assignment| {
-                Some((
-                    assignment.get("student_key")?.as_str()?,
-                    assignment.get("seat_id")?.as_str()?,
+            .map(|a| {
+                Ok((
+                    a.get("student_key")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| "snapshot assignment requires student_key".to_string())?,
+                    a.get("seat_id")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| "snapshot assignment requires seat_id".to_string())?,
                 ))
             })
-            .collect();
-        let candidate_id = format!("period-{period_number}");
-        // Draft ids must be unique across loads: the store rejects a second
-        // draft with an existing id, which used to make reloading the same
-        // plan fail with "an editor draft already exists". The workbench
-        // keeps matching on candidate_id ("period-N"); only the storage id
-        // is freshly minted, using the same timestamp+sequence shape as the
-        // application layer's `new_draft_id`.
-        let draft_id = new_rebuilt_draft_id();
-        let editor = seattrellis_domain::editing::create_draft(
-            editor_store,
-            draft_id,
-            Some(candidate_id),
-            &key_refs,
-            seats.clone(),
-            &pairs,
-            Some(&display_names),
-        )
-        .map_err(|message| format!("could not rebuild period draft: {message}"))?;
-        let editor_value = serde_json::to_value(editor)
-            .map_err(|error| format!("could not serialize period draft: {error}"))?;
-        if first_editor.is_none() {
-            first_editor = Some(editor_value.clone());
+            .collect::<Result<Vec<_>, String>>()?;
+        let mut source = match snapshot.get("original_request") {
+            Some(source) => source.clone(),
+            None => base_request
+                .as_ref()
+                .ok_or_else(|| "legacy rotation period has no project source".to_string())?
+                .clone(),
+        };
+        if snapshot.get("original_request").is_none() {
+            if let Some(seed) = snapshot.get("seed") {
+                source["seed"] = seed.clone();
+            }
+            if let Some(saved_rules) = snapshot.get("rules") {
+                source["rules"] = saved_rules.clone();
+            }
+            let grid = seattrellis_domain::room_templates::grid_from_layout(&source["layout"])?;
+            if let Some((history, pairs)) =
+                seattrellis_application::class_generation::build_history_json(
+                    source["students"]
+                        .as_array()
+                        .ok_or_else(|| "source roster is missing".to_string())?,
+                    &grid,
+                    &prior,
+                )
+            {
+                source["history"] = history;
+                source["pair_history"] = pairs;
+            }
         }
-        period_editors.push(editor_value);
+        let locks = snapshot
+            .pointer("/metadata/lock_state")
+            .or_else(|| snapshot.get("lock_state"));
+        let locked_students: Vec<String> = serde_json::from_value(
+            locks
+                .and_then(|v| v.get("locked_students"))
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        )
+        .map_err(|e| e.to_string())?;
+        let locked_seats: Vec<String> = serde_json::from_value(
+            locks
+                .and_then(|v| v.get("locked_seats"))
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        )
+        .map_err(|e| e.to_string())?;
+        let id = seattrellis_application::class_generation::new_draft_id();
+        let draft = seattrellis_application::class_document::restored_draft(
+            &source,
+            &id,
+            Some(format!("period-{number}")),
+            &pairs,
+            &locked_students,
+            &locked_seats,
+        )
+        .map_err(|e| e.message)?;
+        ready.push((draft, source));
+        if needs_project_source {
+            prior.push(snapshot.clone());
+        }
     }
-    let editor =
-        first_editor.ok_or_else(|| "rotation plan has no validated periods".to_string())?;
-
+    let source_request = ready
+        .first()
+        .map(|(_, source)| source.clone())
+        .ok_or_else(|| "rotation plan has no periods".to_string())?;
+    let period_editors =
+        seattrellis_application::store_draft_contexts(editor_store, solve_requests, ready)
+            .map_err(|e| e.message)?;
+    let students = source_request
+        .get("students")
+        .and_then(Value::as_array)
+        .filter(|students| !students.is_empty())
+        .cloned()
+        .unwrap_or_else(|| {
+            period_editors[0]
+                .students
+                .iter()
+                .map(|student| {
+                    json!({"key":student.student_key,"display_name":student.display_name})
+                })
+                .collect()
+        });
     serde_json::to_string(&json!({
-        "api_version": "1",
-        "project_path": project_file.to_string_lossy(),
-        "artifact_path": artifact_path.to_string_lossy(),
-        "rotation_plan": plan,
-        "editor": editor,
-        "period_editors": period_editors,
-    }))
-    .map_err(|error| format!("could not encode rotation load response: {error}"))
-}
-
-/// Sequence source for rebuilt draft ids (see [`new_rebuilt_draft_id`]).
-static REBUILT_DRAFT_SEQ: AtomicU64 = AtomicU64::new(0);
-
-/// Mint a fresh editor draft id (`draft-<nanos hex><seq hex>`), mirroring the
-/// application layer's `new_draft_id` so ids stay unique across repeated
-/// loads of the same rotation plan and across generate flows.
-fn new_rebuilt_draft_id() -> String {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    let seq = REBUILT_DRAFT_SEQ.fetch_add(1, Ordering::Relaxed);
-    format!("draft-{nanos:x}{seq:x}")
+        "api_version":"1","project_path":project_file.to_string_lossy(),"artifact_path":artifact_path.to_string_lossy(),
+        "rotation_plan":plan,"editor":period_editors.first(),"period_editors":period_editors,
+        "source_request":source_request,"students":students,
+    })).map_err(|e| e.to_string())
 }
 
 /// `POST /api/v1/projects/rotation/group-register`: render a printable HTML or
@@ -7056,5 +7115,361 @@ mod tests {
         }
         #[cfg(windows)]
         let _ = trusted;
+    }
+    #[test]
+    fn all_http_solve_boundaries_reject_unconsumed_and_unknown_rules() {
+        let root = test_web_root();
+        let editors = editing::new_draft_store();
+        let sources = SolveRequestStore::default();
+        for bad_rules in [
+            json!({"hard":{"cannot_be_adjacent":[[0,1]]}}),
+            json!({"soft":{"magic_seating":{"weight":1}}}),
+        ] {
+            let problem = json!({"api_version":2,"student_count":2,"students":[{"key":"A"},{"key":"B"}],"seat_positions":[[1.0,1.0],[1.0,2.0]],"edges":[[0,1]],"rules":bad_rules});
+            for path in ["/api/v2/solve", "/api/v1/solve", "/api/v1/classes/generate"] {
+                let result = route(
+                    &request("POST", path, &serde_json::to_vec(&problem).unwrap()),
+                    &root,
+                    &editors,
+                    &sources,
+                    &root,
+                );
+                assert_eq!(
+                    result.status,
+                    400,
+                    "{path}: {}",
+                    String::from_utf8_lossy(&result.body)
+                );
+            }
+        }
+        assert!(editors.lock().unwrap().is_empty());
+        assert!(sources.lock().unwrap().is_empty());
+    }
+    #[test]
+    fn frontend_hard_rule_shapes_are_rejected_before_solving() {
+        let root = test_web_root();
+        for hard in [
+            json!({"fixed_seats":{"student":"A","seat_id":"R1C1"}}),
+            json!({"misspelled_constraint":[]}),
+            json!({"must_be_adjacent":[{"students":["A","B","C"]}]}),
+            json!({"min_distance":[{"students":["A","B"],"distance":2.0,"metric":"typo"}]}),
+            json!({"min_distance":[{"students":["A","B"],"distance":2.0,"metric":7}]}),
+        ] {
+            let body=serde_json::to_vec(&json!({"draft":{"students":[{"student_id":"A","name":"Alice"},{"student_id":"B","name":"Bob"},{"student_id":"C","name":"Carol"}],"room":{"template_id":"standard-30"},"goal":{"goal_id":"daily-rotation","hard_rules":hard}}})).unwrap();
+            assert_eq!(
+                route_one(&request("POST", "/api/v1/classes/generate", &body), &root).status,
+                422
+            );
+        }
+    }
+    #[test]
+    fn real_server_rejects_unauthenticated_partial_body_and_exits_with_authorized_partial_body_open(
+    ) {
+        use std::io::{Read, Write};
+        let server = Server::bind(&ServerConfig::new(0, PathBuf::from("/nonexistent"))).unwrap();
+        let address = server.addr();
+        let token = server.session_token().to_string();
+        let shutdown = server.shutdown_flag();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result = server.serve();
+            finished_tx.send(result).unwrap();
+        });
+        let mut unauth = std::net::TcpStream::connect(address).unwrap();
+        unauth
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        write!(
+            unauth,
+            "POST /api/v2/solve HTTP/1.1\r\nHost: {address}\r\nContent-Length: 100000\r\n\r\nx"
+        )
+        .unwrap();
+        let mut buffer = [0u8; 1024];
+        let count = unauth.read(&mut buffer).unwrap();
+        assert!(String::from_utf8_lossy(&buffer[..count]).contains("401"));
+        let mut authenticated = std::net::TcpStream::connect(address).unwrap();
+        write!(authenticated,"POST /api/v2/solve HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {token}\r\nContent-Length: 100000\r\n\r\nx").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        shutdown.store(true, Ordering::Release);
+        finished_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("shutdown must not wait for client body completion")
+            .unwrap();
+        worker.join().unwrap();
+        drop(authenticated);
+    }
+
+    #[test]
+    fn generated_rotation_roundtrip_restores_period_source_history_locks_audit_and_export() {
+        let root = test_web_root();
+        let dir = rotation_project_dir();
+        let path = rotation_project_file(&dir);
+        let editors = editing::new_draft_store();
+        let sources = SolveRequestStore::default();
+        let input = json!({"draft":{"name":"Roundtrip","students":[{"student_id":"STU001","name":"Alice","score":91.0,"height_cm":152.0},{"student_id":"STU002","name":"Bob","vision":"0.6"}],"room":{"layout":{"layout_id":"test","name":"Test","seats":[{"seat_id":"R1C1","row":1,"col":1},{"seat_id":"R1C3","row":1,"col":3},{"seat_id":"R2C2","row":2,"col":2}]}},"goal":{"goal_id":"quick-shuffle","hard_rules":{"fixed_seats":[{"student":"STU001","seat_id":"R1C1"}]}}},"period_count":2,"options":{"seed":u64::MAX}});
+        let generated = route(
+            &request(
+                "POST",
+                "/api/v1/classes/rotation",
+                &serde_json::to_vec(&input).unwrap(),
+            ),
+            &root,
+            &editors,
+            &sources,
+            &root,
+        );
+        assert_eq!(
+            generated.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&generated.body)
+        );
+        let result = body_json(&generated);
+        let mut plan = result["rotation_plan"].clone();
+        assert_eq!(
+            plan["periods"][0]["snapshot"]["original_request"]["seed"],
+            u64::MAX
+        );
+        assert_eq!(
+            plan["periods"][1]["snapshot"]["original_request"]["seed"],
+            0
+        );
+        assert_eq!(
+            plan["periods"][1]["snapshot"]["original_request"]["history"]["history_count"],
+            1
+        );
+        plan["periods"][0]["snapshot"]["metadata"]["lock_state"] =
+            json!({"locked_students":["STU001"],"locked_seats":["R1C1"]});
+        let saved = route(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/save",
+                &serde_json::to_vec(&json!({"project_path":path,"rotation_plan":plan})).unwrap(),
+            ),
+            &root,
+            &editors,
+            &sources,
+            &root,
+        );
+        assert_eq!(
+            saved.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&saved.body)
+        );
+        // The current workspace can diverge from the captured source. Its A1
+        // rule is incompatible with the generated R1C1 layout, and its roster
+        // and history are no longer the data used by the saved plan.
+        fs::write(
+            dir.join("rules.json"),
+            r#"{"hard":{"fixed_seats":[{"student":"STU001","seat_id":"A1"}]}}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("students.csv"),
+            "student_id,name\nSTU001,Changed name\n",
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join("history")).unwrap();
+        fs::write(dir.join("history/changed.json"), b"invalid JSON").unwrap();
+        let mut project: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        project["history_dir"] = json!("history");
+        fs::write(&path, serde_json::to_vec(&project).unwrap()).unwrap();
+        let fresh_editors = editing::new_draft_store();
+        let fresh_sources = SolveRequestStore::default();
+        let loaded = route(
+            &request(
+                "POST",
+                "/api/v1/projects/rotation/load",
+                &serde_json::to_vec(&json!({"project_path":path})).unwrap(),
+            ),
+            &root,
+            &fresh_editors,
+            &fresh_sources,
+            &root,
+        );
+        assert_eq!(
+            loaded.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&loaded.body)
+        );
+        let reopened = body_json(&loaded);
+        assert_eq!(
+            reopened["students"],
+            plan["periods"][0]["snapshot"]["original_request"]["students"]
+        );
+        assert_eq!(reopened["students"][0]["display_name"], "Alice");
+        assert_eq!(reopened["students"][0]["score"], 91.0);
+        for (index, state) in reopened["period_editors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
+            let id = state["draft_id"].as_str().unwrap();
+            assert_eq!(
+                fresh_sources.lock().unwrap()[id],
+                plan["periods"][index]["snapshot"]["original_request"]
+            );
+            assert_eq!(
+                route(
+                    &request("GET", &format!("/api/v1/editing/drafts/{id}/audit"), b""),
+                    &root,
+                    &fresh_editors,
+                    &fresh_sources,
+                    &root
+                )
+                .status,
+                200
+            );
+            assert_eq!(
+                route(
+                    &request(
+                        "POST",
+                        "/api/v1/exports",
+                        &serde_json::to_vec(&json!({"draft_id":id,"format":"svg"})).unwrap()
+                    ),
+                    &root,
+                    &fresh_editors,
+                    &fresh_sources,
+                    &root
+                )
+                .status,
+                200
+            );
+        }
+        assert_eq!(reopened["editor"]["students"][0]["locked"], true);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn mixed_rotation_restore_uses_project_layout_only_for_legacy_periods() {
+        let dir = rotation_project_dir();
+        let project_path = rotation_project_file(&dir);
+        let captured_source =
+            seattrellis_io::projects::build_project_solve_request(Path::new(&project_path))
+                .unwrap();
+        let mut plan = rotation_plan_value();
+        plan["periods"][0]["snapshot"]["original_request"] = captured_source.clone();
+        plan["periods"][1]["snapshot"]["assignments"] = json!([
+            {"student_key":"STU001","seat_id":"A1"},
+            {"student_key":"STU002","seat_id":"A2"}
+        ]);
+        fs::write(
+            dir.join("classroom.json"),
+            r#"{"seats":[{"seat_id":"A1","row":1,"col":1},{"seat_id":"A2","row":1,"col":2}]}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("rules.json"),
+            r#"{"hard":{"fixed_seats":[{"student":"STU001","seat_id":"A1"}]}}"#,
+        )
+        .unwrap();
+        let editors = editing::new_draft_store();
+        let sources = SolveRequestStore::default();
+        let loaded: Value = serde_json::from_str(
+            &rotation_load_drafts(
+                Path::new(&project_path),
+                &dir.join("outputs/rotation-plan.json"),
+                &plan,
+                &editors,
+                &sources,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let ids = loaded["period_editors"].as_array().unwrap();
+        let source_guard = sources.lock().unwrap();
+        assert_eq!(
+            source_guard[ids[0]["draft_id"].as_str().unwrap()],
+            captured_source
+        );
+        let legacy_source = &source_guard[ids[1]["draft_id"].as_str().unwrap()];
+        assert_eq!(legacy_source["layout"]["seats"][0]["seat_id"], "A1");
+        assert_eq!(legacy_source["fixed_seats"], json!([[0, 0]]));
+        assert_eq!(legacy_source["history"]["history_count"], 1);
+        assert_eq!(loaded["period_editors"][0]["seats"][0]["seat_id"], "R1C1");
+        assert_eq!(loaded["period_editors"][1]["seats"][0]["seat_id"], "A1");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sigterm_shutdown_child() {
+        let Ok(port) = std::env::var("SEATTRELLIS_SIGTERM_TEST_PORT") else {
+            return;
+        };
+        let server = Server::bind(&ServerConfig::new(
+            port.parse().unwrap(),
+            PathBuf::from("/nonexistent"),
+        ))
+        .unwrap();
+        server.serve().unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn sigterm_stops_real_server_with_partial_headers_within_grace() {
+        let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = reservation.local_addr().unwrap();
+        drop(reservation);
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "server::tests::sigterm_shutdown_child",
+                "--nocapture",
+            ])
+            .env("SEATTRELLIS_SIGTERM_TEST_PORT", address.port().to_string())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        struct KillOnDrop(std::process::Child);
+        impl Drop for KillOnDrop {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let mut socket = loop {
+            match std::net::TcpStream::connect(address) {
+                Ok(socket) => break socket,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(10))
+                }
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("child backend did not start: {error}");
+                }
+            }
+        };
+        let mut child = KillOnDrop(child);
+        use std::io::Write;
+        socket
+            .write_all(b"POST /api/v2/solve HTTP/1.1\r\nHost: ")
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let sent = std::process::Command::new("kill")
+            .args(["-TERM", &child.0.id().to_string()])
+            .status()
+            .unwrap();
+        assert!(sent.success());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(7);
+        loop {
+            if let Some(status) = child.0.try_wait().unwrap() {
+                assert!(
+                    status.success(),
+                    "SIGTERM must be handled gracefully: {status}"
+                );
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("SIGTERM exit exceeded graceful shutdown deadline");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        drop(socket);
     }
 }

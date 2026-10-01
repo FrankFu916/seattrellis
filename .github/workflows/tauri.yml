@@ -18,7 +18,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v2.') || startsWith(github.event.release.tag_name, 'desktop-v')
+    uses: ./.github/workflows/rust.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ format('refs/tags/{0}', github.event.release.tag_name || inputs.release_tag) }}
+
   bundle:
+    needs: quality
     name: Bundle / ${{ matrix.platform }}
     # Published v2 releases include desktop bundles. Keep the explicit desktop
     # preview-tag path; never attach a v2 desktop build to a Python v1 release.

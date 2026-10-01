@@ -27,6 +27,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -183,6 +184,9 @@ struct JournalDocument {
 
 /// A journaled file-system transaction.
 pub struct FileTransaction {
+    // Held through recovery, staging, commit and Drop rollback. OS locks are
+    // released automatically if a process crashes; never delete lock files.
+    locks: Option<Vec<File>>,
     journal_dir: PathBuf,
     roots: Vec<PathBuf>,
     transaction_id: String,
@@ -200,6 +204,7 @@ impl Drop for FileTransaction {
             // the synced journal in place for explicit startup recovery.
             let _rollback_error = self.rollback_inner();
         }
+        drop(self.locks.take());
     }
 }
 
@@ -230,9 +235,12 @@ impl FileTransaction {
         prepare_journal_dir(journal_dir)?;
         let journal_dir = canonical_directory(journal_dir, "journal directory")?;
         let roots = canonical_roots(allowed_roots)?;
+        let locks = acquire_transaction_locks(&journal_dir, &roots)?;
+        recover_leftover_transactions_locked(&journal_dir, &roots)?;
         let transaction_id = next_transaction_id();
         let current_journal = journal_dir.join(journal_file_name(&transaction_id, 0));
         let mut transaction = Self {
+            locks: Some(locks),
             journal_dir,
             roots,
             transaction_id,
@@ -244,6 +252,13 @@ impl FileTransaction {
         };
         transaction.write_initial_journal()?;
         Ok(transaction)
+    }
+
+    /// Simulate process death in unit fixtures without leaking a held OS lock.
+    #[cfg(test)]
+    pub(crate) fn abandon_for_crash_test(mut self) {
+        drop(self.locks.take());
+        std::mem::forget(self);
     }
 
     /// Stage a file replacement. Existing targets receive a unique backup at
@@ -623,6 +638,8 @@ pub fn atomic_write_file(target: &Path, contents: &[u8]) -> Result<TransactionRe
 }
 
 /// Atomically create one file without overwriting an existing path.
+/// Returns an error if the filesystem cannot publish through a hard link;
+/// a rename fallback cannot guarantee exclusive creation on every platform.
 pub fn atomic_create_file(target: &Path, contents: &[u8]) -> Result<TransactionReceipt, String> {
     atomic_create_file_validated(target, contents, |_| Ok(()))
 }
@@ -663,7 +680,6 @@ fn atomic_write_one(
     })?;
     let root = canonical_directory(parent, "output directory")?;
     let journal_dir = root.join(JOURNAL_DIR_NAME);
-    recover_leftover_transactions_with_root(&journal_dir, &root)?;
     let mut transaction = FileTransaction::begin_with_root(&journal_dir, &root)?;
     match mode {
         AtomicWriteMode::Replace => transaction.stage(target, contents)?,
@@ -697,7 +713,6 @@ pub fn atomic_write_files_validated(
     })?;
     let root = canonical_directory(transaction_root, "transaction root")?;
     let journal_dir = root.join(JOURNAL_DIR_NAME);
-    recover_leftover_transactions_with_root(&journal_dir, &root)?;
     let mut transaction = FileTransaction::begin_with_root(&journal_dir, &root)?;
     for write in writes {
         match write.mode {
@@ -738,6 +753,15 @@ pub fn recover_leftover_transactions_with_roots(
     }
     let journal_dir = canonical_directory(journal_dir, "journal directory")?;
     let roots = canonical_roots(allowed_roots)?;
+    let _locks = acquire_transaction_locks(&journal_dir, &roots)?;
+    recover_leftover_transactions_locked(&journal_dir, &roots)
+}
+
+// The caller owns all root/journal locks before inspecting any journal.
+fn recover_leftover_transactions_locked(
+    journal_dir: &Path,
+    roots: &[PathBuf],
+) -> Result<usize, String> {
     let expected_roots = roots
         .iter()
         .map(|root| path_as_utf8(root, "trusted root").map(str::to_string))
@@ -745,7 +769,7 @@ pub fn recover_leftover_transactions_with_roots(
 
     // Parse and authorize the complete journal set before applying recovery.
     let mut groups: BTreeMap<String, Vec<(PathBuf, JournalDocument)>> = BTreeMap::new();
-    let entries = fs::read_dir(&journal_dir)
+    let entries = fs::read_dir(journal_dir)
         .map_err(|error| format!("cannot list journal dir {}: {error}", journal_dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|error| {
@@ -771,7 +795,7 @@ pub fn recover_leftover_transactions_with_roots(
             .map_err(|error| format!("cannot read journal {}: {error}", path.display()))?;
         let document: JournalDocument = serde_json::from_slice(&bytes)
             .map_err(|error| format!("journal {} is malformed: {error}", path.display()))?;
-        validate_journal_document(&path, &document, &expected_roots, &roots)?;
+        validate_journal_document(&path, &document, &expected_roots, roots)?;
         groups
             .entry(document.transaction_id.clone())
             .or_default()
@@ -789,13 +813,14 @@ pub fn recover_leftover_transactions_with_roots(
             .steps
             .iter()
             .enumerate()
-            .map(|(index, step)| journal_to_step(step, index, &roots, &transaction_id))
+            .map(|(index, step)| journal_to_step(step, index, roots, &transaction_id))
             .collect::<Result<Vec<_>, _>>()?;
         let current_journal =
             journal_dir.join(journal_file_name(&transaction_id, document.revision));
         let mut transaction = FileTransaction {
-            journal_dir: journal_dir.clone(),
-            roots: roots.clone(),
+            locks: None,
+            journal_dir: journal_dir.to_path_buf(),
+            roots: roots.to_vec(),
             transaction_id,
             revision: document.revision,
             current_journal,
@@ -821,7 +846,7 @@ pub fn recover_leftover_transactions_with_roots(
     // `*.json.pending` and renaming it into place leaves a file no group
     // references. Every group above has been cleaned; anything still matching
     // the journal prefix cannot belong to a live transaction.
-    let entries = match fs::read_dir(&journal_dir) {
+    let entries = match fs::read_dir(journal_dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(recovered),
         Err(error) => {
@@ -850,8 +875,55 @@ pub fn recover_leftover_transactions_with_roots(
             }
         }
     }
-    sync_directory(&journal_dir)?;
+    sync_directory(journal_dir)?;
     Ok(recovered)
+}
+
+/// Root locks also serialize custom journals covering the same trusted root.
+/// A journal lock protects recovery when a caller supplies different roots.
+fn acquire_transaction_locks(journal_dir: &Path, roots: &[PathBuf]) -> Result<Vec<File>, String> {
+    let mut paths: Vec<PathBuf> = roots
+        .iter()
+        .map(|root| root.join(".seattrellis-transaction.lock"))
+        .collect();
+    let parent = journal_dir
+        .parent()
+        .ok_or("journal directory has no parent")?;
+    let name = journal_dir
+        .file_name()
+        .ok_or("journal directory has no name")?;
+    paths.push(parent.join(format!(
+        ".{}.lock",
+        name.to_string_lossy().trim_start_matches('.')
+    )));
+    paths.sort();
+    paths.dedup();
+    let mut locks = Vec::with_capacity(paths.len());
+    for path in paths {
+        if let Ok(metadata) = fs::symlink_metadata(&path) {
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "transaction lock is not a regular file: {}",
+                    path.display()
+                ));
+            }
+        }
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .map_err(|error| format!("cannot open transaction lock {}: {error}", path.display()))?;
+        file.lock_exclusive().map_err(|error| {
+            format!(
+                "cannot acquire transaction lock {}: {error}",
+                path.display()
+            )
+        })?;
+        locks.push(file);
+    }
+    Ok(locks)
 }
 
 fn publish_step(step: &Step) -> Result<(), String> {
@@ -861,50 +933,9 @@ fn publish_step(step: &Step) -> Result<(), String> {
             // A hard link is create-new on both Unix and Windows. It never
             // relies on rename-over-existing semantics and leaves a complete,
             // synced inode at the target name before the temp name is removed.
-            // Filesystems without hard-link support (FAT32/exFAT, some
-            // network mounts) fall back to a create-new rename: the target is
-            // guaranteed absent here (it was moved to a backup or never
-            // existed), so rename is just as atomic.
-            match fs::hard_link(&step.temp, &step.target) {
-                Ok(()) => {
-                    sync_entry(&step.target, EntryKind::File)?;
-                    fs::remove_file(&step.temp).map_err(|error| {
-                        format!(
-                            "cannot remove published temp {}: {error}",
-                            step.temp.display()
-                        )
-                    })?;
-                }
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        std::io::ErrorKind::Unsupported | std::io::ErrorKind::PermissionDenied
-                    ) =>
-                {
-                    // Filesystems without hard-link support (FAT32/exFAT,
-                    // some network mounts) report Unsupported or a
-                    // permission-style error. Re-check that the target is
-                    // still absent, then publish with a create-new rename,
-                    // which is just as atomic on those filesystems.
-                    ensure_path_absent(&step.target, "publish target")?;
-                    fs::rename(&step.temp, &step.target).map_err(|rename_error| {
-                        format!(
-                            "cannot publish temp file {} as {} without overwrite \
-                             (hard link: {error}, rename: {rename_error})",
-                            step.temp.display(),
-                            step.target.display()
-                        )
-                    })?;
-                    sync_entry(&step.target, EntryKind::File)?;
-                }
-                Err(error) => {
-                    return Err(format!(
-                        "cannot publish temp file {} as {} without overwrite: {error}",
-                        step.temp.display(),
-                        step.target.display()
-                    ))
-                }
-            }
+            publish_file_with_link(&step.temp, &step.target, |temp, target| {
+                fs::hard_link(temp, target)
+            })?;
             sync_parent(&step.target)
         }
         EntryKind::Directory => {
@@ -918,6 +949,33 @@ fn publish_step(step: &Step) -> Result<(), String> {
             sync_parent(&step.target)
         }
     }
+}
+
+fn publish_file_with_link(
+    temp: &Path,
+    target: &Path,
+    link: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> Result<(), String> {
+    link(temp, target).map_err(|error| {
+        let hint = if matches!(
+            error.kind(),
+            std::io::ErrorKind::Unsupported | std::io::ErrorKind::PermissionDenied
+        ) {
+            "; exclusive atomic publication requires permitted hard links: use a hard-link-capable filesystem or fix its permissions"
+        } else {
+            ""
+        };
+        // Checking for absence then renaming can overwrite a path created
+        // by an unrelated process. Fail safely when linking is unavailable.
+        format!(
+            "cannot publish temp file {} as {} without overwrite: {error}{hint}",
+            temp.display(),
+            target.display()
+        )
+    })?;
+    sync_entry(target, EntryKind::File)?;
+    fs::remove_file(temp)
+        .map_err(|error| format!("cannot remove published temp {}: {error}", temp.display()))
 }
 
 fn rollback_step(step: &Step) -> Result<(), String> {
@@ -1738,6 +1796,30 @@ mod tests {
         dir
     }
 
+    #[test]
+    fn unsupported_exclusive_publish_never_renames_over_a_racing_file() {
+        for kind in [
+            std::io::ErrorKind::Unsupported,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            let root = temp_dir("unsupported-publish");
+            let temp = root.join("staged.json");
+            let target = root.join("target.json");
+            fs::write(&temp, "staged").unwrap();
+            let error = publish_file_with_link(&temp, &target, |_, target| {
+                // Model a non-cooperating writer between the absent check
+                // and the attempted exclusive filesystem operation.
+                fs::write(target, "other process").unwrap();
+                Err(std::io::Error::new(kind, "hard links unavailable"))
+            })
+            .unwrap_err();
+            assert!(error.contains("hard-link-capable filesystem"));
+            assert_eq!(fs::read_to_string(target).unwrap(), "other process");
+            assert_eq!(fs::read_to_string(temp).unwrap(), "staged");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
     fn json_validator(path: &Path) -> Result<(), String> {
         let contents = fs::read_to_string(path)
             .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
@@ -1898,6 +1980,7 @@ mod tests {
         txn.write_journal_revision().unwrap();
         fs::rename(&txn.steps[0].target, &txn.steps[0].backup).unwrap();
         sync_parent(&txn.steps[0].target).unwrap();
+        drop(txn.locks.take());
         std::mem::forget(txn);
 
         assert!(!target.exists());
@@ -1919,6 +2002,7 @@ mod tests {
         txn.steps[0].state = StepState::Publishing;
         txn.write_journal_revision().unwrap();
         publish_step(&txn.steps[0]).unwrap();
+        drop(txn.locks.take());
         std::mem::forget(txn);
 
         assert!(target.exists());
@@ -1978,6 +2062,7 @@ mod tests {
         fs::write(&target, b"old").unwrap();
         let mut txn = FileTransaction::begin_with_root(&journal, &dir).unwrap();
         txn.stage(&target, b"new").unwrap();
+        drop(txn.locks.take());
         std::mem::forget(txn);
 
         let error = recover_leftover_transactions_with_root(&journal, &other).unwrap_err();

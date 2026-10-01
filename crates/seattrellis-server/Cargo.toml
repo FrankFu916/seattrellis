@@ -19,7 +19,9 @@ seattrellis-application = { path = "../seattrellis-application", version = "2.1.
 seattrellis-io = { path = "../seattrellis-io", version = "2.1.0" }
 seattrellis-rules = { path = "../seattrellis-rules", version = "2.1.0" }
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "sync"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["http1", "server", "tokio", "service"] }
 tower = { version = "0.5", features = ["limit", "util"] }
 getrandom = "0.4"
 serde = { version = "1", features = ["derive"] }

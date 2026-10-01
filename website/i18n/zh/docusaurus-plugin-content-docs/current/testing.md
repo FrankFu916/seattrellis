@@ -56,3 +56,13 @@ cargo test --release --locked -p seattrellis-application --test rotation_gate --
 - [开发指南](development.md)
 - [性能基准测试规范](benchmarks.md)
 - [版本发布核对清单](release-checklist.md)
+
+
+## CLI 验收来源校正
+
+当前 CLI 覆盖由 `cli_arg_sweep.rs` 与 `lifecycle_regressions.rs` 的真实子进程测试提供，检查退出码、dry-run 零写入、保存重开和项目输出。`fixtures/cli-goldens/` 是已退役 oracle 的存档参考，没有当前自动化消费者，也没有可复现的生成流程，不能把存档数量当作现有测试覆盖。
+
+
+## 当前浏览器链路
+
+Chromium 验收覆盖名单映射、候选选择、锁定/交换/撤销、实名和匿名导出及惰性预览、两期轮换保存重开、班级文件下载后刷新页面并上传重开、完整源字段和锁恢复、局部修复与导出，以及真正另存为后的班级切换。浏览器上传下载不能替代真实系统文件对话框、Tauri 窗口和屏幕阅读器验收，后者仍需目标平台测试。

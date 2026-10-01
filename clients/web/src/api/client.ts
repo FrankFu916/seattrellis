@@ -1,6 +1,9 @@
 import { demoBootstrap } from "./demo";
 import type {
   BootstrapData,
+  ClassSource,
+  ClassDocument,
+  OpenClassDocumentResponse,
   CatalogResponse,
   CompiledLayoutResponse,
   CreateLayoutDraftRequest,
@@ -39,7 +42,10 @@ import type {
 const API_ROOT = "/api/v1";
 const REQUEST_TIMEOUT_MS = 1800;
 const ROSTER_TIMEOUT_MS = 30_000;
-const GENERATE_TIMEOUT_MS = 30_000;
+/** Includes the solver budget for every rotation period and transport overhead. */
+export function generationTimeoutMs(options: GenerateClassRequest["options"], periods = 1): number {
+  return (options?.time_limit_seconds ?? 10) * 1000 * periods + 15_000;
+}
 let cachedDesktopSessionToken: string | null | undefined;
 let sessionBootstrapPromise: Promise<string | null> | null = null;
 
@@ -110,9 +116,19 @@ async function fetchJson<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  init?.signal?.addEventListener("abort", abort, { once: true });
+  if (init?.signal?.aborted) controller.abort();
 
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
+  const requestId = headers.get("X-Request-Id");
+  const cancelJob = () => {
+    if (requestId) void fetchJson(`/jobs/${encodeURIComponent(requestId)}/cancel`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    }).catch(() => undefined);
+  };
+  controller.signal.addEventListener("abort", cancelJob, { once: true });
   let sessionToken = await ensureSessionToken();
   if (sessionToken) {
     headers.set("Authorization", `Bearer ${sessionToken}`);
@@ -146,6 +162,8 @@ async function fetchJson<T>(
     return (await response.json()) as T;
   } finally {
     window.clearTimeout(timeout);
+    init?.signal?.removeEventListener("abort", abort);
+    controller.signal.removeEventListener("abort", cancelJob);
   }
 }
 
@@ -577,7 +595,7 @@ export async function previewRosterUpdate(
 }
 
 export async function deleteRosterDraft(draftId: string): Promise<void> {
-  await fetchJson<void>(`/rosters/drafts/${draftId}`, { method: "DELETE" });
+  await fetchJson<void>(`/rosters/drafts/${encodeURIComponent(draftId)}`, { method: "DELETE", keepalive: true });
 }
 
 export async function createLayoutDraft(
@@ -620,29 +638,33 @@ export async function deleteLayoutDraft(draftId: string): Promise<void> {
 
 export async function generateClass(
   request: GenerateClassRequest,
+  signal?: AbortSignal,
 ): Promise<GenerateClassResponse> {
   return fetchJson<GenerateClassResponse>(
     "/classes/generate",
     {
+      signal,
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Request-Id": crypto.randomUUID() },
       body: JSON.stringify(request),
     },
-    GENERATE_TIMEOUT_MS,
+    generationTimeoutMs(request.options),
   );
 }
 
 export async function generateRotationPlan(
   request: GenerateRotationPlanRequest,
+  signal?: AbortSignal,
 ): Promise<GenerateRotationPlanResponse> {
   return fetchJson<GenerateRotationPlanResponse>(
     "/classes/rotation",
     {
+      signal,
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Request-Id": crypto.randomUUID() },
       body: JSON.stringify(request),
     },
-    GENERATE_TIMEOUT_MS,
+    generationTimeoutMs(request.options, request.period_count),
   );
 }
 
@@ -801,4 +823,32 @@ function readDesktopSessionToken(): string | null {
     cachedDesktopSessionToken = null;
   }
   return cachedDesktopSessionToken;
+}
+
+export async function serializeClassDocument(
+  classSource: ClassSource,
+  draftRefs: Array<{ draft_id: string; revision: number }>,
+  rotationPlan: RotationPlan | null,
+): Promise<ClassDocument> {
+  return fetchJson<ClassDocument>("/classes/document/serialize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ class_source: classSource, draft_refs: draftRefs,
+      ...(rotationPlan ? { rotation_plan: rotationPlan } : {}) }),
+  }, 30_000);
+}
+
+export async function openClassDocument(document: unknown): Promise<OpenClassDocumentResponse> {
+  return fetchJson<OpenClassDocumentResponse>("/classes/document/open", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(document),
+  }, 30_000);
+}
+
+export async function repairEditorDraft(draftId: string, revision: number,
+  affectedStudents: string[] = [], signal?: AbortSignal): Promise<EditorState> {
+  return fetchJson<EditorState>(`/editing/drafts/${encodeURIComponent(draftId)}/repair`, {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": crypto.randomUUID() }, signal,
+    body: JSON.stringify({ base_revision: revision, affected_students: affectedStudents }),
+  }, 330_000);
 }

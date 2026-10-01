@@ -57,3 +57,15 @@ describe("snapshotIsRestorable", () => {
     expect(snapshotIsRestorable({})).toBe(false);
   });
 });
+
+it("restores all roster metadata and understands core student keys", () => {
+  expect(snapshotStudents({ students: [{ key: "S1", display_name: "Alice", gender: "female", height_cm: 180, score: 92, vision: "poor", tags: ["mentor"], needs: ["front"], notes: "note", attributes: { language: "zh" } }, null] })).toEqual([
+    { id: "S1", name: "Alice", gender: "female", heightCm: 180, score: 92, vision: "poor", tags: ["mentor"], needs: ["front"], notes: "note", attributes: { language: "zh" } },
+  ]);
+});
+
+it("does not restore the same student into two seats", () => {
+  const current = createSeatAssignments(1, 2, demoStudents, 2);
+  const next = snapshotAssignments({ assignments: [null, { student_key: "S01", seat_id: "R1C1" }, { student_key: "S01", seat_id: "R1C2" }] }, current, snapshotStudents(SNAPSHOT));
+  expect(next.filter((seat) => seat.student?.id === "S01")).toHaveLength(1);
+});

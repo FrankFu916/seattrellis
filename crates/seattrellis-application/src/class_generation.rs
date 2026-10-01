@@ -10,7 +10,7 @@ use std::time::SystemTime;
 
 use serde_json::{json, Value};
 
-use crate::{store_solve_request, AppError, SolveRequestStore};
+use crate::{AppError, SolveRequestStore};
 use seattrellis_core::cost::{
     classify_seat_position, detect_neighbor_relation_types, student_pair_key,
 };
@@ -61,14 +61,8 @@ pub fn generate_class(
         (raw_request.clone(), "daily-rotation".to_string())
     };
 
-    let request: CoreSolveRequest = match serde_json::from_value(core_request.clone()) {
-        Ok(request) => request,
-        Err(_) => {
-            return Err(AppError::bad_request(
-                "request body is not a valid solve problem",
-            ))
-        }
-    };
+    let request = seattrellis_core::parse_core_solve_request(&core_request.to_string())
+        .map_err(AppError::solve_invalid_input)?;
 
     let class_name = request
         .layout
@@ -76,6 +70,42 @@ pub fn generate_class(
         .map(|layout| layout.name.clone())
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "Classroom".to_string());
+
+    // Multi-candidate generation (M5 B5 / D5, plan §6.3): when the request
+    // asks for several candidates, produce a distinct-feasible set via the
+    // candidates engine (seeded repeated solve + exact-assignment exclusion)
+    // instead of a single plan. The single-candidate path below keeps the
+    // frozen seven-state semantics intact.
+    let candidate_count = match raw_request.pointer("/options/candidate_count") {
+        None => 1,
+        Some(value) => value
+            .as_u64()
+            .filter(|count| (1..=20).contains(count))
+            .ok_or_else(|| {
+                AppError::bad_request("candidate_count must be an integer between 1 and 20")
+            })? as usize,
+    };
+
+    if core_request
+        .to_string()
+        .len()
+        .saturating_mul(candidate_count)
+        > crate::MAX_CONTEXT_SOURCE_BYTES
+    {
+        return Err(AppError::bad_request(
+            "candidate set source exceeds context capacity",
+        ));
+    }
+    if candidate_count > 1 {
+        return generate_candidate_set(
+            &core_request,
+            candidate_count,
+            editor_store,
+            solve_requests,
+            class_name,
+            goal_id,
+        );
+    }
 
     let response = solve_core(&request)?;
     if !response.feasible {
@@ -92,28 +122,6 @@ pub fn generate_class(
             recommended_candidate_id: None,
             editor: None,
         });
-    }
-
-    // Multi-candidate generation (M5 B5 / D5, plan §6.3): when the request
-    // asks for several candidates, produce a distinct-feasible set via the
-    // candidates engine (seeded repeated solve + exact-assignment exclusion)
-    // instead of a single plan. The single-candidate path below keeps the
-    // frozen seven-state semantics intact.
-    let candidate_count = raw_request
-        .pointer("/options/candidate_count")
-        .and_then(Value::as_u64)
-        .map(|count| count.clamp(1, 20) as usize)
-        .unwrap_or(1);
-
-    if candidate_count > 1 {
-        return generate_candidate_set(
-            &core_request,
-            candidate_count,
-            editor_store,
-            solve_requests,
-            class_name,
-            goal_id,
-        );
     }
 
     // Open an editable draft mirroring the recommended plan.
@@ -147,8 +155,7 @@ pub fn generate_class(
             )
         })
         .collect();
-    let editor = match editing::create_draft(
-        editor_store,
+    let editor = match editing::EditorDraft::new(
         draft_id.clone(),
         Some(draft_id.clone()),
         &key_refs,
@@ -162,9 +169,12 @@ pub fn generate_class(
 
     // Remember the (core-shaped) request that produced this draft so export
     // can rebuild the full plan (request + current assignment) after edits.
-    store_solve_request(solve_requests, draft_id.clone(), core_request)
-        .map_err(AppError::internal)?;
+    let editor = crate::store_draft_context(editor_store, solve_requests, editor, core_request)?;
 
+    let plan_score = crate::draft_audit::audit_draft(editor_store, solve_requests, &draft_id)?
+        ["score"]["total"]
+        .as_f64()
+        .ok_or_else(|| AppError::internal("draft score is missing"))?;
     Ok(GenerateClassOutcome {
         feasible: true,
         status: response.status,
@@ -174,7 +184,7 @@ pub fn generate_class(
         draft_id: Some(draft_id.clone()),
         candidates: vec![CandidateOutcome {
             draft_id: draft_id.clone(),
-            total_score: response.total_cost.unwrap_or(0.0),
+            total_score: plan_score,
             recommended: true,
         }],
         recommended_candidate_id: Some(draft_id.clone()),
@@ -191,12 +201,15 @@ pub fn generate_class(
 /// failures surface as `InvalidInput` (400), anything else as an internal
 /// error (500) — a solver bug must never masquerade as a bad request.
 pub fn solve_core(request: &CoreSolveRequest) -> Result<CoreSolveResponse, AppError> {
-    let response = seattrellis_core::solve_problem(request).map_err(|message| {
-        match seattrellis_core::classify_solve_error(&message) {
-            seattrellis_core::SolveStatus::InvalidInput => AppError::solve_invalid_input(message),
-            _ => AppError::internal(format!("solver failed: {message}")),
-        }
-    })?;
+    let response = seattrellis_core::solve_problem_with_control(request, &crate::request_control())
+        .map_err(
+            |message| match seattrellis_core::classify_solve_error(&message) {
+                seattrellis_core::SolveStatus::InvalidInput => {
+                    AppError::solve_invalid_input(message)
+                }
+                _ => AppError::internal(format!("solver failed: {message}")),
+            },
+        )?;
     if response.feasible {
         seattrellis_core::validate_solve_response(request, &response).map_err(|message| {
             AppError::internal(format!(
@@ -235,7 +248,7 @@ pub(crate) fn is_frontend_class_request(value: &Value) -> bool {
 /// Returns a `422` response naming the missing piece when the draft is
 /// malformed (`invalid_class_draft`), the room template is unknown
 /// (`room_not_found`) or the goal is unknown (`unknown_goal`).
-pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
+pub fn frontend_class_request_to_core(value: &Value) -> Result<Value, AppError> {
     let draft = value
         .get("draft")
         .and_then(Value::as_object)
@@ -319,7 +332,37 @@ pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, App
         .map(|students| students.iter().map(core_student_value).collect())
         .unwrap_or_default();
 
+    if value
+        .get("options")
+        .is_some_and(|options| !options.is_object())
+    {
+        return Err(AppError::unprocessable(
+            "invalid_class_draft",
+            "options must be an object",
+        ));
+    }
     let options = value.get("options").and_then(Value::as_object);
+    if let Some(options) = options {
+        if options
+            .get("seed")
+            .is_some_and(|seed| seed.as_u64().is_none())
+        {
+            return Err(AppError::unprocessable(
+                "invalid_class_draft",
+                "options.seed must be an unsigned integer",
+            ));
+        }
+        if options.get("time_limit_seconds").is_some_and(|limit| {
+            limit
+                .as_f64()
+                .is_none_or(|limit| !limit.is_finite() || limit < 0.0)
+        }) {
+            return Err(AppError::unprocessable(
+                "invalid_class_draft",
+                "options.time_limit_seconds must be a non-negative finite number",
+            ));
+        }
+    }
     let seed = options
         .and_then(|options| options.get("seed"))
         .and_then(Value::as_u64)
@@ -376,6 +419,9 @@ pub(crate) fn frontend_class_request_to_core(value: &Value) -> Result<Value, App
         "cannot_be_adjacent": cannot_be_adjacent,
         "min_distance": min_distance,
     });
+    if let Some(limit) = options.and_then(|options| options.get("time_limit_seconds")) {
+        request["time_limit_seconds"] = limit.clone();
+    }
     if !history.is_null() {
         request["history"] = history;
         request["pair_history"] = pair_history;
@@ -414,6 +460,30 @@ fn resolve_hard_rules(
         ));
     }
 
+    let hard_object = hard
+        .as_object()
+        .ok_or_else(|| AppError::bad_request("hard_rules must be an object"))?;
+    for (field, value) in hard_object {
+        if ![
+            "fixed_seats",
+            "must_be_adjacent",
+            "cannot_be_adjacent",
+            "min_distance",
+        ]
+        .contains(&field.as_str())
+        {
+            return Err(AppError::unprocessable(
+                "invalid_class_draft",
+                format!("unknown hard_rules field: {field}"),
+            ));
+        }
+        if !value.is_array() {
+            return Err(AppError::unprocessable(
+                "invalid_class_draft",
+                format!("hard_rules.{field} must be an array"),
+            ));
+        }
+    }
     let student_index: HashMap<&str, usize> = students
         .iter()
         .enumerate()
@@ -486,9 +556,17 @@ fn resolve_hard_rules(
                     "min_distance needs a positive distance",
                 )
             })?;
-        let metric = match entry.get("metric").and_then(Value::as_str) {
-            Some("euclidean") => "euclidean",
-            _ => "graph",
+        let metric = match entry.get("metric") {
+            None => "graph",
+            Some(Value::String(metric)) if metric == "graph" || metric == "euclidean" => {
+                metric.as_str()
+            }
+            Some(_) => {
+                return Err(AppError::unprocessable(
+                    "invalid_class_draft",
+                    "min_distance metric must be graph or euclidean",
+                ))
+            }
         };
         min_distance.push(json!({
             "students": pair,
@@ -517,6 +595,16 @@ fn resolve_student_pair(
         .ok_or_else(|| {
             AppError::unprocessable("invalid_class_draft", "pair rule needs a 'students' array")
         })?;
+    if names.len() != 2
+        || names
+            .iter()
+            .any(|name| name.as_str().is_none_or(|name| name.trim().is_empty()))
+    {
+        return Err(AppError::unprocessable(
+            "invalid_class_draft",
+            "pair rule requires exactly two non-empty student strings",
+        ));
+    }
     let first = names.first().and_then(Value::as_str).unwrap_or("");
     let second = names.get(1).and_then(Value::as_str).unwrap_or("");
     let first_index = *student_index.get(first).ok_or_else(|| {
@@ -609,7 +697,7 @@ pub fn build_history_json(
     let mut student_histories: serde_json::Map<String, Value> = serde_json::Map::new();
     let mut pair_histories: serde_json::Map<String, Value> = serde_json::Map::new();
 
-    for snapshot in snapshots {
+    for (snapshot_index, snapshot) in snapshots.iter().enumerate() {
         let Some(assignments) = snapshot.get("assignments").and_then(Value::as_array) else {
             continue;
         };
@@ -652,7 +740,7 @@ pub fn build_history_json(
                     list.sort();
                     list
                 };
-                records.push(json!({ "categories": sorted }));
+                records.push(json!({ "categories": sorted, "period_index": snapshot_index + 1 }));
             }
         }
 
@@ -675,7 +763,8 @@ pub fn build_history_json(
                         list.sort();
                         list
                     };
-                    records.push(json!({ "relations": sorted }));
+                    records
+                        .push(json!({ "relations": sorted, "period_index": snapshot_index + 1 }));
                 }
             }
         }
@@ -748,7 +837,7 @@ fn core_student_value(student: &Value) -> Value {
 }
 
 /// Student keys for an editor draft: the solve request's `students` `key`,
-/// falling back to `student-N` for placeholder/padded students.
+/// falling back to `STU001` for placeholder/padded students.
 pub fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
     (0..request.student_count)
         .map(|index| {
@@ -758,7 +847,7 @@ pub fn student_keys(request: &CoreSolveRequest) -> Vec<String> {
                 .map(|student| student.key.trim())
                 .filter(|key| !key.is_empty())
                 .map(|key| key.to_string())
-                .unwrap_or_else(|| format!("student-{}", index + 1))
+                .unwrap_or_else(|| format!("STU{:03}", index + 1))
         })
         .collect()
 }
@@ -773,7 +862,7 @@ pub fn seat_specs(request: &CoreSolveRequest) -> Vec<EditorSeatSpec> {
         .enumerate()
         .map(|(index, position)| {
             let (row, col, enabled) = match request.layout.as_ref() {
-                Some(layout) => match layout.seats.get(index) {
+                Some(layout) => match layout.seats.iter().filter(|seat| seat.enabled).nth(index) {
                     Some(seat) => (seat.row, seat.col, seat.enabled),
                     None => fallback_coordinates(position),
                 },
@@ -795,7 +884,7 @@ pub fn seat_id_for_index(request: &CoreSolveRequest, index: usize) -> String {
     request
         .layout
         .as_ref()
-        .and_then(|layout| layout.seats.get(index))
+        .and_then(|layout| layout.seats.iter().filter(|seat| seat.enabled).nth(index))
         .map(|seat| seat.seat_id.clone())
         .unwrap_or_else(|| format!("seat-{}", index + 1))
 }
@@ -807,7 +896,7 @@ fn fallback_coordinates(position: &[f64; 2]) -> (i32, i32, bool) {
 /// `POST /api/v1/rosters/drafts`: parse a multipart `file` field and store the
 static DRAFT_SEQ: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn new_draft_id() -> String {
+pub fn new_draft_id() -> String {
     let nanos = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
@@ -833,26 +922,35 @@ fn generate_candidate_set(
     class_name: String,
     goal_id: String,
 ) -> Result<GenerateClassOutcome, AppError> {
-    let request: CoreSolveRequest = match serde_json::from_value(core_request.clone()) {
-        Ok(request) => request,
-        Err(_) => {
-            return Err(AppError::bad_request(
-                "request body is not a valid solve problem",
-            ))
-        }
-    };
+    let request = seattrellis_core::parse_core_solve_request(&core_request.to_string())
+        .map_err(AppError::solve_invalid_input)?;
+
     // The stored value is already the core-shaped request; serialize it as-is
     // (CoreSolveRequest is Deserialize-only by contract).
     let request_json = core_request.to_string();
     let report_json =
-        match seattrellis_core::generate_candidates_json(&request_json, candidate_count) {
+        match seattrellis_core::generate_candidates_json_with_latest_snapshot_and_control(
+            &request_json,
+            candidate_count,
+            "",
+            &crate::request_control(),
+        ) {
             Ok(report) => report,
-            Err(message) if message.contains("did not produce any feasible plan") => {
+            Err(message)
+                if message.contains("did not produce any feasible plan")
+                    || message.contains("before finding a feasible plan") =>
+            {
                 // Heuristic exhaustion across the requested set is a normal
                 // domain result, never a transport error (M0-03).
                 return Ok(GenerateClassOutcome {
                     feasible: false,
-                    status: seattrellis_core::SolveStatus::Unknown,
+                    status: if message.contains("status Cancelled") {
+                        seattrellis_core::SolveStatus::Cancelled
+                    } else if message.contains("status Timeout") {
+                        seattrellis_core::SolveStatus::Timeout
+                    } else {
+                        seattrellis_core::SolveStatus::Unknown
+                    },
                     class_name,
                     goal_id,
                     total_score: None,
@@ -906,6 +1004,7 @@ fn generate_candidate_set(
         })
         .collect();
 
+    let mut ready = Vec::new();
     let mut outcomes: Vec<CandidateOutcome> = Vec::with_capacity(candidates.len());
     let mut recommended_state: Option<Value> = None;
     let mut recommended_draft: Option<String> = None;
@@ -937,8 +1036,7 @@ fn generate_candidate_set(
             .collect();
 
         let draft_id = new_draft_id();
-        let state = match editing::create_draft(
-            editor_store,
+        let state = match editing::EditorDraft::new(
             draft_id.clone(),
             Some(engine_id.clone()),
             &key_refs,
@@ -949,8 +1047,8 @@ fn generate_candidate_set(
             Ok(state) => state,
             Err(message) => return Err(AppError::internal(&message)),
         };
-        store_solve_request(solve_requests, draft_id.clone(), core_request.clone())
-            .map_err(AppError::internal)?;
+        let wire_state = editing::build_editor_state(&state);
+        ready.push((state, core_request.clone()));
         let total_score = candidate
             .get("plan_score")
             .and_then(|score| score.get("total"))
@@ -960,7 +1058,7 @@ fn generate_candidate_set(
         if recommended {
             recommended_draft = Some(draft_id.clone());
             recommended_state = Some(
-                serde_json::to_value(state)
+                serde_json::to_value(wire_state)
                     .map_err(|error| AppError::internal(error.to_string()))?,
             );
         }
@@ -970,6 +1068,8 @@ fn generate_candidate_set(
             recommended,
         });
     }
+    crate::attach_candidate_peers(&mut ready)?;
+    crate::store_draft_contexts(editor_store, solve_requests, ready)?;
     let Some(editor) = recommended_state else {
         return Err(AppError::internal("candidate set has no recommended plan"));
     };

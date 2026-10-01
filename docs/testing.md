@@ -53,14 +53,15 @@ not install or run that retired workflow; it is not a current release test.
 Regression coverage now comes from:
 
 - Rust unit, integration, property-style, and fuzz tests;
-- committed CLI goldens under `fixtures/cli-goldens/`, including stdout and exit
-  code contracts;
+- live CLI subprocess tests in `cli_arg_sweep.rs` and `lifecycle_regressions.rs`,
+  including exit codes, dry-run immutability, saved-source roundtrips and project outputs;
+  `fixtures/cli-goldens/` are archived oracle references with no current consumer;
 - browser E2E for the workbench;
 - release-mode candidate and rotation gates;
 - the committed Rust solver performance baseline in
   `benchmarks/solver-baseline.json`.
 
-The directories under `fixtures/` are frozen inputs, not generated data. See
+The directories under `fixtures/` are frozen inputs or archived references, not generated data. See
 `fixtures/README.md` for their ownership and purpose. Heuristic exhaustion must
 remain `Unknown`, and no error may be recorded as `ProvenInfeasible`.
 
@@ -91,13 +92,14 @@ Project panel.
 The `web-e2e-rust` CI job uses Python only as a Playwright runner; it does not
 install the v1 Python application. The browser scenarios cover:
 
-1. demo data -> three candidates -> public template -> anonymization -> A4
-   landscape English print HTML, with checks that names, IDs, scores, height,
-   vision, and special needs do not leak;
-2. uploaded CSV, layout JSON, and rules JSON -> cross-step solve -> candidate
-   download with student count, unique seats, and fixed-seat checks;
-3. local project path -> info, validation, two candidates, non-recommended
-   selection, and a report containing the selected candidate ID.
+- roster upload and mapping, candidate selection, lock/swap/undo and export;
+- real-name and anonymous print/PDF exports and inert previews;
+- two-period rotation save/reopen using captured source despite changed workspace files;
+- portable class download/upload after page reload, preserving source fields and locks,
+  followed by local repair and export; and context switching after a real Save As.
+
+Native file pickers, Tauri windows and screen readers require target-platform tests;
+Chromium upload/download coverage cannot certify them.
 
 ## Performance tests
 

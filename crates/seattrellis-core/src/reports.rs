@@ -12,7 +12,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::cost::{classify_seat_position, detect_neighbor_relation_types};
 use crate::models::Seat;
 
-use crate::engine::{effective_layout, effective_students, validate_solve_request};
+use crate::engine::{
+    adjacency_edges_by_seat_id, effective_layout, effective_students, validate_solve_request,
+};
 use crate::repair::{
     parse_snapshot_assignments, HistoryStudentAccumulator, PAIR_REPORT_RECENT_LOOKBACK,
     REPORT_PAIR_RELATIONS, REPORT_POSITION_CATEGORIES,
@@ -257,6 +259,7 @@ pub fn pair_report_json(
         .collect();
     let known_students: HashSet<&str> = student_names.keys().copied().collect();
     let layout = effective_layout(&request);
+    let adjacency_edges = adjacency_edges_by_seat_id(&layout, &request.edges);
     let snapshots: Vec<Value> = serde_json::from_str(snapshots_json)
         .map_err(|error| format!("invalid snapshots document: {error}"))?;
     let seat_by_id: HashMap<&str, &Seat> = layout
@@ -330,7 +333,7 @@ pub fn pair_report_json(
                     first_seat,
                     second_seat,
                     &layout,
-                    None,
+                    Some(&adjacency_edges),
                     within_distance,
                 )
                 .into_iter()
@@ -380,13 +383,19 @@ pub fn pair_report_json(
         }
     }
 
-    // Python's StudentPairHistory.recent_occurrence_count applies lookback to
-    // the pair's own records, not to the global snapshot window. A pair that
-    // occurred once long ago therefore still has one recent occurrence when
-    // it has fewer than four records in total. Keep the Rust compatibility
-    // field aligned with that frozen oracle behavior.
+    // The input snapshots carry a global period index, so empty/non-neighbor
+    // periods age out old occurrences just like the cooling rule.
+    let first_recent = snapshots.len().saturating_sub(PAIR_REPORT_RECENT_LOOKBACK) + 1;
     for pair in pairs.values_mut() {
-        pair.recent_occurrences = pair.records.len().min(PAIR_REPORT_RECENT_LOOKBACK) as u64;
+        pair.recent_occurrences = pair
+            .records
+            .iter()
+            .filter(|record| {
+                record["snapshot_index"]
+                    .as_u64()
+                    .is_some_and(|index| index as usize >= first_recent)
+            })
+            .count() as u64;
     }
 
     let pair_values: Vec<Value> = pairs.values().map(pair_report_value).collect();

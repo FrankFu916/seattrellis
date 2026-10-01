@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import type { Student } from "../api/types";
 import type { Translate } from "../i18n/messages";
@@ -60,6 +60,17 @@ export function StudentRosterEditor({
   onUseDemo,
 }: StudentRosterEditorProps) {
   const [showDetails, setShowDetails] = useState(false);
+  // Business IDs are editable; React keys must identify the row independently.
+  const rowKeys = useRef(new WeakMap<Student, number>());
+  const nextRowKey = useRef(0);
+  function rowKey(student: Student): number {
+    let key = rowKeys.current.get(student);
+    if (key === undefined) {
+      key = nextRowKey.current++;
+      rowKeys.current.set(student, key);
+    }
+    return key;
+  }
   const invalidRows = useMemo(() => {
     const seen = new Set<string>();
     const invalid = new Set<number>();
@@ -79,7 +90,11 @@ export function StudentRosterEditor({
   function updateStudent(index: number, changes: Partial<Student>): void {
     onChange(
       students.map((student, itemIndex) =>
-        itemIndex === index ? { ...student, ...changes } : student,
+        itemIndex === index ? (() => {
+          const updated = { ...student, ...changes };
+          rowKeys.current.set(updated, rowKey(student));
+          return updated;
+        })() : student,
       ),
     );
   }
@@ -146,7 +161,7 @@ export function StudentRosterEditor({
         </div>
       ) : null}
 
-      <div className="student-editor-table" role="table" data-detailed={showDetails}>
+      <div className="student-editor-table" role="table" aria-label={t("studentEditor.title")} data-detailed={showDetails}>
         <div className={`student-editor-row student-editor-header ${showDetails ? "is-detailed" : "is-compact"}`} role="row">
           <span role="columnheader">{t("studentEditor.id")}</span>
           <span role="columnheader">{t("studentEditor.name")}</span>
@@ -159,15 +174,15 @@ export function StudentRosterEditor({
               <span role="columnheader">{t("studentEditor.notes")}</span>
             </>
           ) : null}
-          <span className="sr-only">{t("studentEditor.remove")}</span>
+          <span className="sr-only" role="columnheader">{t("studentEditor.remove")}</span>
         </div>
         {students.map((student, index) => (
           <div
             className={`student-editor-row ${showDetails ? "is-detailed" : "is-compact"}${invalidRows.has(index) ? " is-invalid" : ""}`}
-            key={`${student.id}-${index}`}
+            key={rowKey(student)}
             role="row"
           >
-            <label>
+            <label role="cell">
               <span className="sr-only">{t("studentEditor.id")}</span>
               <input
                 aria-label={t("studentEditor.idFor", { index: index + 1 })}
@@ -175,7 +190,7 @@ export function StudentRosterEditor({
                 onChange={(event) => updateStudent(index, { id: event.target.value })}
               />
             </label>
-            <label>
+            <label role="cell">
               <span className="sr-only">{t("studentEditor.name")}</span>
               <input
                 aria-label={t("studentEditor.nameFor", { index: index + 1 })}
@@ -185,7 +200,7 @@ export function StudentRosterEditor({
             </label>
             {showDetails ? (
               <>
-                <label>
+                <label role="cell">
                   <span className="sr-only">{t("studentEditor.score")}</span>
                   <input
                     type="number"
@@ -195,7 +210,7 @@ export function StudentRosterEditor({
                     onChange={(event) => updateStudent(index, { score: optionalNumber(event.target.value) })}
                   />
                 </label>
-                <label>
+                <label role="cell">
                   <span className="sr-only">{t("studentEditor.height")}</span>
                   <input
                     type="number"
@@ -205,7 +220,7 @@ export function StudentRosterEditor({
                     onChange={(event) => updateStudent(index, { heightCm: optionalNumber(event.target.value) })}
                   />
                 </label>
-                <label>
+                <label role="cell">
                   <span className="sr-only">{t("studentEditor.vision")}</span>
                   <input
                     aria-label={t("studentEditor.visionFor", { index: index + 1 })}
@@ -213,7 +228,7 @@ export function StudentRosterEditor({
                     onChange={(event) => updateStudent(index, { vision: event.target.value || null })}
                   />
                 </label>
-                <label>
+                <label role="cell">
                   <span className="sr-only">{t("studentEditor.needs")}</span>
                   <input
                     aria-label={t("studentEditor.needsFor", { index: index + 1 })}
@@ -221,7 +236,7 @@ export function StudentRosterEditor({
                     onChange={(event) => updateStudent(index, { needs: splitList(event.target.value) })}
                   />
                 </label>
-                <label>
+                <label role="cell">
                   <span className="sr-only">{t("studentEditor.notes")}</span>
                   <input
                     aria-label={t("studentEditor.notesFor", { index: index + 1 })}
@@ -231,6 +246,7 @@ export function StudentRosterEditor({
                 </label>
               </>
             ) : null}
+            <div role="cell">
             <button
               className="icon-button student-editor-remove"
               type="button"
@@ -239,6 +255,7 @@ export function StudentRosterEditor({
             >
               ×
             </button>
+            </div>
           </div>
         ))}
       </div>

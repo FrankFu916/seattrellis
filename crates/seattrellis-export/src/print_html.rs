@@ -30,16 +30,14 @@ impl PrintHtmlOptions {
 
 pub fn render_print_html(
     grid: &SeatingGrid,
-    _request: &CoreSolveRequest,
+    request: &CoreSolveRequest,
     options: &PrintHtmlOptions,
 ) -> String {
     let page = PdfLayout::from_paper(options.paper, options.landscape, options.margin_mm)
         .with_scale(options.page_scale);
     let mut grid = grid.clone();
     if !options.show_student_ids {
-        for cell in &mut grid.cells {
-            cell.student_key = None;
-        }
+        crate::render::hide_student_ids(&mut grid, request, &options.locale);
     }
     let mut scene = crate::scene::build_scene(&grid, &page, &options.locale);
     let metadata = [
@@ -65,7 +63,7 @@ pub fn render_print_html(
             align: TextAlign::Left,
         });
     }
-    crate::render::render_scene_html(&scene, &grid.title, &options.locale)
+    crate::render::render_scene_html_with_grid(&scene, &grid, &options.locale)
 }
 
 #[cfg(test)]
