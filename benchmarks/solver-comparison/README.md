@@ -3,6 +3,11 @@
 This directory is an isolated engineering experiment. It does not add Python,
 OR-Tools, or a new solver dependency to SeatTrellis production packages.
 
+The timings below were recorded with OR-Tools 9.14.6206 and protobuf 6.31.1.
+The current reproduction requirements use OR-Tools 9.15.6755 and patched
+protobuf 6.33.5. Only correctness and dependency compatibility were checked
+with the updated environment; its performance has not been measured here.
+
 On this hard-feasibility corpus, CP-SAT was faster in all nine cases even after
 including its warm model construction and adapter work. Both engines solved
 all feasible instances and proved all infeasible instances in all three
@@ -81,9 +86,27 @@ Use `SEATTRELLIS_REPO`, `SEATTRELLIS_CLI`, or `SEATTRELLIS_RUST_HARNESS`
 environment variables to override discovery. The script writes a fresh corpus,
 raw samples, and audit/control evidence; rerunning replaces recorded results.
 
-The Python environment pins OR-Tools 9.14.6206; all installed versions are in
-`requirements.lock.txt`. `results.json` records input and compiled binary
-SHA-256 hashes, current core source hashes, tool versions, CPU/platform,
+`requirements.lock.txt` pins the current reproduction environment. The earlier
+protobuf 6.31.1 pin is affected by
+[CVE-2026-0994 / GHSA-7gcm-g887-7qv7](https://pypi.org/pypi/protobuf/6.31.1/json),
+an `Any` JSON parsing recursion-limit bypass. OR-Tools 9.14 requires protobuf
+`>=6.31.1,<6.32`, which excludes the fixed 6.33.5 release; OR-Tools 9.15 permits
+`>=6.33.1,<6.34`. Both pins are therefore updated together.
+
+The updated requirements were installed in a fresh Python 3.12 environment;
+`pip check` passed. All nine model cases passed correctness validation:
+six feasible outputs passed the independent validator and Rust CLI audit,
+and three infeasible outputs matched the independent triangle-free proofs.
+The invalid fixed-seat control was rejected by both validators, and patched
+protobuf rejected excessive nested `Any` messages at the configured recursion
+limit. All nine pinned packages, including NumPy 2.5.3 and pandas 3.0.6, had
+no vulnerabilities listed by PyPI at verification time. The separate
+`reproduction-validation.json` preserves this environment's `pip freeze`,
+metadata, advisory sources, and correctness results.
+
+Historical `results.json`, audit reports, `installed-package-metadata.json`,
+and `packaging-footprint.json` are unchanged. `results.json` records input and
+compiled binary SHA-256 hashes, current core source hashes, tool versions, CPU/platform,
 parameters, raw trials, and medians. `results/` retains CLI audit reports for
 every feasible output. The standalone Rust harness intentionally calls the
 same public core parsing and solving entry points used by the application.

@@ -181,6 +181,17 @@ def metadata() -> dict:
             "binary_sha256": hashlib.sha256(CLI.read_bytes()).hexdigest()}
 
 
+def append_ci_summary(report: str) -> None:
+    """Expose bounded synthetic benchmark evidence even when logs need sign-in."""
+    destination = os.environ.get("GITHUB_STEP_SUMMARY")
+    if destination:
+        try:
+            with Path(destination).open("a", encoding="utf-8") as output:
+                output.write(report + "\n")
+        except OSError as error:
+            print(f"could not write CI benchmark summary: {error}", file=sys.stderr)
+
+
 def measure_all() -> dict:
     results = {}
     for count in SIZES:
@@ -225,10 +236,14 @@ def main() -> int:
         raise SystemExit("benchmark corpus changed; review the workload before recording a new baseline")
     if not recorded_hash:
         print("Legacy baseline has no machine/compiler metadata; comparison is a timing gate, not a controlled experiment")
-    print(json.dumps(metadata(), sort_keys=True))
+    provenance = metadata()
+    print(json.dumps(provenance, sort_keys=True))
     baseline = baseline_document["sizes_ms"]
 
     failures = []
+    summary = ["### Solver performance regression gate", "",
+               "| Students | Measured ms | Baseline ms | Relative limit ms | Absolute limit ms | Result |",
+               "| ---: | ---: | ---: | ---: | ---: | --- |"]
     for size, timing in measured.items():
         expected = baseline[size]["median_ms"]
         bound = ABSOLUTE_BOUNDS_MS[int(size)]
@@ -236,8 +251,12 @@ def main() -> int:
         within_absolute = timing["median_ms"] <= bound
         status = "OK" if within_tolerance and within_absolute else "REGRESSION"
         print(f"  n={size}: {timing['median_ms']} ms (baseline {expected} ms, bound {bound} ms) {status}")
+        summary.append(f"| {size} | {timing['median_ms']} | {expected} | {expected * TOLERANCE:.2f} | {bound} | {status} |")
         if not within_tolerance or not within_absolute:
             failures.append(size)
+    summary.extend(["", "Historical baseline lacks machine/compiler metadata; compare equivalent runners.",
+                    "", "```json", json.dumps(provenance, indent=2, sort_keys=True), "```"])
+    append_ci_summary("\n".join(summary))
     if failures:
         print(f"PERFORMANCE REGRESSION at sizes: {', '.join(failures)}")
         return 1
@@ -245,4 +264,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        exit_status = main()
+    except (Exception, SystemExit) as error:
+        append_ci_summary(f"### Solver benchmark could not complete\n\n```text\n{error}\n```")
+        raise
+    raise SystemExit(exit_status)

@@ -1,0 +1,219 @@
+{
+  "purpose": "correctness compatibility only; no replacement timing samples",
+  "versions": {
+    "ortools": "9.15.6755",
+    "protobuf": "6.33.5",
+    "numpy": "2.5.3",
+    "pandas": "3.0.6"
+  },
+  "cases": [
+    {
+      "case": "40-easy",
+      "status": "OPTIMAL",
+      "independent_and_rust_cli_validated": true
+    },
+    {
+      "case": "40-infeasible",
+      "status": "INFEASIBLE",
+      "independent_and_rust_cli_validated": false
+    },
+    {
+      "case": "40-mixed",
+      "status": "OPTIMAL",
+      "independent_and_rust_cli_validated": true
+    },
+    {
+      "case": "60-easy",
+      "status": "OPTIMAL",
+      "independent_and_rust_cli_validated": true
+    },
+    {
+      "case": "60-infeasible",
+      "status": "INFEASIBLE",
+      "independent_and_rust_cli_validated": false
+    },
+    {
+      "case": "60-mixed",
+      "status": "OPTIMAL",
+      "independent_and_rust_cli_validated": true
+    },
+    {
+      "case": "80-easy",
+      "status": "OPTIMAL",
+      "independent_and_rust_cli_validated": true
+    },
+    {
+      "case": "80-infeasible",
+      "status": "INFEASIBLE",
+      "independent_and_rust_cli_validated": false
+    },
+    {
+      "case": "80-mixed",
+      "status": "OPTIMAL",
+      "independent_and_rust_cli_validated": true
+    }
+  ],
+  "validation_controls": {
+    "invalid_fixed_assignment_python_rejected": true,
+    "invalid_fixed_assignment_rust_audit_rejected": true,
+    "rust_audit_exit": 2,
+    "infeasible_graph_controls": [
+      {
+        "students": 40,
+        "seat_graph_triangles": 0,
+        "required_clique_size": 3,
+        "independent_infeasibility_proof": true
+      },
+      {
+        "students": 60,
+        "seat_graph_triangles": 0,
+        "required_clique_size": 3,
+        "independent_infeasibility_proof": true
+      },
+      {
+        "students": 80,
+        "seat_graph_triangles": 0,
+        "required_clique_size": 3,
+        "independent_infeasibility_proof": true
+      }
+    ]
+  },
+  "protobuf_recursion_control": {
+    "rejected_as_parse_error": true,
+    "max_recursion_depth": 4,
+    "nested_any_count": 12,
+    "error": "Message too deep. Max recursion depth is 4"
+  },
+  "historical_artifact_hashes_unchanged": true,
+  "historical_results_sha256": "4d38f14fab75d81be1ec7814f992c9bb54bfd8d1409b081693d9c1258c29a581",
+  "cli_sha256": "ca4c0c66c995076e166d76aa432c4f2a8bff9f468426b3e2cca4bf2e229519c2",
+  "checked_at_utc": "2026-10-01T12:53:04.713928+00:00",
+  "python_version": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "pip_freeze": [
+    "absl-py==2.5.0",
+    "immutabledict==4.3.1",
+    "numpy==2.5.3",
+    "ortools==9.15.6755",
+    "pandas==3.0.6",
+    "protobuf==6.33.5",
+    "python-dateutil==2.9.0.post0",
+    "six==1.17.0",
+    "typing_extensions==4.16.0"
+  ],
+  "pip_check": "No broken requirements found.",
+  "package_metadata": {
+    "ortools": {
+      "version": "9.15.6755",
+      "requires_python": ">= 3.9",
+      "requires_dist": [
+        "absl-py>=2.0.0",
+        "numpy>=2.0.2",
+        "pandas>=2.0.0",
+        "protobuf<6.34,>=6.33.1",
+        "typing-extensions>=4.12",
+        "immutabledict>=3.0.0"
+      ]
+    },
+    "protobuf": {
+      "version": "6.33.5",
+      "requires_python": ">=3.9",
+      "requires_dist": null
+    },
+    "numpy": {
+      "version": "2.5.3",
+      "requires_python": ">=3.12",
+      "requires_dist": null
+    },
+    "pandas": {
+      "version": "3.0.6",
+      "requires_python": ">=3.11",
+      "requires_dist": null
+    }
+  },
+  "pypi_verification": [
+    {
+      "package": "absl-py",
+      "version": "2.5.0",
+      "source": "https://pypi.org/pypi/absl-py/2.5.0/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "immutabledict",
+      "version": "4.3.1",
+      "source": "https://pypi.org/pypi/immutabledict/4.3.1/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "numpy",
+      "version": "2.5.3",
+      "source": "https://pypi.org/pypi/numpy/2.5.3/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "ortools",
+      "version": "9.15.6755",
+      "source": "https://pypi.org/pypi/ortools/9.15.6755/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "pandas",
+      "version": "3.0.6",
+      "source": "https://pypi.org/pypi/pandas/3.0.6/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "protobuf",
+      "version": "6.33.5",
+      "source": "https://pypi.org/pypi/protobuf/6.33.5/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "python-dateutil",
+      "version": "2.9.0.post0",
+      "source": "https://pypi.org/pypi/python-dateutil/2.9.0.post0/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "six",
+      "version": "1.17.0",
+      "source": "https://pypi.org/pypi/six/1.17.0/json",
+      "listed_vulnerabilities": []
+    },
+    {
+      "package": "typing_extensions",
+      "version": "4.16.0",
+      "source": "https://pypi.org/pypi/typing_extensions/4.16.0/json",
+      "listed_vulnerabilities": []
+    }
+  ],
+  "repair": {
+    "previous_pins": {
+      "ortools": "9.14.6206",
+      "protobuf": "6.31.1"
+    },
+    "current_pins": {
+      "ortools": "9.15.6755",
+      "protobuf": "6.33.5"
+    },
+    "advisory": {
+      "aliases": [
+        "CVE-2026-0994",
+        "PYSEC-2026-1805"
+      ],
+      "details": "A denial-of-service (DoS) vulnerability exists in google.protobuf.json_format.ParseDict() in Python, where the max_recursion_depth limit can be bypassed when parsing nested google.protobuf.Any messages.\n\nDue to missing recursion depth accounting inside the internal Any-handling logic, an attacker can supply deeply nested Any structures that bypass the intended recursion limit, eventually exhausting Python\u2019s recursion stack and causing a RecursionError.",
+      "fixed_in": [
+        "6.33.5",
+        "5.29.6"
+      ],
+      "id": "GHSA-7gcm-g887-7qv7",
+      "link": "https://osv.dev/vulnerability/GHSA-7gcm-g887-7qv7",
+      "source": "osv",
+      "summary": null,
+      "withdrawn": null
+    },
+    "advisory_source": "https://pypi.org/pypi/protobuf/6.31.1/json",
+    "dependency_reason": "OR-Tools 9.14 requires protobuf>=6.31.1,<6.32; OR-Tools 9.15 permits fixed protobuf 6.33.5 via >=6.33.1,<6.34",
+    "historical_timing_samples_replaced": false
+  },
+  "requirements_sha256": "777651749736d14293694a60c5321706e28f37df155f92af4db7ab34c91a20f6"
+}
