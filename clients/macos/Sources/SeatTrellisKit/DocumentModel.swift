@@ -457,16 +457,33 @@ public final class DocumentModel: ObservableObject {
         return result
     }
     public static func demonstrationRequest() -> JSONValue {
-        let students: [JSONValue] = (1...12).map { index in .object([
-            "id": .string("DEMO-\(index)"), "student_id": .string("DEMO-\(index)"), "name": .string("Demo student \(index)"),
-            "heightCm": .integer(Int64(140 + index)), "height_cm": .integer(Int64(140 + index)), "score": .integer(Int64(60 + index)),
-            "vision": .string("normal"), "tags": .array([]), "needs": .array([]),
-            "attributes": .object(["fictional": .bool(true)]),
-        ]) }
-        return .object([
-            "draft": .object(["students": .array(students), "room": .object(["template_id": .string("standard-30")]),
-                "goal": .object(["goal_id": .string("daily-rotation")]), "history_snapshots": .array([])]),
-            "options": .object(["seed": .integer(42), "time_limit_seconds": .number(2), "candidate_count": .integer(1)]),
+        var students: [JSONValue] = []
+        for index in 1...12 {
+            let identifier = "DEMO-\(index)"
+            let height = Int64(140 + index)
+            let score = Int64(60 + index)
+            var student: [String: JSONValue] = [:]
+            student["id"] = .string(identifier)
+            student["student_id"] = .string(identifier)
+            student["name"] = .string("Demo student \(index)")
+            student["heightCm"] = .integer(height)
+            student["height_cm"] = .integer(height)
+            student["score"] = .integer(score)
+            student["vision"] = .string("normal")
+            student["tags"] = .array([])
+            student["needs"] = .array([])
+            student["attributes"] = .object(["fictional": .bool(true)])
+            students.append(.object(student))
+        }
+        let room = JSONValue.object(["template_id": .string("standard-30")])
+        let goal = JSONValue.object(["goal_id": .string("daily-rotation")])
+        let draft = JSONValue.object([
+            "students": .array(students), "room": room, "goal": goal,
+            "history_snapshots": .array([]),
         ])
+        let options = JSONValue.object([
+            "seed": .integer(42), "time_limit_seconds": .number(2), "candidate_count": .integer(1),
+        ])
+        return .object(["draft": draft, "options": options])
     }
 }

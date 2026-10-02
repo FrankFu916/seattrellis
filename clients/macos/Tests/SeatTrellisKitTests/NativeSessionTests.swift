@@ -8,9 +8,16 @@ final class NativeSessionTests: XCTestCase {
         let gate = OneShotDispatchGate(started: { entered.fulfill() })
         let session = NativeSession(beforeDispatch: { gate.enter() })
         var request = await DocumentModel.demonstrationRequest()
-        let students: [JSONValue] = (1...40).map { index in .object([
-            "id": .string("S\(index)"), "student_id": .string("S\(index)"), "name": .string("Student \(index)"), "height_cm": .integer(Int64(140 + index)),
-        ]) }
+        var students: [JSONValue] = []
+        for index in 1...40 {
+            let identifier = "S\(index)"
+            let height = Int64(140 + index)
+            let student = JSONValue.object([
+                "id": .string(identifier), "student_id": .string(identifier),
+                "name": .string("Student \(index)"), "height_cm": .integer(height),
+            ])
+            students.append(student)
+        }
         request["draft"]["students"] = .array(students)
         request["draft"]["room"]["template_id"] = .string("standard-60")
         let generating = Task { try await session.dispatch(operation: "generate", payload: request) }
