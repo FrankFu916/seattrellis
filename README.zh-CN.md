@@ -128,9 +128,10 @@ seattrellis export --problem problem.json --solution plan.json --format png --ou
 ## 💻 参与开发与构建
 
 席序采用高性能、类型安全的现代技术栈构建：
-- **后端核心**：Rust 1.88+、9 个模块化分层 Crates
+- **后端核心**：Rust 1.88+、分层工作区 Crates
 - **桌面与前端**：Tauri 2、React 19、TypeScript
-- **质量保障**：690+ 项 Rust 单元测试与集成测试、160+ 项前端测试、端到端自动化测试与基准性能测试门禁。
+- **原生预览**：[macOS SwiftUI/AppKit 客户端](clients/macos/README.md)，通过进程内接口调用 Rust。
+- **质量保障**：800+ 项 Rust 测试、277 项前端测试、原生生命周期测试、端到端自动化测试与基准性能门禁。
 
 ```bash
 # 1. 前端构建

@@ -11,8 +11,6 @@ import {
   generateRotationPlan,
   listRecentProjects,
   loadBootstrap,
-  serializeClassDocument,
-  openClassDocument,
   repairEditorDraft,
 } from "./api/client";
 import {
@@ -23,7 +21,6 @@ import {
 import type {
   BootstrapData,
   ClassSource,
-  ClassDocument,
   OpenClassDocumentResponse,
   NormalUnsolvedStatus,
   CommonConstraint,
@@ -59,12 +56,13 @@ import { SaveAsClassDialog } from "./components/SaveAsClassDialog";
 import { CandidatesPanel, type CandidateMeta, type ReproInfo } from "./components/CandidatesPanel";
 import { SeatingCanvasEditor } from "./components/SeatingCanvasEditor";
 import { Sidebar } from "./components/Sidebar";
-import { chooseClassSaveTarget, writeClassFile, type ClassSaveTarget } from "./domain/classFiles";
-import { readClassSource } from "./domain/classSource";
 import type { ExportSettings } from "./domain/export";
 import { snapshotStudents } from "./domain/snapshots";
-import { isTauriDesktop, pickFileWithDialog } from "./domain/desktop";
 import { consumeGeneratedDrafts } from "./domain/generatedDrafts";
+import { newCommandId } from "./domain/identifiers";
+import { useClassDocument } from "./hooks/useClassDocument";
+import { useClassRevisions } from "./hooks/useClassRevisions";
+import { useWorkbenchTasks } from "./hooks/useWorkbenchTasks";
 import {
   rosterIsValid,
   StudentRosterEditor,
@@ -190,13 +188,6 @@ export function getInitialLocale(): Locale {
   return window.navigator.language.toLowerCase().startsWith("zh")
     ? "zh-CN"
     : "en";
-}
-
-function newCommandId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function friendlyError(err: unknown, t?: Translate): string {
@@ -340,22 +331,10 @@ export function App() {
   const [assignments, setAssignments] = useState<SeatAssignment[]>(() =>
     createSeatAssignments(4, 5, demoStudents, 16),
   );
-  const assignmentsRef = useRef(assignments);
-  assignmentsRef.current = assignments;
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
   const [history, setHistory] = useState<SeatAssignment[][]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [sourceRevision, setSourceRevision] = useState(0);
-  const [savedSourceRevision, setSavedSourceRevision] = useState(0);
-  const [generatedSourceRevision, setGeneratedSourceRevision] = useState<number | null>(null);
   const [generationRepro, setGenerationRepro] = useState<ReproInfo | undefined>();
-  const [draftRevisions, setDraftRevisions] = useState<Record<string, number>>({});
-  const [savedDraftRevisions, setSavedDraftRevisions] = useState<Record<string, number>>({});
-  const [scratchDirty, setScratchDirty] = useState(false);
-  const isDirty = sourceRevision !== savedSourceRevision || scratchDirty ||
-    Object.entries(draftRevisions).some(([id, value]) => savedDraftRevisions[id] !== value);
-  const [isSavingClass, setIsSavingClass] = useState(false);
-  const [classFileStatus, setClassFileStatus] = useState<string | null>(null);
   const [isRepairing, setIsRepairing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editorDraftId, setEditorDraftId] = useState<string | null>(null);
@@ -363,23 +342,41 @@ export function App() {
   const [editorUndoDepth, setEditorUndoDepth] = useState(0);
   const [editorRedoDepth, setEditorRedoDepth] = useState(0);
   const t = useMemo(() => createTranslator(locale), [locale]);
-  /**
-   * Monotonic generation token: every workbench reset (context switch,
-   * roster import, room change, restore, ...) bumps it, which invalidates
-   * in-flight generate results so a stale response can never resurrect a
-   * plan for a class the teacher already left.
-   */
-  const generationTokenRef = useRef(0);
-  const generationAbortRef = useRef<AbortController | null>(null);
-  const repairAbortRef = useRef<AbortController | null>(null);
-  const classOperationRef = useRef(0);
+  const tasks = useWorkbenchTasks();
   const historyImportRef = useRef(0);
-  const classFileInputRef = useRef<HTMLInputElement>(null);
-  const classSaveTargetRef = useRef<ClassSaveTarget | null>(null);
-  const savedClassesRef = useRef(new Map<string, { document: ClassDocument; target: ClassSaveTarget | null }>());
-  /** Same idea for async draft switches (period cards, candidate picks). */
-  const draftSwitchRef = useRef(0);
   const liveDraftIdsRef = useRef<string[]>([]);
+
+  const revisions = useClassRevisions(t("app.unsavedChanges"));
+  const { sourceRevision, generatedSourceRevision, draftRevisions, isDirty } = revisions;
+  const classDocument = useClassDocument({
+    t,
+    context: classContext,
+    isDirty,
+    captureSource: currentClassSource,
+    captureDrafts: () => (rotationEditors.length ? rotationEditors.map((editor) => editor.draft_id) : currentEditorDraftIds())
+      .map((draft_id) => ({ draft_id, revision: draftRevisions[draft_id] ?? 0 })),
+    scratchRevision: revisions.scratchRevision,
+    rotationPlan,
+    captureWorkspaceOwner: () => tasks.capture("generation", "editor"),
+    releaseDrafts: releaseEditorDrafts,
+    isRevisionConflict,
+    onError: (error) => setSaveError(friendlyError(error, t)),
+    onClearError: () => setSaveError(null),
+    onWritten: () => setSaveAsOpen(false),
+    onSaved: (source, drafts, scratchRevision, context) => {
+      if (context.kind === "class") {
+        setSessionClasses((entries) => [...entries.filter((entry) => entry.id !== context.id), { id: context.id, name: context.name }]);
+      }
+      setClassContext(context);
+      revisions.markSaved(source.sourceRevision, drafts, scratchRevision);
+    },
+    onOpened: applyOpenedClass,
+    onRefreshedEditors: (editors) => editors.forEach((editor) => {
+      rememberEditorState(editor);
+      if (editor.draft_id === editorDraftId) applyEditorState(editor);
+    }),
+  });
+  const { isSaving: isSavingClass, status: classFileStatus } = classDocument;
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -387,29 +384,11 @@ export function App() {
   }, [locale]);
 
   useEffect(() => {
-    function warnBeforeUnload(event: BeforeUnloadEvent): void {
-      if (!isDirty) {
-        return;
-      }
-      event.preventDefault();
-      event.returnValue = t("app.unsavedChanges");
-    }
-
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [isDirty, t]);
-
-  useEffect(() => {
     liveDraftIdsRef.current = currentEditorDraftIds();
   });
 
   useEffect(
     () => () => {
-      generationTokenRef.current += 1;
-      generationAbortRef.current?.abort();
-      repairAbortRef.current?.abort();
-      classOperationRef.current += 1;
-      draftSwitchRef.current += 1;
       releaseEditorDrafts(liveDraftIdsRef.current);
     },
     [],
@@ -599,24 +578,20 @@ export function App() {
     if (draftIds.length === 0) {
       return;
     }
-    setDraftRevisions((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !draftIds.includes(id))));
-    setSavedDraftRevisions((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !draftIds.includes(id))));
+    revisions.forgetDrafts(draftIds);
     void Promise.allSettled(draftIds.map((draftId) => deleteEditorDraft(draftId)));
   }
 
   function invalidatePendingWork(): void {
-    generationTokenRef.current += 1;
-    generationAbortRef.current?.abort();
-    repairAbortRef.current?.abort();
+    tasks.invalidate();
     setIsRepairing(false);
-    draftSwitchRef.current += 1;
     setIsGenerating(false);
   }
 
   function markSourceChanged(): void {
     invalidatePendingWork();
-    setSourceRevision((value) => value + 1);
-    setClassFileStatus(null);
+    revisions.markSourceChanged();
+    classDocument.clearStatus();
   }
 
   /** Restore the initial workbench draft (context switch, D1). */
@@ -624,12 +599,9 @@ export function App() {
     // Invalidate any in-flight generate so its result cannot resurrect the
     // previous class's plan after the context has been reset.
     invalidatePendingWork();
-    classOperationRef.current += 1;
+    classDocument.reset();
     historyImportRef.current += 1;
-    classSaveTargetRef.current = null;
-    setClassFileStatus(null);
     setExportSettings(undefined);
-    setIsSavingClass(false);
     setIsRepairing(false);
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(demoStudents);
@@ -667,13 +639,8 @@ export function App() {
     setHistorySnapshots([]);
     setHistoryFileNames([]);
     setHistoryError(null);
-    setScratchDirty(false);
-    setSourceRevision(0);
-    setSavedSourceRevision(0);
-    setGeneratedSourceRevision(null);
+    revisions.reset();
     setGenerationRepro(undefined);
-    setDraftRevisions({});
-    setSavedDraftRevisions({});
     setView("roster");
   }
 
@@ -688,9 +655,9 @@ export function App() {
     if (isDirty && !window.confirm(t("app.discardDraft"))) {
       return;
     }
-    const saved = next.kind === "class" ? savedClassesRef.current.get(next.id) : undefined;
+    const saved = next.kind === "class" ? classDocument.findSaved(next.id) : undefined;
     if (saved && saved.target?.kind !== "download") {
-      void restoreClassDocument(saved.document, saved.target, next);
+      void classDocument.restore(saved.document, saved.target, next);
       return;
     }
     setClassContext(next);
@@ -721,7 +688,7 @@ export function App() {
     setActiveRotationPeriod(1);
     setSelectedSeatId(null);
     setSaveError(null);
-    setScratchDirty(true);
+    revisions.markScratchChanged();
     switchView("canvas");
   }
 
@@ -735,87 +702,8 @@ export function App() {
     };
   }
 
-  async function handleSaveClass(name?: string, saveAs = false) {
-    const token = ++classOperationRef.current;
-    const source = currentClassSource(name);
-    const filename = `${source.name.replace(/[\\/:*?"<>|]/g, "_")}.seattrellis.json`;
-    const refs = (rotationEditors.length ? rotationEditors.map((editor) => editor.draft_id) : currentEditorDraftIds())
-      .map((draft_id) => ({ draft_id, revision: draftRevisions[draft_id] ?? 0 }));
-    setIsSavingClass(true);
-    setSaveError(null);
-    try {
-      // Choose the destination while this call still has user activation.
-      const target = await chooseClassSaveTarget(filename, saveAs ? null : classSaveTargetRef.current);
-      if (!target || token !== classOperationRef.current) return;
-      const document = await serializeClassDocument(source, refs, rotationPlan);
-      if (token !== classOperationRef.current) return;
-      const outcome = await writeClassFile(target, filename, new Blob([JSON.stringify(document, null, 2)], { type: "application/json" }));
-      if (token !== classOperationRef.current) return;
-      classSaveTargetRef.current = target;
-      setSaveAsOpen(false);
-      setClassFileStatus(t(outcome === "saved" ? "classFile.saved" : "classFile.downloaded"));
-      if (outcome === "saved") {
-        const id = saveAs || classContext.kind === "temp" ? newCommandId() : classContext.id;
-        savedClassesRef.current.set(id, { document, target });
-        setSessionClasses((entries) => [...entries.filter((entry) => entry.id !== id), { id, name: source.name }]);
-        setClassContext({ kind: "class", id, name: source.name });
-        // Baseline the exact captured source/drafts, preserving changes made during the write.
-        setSavedSourceRevision(source.sourceRevision);
-        setSavedDraftRevisions(Object.fromEntries(refs.map(({ draft_id, revision }) => [draft_id, revision])));
-        if (assignmentsRef.current === source.scratchAssignments) setScratchDirty(false);
-      }
-    } catch (error) {
-      if (token === classOperationRef.current) {
-        setSaveError(friendlyError(error, t));
-        if (isRevisionConflict(error)) {
-          const results = await Promise.allSettled(refs.map(({ draft_id }) => fetchEditorState(draft_id)));
-          if (token === classOperationRef.current) results.forEach((result) => {
-            if (result.status === "fulfilled") {
-              rememberEditorState(result.value);
-              if (result.value.draft_id === editorDraftId) applyEditorState(result.value);
-            }
-          });
-        }
-      }
-    } finally {
-      if (token === classOperationRef.current) setIsSavingClass(false);
-    }
-  }
-
-  async function restoreClassDocument(document: unknown, target: ClassSaveTarget | null = null, context?: ClassContext) {
-    const token = ++classOperationRef.current;
-    setIsSavingClass(true);
-    setSaveError(null);
-    try {
-      const result = await openClassDocument(document);
-      if (token !== classOperationRef.current) {
-        releaseEditorDrafts([result.editor?.draft_id, ...result.period_editors.map((editor) => editor.draft_id), ...result.candidates.map((candidate) => candidate.candidate_id)].filter((id): id is string => !!id));
-        return;
-      }
-      await applyOpenedClass(result, document as ClassDocument, target, token, context);
-    } catch (error) {
-      if (token === classOperationRef.current) setSaveError(friendlyError(error, t));
-    } finally {
-      if (token === classOperationRef.current) setIsSavingClass(false);
-    }
-  }
-
-  async function applyOpenedClass(result: OpenClassDocumentResponse, document: ClassDocument, target: ClassSaveTarget | null, token: number, context?: ClassContext) {
-    let source: ClassSource;
-    try { source = readClassSource(result.class_source); }
-    catch (error) {
-      releaseEditorDrafts([result.editor?.draft_id, ...result.period_editors.map((editor) => editor.draft_id), ...result.candidates.map((candidate) => candidate.candidate_id)].filter((id): id is string => !!id));
-      throw error;
-    }
-    const owned = [...new Set([result.editor?.draft_id, ...result.period_editors.map((editor) => editor.draft_id), ...result.candidates.map((candidate) => candidate.candidate_id)].filter((id): id is string => !!id))];
-    let candidateEditors: EditorState[];
-    try {
-      candidateEditors = await Promise.all(result.candidates.map((candidate) => fetchEditorState(candidate.candidate_id)));
-      if (token !== classOperationRef.current) { releaseEditorDrafts(owned); return; }
-    } catch (error) {
-      releaseEditorDrafts(owned);
-      throw error;
-    }
+  function applyOpenedClass(result: OpenClassDocumentResponse,
+    source: ClassSource, candidateEditors: EditorState[], context: ClassContext) {
     invalidatePendingWork();
     releaseEditorDrafts(currentEditorDraftIds());
     setStudents(source.students);
@@ -832,9 +720,6 @@ export function App() {
     setGroups(source.groups);
     setPreferences(source.preferences);
     setExportSettings(source.exportSettings);
-    setSourceRevision(source.sourceRevision);
-    setSavedSourceRevision(source.sourceRevision);
-    setGeneratedSourceRevision(source.generatedSourceRevision);
     setGenerationRepro(source.generationRepro);
     setRotationEditors(result.period_editors);
     setRotationPlan(result.rotation_plan ?? null);
@@ -848,8 +733,7 @@ export function App() {
     })));
     const allEditors = [...candidateEditors, ...result.period_editors, ...(result.editor ? [result.editor] : [])];
     const versions = Object.fromEntries(allEditors.map((editor) => [editor.draft_id, editor.revision]));
-    setDraftRevisions(versions);
-    setSavedDraftRevisions(versions);
+    revisions.openBaseline(source.sourceRevision, source.generatedSourceRevision, versions);
     const active = result.period_editors[source.activeRotationPeriod - 1] ?? result.editor;
     if (active) applyEditorState(active, source.students);
     else {
@@ -859,61 +743,28 @@ export function App() {
       setEditorRedoDepth(0);
       setAssignments(source.scratchAssignments);
     }
-    setScratchDirty(false);
-    classSaveTargetRef.current = target;
-    const next = context ?? { kind: "class" as const, id: newCommandId(), name: source.name };
-    if (next.kind === "class") {
-      // Opening real file bytes establishes a persisted baseline, but grants
-      // no write authority. Preserve the validated document for class navigation;
-      // a later Save still chooses an authorized destination when target is null.
-      savedClassesRef.current.set(next.id, { document: { ...document, class_source: source }, target });
-      setSessionClasses((entries) => [...entries.filter((entry) => entry.id !== next.id), { id: next.id, name: source.name }]);
+    if (context.kind === "class") {
+      setSessionClasses((entries) => [...entries.filter((entry) => entry.id !== context.id), { id: context.id, name: context.name }]);
     }
-    setClassContext(next);
-    setClassFileStatus(t("classFile.opened"));
+    setClassContext(context);
     setView(active ? "canvas" : "roster");
-  }
-
-  async function handleOpenClass(file?: File) {
-    const owner = classOperationRef.current;
-    try {
-      if (!file) {
-        if (isTauriDesktop()) file = (await pickFileWithDialog(["json"], t("classFile.open"))) ?? undefined;
-        else { classFileInputRef.current?.click(); return; }
-      }
-      if (!file || owner !== classOperationRef.current) return;
-      if (isDirty && !window.confirm(t("app.discardDraft"))) return;
-      if (file.size > 20 * 1024 * 1024) throw new Error("Class file too large");
-      const sourceToken = generationTokenRef.current;
-      const draftToken = draftSwitchRef.current;
-      const document = JSON.parse(await file.text());
-      if (owner !== classOperationRef.current || sourceToken !== generationTokenRef.current || draftToken !== draftSwitchRef.current) return;
-      await restoreClassDocument(document);
-    } catch (error) {
-      setSaveError(friendlyError(error, t));
-    }
-  }
-
-  function handleSaveAsClass(name: string) {
-    void handleSaveClass(name, true);
   }
 
   async function handleRepair() {
     if (!editorDraftId || isRepairing) return;
     const id = editorDraftId;
-    const controller = new AbortController();
-    repairAbortRef.current = controller;
-    const token = ++draftSwitchRef.current;
+    const task = tasks.begin("repair", true);
+    const ownsEditor = tasks.begin("editor").isCurrent;
     setIsRepairing(true);
     setSaveError(null);
     try {
-      const editor = await repairEditorDraft(id, editorRevision, [], controller.signal);
+      const editor = await repairEditorDraft(id, editorRevision, [], task.signal);
       if (liveDraftIdsRef.current.includes(editor.draft_id)) rememberEditorState(editor);
-      if (token === draftSwitchRef.current) applyEditorState(editor);
+      if (task.isCurrent() && ownsEditor()) applyEditorState(editor);
     } catch (error) {
-      if (token === draftSwitchRef.current) setSaveError(friendlyError(error, t));
+      if (task.isCurrent() && ownsEditor()) setSaveError(friendlyError(error, t));
     } finally {
-      setIsRepairing(false);
+      if (task.isCurrent()) setIsRepairing(false);
     }
   }
 
@@ -1042,7 +893,7 @@ export function App() {
 
   async function handleHistoryFiles(files: File[]) {
     const token = ++historyImportRef.current;
-    const owner = classOperationRef.current;
+    const ownsDocument = classDocument.captureOwner();
     const MAX_HISTORY_FILES = 40;
     const MAX_HISTORY_FILE_BYTES = 20 * 1024 * 1024;
     if (files.length > MAX_HISTORY_FILES) {
@@ -1076,7 +927,7 @@ export function App() {
         parsed.push(...(entries as HistorySnapshotPayload[]));
       }
     } catch (error) {
-      if (token !== historyImportRef.current || owner !== classOperationRef.current) return;
+      if (token !== historyImportRef.current || !ownsDocument()) return;
       console.error("History import failed", error);
       setHistoryError(
         error instanceof Error && error.message === "history_file_too_large"
@@ -1086,7 +937,7 @@ export function App() {
       return;
     }
 
-    if (token !== historyImportRef.current || owner !== classOperationRef.current) return;
+    if (token !== historyImportRef.current || !ownsDocument()) return;
     markSourceChanged();
     setHistorySnapshots(parsed);
     setHistoryFileNames(files.map((file) => file.name));
@@ -1128,7 +979,7 @@ export function App() {
       setHistory((previous) => [...previous, assignments]);
       setAssignments(updated);
       setSelectedSeatId(null);
-      setScratchDirty(true);
+      revisions.markScratchChanged();
     } else {
       setSelectedSeatId(seatId);
     }
@@ -1174,7 +1025,7 @@ export function App() {
     if (!editorDraftId) {
       return;
     }
-    const token = ++draftSwitchRef.current;
+    const task = tasks.begin("editor");
     setSaveError(null);
     try {
       const editor = await dispatchEditorCommand({
@@ -1188,10 +1039,10 @@ export function App() {
       });
       if (!liveDraftIdsRef.current.includes(editor.draft_id)) return;
       rememberEditorState(editor);
-      if (token !== draftSwitchRef.current) return;
+      if (!task.isCurrent()) return;
       applyEditorState(editor);
     } catch (err) {
-      if (token !== draftSwitchRef.current) return;
+      if (!task.isCurrent()) return;
       setSelectedSeatId(null);
       if (isRevisionConflict(err)) {
         // The authoritative draft moved forward (another window, or a stale
@@ -1200,7 +1051,7 @@ export function App() {
         setSaveError(t("app.revisionConflict"));
         try {
           const editor = await fetchEditorState(editorDraftId);
-          if (token === draftSwitchRef.current) applyEditorState(editor);
+          if (task.isCurrent()) applyEditorState(editor);
         } catch {
           // The draft may be gone; the conflict note above still explains.
         }
@@ -1222,7 +1073,7 @@ export function App() {
       }
       setAssignments(latest);
       setSelectedSeatId(null);
-      setScratchDirty(true);
+      revisions.markScratchChanged();
       return previous.slice(0, -1);
     });
   }
@@ -1255,12 +1106,12 @@ export function App() {
     }
     setHistory((previous) => [...previous, assignments]);
     setAssignments((current) => toggleSeatLock(current, selectedSeatId));
-    setScratchDirty(true);
+    revisions.markScratchChanged();
   }
 
   function rememberEditorState(editor: EditorState, roster: Student[] = students) {
     const plan = editorToPlan(editor, roster);
-    setDraftRevisions((versions) => ({ ...versions, [editor.draft_id]: editor.revision }));
+    revisions.rememberDraft(editor.draft_id, editor.revision);
     setRotationEditors((editors) => editors.map((entry) => entry.draft_id === editor.draft_id ? editor : entry));
     setCandidateMetas((current) => current.map((candidate) => candidate.draft_id === editor.draft_id
       ? { ...candidate, assignments: plan.assignments, revision: editor.revision } : candidate));
@@ -1296,7 +1147,7 @@ export function App() {
         locked.has(seat.seatId) ? { ...seat, locked: lock } : seat,
       );
     });
-    setScratchDirty(true);
+    revisions.markScratchChanged();
   }
 
   /** Batch move of a canvas multi-selection onto a drop seat. */
@@ -1329,7 +1180,7 @@ export function App() {
       }
       return next;
     });
-    setScratchDirty(true);
+    revisions.markScratchChanged();
   }
 
   /**
@@ -1386,7 +1237,7 @@ export function App() {
       ? students.find((candidate) => candidate.id === studentId) ?? null
       : null;
     setAssignments(assignStudentToSeat(assignments, seatId, student));
-    setScratchDirty(true);
+    revisions.markScratchChanged();
   }
 
   async function handleRotationPeriodSelect(period: number) {
@@ -1400,17 +1251,17 @@ export function App() {
       setActiveRotationPeriod(period);
       return;
     }
-    const token = ++draftSwitchRef.current;
+    const task = tasks.begin("editor");
     setSaveError(null);
     try {
       const editor = await fetchEditorState(target.draft_id);
-      if (token !== draftSwitchRef.current) {
+      if (!task.isCurrent()) {
         return;
       }
       applyEditorState(editor);
       setActiveRotationPeriod(period);
     } catch (err) {
-      if (token !== draftSwitchRef.current) {
+      if (!task.isCurrent()) {
         return;
       }
       setSaveError(friendlyError(err, t));
@@ -1431,8 +1282,8 @@ export function App() {
     const loadedStudents = result.students ? snapshotStudents({ students: result.students }) : [];
     if (loadedStudents.length) setStudents(loadedStudents);
     applyEditorState(editors[0], loadedStudents.length ? loadedStudents : students);
-    setDraftRevisions(Object.fromEntries(editors.map((editor) => [editor.draft_id, editor.revision])));
-    setGeneratedSourceRevision(null);
+    revisions.replaceDrafts(Object.fromEntries(editors.map((editor) => [editor.draft_id, editor.revision])));
+    revisions.setGeneratedSourceRevision(null);
     setRotationEditors(editors);
     setRotationPlan(result.rotation_plan);
     setActiveRotationPeriod(1);
@@ -1445,12 +1296,9 @@ export function App() {
   async function handleGenerate() {
     // A stale result (context/roster changed mid-flight) must not overwrite
     // the workbench: every state-resetting handler bumps this token.
-    generationAbortRef.current?.abort();
-    const controller = new AbortController();
-    generationAbortRef.current = controller;
-    const token = ++generationTokenRef.current;
+    invalidatePendingWork();
+    const task = tasks.begin("generation", true);
     const requestedSourceRevision = sourceRevision;
-    draftSwitchRef.current += 1;
     const supersededDraftIds = currentEditorDraftIds();
     setIsGenerating(true);
     setSaveError(null);
@@ -1479,24 +1327,24 @@ export function App() {
               ...requestArgs,
               rotation: rotationSettings,
             }),
-            controller.signal,
+            task.signal,
           )
-        : await generateClass(buildGenerateClassRequest(requestArgs), controller.signal);
+        : await generateClass(buildGenerateClassRequest(requestArgs), task.signal);
       if (!response.feasible) {
         // ProvenInfeasible/Timeout/Unknown/Cancelled are successful transport
         // responses with no editable assignment, not HTTP failures.
-        if (token === generationTokenRef.current) {
+        if (task.isCurrent()) {
           setSaveError(t(unsolvedMessageKey(response.status)));
         }
         return;
       }
       await consumeGeneratedDrafts(
         response,
-        () => token === generationTokenRef.current,
+        () => task.isCurrent(),
         ({ editor, periodEditors, rotationPlan, candidates }) => {
           applyEditorState(editor);
-          setDraftRevisions(Object.fromEntries([editor, ...periodEditors, ...candidates.map((candidate) => candidate.editor)].map((draft) => [draft.draft_id, draft.revision])));
-          setGeneratedSourceRevision(requestedSourceRevision);
+          revisions.replaceDrafts(Object.fromEntries([editor, ...periodEditors, ...candidates.map((candidate) => candidate.editor)].map((draft) => [draft.draft_id, draft.revision])));
+          revisions.setGeneratedSourceRevision(requestedSourceRevision);
           setGenerationRepro({ seed: requestArgs.settings.seed.trim(), solver: "native", timeLimitSeconds: requestArgs.settings.timeLimitSeconds, historyCount: requestArgs.historySnapshots.length });
           setRotationEditors(periodEditors);
           setActiveRotationPeriod(1);
@@ -1513,7 +1361,7 @@ export function App() {
           releaseEditorDrafts(supersededDraftIds);
           setHistory([]);
           setSelectedSeatId(null);
-          setScratchDirty(false);
+          revisions.clearScratchChanges();
           setGenerationDone(true);
           setFirstRunDismissed(true);
           setView("canvas");
@@ -1525,7 +1373,7 @@ export function App() {
         },
       );
     } catch (err) {
-      if (token !== generationTokenRef.current) {
+      if (!task.isCurrent()) {
         return;
       }
       if (err instanceof InvalidAdvancedSettingError) {
@@ -1547,7 +1395,7 @@ export function App() {
     } finally {
       // Only the latest generation clears the busy flag; an older one that
       // was superseded must leave the newer generation's flag alone.
-      if (token === generationTokenRef.current) {
+      if (task.isCurrent()) {
         setIsGenerating(false);
       }
     }
@@ -1681,13 +1529,13 @@ export function App() {
             t={t}
             onAction={handleContextAction}
             onSaveAsClass={() => setSaveAsOpen(true)}
-            onSave={() => void handleSaveClass()}
-            onOpen={() => void handleOpenClass()}
+            onSave={() => void classDocument.save()}
+            onOpen={() => void classDocument.open()}
             onCancelGenerate={() => { invalidatePendingWork(); setSaveError(t("generate.cancelled")); }}
             isSaving={isSavingClass}
           />
-          <input ref={classFileInputRef} type="file" accept=".json" aria-label={t("classFile.open")} hidden
-            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void handleOpenClass(file); }} />
+          <input ref={classDocument.inputRef} type="file" accept=".json" aria-label={t("classFile.open")} hidden
+            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void classDocument.open(file); }} />
           {classFileStatus ? <p className="inline-status" role="status">{classFileStatus}</p> : null}
           {saveError && view !== "canvas" && view !== "generate" ? <p className="inline-error" role="alert">{saveError}</p> : null}
           {generatedSourceRevision !== null && generatedSourceRevision !== sourceRevision && hasPlan ?
@@ -1754,7 +1602,7 @@ export function App() {
                 t={t}
                 onExported={() => setExportedOnce(true)}
                 initialSettings={exportSettings}
-                onSettingsChange={(settings) => { setExportSettings(settings); setScratchDirty(true); }}
+                onSettingsChange={(settings) => { setExportSettings(settings); revisions.markScratchChanged(); }}
               />
             ) : (
               <WorkflowPanel
@@ -1866,15 +1714,15 @@ export function App() {
                 t={t}
                 activeDraftId={editorDraftId}
                 onChoose={(draftId) => {
-                  const token = ++draftSwitchRef.current;
+                  const task = tasks.begin("editor");
                   void fetchEditorState(draftId)
                     .then((editor) => {
-                      if (token === draftSwitchRef.current) {
+                      if (task.isCurrent()) {
                         applyEditorState(editor);
                       }
                     })
                     .catch((error: unknown) => {
-                      if (token === draftSwitchRef.current) {
+                      if (task.isCurrent()) {
                         setSaveError(friendlyError(error, t));
                       }
                     });
@@ -1961,7 +1809,7 @@ export function App() {
         open={saveAsOpen}
         t={t}
         onClose={() => setSaveAsOpen(false)}
-        onConfirm={handleSaveAsClass}
+        onConfirm={(name) => void classDocument.save(name, true)}
         busy={isSavingClass}
         error={saveError}
       />

@@ -1,0 +1,1763 @@
+{
+  "purpose": "small-case objective/hard-rule equivalence, not a throughput benchmark",
+  "provenance": {
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+    "ortools": "9.15.6755",
+    "protobuf": "6.33.5",
+    "seed": 42,
+    "cp_workers": 1,
+    "rustc": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+    "rust_source_commit": "87fd06b6d2c5c6c541edaa28ab4dfc3125e94a93",
+    "oracle_binary_sha256": "589bdec306fd898d8dbb601c385c8dbf158e9bf3216fe35199fd82471de6c2e7",
+    "source_sha256": {
+      "benchmarks/solver-comparison/soft-objective-prototype/soft_compare.py": "b59e21736191b6db77f15c696ca7bb61718bab346839f6c9fbf7e0d9111f61f5",
+      "benchmarks/solver-comparison/soft-objective-prototype/requirements.lock.txt": "777651749736d14293694a60c5321706e28f37df155f92af4db7ab34c91a20f6",
+      "benchmarks/solver-comparison/soft-objective-prototype/rust-oracle/src/main.rs": "44b95bc32b06f921d615b63252322c0f2621ce4c9087b333b3bfdd83aa871b0e",
+      "benchmarks/solver-comparison/soft-objective-prototype/rust-oracle/Cargo.toml": "08fad15ef2d15d46af30a1138beb1de68a429563be7086c9d38fff6c59c5acf4",
+      "benchmarks/solver-comparison/soft-objective-prototype/rust-oracle/Cargo.lock": "b1985ec292627d3d60236f9951151c61f951ffe4330a8690322a62fde3c129f6",
+      "crates/seattrellis-core/src/cost.rs": "9d8d8a3a73531f8d4d64075cf26abc95674b275b8149ade37ff96871a5961058",
+      "crates/seattrellis-core/src/objectives.rs": "d32678ba293191142673d676f1bd728d4e0d973c9450f1addd8367644a193704",
+      "crates/seattrellis-core/src/models.rs": "e172423ad8de75ee9468af22b7cfe753493e4fabd4326abf97cfe0d933e519ee",
+      "crates/seattrellis-core/src/engine.rs": "68f48b4cf5216251287cc5686da9ba8caf441dd256f4ca2c615a566c79a12a0a"
+    }
+  },
+  "supported_goals": [
+    "fair_rotation",
+    "height_back",
+    "score_distribution",
+    "score_position",
+    "vision_front"
+  ],
+  "exact_integer_scaling_error": 0,
+  "rust_binary64_comparison_tolerance": 1e-09,
+  "rejection_controls": [
+    {
+      "name": "unsupported-avoid_recent_neighbors",
+      "rejected": true,
+      "reason": "unsupported enabled soft rule: avoid_recent_neighbors"
+    },
+    {
+      "name": "unsupported-cooling",
+      "rejected": true,
+      "reason": "unsupported enabled soft rule: cooling"
+    },
+    {
+      "name": "unsupported-mentor_pairing",
+      "rejected": true,
+      "reason": "unsupported enabled soft rule: mentor_pairing"
+    },
+    {
+      "name": "unsupported-randomize",
+      "rejected": true,
+      "reason": "unsupported enabled soft rule: randomize"
+    },
+    {
+      "name": "unsupported-score_balance",
+      "rejected": true,
+      "reason": "unsupported enabled soft rule: score_balance"
+    },
+    {
+      "name": "three-bucket-rms-unsupported",
+      "rejected": true,
+      "reason": "distribution prototype supports exactly two equal-capacity populated buckets"
+    },
+    {
+      "name": "missing-distribution-score",
+      "rejected": true,
+      "reason": "distribution requires full occupancy and a nonconstant score for every student"
+    },
+    {
+      "name": "unequal-distribution-capacities",
+      "rejected": true,
+      "reason": "distribution prototype supports exactly two equal-capacity populated buckets"
+    },
+    {
+      "name": "missing-group-identifier",
+      "rejected": true,
+      "reason": "group distribution requires group_id on every seat"
+    },
+    {
+      "name": "distribution-unused-seats",
+      "rejected": true,
+      "reason": "distribution requires full occupancy and a nonconstant score for every student"
+    },
+    {
+      "name": "integer-objective-overflow",
+      "rejected": true,
+      "reason": "scaled objective may overflow int64; unsupported"
+    },
+    {
+      "name": "saturating-height-unsupported",
+      "rejected": true,
+      "reason": "height outside production range [0, 300]"
+    },
+    {
+      "name": "negative-weight",
+      "rejected": true,
+      "reason": "vision_front: weight must be a nonnegative i32"
+    },
+    {
+      "name": "enabled-weight-outside-production-range",
+      "rejected": true,
+      "reason": "vision_front: enabled weight exceeds production limit 1000000"
+    },
+    {
+      "name": "negative-scaling",
+      "rejected": true,
+      "reason": "scale multiplier must be a positive integer"
+    },
+    {
+      "name": "zero-scaling",
+      "rejected": true,
+      "reason": "scale multiplier must be a positive integer"
+    },
+    {
+      "name": "scaling-overflow",
+      "rejected": true,
+      "reason": "integer scaling exceeds conservative int64 limit"
+    },
+    {
+      "name": "implicit-default-randomize-rejected",
+      "rejected": true,
+      "reason": "all ten goals must explicitly specify enabled; unknown goals rejected"
+    },
+    {
+      "name": "string-score",
+      "rejected": true,
+      "reason": "score must be a finite JSON number or null"
+    },
+    {
+      "name": "boolean-score",
+      "rejected": true,
+      "reason": "score must be a finite JSON number or null"
+    },
+    {
+      "name": "nan-score",
+      "rejected": true,
+      "reason": "score must be a finite JSON number or null"
+    },
+    {
+      "name": "infinite-score",
+      "rejected": true,
+      "reason": "score must be a finite JSON number or null"
+    },
+    {
+      "name": "score-outside-production-range",
+      "rejected": true,
+      "reason": "score outside production range [-1e9, 1e9]"
+    },
+    {
+      "name": "string-height",
+      "rejected": true,
+      "reason": "height_cm must be a finite JSON number or null"
+    },
+    {
+      "name": "nan-height",
+      "rejected": true,
+      "reason": "height_cm must be a finite JSON number or null"
+    },
+    {
+      "name": "height-outside-production-range",
+      "rejected": true,
+      "reason": "height outside production range [0, 300]"
+    },
+    {
+      "name": "numeric-vision-wrong-dto-type",
+      "rejected": true,
+      "reason": "vision must be a JSON string or null, matching the Rust student DTO"
+    },
+    {
+      "name": "euclidean-one-ulp-boundary-rejected",
+      "rejected": true,
+      "reason": "Euclidean prototype requires an integer threshold <= 3000000"
+    },
+    {
+      "name": "fractional-euclidean-coordinate-rejected",
+      "rejected": true,
+      "reason": "Euclidean prototype requires integer coordinates within +/-1000000"
+    }
+  ],
+  "preparation_budget_control": {
+    "status": "MODEL_BUDGET_EXHAUSTED",
+    "assignment": [],
+    "model_seconds": 0.000595322999288328,
+    "solve_seconds": 0,
+    "operation_seconds": 0.000595322999288328
+  },
+  "cases": [
+    {
+      "case": "vision-height-half-even",
+      "document_sha256": "b1aeaf48684a9b059a7b078a5c7119464cc5f1f7b6e9d61fb60f32005992ac5d",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "604",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          0,
+          1,
+          3,
+          2
+        ],
+        "scale": 1,
+        "integer_objective": 604,
+        "objective_fraction": "604",
+        "objective": 604.0,
+        "solver_objective": 604.0,
+        "best_bound": 604.0,
+        "model_seconds": 0.0015052069938974455,
+        "solve_seconds": 0.002162563003366813,
+        "operation_seconds": 0.0037243349943310022,
+        "absolute_integer_objective_bound": 3820,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 604.0
+      },
+      "rust_solve_seconds": 0.00023299,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "exact_cost": "604",
+          "expected_integer_cost": 604,
+          "solver_objective": 604.0
+        },
+        {
+          "assignment": [
+            0,
+            2,
+            1,
+            3
+          ],
+          "exact_cost": "956",
+          "expected_integer_cost": 956,
+          "solver_objective": 956.0
+        },
+        {
+          "assignment": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "exact_cost": "1306",
+          "expected_integer_cost": 1306,
+          "solver_objective": 1306.0
+        }
+      ]
+    },
+    {
+      "case": "vision-rust-numeric-grammar",
+      "document_sha256": "857721b9deb9d15d6116f15b985d11e4e0320d699875246d971b16859269c80b",
+      "permutations_checked": 720,
+      "legal_assignments": 720,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "0",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          0,
+          1,
+          5,
+          3,
+          2,
+          4
+        ],
+        "scale": 1,
+        "integer_objective": 0,
+        "objective_fraction": "0",
+        "objective": 0.0,
+        "solver_objective": 0.0,
+        "best_bound": 0.0,
+        "model_seconds": 0.0008413119940087199,
+        "solve_seconds": 0.0022238550009205937,
+        "operation_seconds": 0.0032269289949908853,
+        "absolute_integer_objective_bound": 1800,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            2,
+            4
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            5
+          ]
+        ],
+        "attempts_used": 10,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 0.0
+      },
+      "rust_solve_seconds": 0.000584556,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            3,
+            4,
+            2,
+            5
+          ],
+          "exact_cost": "0",
+          "expected_integer_cost": 0,
+          "solver_objective": 0.0
+        },
+        {
+          "assignment": [
+            0,
+            3,
+            1,
+            2,
+            4,
+            5
+          ],
+          "exact_cost": "400",
+          "expected_integer_cost": 400,
+          "solver_objective": 400.0
+        },
+        {
+          "assignment": [
+            5,
+            4,
+            2,
+            1,
+            3,
+            0
+          ],
+          "exact_cost": "600",
+          "expected_integer_cost": 600,
+          "solver_objective": 600.0
+        }
+      ]
+    },
+    {
+      "case": "vision-rust-special-values",
+      "document_sha256": "a53ae33e91db5a93728d86237f911335fe5e4f8f0e17b5830cca214ea1907b82",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "0",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          0,
+          3,
+          2,
+          1
+        ],
+        "scale": 1,
+        "integer_objective": 0,
+        "objective_fraction": "0",
+        "objective": 0.0,
+        "solver_objective": 0.0,
+        "best_bound": 0.0,
+        "model_seconds": 0.0004732899978989735,
+        "solve_seconds": 0.000987321007414721,
+        "operation_seconds": 0.001495962991612032,
+        "absolute_integer_objective_bound": 800,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            0
+          ]
+        ],
+        "attempts_used": 3,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 0.0
+      },
+      "rust_solve_seconds": 0.000358888,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            2,
+            3,
+            1
+          ],
+          "exact_cost": "0",
+          "expected_integer_cost": 0,
+          "solver_objective": 0.0
+        },
+        {
+          "assignment": [
+            2,
+            0,
+            3,
+            1
+          ],
+          "exact_cost": "200",
+          "expected_integer_cost": 200,
+          "solver_objective": 200.0
+        },
+        {
+          "assignment": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "exact_cost": "400",
+          "expected_integer_cost": 400,
+          "solver_objective": 400.0
+        }
+      ]
+    },
+    {
+      "case": "position-high_front",
+      "document_sha256": "38600df27d297b747b76ed857f1d0d169186dd20f42d1215f6c3411ab63903e9",
+      "permutations_checked": 720,
+      "legal_assignments": 720,
+      "maximum_rust_float_difference": 2.842170943040401e-14,
+      "exhaustive_optimum": "30",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          4,
+          5,
+          3,
+          2,
+          1,
+          0
+        ],
+        "scale": 1,
+        "integer_objective": 30,
+        "objective_fraction": "30",
+        "objective": 30.0,
+        "solver_objective": 30.0,
+        "best_bound": 30.0,
+        "model_seconds": 0.000887581001734361,
+        "solve_seconds": 0.001887249993160367,
+        "operation_seconds": 0.0028274399955989793,
+        "absolute_integer_objective_bound": 780,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            4
+          ],
+          [
+            1,
+            5
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            2
+          ],
+          [
+            4,
+            0
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 29.999999999999993
+      },
+      "rust_solve_seconds": 0.001451556,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            4,
+            5,
+            2,
+            3,
+            0,
+            1
+          ],
+          "exact_cost": "30",
+          "expected_integer_cost": 30,
+          "solver_objective": 30.0
+        },
+        {
+          "assignment": [
+            4,
+            0,
+            2,
+            1,
+            3,
+            5
+          ],
+          "exact_cost": "130",
+          "expected_integer_cost": 130,
+          "solver_objective": 130.0
+        },
+        {
+          "assignment": [
+            3,
+            1,
+            0,
+            5,
+            4,
+            2
+          ],
+          "exact_cost": "190",
+          "expected_integer_cost": 190,
+          "solver_objective": 190.0
+        }
+      ]
+    },
+    {
+      "case": "position-high_back",
+      "document_sha256": "e91752e627d1640154b2b38f3a2f307feb016fd4a36caf389ebf0804e6553a1c",
+      "permutations_checked": 720,
+      "legal_assignments": 720,
+      "maximum_rust_float_difference": 2.842170943040401e-14,
+      "exhaustive_optimum": "30",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          0,
+          1,
+          3,
+          2,
+          4,
+          5
+        ],
+        "scale": 1,
+        "integer_objective": 30,
+        "objective_fraction": "30",
+        "objective": 30.0,
+        "solver_objective": 30.0,
+        "best_bound": 30.0,
+        "model_seconds": 0.000901591993169859,
+        "solve_seconds": 0.002382582999416627,
+        "operation_seconds": 0.0033398780069546774,
+        "absolute_integer_objective_bound": 780,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            2
+          ],
+          [
+            4,
+            4
+          ],
+          [
+            5,
+            5
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 29.999999999999993
+      },
+      "rust_solve_seconds": 0.001477176,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "exact_cost": "30",
+          "expected_integer_cost": 30,
+          "solver_objective": 30.0
+        },
+        {
+          "assignment": [
+            4,
+            0,
+            2,
+            1,
+            5,
+            3
+          ],
+          "exact_cost": "130",
+          "expected_integer_cost": 130,
+          "solver_objective": 130.0
+        },
+        {
+          "assignment": [
+            5,
+            4,
+            3,
+            2,
+            1,
+            0
+          ],
+          "exact_cost": "190",
+          "expected_integer_cost": 190,
+          "solver_objective": 190.0
+        }
+      ]
+    },
+    {
+      "case": "position-ties-missing-score",
+      "document_sha256": "49e62775483b0d1f4e0535a73deff558490e404106a52da8085ca5797403c91b",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 5.684341886080802e-14,
+      "exhaustive_optimum": "350/3",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          1,
+          3,
+          2,
+          0
+        ],
+        "scale": 3,
+        "integer_objective": 350,
+        "objective_fraction": "350/3",
+        "objective": 116.66666666666667,
+        "solver_objective": 350.0,
+        "best_bound": 350.0,
+        "model_seconds": 0.0005509470065589994,
+        "solve_seconds": 0.001113309001084417,
+        "operation_seconds": 0.0017012020107358694,
+        "absolute_integer_objective_bound": 4200,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 116.66666666666666
+      },
+      "rust_solve_seconds": 0.000708352,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            2,
+            3,
+            1
+          ],
+          "exact_cost": "350/3",
+          "expected_integer_cost": 350,
+          "solver_objective": 350.0
+        },
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "exact_cost": "1400/3",
+          "expected_integer_cost": 1400,
+          "solver_objective": 1400.0
+        },
+        {
+          "assignment": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "exact_cost": "1750/3",
+          "expected_integer_cost": 1750,
+          "solver_objective": 1750.0
+        }
+      ]
+    },
+    {
+      "case": "position-null-and-omitted-scores",
+      "document_sha256": "3aaf840f53cb5cf2970d758e3ae073231536b7c96ca79b26f139ff899e91bb89",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "0",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          1,
+          3,
+          2,
+          0
+        ],
+        "scale": 1,
+        "integer_objective": 0,
+        "objective_fraction": "0",
+        "objective": 0.0,
+        "solver_objective": 0.0,
+        "best_bound": 0.0,
+        "model_seconds": 0.0003997000021627173,
+        "solve_seconds": 0.0011132789950352162,
+        "operation_seconds": 0.001573640009155497,
+        "absolute_integer_objective_bound": 400,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 0.0
+      },
+      "rust_solve_seconds": 0.000867311,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            2,
+            3,
+            1
+          ],
+          "exact_cost": "0",
+          "expected_integer_cost": 0,
+          "solver_objective": 0.0
+        },
+        {
+          "assignment": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "exact_cost": "100",
+          "expected_integer_cost": 100,
+          "solver_objective": 100.0
+        },
+        {
+          "assignment": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "exact_cost": "200",
+          "expected_integer_cost": 200,
+          "solver_objective": 200.0
+        }
+      ]
+    },
+    {
+      "case": "position-unused-seats",
+      "document_sha256": "1b399876e3a285cbbc2e35360199d94aade4975c7a63f13ebf02554f946bdf38",
+      "permutations_checked": 360,
+      "legal_assignments": 360,
+      "maximum_rust_float_difference": 2.842170943040401e-14,
+      "exhaustive_optimum": "50/3",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          4,
+          2,
+          3,
+          0
+        ],
+        "scale": 3,
+        "integer_objective": 50,
+        "objective_fraction": "50/3",
+        "objective": 16.666666666666668,
+        "solver_objective": 50.0,
+        "best_bound": 50.0,
+        "model_seconds": 0.000675172996125184,
+        "solve_seconds": 0.0017021630046656355,
+        "operation_seconds": 0.002424406004138291,
+        "absolute_integer_objective_bound": 1600,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            4
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            0
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 16.666666666666668
+      },
+      "rust_solve_seconds": 0.000941261,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            4,
+            2,
+            3,
+            0
+          ],
+          "exact_cost": "50/3",
+          "expected_integer_cost": 50,
+          "solver_objective": 50.0
+        },
+        {
+          "assignment": [
+            4,
+            1,
+            2,
+            5
+          ],
+          "exact_cost": "275/3",
+          "expected_integer_cost": 275,
+          "solver_objective": 275.0
+        },
+        {
+          "assignment": [
+            1,
+            0,
+            5,
+            4
+          ],
+          "exact_cost": "500/3",
+          "expected_integer_cost": 500,
+          "solver_objective": 500.0
+        }
+      ]
+    },
+    {
+      "case": "position-unavailable-constant-scores",
+      "document_sha256": "91aaaffa8892c7ec2f07f9632fac366fb9295bc2438a1ac8ac14a32ec5d26527",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "0",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          1,
+          0,
+          3,
+          2
+        ],
+        "scale": 1,
+        "integer_objective": 0,
+        "objective_fraction": "0",
+        "objective": 0.0,
+        "solver_objective": 0.0,
+        "best_bound": 0.0,
+        "model_seconds": 0.00037259799137245864,
+        "solve_seconds": 0.0007700540008954704,
+        "operation_seconds": 0.0011773149890359491,
+        "absolute_integer_objective_bound": 0,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            2
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 0.0
+      },
+      "rust_solve_seconds": 0.000556625,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "exact_cost": "0",
+          "expected_integer_cost": 0,
+          "solver_objective": 0.0
+        },
+        {
+          "assignment": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "exact_cost": "0",
+          "expected_integer_cost": 0,
+          "solver_objective": 0.0
+        },
+        {
+          "assignment": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "exact_cost": "0",
+          "expected_integer_cost": 0,
+          "solver_objective": 0.0
+        }
+      ]
+    },
+    {
+      "case": "position-single-row",
+      "document_sha256": "01f11f51070460643f3d584634f4a1959275c3194253a7e307d25747cd78ffef",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "200/3",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          1,
+          0,
+          3,
+          2
+        ],
+        "scale": 3,
+        "integer_objective": 200,
+        "objective_fraction": "200/3",
+        "objective": 66.66666666666667,
+        "solver_objective": 200.0,
+        "best_bound": 200.0,
+        "model_seconds": 0.0005410710000433028,
+        "solve_seconds": 0.0007770850061206147,
+        "operation_seconds": 0.0013553320022765547,
+        "absolute_integer_objective_bound": 800,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            2
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 66.66666666666667
+      },
+      "rust_solve_seconds": 0.000710716,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "exact_cost": "200/3",
+          "expected_integer_cost": 200,
+          "solver_objective": 200.0
+        },
+        {
+          "assignment": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "exact_cost": "200/3",
+          "expected_integer_cost": 200,
+          "solver_objective": 200.0
+        },
+        {
+          "assignment": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "exact_cost": "200/3",
+          "expected_integer_cost": 200,
+          "solver_objective": 200.0
+        }
+      ]
+    },
+    {
+      "case": "distribution-two-rows-ties",
+      "document_sha256": "51ee9c91b4ebac58762ded477dfd6f03d3027e033055d16c8c808e071a6da261",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 5.684341886080802e-14,
+      "exhaustive_optimum": "200/3",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          1,
+          3,
+          2,
+          0
+        ],
+        "scale": 3,
+        "integer_objective": 200,
+        "objective_fraction": "200/3",
+        "objective": 66.66666666666667,
+        "solver_objective": 200.0,
+        "best_bound": 200.0,
+        "model_seconds": 0.0007321579905692488,
+        "solve_seconds": 0.0017571649950696155,
+        "operation_seconds": 0.0025574049941496924,
+        "absolute_integer_objective_bound": 1200,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            2
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 66.6666666666667
+      },
+      "rust_solve_seconds": 0.000935713,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            2,
+            1,
+            3
+          ],
+          "exact_cost": "200/3",
+          "expected_integer_cost": 200,
+          "solver_objective": 200.0
+        },
+        {
+          "assignment": [
+            3,
+            0,
+            1,
+            2
+          ],
+          "exact_cost": "200/3",
+          "expected_integer_cost": 200,
+          "solver_objective": 200.0
+        },
+        {
+          "assignment": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "exact_cost": "800/3",
+          "expected_integer_cost": 800,
+          "solver_objective": 800.0
+        }
+      ]
+    },
+    {
+      "case": "distribution-two-groups",
+      "document_sha256": "c9c90d282948a48d172e273e0af21a34dd8358a47b883c77bbd7691c497ef3a1",
+      "permutations_checked": 720,
+      "legal_assignments": 720,
+      "maximum_rust_float_difference": 1.1368683772161603e-13,
+      "exhaustive_optimum": "100/3",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          4,
+          5,
+          3,
+          2,
+          1,
+          0
+        ],
+        "scale": 3,
+        "integer_objective": 100,
+        "objective_fraction": "100/3",
+        "objective": 33.333333333333336,
+        "solver_objective": 100.0,
+        "best_bound": 100.0,
+        "model_seconds": 0.0009327379957539961,
+        "solve_seconds": 0.0028471099940361455,
+        "operation_seconds": 0.003853407994029112,
+        "absolute_integer_objective_bound": 1500,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            5
+          ],
+          [
+            3,
+            0
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            5,
+            4
+          ]
+        ],
+        "attempts_used": 3,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 33.3333333333333
+      },
+      "rust_solve_seconds": 0.002017094,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3,
+            5,
+            4
+          ],
+          "exact_cost": "100/3",
+          "expected_integer_cost": 100,
+          "solver_objective": 100.0
+        },
+        {
+          "assignment": [
+            4,
+            0,
+            1,
+            3,
+            5,
+            2
+          ],
+          "exact_cost": "100",
+          "expected_integer_cost": 300,
+          "solver_objective": 300.0
+        },
+        {
+          "assignment": [
+            5,
+            3,
+            1,
+            4,
+            2,
+            0
+          ],
+          "exact_cost": "300",
+          "expected_integer_cost": 900,
+          "solver_objective": 900.0
+        }
+      ]
+    },
+    {
+      "case": "mixed-hard-all-five-indexed-history",
+      "document_sha256": "aedd441c3248eb006809f6e4ecfbd92ab415aac14b28b2fd3fcd13c63e99d9f1",
+      "permutations_checked": 720,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 2.2737367544323206e-13,
+      "exhaustive_optimum": "4595/3",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          0,
+          4,
+          3,
+          1,
+          2,
+          5
+        ],
+        "scale": 3,
+        "integer_objective": 4595,
+        "objective_fraction": "4595/3",
+        "objective": 1531.6666666666667,
+        "solver_objective": 4595.0,
+        "best_bound": 4595.0,
+        "model_seconds": 0.0014248160005081445,
+        "solve_seconds": 0.00329862700891681,
+        "operation_seconds": 0.004794420005055144,
+        "absolute_integer_objective_bound": 32835,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            4
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            4,
+            2
+          ],
+          [
+            5,
+            5
+          ]
+        ],
+        "attempts_used": 21,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 1531.6666666666667
+      },
+      "rust_solve_seconds": 0.003311786,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            4,
+            3,
+            1,
+            2,
+            5
+          ],
+          "exact_cost": "4595/3",
+          "expected_integer_cost": 4595,
+          "solver_objective": 4595.0
+        },
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            4,
+            3,
+            5
+          ],
+          "exact_cost": "1795",
+          "expected_integer_cost": 5385,
+          "solver_objective": 5385.0
+        },
+        {
+          "assignment": [
+            0,
+            4,
+            1,
+            5,
+            3,
+            2
+          ],
+          "exact_cost": "5885/3",
+          "expected_integer_cost": 5885,
+          "solver_objective": 5885.0
+        }
+      ]
+    },
+    {
+      "case": "rotation-negative-compensation",
+      "document_sha256": "e8b52ba6ff4b0a7d4f7f49b4e48fef7d85edcde1ecfa3fbd4f4aded84d52774c",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "-160",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          1,
+          0,
+          3,
+          2
+        ],
+        "scale": 1,
+        "integer_objective": -160,
+        "objective_fraction": "-160",
+        "objective": -160.0,
+        "solver_objective": -160.0,
+        "best_bound": -160.0,
+        "model_seconds": 0.0005289030086714774,
+        "solve_seconds": 0.0008095340017462149,
+        "operation_seconds": 0.0013745820033363998,
+        "absolute_integer_objective_bound": 640,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            2
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": -160.0
+      },
+      "rust_solve_seconds": 0.000898097,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "exact_cost": "-160",
+          "expected_integer_cost": -160,
+          "solver_objective": -160.0
+        },
+        {
+          "assignment": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "exact_cost": "-160",
+          "expected_integer_cost": -160,
+          "solver_objective": -160.0
+        },
+        {
+          "assignment": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "exact_cost": "-160",
+          "expected_integer_cost": -160,
+          "solver_objective": -160.0
+        }
+      ]
+    },
+    {
+      "case": "rotation-legacy-occurrence-window",
+      "document_sha256": "c9d56fa62fefd01b672db6473319794fa00df19359fe5afb8b6d73c9454ea970",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "240",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "scale": 1,
+        "integer_objective": 240,
+        "objective_fraction": "240",
+        "objective": 240.0,
+        "solver_objective": 240.0,
+        "best_bound": 240.0,
+        "model_seconds": 0.0005235949938651174,
+        "solve_seconds": 0.0005653080006595701,
+        "operation_seconds": 0.0011247670045122504,
+        "absolute_integer_objective_bound": 1600,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            2
+          ]
+        ],
+        "attempts_used": 1,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 240.0
+      },
+      "rust_solve_seconds": 0.001011007,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "exact_cost": "240",
+          "expected_integer_cost": 240,
+          "solver_objective": 240.0
+        },
+        {
+          "assignment": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "exact_cost": "240",
+          "expected_integer_cost": 240,
+          "solver_objective": 240.0
+        },
+        {
+          "assignment": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "exact_cost": "240",
+          "expected_integer_cost": 240,
+          "solver_objective": 240.0
+        }
+      ]
+    },
+    {
+      "case": "rotation-active-zone-normalization-all-history",
+      "document_sha256": "dcfa7b16d701730d26e091fb7aaa5aaa7b5d1e3fcb7d18d5469518cc309b7d09",
+      "permutations_checked": 24,
+      "legal_assignments": 24,
+      "maximum_rust_float_difference": 0.0,
+      "exhaustive_optimum": "1320",
+      "cp_sat": {
+        "status": "OPTIMAL",
+        "assignment": [
+          0,
+          2,
+          1,
+          3
+        ],
+        "scale": 1,
+        "integer_objective": 1320,
+        "objective_fraction": "1320",
+        "objective": 1320.0,
+        "solver_objective": 1320.0000000000002,
+        "best_bound": 1320.0000000000002,
+        "model_seconds": 0.0006260889931581914,
+        "solve_seconds": 0.0009496439888607711,
+        "operation_seconds": 0.0016124389949254692,
+        "absolute_integer_objective_bound": 5600,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "attempts_used": 5,
+        "feasible": true,
+        "hard_constraints_satisfied": true,
+        "status": "Solved",
+        "total_cost": 1320.0
+      },
+      "rust_solve_seconds": 0.001849154,
+      "rust_cost_above_exhaustive_optimum": 0.0,
+      "fixed_cp_objective_probes": [
+        {
+          "assignment": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "exact_cost": "1320",
+          "expected_integer_cost": 1320,
+          "solver_objective": 1320.0
+        },
+        {
+          "assignment": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "exact_cost": "1460",
+          "expected_integer_cost": 1460,
+          "solver_objective": 1460.0
+        },
+        {
+          "assignment": [
+            3,
+            0,
+            2,
+            1
+          ],
+          "exact_cost": "1480",
+          "expected_integer_cost": 1480,
+          "solver_objective": 1480.0
+        }
+      ]
+    },
+    {
+      "case": "mixed-infeasible-triangle",
+      "document_sha256": "7c09762a1880a54e040c33212e37ca161a73a53b867fde8da2a3af2b497162c9",
+      "permutations_checked": 24,
+      "legal_assignments": 0,
+      "maximum_rust_float_difference": 1.4210854715202004e-14,
+      "exhaustive_optimum": null,
+      "cp_sat": {
+        "status": "INFEASIBLE",
+        "assignment": [],
+        "scale": 3,
+        "integer_objective": null,
+        "objective_fraction": null,
+        "objective": null,
+        "solver_objective": null,
+        "best_bound": 0.0,
+        "model_seconds": 0.0004893139994237572,
+        "solve_seconds": 0.0004273810045560822,
+        "operation_seconds": 0.0009344319987576455,
+        "absolute_integer_objective_bound": 600,
+        "optimal_scope": "only the five implemented goals within documented domain; not all ten SeatTrellis goals"
+      },
+      "rust_response": {
+        "api_version": 2,
+        "assignment": [],
+        "attempts_used": 48,
+        "feasible": false,
+        "hard_constraints_satisfied": false,
+        "status": "ProvenInfeasible",
+        "total_cost": null
+      },
+      "rust_solve_seconds": 0.00027372,
+      "rust_cost_above_exhaustive_optimum": null,
+      "fixed_cp_objective_probes": []
+    }
+  ],
+  "total_fixed_cp_objective_probes": 48,
+  "total_permutations_checked": 4224
+}

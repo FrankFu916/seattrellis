@@ -1,0 +1,199 @@
+{
+  "api_version": 2,
+  "student_count": 6,
+  "seed": 42,
+  "time_limit_seconds": 2.0,
+  "students": [
+    {
+      "key": "P0",
+      "score": 0.0,
+      "vision": "0_8",
+      "tags": [
+        "poor"
+      ]
+    },
+    {
+      "key": "P1",
+      "score": 10.0,
+      "vision": "1_0",
+      "tags": [
+        "poor"
+      ]
+    },
+    {
+      "key": "P2",
+      "score": 20.0,
+      "vision": " 0.8 ",
+      "tags": []
+    },
+    {
+      "key": "P3",
+      "score": 30.0,
+      "vision": "０.８",
+      "tags": []
+    },
+    {
+      "key": "P4",
+      "score": 40.0,
+      "vision": "+8e-1",
+      "tags": [
+        "poor"
+      ]
+    },
+    {
+      "key": "P5",
+      "score": 50.0,
+      "vision": "+NaN",
+      "tags": [
+        "poor"
+      ]
+    }
+  ],
+  "seat_positions": [
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      2,
+      1
+    ]
+  ],
+  "layout": {
+    "layout_id": "soft-prototype",
+    "seats": [
+      {
+        "seat_id": "S0",
+        "row": 0,
+        "col": 0,
+        "enabled": true
+      },
+      {
+        "seat_id": "S1",
+        "row": 0,
+        "col": 1,
+        "enabled": true
+      },
+      {
+        "seat_id": "S2",
+        "row": 0,
+        "col": 2,
+        "enabled": true
+      },
+      {
+        "seat_id": "S3",
+        "row": 1,
+        "col": 0,
+        "enabled": true
+      },
+      {
+        "seat_id": "S4",
+        "row": 1,
+        "col": 1,
+        "enabled": true
+      },
+      {
+        "seat_id": "S5",
+        "row": 1,
+        "col": 2,
+        "enabled": true
+      }
+    ]
+  },
+  "edges": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      3
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      1,
+      4
+    ],
+    [
+      2,
+      5
+    ],
+    [
+      3,
+      4
+    ],
+    [
+      4,
+      5
+    ]
+  ],
+  "fixed_seats": [],
+  "must_be_adjacent": [],
+  "cannot_be_adjacent": [],
+  "min_distance": [],
+  "rules": {
+    "seed": 42,
+    "groups": [],
+    "soft": {
+      "vision_front": {
+        "enabled": true,
+        "weight": 2
+      },
+      "height_back": {
+        "enabled": false,
+        "weight": 1
+      },
+      "randomize": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_balance": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_position": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_distribution": {
+        "enabled": false,
+        "weight": 1
+      },
+      "mentor_pairing": {
+        "enabled": false,
+        "weight": 1
+      },
+      "fair_rotation": {
+        "enabled": false,
+        "weight": 1
+      },
+      "avoid_recent_neighbors": {
+        "enabled": false,
+        "weight": 1
+      },
+      "cooling": {
+        "enabled": false,
+        "weight": 1
+      }
+    }
+  }
+}

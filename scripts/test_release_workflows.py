@@ -95,7 +95,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_every_publication_waits_for_the_complete_gate(self):
         rust = jobs("rust.yml")
         self.assertTrue({
-            "build-binaries", "release-version", "web-quality", "security-quality", "test",
+            "build-binaries", "release-version", "web-quality", "security-quality", "test", "native-macos",
             "contract-drift", "fmt", "dependency-audit", "long-run-gates", "solver-performance", "fuzz-targets", "no-python-runtime",
         }.issubset(needs(rust["publish-assets"])))
         tauri = jobs("tauri.yml")

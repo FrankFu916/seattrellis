@@ -352,7 +352,11 @@
             "type": "integer"
           },
           "command_id": {
-            "type": "string"
+            "description": "Nonblank; at most 256 UTF-8 bytes. Each draft retains at most 4096 accepted command IDs; save/reopen to start a new session at capacity.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string",
+            "x-maxUtf8Bytes": 256
           },
           "draft_id": {
             "type": "string"

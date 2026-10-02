@@ -43,7 +43,18 @@ pub fn export_draft(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
 ) -> Result<ExportOutcome, AppError> {
-    export_draft_inner(value, editor_store, solve_requests, false)
+    export_draft_inner(value, editor_store, solve_requests, false, true)
+}
+
+/// Render using request options and built-in defaults only. In-process
+/// platform clients own their preferences and file access; one session must
+/// never read or replace another client's global export preferences.
+pub fn export_draft_isolated(
+    value: &Value,
+    editor_store: &EditorDraftStore,
+    solve_requests: &SolveRequestStore,
+) -> Result<ExportOutcome, AppError> {
+    export_draft_inner(value, editor_store, solve_requests, false, false)
 }
 
 pub fn preview_draft(
@@ -51,7 +62,7 @@ pub fn preview_draft(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
 ) -> Result<ExportOutcome, AppError> {
-    export_draft_inner(value, editor_store, solve_requests, true)
+    export_draft_inner(value, editor_store, solve_requests, true, true)
 }
 
 fn export_draft_inner(
@@ -59,6 +70,7 @@ fn export_draft_inner(
     editor_store: &EditorDraftStore,
     solve_requests: &SolveRequestStore,
     preview: bool,
+    global_preferences: bool,
 ) -> Result<ExportOutcome, AppError> {
     let draft_id = value
         .get("draft_id")
@@ -97,7 +109,10 @@ fn export_draft_inner(
         // specify explicitly (PD-D9 "last used" semantics, M5-A5). The
         // memory file lives in the user config dir; malformed memory is
         // ignored and built-in defaults apply.
-        if let Some(memory) = seattrellis_io::export_defaults::ExportDefaults::load_global() {
+        if let Some(memory) = global_preferences
+            .then(seattrellis_io::export_defaults::ExportDefaults::load_global)
+            .flatten()
+        {
             let mut patch = serde_json::Map::new();
             for (key, value) in [
                 ("template", memory.template.as_str()),
@@ -176,7 +191,7 @@ fn export_draft_inner(
     };
 
     // Remember the effective parameters for the next quick export.
-    if !preview {
+    if !preview && global_preferences {
         let _ = remember_defaults(&export_json);
     }
 

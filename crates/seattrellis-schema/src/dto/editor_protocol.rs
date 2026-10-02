@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 const MAX_COMMAND_OPERATIONS: usize = 100;
 const MAX_PROTOCOL_IDENTIFIER_LENGTH: usize = 128;
+const MAX_COMMAND_ID_BYTES: usize = 256;
 
 /// Literal `kind` value for an editor command document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -183,7 +184,12 @@ impl EditingOperation {
 pub struct EditorCommand {
     pub kind: EditorCommandKind,
     pub protocol_version: EditorProtocolVersion,
-    #[schemars(length(min = 1, max = 128))]
+    /// Nonblank command id of at most 256 UTF-8 bytes. JSON Schema maxLength
+    /// counts Unicode characters; validate() additionally enforces the byte
+    /// limit declared by x-maxUtf8Bytes. Accepted ids are retained for the
+    /// editing session, which accepts at most 4096 successful commands.
+    #[schemars(length(min = 1, max = 256))]
+    #[schemars(extend("x-maxUtf8Bytes" = MAX_COMMAND_ID_BYTES))]
     pub command_id: String,
     #[schemars(length(min = 1, max = 128))]
     pub draft_id: String,
@@ -197,7 +203,7 @@ pub struct EditorCommand {
 impl EditorCommand {
     /// Enforce action/operation semantics and the expanded operation budget.
     pub fn validate(&self) -> Result<(), String> {
-        validate_protocol_identifier("command_id", &self.command_id)?;
+        validate_command_id(&self.command_id)?;
         validate_protocol_identifier("draft_id", &self.draft_id)?;
 
         if self.operations.len() > MAX_COMMAND_OPERATIONS {
@@ -329,6 +335,16 @@ fn validate_protocol_identifier(field: &str, value: &str) -> Result<(), String> 
     Ok(())
 }
 
+fn validate_command_id(value: &str) -> Result<(), String> {
+    validate_reference("command_id", value)?;
+    if value.len() > MAX_COMMAND_ID_BYTES {
+        return Err(format!(
+            "command_id must contain at most {MAX_COMMAND_ID_BYTES} UTF-8 bytes"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_reference(field: &str, value: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Err(format!("{field} must not be empty"));
@@ -339,6 +355,18 @@ fn validate_reference(field: &str, value: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn command_with_id(command_id: String) -> EditorCommand {
+        EditorCommand {
+            kind: EditorCommandKind::SeatTrellisEditorCommand,
+            protocol_version: EditorProtocolVersion::V1,
+            command_id,
+            draft_id: "draft-1".to_string(),
+            base_revision: 0,
+            action: EditorAction::Undo,
+            operations: Vec::new(),
+        }
+    }
 
     fn student_seat(student: &str, seat: &str) -> StudentSeatPayload {
         StudentSeatPayload {
@@ -402,6 +430,79 @@ mod tests {
         let decoded: EditorCommand = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, command);
         assert!(encoded.contains(r#""kind":"batch_move","payload""#));
+    }
+
+    #[test]
+    fn command_id_byte_limit_covers_ascii_and_multibyte_boundaries() {
+        for id in ["a".repeat(256), "é".repeat(128), "😀".repeat(64)] {
+            assert_eq!(id.len(), MAX_COMMAND_ID_BYTES);
+            let command = command_with_id(id);
+            command.validate().expect("256-byte id is valid");
+            let decoded: EditorCommand =
+                serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
+            assert_eq!(decoded, command);
+        }
+        for id in [
+            "a".repeat(257),
+            format!("{}a", "é".repeat(128)),
+            "é".repeat(129),
+            format!("{}a", "😀".repeat(64)),
+            "😀".repeat(65),
+        ] {
+            assert!(id.len() > MAX_COMMAND_ID_BYTES);
+            assert_eq!(
+                command_with_id(id).validate().unwrap_err(),
+                "command_id must contain at most 256 UTF-8 bytes"
+            );
+        }
+    }
+
+    #[test]
+    fn command_ids_reject_empty_and_unicode_whitespace_without_trimming_valid_ids() {
+        for id in ["", " \t\r\n", "\u{2003}\u{3000}\u{00a0}"] {
+            assert_eq!(
+                command_with_id(id.to_string()).validate().unwrap_err(),
+                "command_id must not be empty"
+            );
+        }
+        let command = command_with_id("  cmd-1  ".to_string());
+        command.validate().expect("a nonblank id remains valid");
+        assert_eq!(command.command_id, "  cmd-1  ");
+    }
+
+    #[test]
+    fn draft_ids_keep_the_existing_128_character_limit() {
+        for unit in ["a", "😀"] {
+            let mut command = command_with_id("cmd-1".to_string());
+            command.draft_id = unit.repeat(128);
+            command.validate().expect("128-character draft id is valid");
+            command.draft_id.push_str(unit);
+            assert_eq!(
+                command.validate().unwrap_err(),
+                "draft_id must contain at most 128 characters"
+            );
+        }
+    }
+
+    #[test]
+    fn generated_command_schema_declares_character_and_runtime_byte_limits() {
+        let schema = serde_json::to_value(schemars::schema_for!(EditorCommand)).unwrap();
+        let command_id = &schema["properties"]["command_id"];
+        assert_eq!(command_id["minLength"], 1);
+        assert_eq!(command_id["maxLength"], 256);
+        assert_eq!(command_id["x-maxUtf8Bytes"], 256);
+        let description = command_id["description"].as_str().unwrap();
+        assert!(description.contains("UTF-8 bytes"));
+        assert!(description.contains("Unicode characters"));
+        assert_eq!(schema["properties"]["draft_id"]["maxLength"], 128);
+        let validator = jsonschema::validator_for(&schema).expect("schema is valid");
+        assert!(!validator.is_valid(&serde_json::to_value(command_with_id(String::new())).unwrap()));
+        assert!(
+            validator.is_valid(&serde_json::to_value(command_with_id("a".repeat(256))).unwrap())
+        );
+        assert!(
+            !validator.is_valid(&serde_json::to_value(command_with_id("a".repeat(257))).unwrap())
+        );
     }
 
     #[test]

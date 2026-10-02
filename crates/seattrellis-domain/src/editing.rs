@@ -49,6 +49,15 @@ pub const ACTION_APPLY: &str = "apply";
 pub const ACTION_UNDO: &str = "undo";
 pub const ACTION_REDO: &str = "redo";
 
+/// Maximum UTF-8 byte length of an editor command id. UUID ids fit comfortably.
+pub const MAX_EDITOR_COMMAND_ID_BYTES: usize = 256;
+/// Maximum successful apply/undo/redo command ids retained for one draft.
+///
+/// Ids are never evicted: every replay remains rejected for the draft's entire
+/// lifetime. Save and reopen the document to start a fresh editing session
+/// after exhausting this budget. Failed commands do not consume the budget.
+pub const MAX_EDITOR_APPLIED_COMMAND_IDS: usize = 4096;
+
 /// Supported editor operation kinds, in the order used by error messages.
 const OPERATION_KINDS: &[&str] = &[
     "swap_students",
@@ -103,10 +112,8 @@ pub struct EditorSeatSpec {
     pub enabled: bool,
 }
 
-/// Upper bound for the undo/redo stacks (backend audit 2026-08-12):
-/// every entry is a full snapshot, so an unbounded stack grows without
-/// limit in long sessions. 100 steps is far beyond any realistic edit
-/// session; the oldest step is dropped when the bound is exceeded.
+/// Upper bound for the undo/redo stacks: retain the most recent 100 command
+/// batches and drop the oldest entry when the bound is exceeded.
 const MAX_UNDO_DEPTH: usize = 100;
 
 /// Push a snapshot onto a bounded undo/redo stack.
@@ -117,11 +124,25 @@ fn push_bounded(stack: &mut Vec<EditorSnapshot>, snapshot: EditorSnapshot) {
     }
 }
 
-/// A full copy of the editable state used for snapshot-based undo/redo.
+/// Editable student fields, referring to a seat by its stable layout index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EditorStudentSnapshot {
+    seat_index: Option<usize>,
+    locked: bool,
+}
+
+/// Command-level mutable state used for atomic rollback and undo/redo.
+///
+/// Drafts keep roster/layout order, student keys and names, and seat ids,
+/// coordinates and enabled flags unchanged for their entire lifetime. No
+/// command changes that topology, and assignment repair constructs the same
+/// roster and layout. History therefore stores only assignment indices and
+/// locks, rather than repeatedly copying potentially large roster strings.
+/// Seat occupants are derived from student assignments when restoring.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct EditorSnapshot {
-    students: Vec<EditorStudent>,
-    seats: Vec<EditorSeat>,
+    students: Vec<EditorStudentSnapshot>,
+    seat_locks: Vec<bool>,
 }
 
 /// In-process editing draft backed by a native solve result.
@@ -378,15 +399,41 @@ impl EditorDraft {
     }
 
     fn capture_snapshot(&self) -> EditorSnapshot {
+        let seat_indices: HashMap<&str, usize> = self
+            .seats
+            .iter()
+            .enumerate()
+            .map(|(index, seat)| (seat.seat_id.as_str(), index))
+            .collect();
         EditorSnapshot {
-            students: self.students.clone(),
-            seats: self.seats.clone(),
+            students: self
+                .students
+                .iter()
+                .map(|student| EditorStudentSnapshot {
+                    seat_index: student
+                        .seat_id
+                        .as_deref()
+                        .map(|seat_id| seat_indices[seat_id]),
+                    locked: student.locked,
+                })
+                .collect(),
+            seat_locks: self.seats.iter().map(|seat| seat.locked).collect(),
         }
     }
 
     fn restore_snapshot(&mut self, snapshot: &EditorSnapshot) {
-        self.students = snapshot.students.clone();
-        self.seats = snapshot.seats.clone();
+        debug_assert_eq!(self.students.len(), snapshot.students.len());
+        debug_assert_eq!(self.seats.len(), snapshot.seat_locks.len());
+        for (student, previous) in self.students.iter_mut().zip(&snapshot.students) {
+            student.seat_id = previous
+                .seat_index
+                .map(|index| self.seats[index].seat_id.clone());
+            student.locked = previous.locked;
+        }
+        for (seat, &locked) in self.seats.iter_mut().zip(&snapshot.seat_locks) {
+            seat.locked = locked;
+        }
+        self.sync_seat_students();
     }
 
     /// Recompute each seat's `student_key` from the students' `seat_id`s so
@@ -684,6 +731,9 @@ pub struct EditorOperation {
 ///
 /// `action` is `"apply"`, `"undo"`, or `"redo"`; `operations` must be non-empty
 /// for `apply` and empty for `undo`/`redo` (enforced by [`apply_command`]).
+/// The command id must be nonblank and at most [`MAX_EDITOR_COMMAND_ID_BYTES`]
+/// UTF-8 bytes; a draft accepts at most [`MAX_EDITOR_APPLIED_COMMAND_IDS`]
+/// successful commands before it needs to be saved and reopened.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditorCommandEnvelope {
     pub kind: String,
@@ -765,6 +815,17 @@ fn validate_command(
         return Err(format!(
             "Editor command {:?} has already been applied.",
             command.command_id
+        ));
+    }
+    if command.command_id.len() > MAX_EDITOR_COMMAND_ID_BYTES {
+        return Err(format!(
+            "editor command_id must contain at most {MAX_EDITOR_COMMAND_ID_BYTES} UTF-8 bytes"
+        ));
+    }
+    if draft.applied_command_ids.len() >= MAX_EDITOR_APPLIED_COMMAND_IDS {
+        return Err(format!(
+            "editor command_id capacity of {MAX_EDITOR_APPLIED_COMMAND_IDS} reached; \
+             save/reopen document to start a new editing session"
         ));
     }
     if command.base_revision != draft.revision {
@@ -1459,9 +1520,377 @@ mod tests {
     }
 
     #[test]
+    fn history_keeps_large_immutable_names_once_per_draft() {
+        let mut names = HashMap::new();
+        names.insert("s1".to_string(), "A".repeat(1024 * 1024));
+        let mut large = EditorDraft::new(
+            "draft-1",
+            Some("candidate-1".to_string()),
+            &["s1", "s2", "s3"],
+            test_seats(),
+            &[("s1", "A1"), ("s2", "A2"), ("s3", "B1")],
+            Some(&names),
+        )
+        .expect("large names are valid");
+        let mut small = test_draft();
+        let name_pointer = large.students[0].display_name.as_ptr();
+        assert_eq!(large.capture_snapshot(), small.capture_snapshot());
+
+        for index in 0..20 {
+            let operation = if index % 2 == 0 {
+                "lock_student"
+            } else {
+                "unlock_student"
+            };
+            let envelope = command(
+                "draft-1",
+                &format!("cmd-{index}"),
+                index,
+                ACTION_APPLY,
+                vec![op(operation, json!({ "student_key": "s1" }))],
+            );
+            apply_command(&mut large, &envelope).expect("large-name command applies");
+            apply_command(&mut small, &envelope).expect("small-name command applies");
+        }
+        assert_eq!(large.undo_depth(), 20);
+        assert_eq!(large.undo_stack, small.undo_stack);
+        // Snapshot payload has no owned strings or nested allocations. Its
+        // retained storage depends on roster/layout size, not name length.
+        let retained_bytes: usize = large.undo_stack.capacity()
+            * std::mem::size_of::<EditorSnapshot>()
+            + large
+                .undo_stack
+                .iter()
+                .map(|snapshot| {
+                    snapshot.students.capacity() * std::mem::size_of::<EditorStudentSnapshot>()
+                        + snapshot.seat_locks.capacity() * std::mem::size_of::<bool>()
+                })
+                .sum::<usize>();
+        assert!(retained_bytes < 4096, "history uses {retained_bytes} bytes");
+
+        for index in 0..40 {
+            let action = if index < 20 { ACTION_UNDO } else { ACTION_REDO };
+            let revision = large.revision();
+            apply_command(
+                &mut large,
+                &command(
+                    "draft-1",
+                    &format!("history-{index}"),
+                    revision,
+                    action,
+                    vec![],
+                ),
+            )
+            .expect("history navigation applies");
+            assert_eq!(large.students[0].display_name.as_ptr(), name_pointer);
+            assert_eq!(large.students[0].display_name, names["s1"]);
+        }
+        assert_eq!(large.undo_depth(), 20);
+        assert_eq!(large.redo_depth(), 0);
+        assert!(!large.students[0].locked);
+    }
+
+    #[test]
+    fn every_operation_roundtrips_complete_state_through_history() {
+        let mut draft = test_draft();
+        let operations = [
+            op(
+                "swap_students",
+                json!({ "first_student": "s1", "second_student": "s2" }),
+            ),
+            op(
+                "move_student",
+                json!({ "student_key": "s1", "seat_id": "B2" }),
+            ),
+            op(
+                "batch_move",
+                json!({ "moves": [
+                    { "student_key": "s1", "seat_id": "A1" },
+                    { "student_key": "s2", "seat_id": "B2" }
+                ] }),
+            ),
+            op("unseat_student", json!({ "student_key": "s3" })),
+            op(
+                "seat_student",
+                json!({ "student_key": "s3", "seat_id": "A2" }),
+            ),
+            op("lock_student", json!({ "student_key": "s1" })),
+            op("unlock_student", json!({ "student_key": "s1" })),
+            op("lock_seat", json!({ "seat_id": "A2" })),
+            op("unlock_seat", json!({ "seat_id": "A2" })),
+        ];
+        assert_eq!(operations.len(), OPERATION_KINDS.len());
+        for (index, operation) in operations.into_iter().enumerate() {
+            let before_students = draft.students.clone();
+            let before_seats = draft.seats.clone();
+            let revision = draft.revision();
+            apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &format!("apply-{index}"),
+                    revision,
+                    ACTION_APPLY,
+                    vec![operation],
+                ),
+            )
+            .expect("operation applies");
+            let after_students = draft.students.clone();
+            let after_seats = draft.seats.clone();
+            apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &format!("undo-{index}"),
+                    revision + 1,
+                    ACTION_UNDO,
+                    vec![],
+                ),
+            )
+            .expect("operation undoes");
+            assert_eq!(draft.students, before_students);
+            assert_eq!(draft.seats, before_seats);
+            apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &format!("redo-{index}"),
+                    revision + 2,
+                    ACTION_REDO,
+                    vec![],
+                ),
+            )
+            .expect("operation redoes");
+            assert_eq!(draft.students, after_students);
+            assert_eq!(draft.seats, after_seats);
+        }
+    }
+
+    #[test]
+    fn failed_batch_restores_locks_and_assignments_without_changing_history() {
+        let mut draft = test_draft();
+        apply_command(
+            &mut draft,
+            &command(
+                "draft-1",
+                "prepare",
+                0,
+                ACTION_APPLY,
+                vec![op("lock_student", json!({ "student_key": "s3" }))],
+            ),
+        )
+        .expect("prepare applies");
+        apply_command(
+            &mut draft,
+            &command("draft-1", "prepare-undo", 1, ACTION_UNDO, vec![]),
+        )
+        .expect("prepare undoes");
+        let before = draft.clone();
+        let error = apply_command(
+            &mut draft,
+            &command(
+                "draft-1",
+                "failed-batch",
+                2,
+                ACTION_APPLY,
+                vec![
+                    op("lock_student", json!({ "student_key": "s1" })),
+                    op("lock_seat", json!({ "seat_id": "B1" })),
+                    op(
+                        "move_student",
+                        json!({ "student_key": "s2", "seat_id": "B2" }),
+                    ),
+                    op("lock_student", json!({ "student_key": "unknown" })),
+                ],
+            ),
+        )
+        .expect_err("last operation fails");
+        assert!(error.contains("Unknown student"));
+        assert_eq!(build_editor_state(&draft), build_editor_state(&before));
+        assert_eq!(draft.undo_stack, before.undo_stack);
+        assert_eq!(draft.redo_stack, before.redo_stack);
+        assert_eq!(draft.applied_command_ids, before.applied_command_ids);
+    }
+
+    #[test]
+    fn repaired_assignment_roundtrips_with_names_layout_locks_and_independent_clone() {
+        let mut draft = test_draft();
+        draft.students[0].display_name = "完整姓名".to_string();
+        draft
+            .restore_locks(&["s3".to_string()], &["B1".to_string()])
+            .expect("initial locks restore");
+        let before_students = draft.students.clone();
+        let before_seats = draft.seats.clone();
+        let repaired = draft
+            .apply_repair_assignment(0, &[("s1", "A2"), ("s2", "A1"), ("s3", "B1")])
+            .expect("repair keeps locked student and seat");
+        let mut independent = draft.clone();
+        assert_ne!(
+            draft.students[0].display_name.as_ptr(),
+            independent.students[0].display_name.as_ptr()
+        );
+        apply_command(
+            &mut independent,
+            &command("draft-1", "clone-undo", 1, ACTION_UNDO, vec![]),
+        )
+        .expect("cloned repair undoes");
+        assert_eq!(independent.students, before_students);
+        assert_eq!(independent.seats, before_seats);
+        assert_eq!(build_editor_state(&draft), repaired);
+        apply_command(
+            &mut independent,
+            &command("draft-1", "clone-redo", 2, ACTION_REDO, vec![]),
+        )
+        .expect("cloned repair redoes");
+        assert_eq!(independent.students, draft.students);
+        assert_eq!(independent.seats, draft.seats);
+        assert_eq!(independent.undo_stack, draft.undo_stack);
+        assert_eq!(draft.revision(), 1);
+    }
+
+    #[test]
+    fn command_id_limit_counts_utf8_bytes_and_rejects_without_mutation() {
+        let mut draft = test_draft();
+        for (index, id) in ["a".repeat(256), "é".repeat(128)].into_iter().enumerate() {
+            assert_eq!(id.len(), MAX_EDITOR_COMMAND_ID_BYTES);
+            apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &id,
+                    index as u64,
+                    ACTION_APPLY,
+                    vec![op("lock_student", json!({ "student_key": "s1" }))],
+                ),
+            )
+            .expect("256-byte ids are accepted without truncation");
+        }
+        let before = draft.clone();
+        for id in ["a".repeat(257), format!("{}a", "é".repeat(128))] {
+            assert_eq!(id.len(), MAX_EDITOR_COMMAND_ID_BYTES + 1);
+            let error = apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &id,
+                    2,
+                    ACTION_APPLY,
+                    vec![op("unlock_student", json!({ "student_key": "s1" }))],
+                ),
+            )
+            .expect_err("257-byte ids are rejected");
+            assert_eq!(
+                error,
+                "editor command_id must contain at most 256 UTF-8 bytes"
+            );
+            assert_eq!(build_editor_state(&draft), build_editor_state(&before));
+            assert_eq!(draft.undo_stack, before.undo_stack);
+            assert_eq!(draft.redo_stack, before.redo_stack);
+            assert_eq!(draft.applied_command_ids, before.applied_command_ids);
+        }
+    }
+
+    #[test]
+    fn command_id_capacity_preserves_history_and_rejects_every_old_replay() {
+        let mut draft = test_draft();
+        for index in 0..(MAX_EDITOR_APPLIED_COMMAND_IDS - 2) {
+            let operation = if index % 2 == 0 {
+                "lock_student"
+            } else {
+                "unlock_student"
+            };
+            apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &format!("cmd-{index}"),
+                    index as u64,
+                    ACTION_APPLY,
+                    vec![op(operation, json!({ "student_key": "s1" }))],
+                ),
+            )
+            .expect("command fits the session budget");
+        }
+        // Consume the final two ids through navigation, retaining both undo
+        // and redo entries so the over-budget checks can verify both stacks.
+        for index in (MAX_EDITOR_APPLIED_COMMAND_IDS - 2)..MAX_EDITOR_APPLIED_COMMAND_IDS {
+            apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &format!("cmd-{index}"),
+                    index as u64,
+                    ACTION_UNDO,
+                    vec![],
+                ),
+            )
+            .expect("the final budgeted command is accepted");
+        }
+        assert_eq!(draft.revision(), MAX_EDITOR_APPLIED_COMMAND_IDS as u64);
+        assert_eq!(
+            draft.applied_command_ids.len(),
+            MAX_EDITOR_APPLIED_COMMAND_IDS
+        );
+        assert_eq!(draft.undo_depth(), MAX_UNDO_DEPTH - 2);
+        assert_eq!(draft.redo_depth(), 2);
+        let before = draft.clone();
+
+        for action in [ACTION_APPLY, ACTION_UNDO, ACTION_REDO] {
+            let operations = if action == ACTION_APPLY {
+                vec![op("lock_student", json!({ "student_key": "s2" }))]
+            } else {
+                vec![]
+            };
+            let error = apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &format!("over-budget-{action}"),
+                    MAX_EDITOR_APPLIED_COMMAND_IDS as u64,
+                    action,
+                    operations,
+                ),
+            )
+            .expect_err("new command cannot exceed the session budget");
+            assert_eq!(
+                error,
+                "editor command_id capacity of 4096 reached; \
+                 save/reopen document to start a new editing session"
+            );
+            assert_eq!(build_editor_state(&draft), build_editor_state(&before));
+            assert_eq!(draft.undo_stack, before.undo_stack);
+            assert_eq!(draft.redo_stack, before.redo_stack);
+            assert_eq!(draft.applied_command_ids, before.applied_command_ids);
+        }
+
+        for index in [
+            0,
+            MAX_EDITOR_APPLIED_COMMAND_IDS / 2,
+            MAX_EDITOR_APPLIED_COMMAND_IDS - 1,
+        ] {
+            let id = format!("cmd-{index}");
+            let error = apply_command(
+                &mut draft,
+                &command(
+                    "draft-1",
+                    &id,
+                    MAX_EDITOR_APPLIED_COMMAND_IDS as u64,
+                    ACTION_APPLY,
+                    vec![op("lock_student", json!({ "student_key": "s2" }))],
+                ),
+            )
+            .expect_err("even the oldest applied id remains rejected");
+            assert!(error.contains("has already been applied"), "{error}");
+            assert_eq!(build_editor_state(&draft), build_editor_state(&before));
+            assert_eq!(draft.undo_stack, before.undo_stack);
+            assert_eq!(draft.redo_stack, before.redo_stack);
+            assert_eq!(draft.applied_command_ids, before.applied_command_ids);
+        }
+    }
+
+    #[test]
     fn undo_stack_is_bounded_to_max_undo_depth() {
-        // Backend audit F2 (2026-08-12): every edit pushes a full snapshot;
-        // the stack must not grow without limit in long sessions.
+        // The command snapshots must not grow without limit in long sessions.
         let mut draft = test_draft();
         for index in 0..(MAX_UNDO_DEPTH + 20) {
             apply_command(

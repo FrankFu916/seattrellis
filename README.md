@@ -128,9 +128,10 @@ SeatTrellis operates strictly under a local-first paradigm. All computation, fil
 ## 💻 Development & Building
 
 Built on a modern, high-performance tech stack:
-- **Core Backend**: Rust 1.88+ with 9 modular crates.
+- **Core Backend**: Rust 1.88+ with layered workspace crates.
 - **Desktop & UI**: Tauri 2, React 19, and TypeScript.
-- **Verification**: 690+ Rust tests, 160+ UI tests, end-to-end browser workflows, fuzz testing, and strict CI benchmarks.
+- **Native preview**: [macOS SwiftUI/AppKit client](clients/macos/README.md) with an in-process Rust bridge.
+- **Verification**: 800+ Rust tests, 277 UI tests, native lifecycle checks, end-to-end browser workflows, fuzz testing, and strict CI benchmarks.
 
 ```bash
 # 1. Build web workbench assets

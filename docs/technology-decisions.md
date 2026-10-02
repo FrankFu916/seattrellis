@@ -1,6 +1,6 @@
 # Technology decisions
 
-Review date: 2026-10-01. A technology is replaceable; replacing it is justified by a measured product benefit, a platform requirement or an unsupported dependency. Correctness defects in data lifecycles are addressed directly, because another language or UI framework can reproduce them.
+Review date: 2026-10-01, implementation update 2026-10-02. A technology is replaceable; replacing it is justified by a measured product benefit, a platform requirement or an unsupported dependency. Correctness defects in data lifecycles are addressed directly, because another language or UI framework can reproduce them.
 
 ## Core and solver
 
@@ -17,6 +17,8 @@ The [updated reproducible comparison](https://github.com/FrankFu916/seattrellis/
 | Proven infeasible | 215.9 ms | 65.6 ms |
 
 Historical OR-Tools 9.14 timings and their original Rust source/binary hashes remain separately preserved. They showed an advantage in all nine cases, which is no longer the current result after the Rust allocation optimization. The new results still support developing an optional CP-SAT backend, rather than replacing the shared core. They compare algorithms and adapters, not a language speed ranking: the Python adapter calls OR-Tools' native C++ engine. A separate cold 60-person process took 529.5 ms, including 339.8 ms to import OR-Tools; it is one sample and excluded from the warm medians. All ten soft objectives were disabled, and weighted quality, cancellation, candidate diversity, rotation and native packaging remain untested for CP-SAT. A production backend must preserve these semantics, the full seven-status contract and a valid incumbent on timeout. Retain the Rust independent validator and shared application layers while completing those comparisons.
+
+The new [bounded soft-objective prototype](https://github.com/FrankFu916/seattrellis/tree/main/benchmarks/solver-comparison/soft-objective-prototype) covers five goals in explicit domains, with 17 cases, 4,224 exhaustive assignments, 29 rejection controls and 48 actual CP model objective probes. Rust's public scoring and independent hard evaluator validate them. Two independently found differences in vision parsing and floating distance boundaries are repaired or explicitly rejected. General distribution RMS and five remaining goals remain unsupported, as do production cancellation/status/candidate/rotation/distribution contracts. This is parity evidence for a restricted model, not a new runtime or a soft-objective performance claim.
 
 ## Stack review
 
@@ -43,6 +45,8 @@ Historical OR-Tools 9.14 timings and their original Rust source/binary hashes re
 
 ## Scope of refactoring
 
-The needed web refactor is architectural and incremental: retain full class source independently of editor projections; keep saved baselines per draft; invalidate stale requests on every source edit; centralize bounded transport and cancellation; share typed restore/repair/export use cases. A later split of the large App component into class-file, generation and draft hooks should preserve those invariants and the full-flow tests. Framework rewrites and empty native shells provide no evidence of improved behavior.
+The first web refactor now separates document persistence, source/per-draft save revisions and cancellable task ownership into three hooks. App falls from 1,970 to 1,818 lines. Five new lifecycle regressions cover overlapping repair, edits during save, late file errors and unmount cleanup; full source remains independent of editor projections. The 277 frontend tests and real-browser flows preserve candidate and rotation behavior.
+
+The [native bridge](native-bridge.md) and macOS preview implement the first in-process client. Editor undo snapshots now store mutable assignments/locks rather than copying immutable names and identifiers on every command. Command-ID byte/count limits bound duplicate-detection history without forgetting accepted IDs.
 
 No new solver runtime, mandatory account or untested UI framework is added to production by this assessment. Versions remain 2.1.0 in source until a release is deliberately prepared; the new save/open and repair capabilities are suitable for a 2.2 feature release after validation. Breaking file/API/CLI compatibility, rather than the implementation language, determines whether a major version is needed.

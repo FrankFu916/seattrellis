@@ -65,10 +65,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
-      - name: Install CJK fonts (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
-      - name: Install Tauri system libraries (Linux)
+      - name: Install fonts and Tauri system libraries (Linux)
         # The workspace test matrix includes the Tauri desktop shell
         # (seattrellis_desktop), whose glib-sys/gtk-sys build scripts need
         # the WebKitGTK stack (same list as the tauri.yml bundler job).
@@ -76,6 +73,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
+            fonts-noto-cjk \
             libappindicator3-dev \
             librsvg2-dev \
             libwebkit2gtk-4.1-dev \
@@ -112,6 +110,58 @@ jobs:
           exit "$test_status"
       - name: Clippy (workspace)
         run: cargo clippy --all-targets --workspace -- -D warnings
+      - name: Verify foreign-language calls to the native bridge
+        shell: bash
+        run: |
+          cargo build --locked -p seattrellis-native-bridge
+          case "$RUNNER_OS" in
+            Linux) native_library=target/debug/libseattrellis_bridge.so ;;
+            macOS) native_library=target/debug/libseattrellis_bridge.dylib ;;
+            Windows) native_library=target/debug/seattrellis_bridge.dll ;;
+            *) exit 1 ;;
+          esac
+          python crates/seattrellis-native-bridge/tests/abi_smoke.py "$native_library"
+
+  native-macos:
+    name: Native macOS preview / SwiftUI and shared Rust
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || (github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name)) || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Build the in-process native bridge
+        run: cargo build --release --locked -p seattrellis-native-bridge
+      - name: Test the native document and editor lifecycle
+        run: |
+          set +e
+          swift test --package-path clients/macos 2>&1 | tee native-macos-test.log
+          native_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$native_status" -ne 0 ]; then
+            python3 scripts/report_native_failure.py native-macos-test.log || true
+          fi
+          exit "$native_status"
+      - name: Build the SwiftUI application bundle
+        run: |
+          set +e
+          bash clients/macos/scripts/build-app.sh 2>&1 | tee native-macos-build.log
+          native_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$native_status" -ne 0 ]; then
+            python3 scripts/report_native_failure.py native-macos-build.log || true
+          fi
+          exit "$native_status"
+      - name: Archive the unsigned preview for review
+        run: ditto -c -k --sequesterRsrc --keepParent clients/macos/build/SeatTrellis.app clients/macos/build/SeatTrellis-macOS-preview.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: SeatTrellis-macOS-preview
+          path: clients/macos/build/SeatTrellis-macOS-preview.zip
+          if-no-files-found: error
 
   contract-drift:
     # M1-06: the OpenAPI document and the generated TypeScript client must
@@ -323,6 +373,7 @@ jobs:
       - web-quality
       - security-quality
       - test
+      - native-macos
       - contract-drift
       - fmt
       - dependency-audit

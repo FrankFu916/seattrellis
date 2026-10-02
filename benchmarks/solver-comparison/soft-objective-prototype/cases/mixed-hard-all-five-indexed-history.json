@@ -1,0 +1,383 @@
+{
+  "api_version": 2,
+  "student_count": 6,
+  "seed": 42,
+  "time_limit_seconds": 2.0,
+  "students": [
+    {
+      "key": "P0",
+      "score": 0.0,
+      "height_cm": 150,
+      "vision": "poor"
+    },
+    {
+      "key": "P1",
+      "score": 10.0,
+      "height_cm": 155,
+      "vision": "poor"
+    },
+    {
+      "key": "P2",
+      "score": 20.0,
+      "height_cm": 160,
+      "vision": "good"
+    },
+    {
+      "key": "P3",
+      "score": 30.0,
+      "height_cm": 165,
+      "vision": "good"
+    },
+    {
+      "key": "P4",
+      "score": 40.0,
+      "height_cm": 170,
+      "vision": "good"
+    },
+    {
+      "key": "P5",
+      "score": 50.0,
+      "height_cm": 175,
+      "vision": "good"
+    }
+  ],
+  "seat_positions": [
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      2,
+      1
+    ]
+  ],
+  "layout": {
+    "layout_id": "soft-prototype",
+    "seats": [
+      {
+        "seat_id": "S0",
+        "row": 0,
+        "col": 0,
+        "enabled": true
+      },
+      {
+        "seat_id": "S1",
+        "row": 0,
+        "col": 1,
+        "enabled": true
+      },
+      {
+        "seat_id": "S2",
+        "row": 0,
+        "col": 2,
+        "enabled": true
+      },
+      {
+        "seat_id": "S3",
+        "row": 1,
+        "col": 0,
+        "enabled": true
+      },
+      {
+        "seat_id": "S4",
+        "row": 1,
+        "col": 1,
+        "enabled": true
+      },
+      {
+        "seat_id": "S5",
+        "row": 1,
+        "col": 2,
+        "enabled": true
+      }
+    ]
+  },
+  "edges": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      3
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      1,
+      4
+    ],
+    [
+      2,
+      5
+    ],
+    [
+      3,
+      4
+    ],
+    [
+      4,
+      5
+    ]
+  ],
+  "fixed_seats": [
+    [
+      0,
+      0
+    ]
+  ],
+  "must_be_adjacent": [
+    [
+      1,
+      2
+    ]
+  ],
+  "cannot_be_adjacent": [
+    [
+      0,
+      5
+    ]
+  ],
+  "min_distance": [
+    {
+      "students": [
+        0,
+        5
+      ],
+      "distance": 2,
+      "metric": "euclidean"
+    },
+    {
+      "students": [
+        0,
+        5
+      ],
+      "distance": 2,
+      "metric": "graph"
+    }
+  ],
+  "rules": {
+    "seed": 42,
+    "groups": [
+      {
+        "name": "separate",
+        "students": [
+          "P0",
+          "P5"
+        ],
+        "separate": true
+      },
+      {
+        "name": "together",
+        "students": [
+          "P1",
+          "P2"
+        ],
+        "together": true
+      }
+    ],
+    "soft": {
+      "vision_front": {
+        "enabled": true,
+        "weight": 2
+      },
+      "height_back": {
+        "enabled": true,
+        "weight": 1
+      },
+      "randomize": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_balance": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_position": {
+        "enabled": true,
+        "weight": 3
+      },
+      "score_distribution": {
+        "enabled": true,
+        "weight": 4
+      },
+      "mentor_pairing": {
+        "enabled": false,
+        "weight": 1
+      },
+      "fair_rotation": {
+        "enabled": true,
+        "weight": 2,
+        "lookback": 2,
+        "avoid_repeating_categories": [
+          "front",
+          "back",
+          "side"
+        ]
+      },
+      "avoid_recent_neighbors": {
+        "enabled": false,
+        "weight": 1
+      },
+      "cooling": {
+        "enabled": false,
+        "weight": 1
+      }
+    }
+  },
+  "history": {
+    "history_count": 4,
+    "students": {
+      "P0": {
+        "category_counts": {
+          "front": 0,
+          "back": 1,
+          "side": 0
+        },
+        "records": [
+          {
+            "period_index": 1,
+            "categories": [
+              "front",
+              "side"
+            ]
+          },
+          {
+            "period_index": 3,
+            "categories": [
+              "back"
+            ]
+          }
+        ]
+      },
+      "P1": {
+        "category_counts": {
+          "front": 1,
+          "back": 2,
+          "side": 1
+        },
+        "records": [
+          {
+            "period_index": 1,
+            "categories": [
+              "front",
+              "side"
+            ]
+          },
+          {
+            "period_index": 3,
+            "categories": [
+              "back"
+            ]
+          }
+        ]
+      },
+      "P2": {
+        "category_counts": {
+          "front": 2,
+          "back": 0,
+          "side": 0
+        },
+        "records": [
+          {
+            "period_index": 1,
+            "categories": [
+              "front",
+              "side"
+            ]
+          },
+          {
+            "period_index": 3,
+            "categories": [
+              "back"
+            ]
+          }
+        ]
+      },
+      "P3": {
+        "category_counts": {
+          "front": 0,
+          "back": 1,
+          "side": 1
+        },
+        "records": [
+          {
+            "period_index": 1,
+            "categories": [
+              "front",
+              "side"
+            ]
+          },
+          {
+            "period_index": 3,
+            "categories": [
+              "back"
+            ]
+          }
+        ]
+      },
+      "P4": {
+        "category_counts": {
+          "front": 1,
+          "back": 2,
+          "side": 0
+        },
+        "records": [
+          {
+            "period_index": 1,
+            "categories": [
+              "front",
+              "side"
+            ]
+          },
+          {
+            "period_index": 3,
+            "categories": [
+              "back"
+            ]
+          }
+        ]
+      },
+      "P5": {
+        "category_counts": {
+          "front": 2,
+          "back": 0,
+          "side": 1
+        },
+        "records": [
+          {
+            "period_index": 1,
+            "categories": [
+              "front",
+              "side"
+            ]
+          },
+          {
+            "period_index": 3,
+            "categories": [
+              "back"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

@@ -44,6 +44,7 @@ const docsSidebar: (string | DocsSection)[] = [
   section('Developer Reference', [
     'architecture',
     'native-ui',
+    'native-bridge',
     'technology-decisions',
     'audit-remediation',
     'roadmap',

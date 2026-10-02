@@ -18,6 +18,7 @@ members = [
     "crates/seattrellis-application",
     "crates/seattrellis-io",
     "crates/seattrellis-server",
+    "crates/seattrellis-native-bridge",
 ]
 default-members = [
     "crates/seattrellis-core",

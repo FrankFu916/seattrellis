@@ -727,7 +727,9 @@ fn schemas() -> Value {
             "properties": {
                 "kind": { "type": "string" },
                 "protocol_version": { "type": "string" },
-                "command_id": { "type": "string" },
+                "command_id": { "type": "string", "minLength": 1, "maxLength": 256,
+                    "description": "Nonblank; at most 256 UTF-8 bytes. Each draft retains at most 4096 accepted command IDs; save/reopen to start a new session at capacity.",
+                    "x-maxUtf8Bytes": 256 },
                 "draft_id": { "type": "string" },
                 "base_revision": { "type": "integer" },
                 "action": { "type": "string" },

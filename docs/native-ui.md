@@ -1,6 +1,6 @@
 # Native client direction
 
-Decision date: 2026-10-01. The existing React workbench and Tauri shell remain the working product while dedicated clients are developed. The portable class-document, editor-command, repair, audit and cancellation interfaces are the shared foundation. This document selects the platform direction; it does not claim those clients already exist.
+Decision date: 2026-10-01, implementation update 2026-10-02. The React workbench and Tauri shell remain the supported product. The first [macOS SwiftUI/AppKit preview](https://github.com/FrankFu916/seattrellis/tree/main/clients/macos) now implements a single-plan workflow using the shared [in-process bridge](native-bridge.md). Other platform clients remain development directions.
 
 ## Platform choices
 
@@ -20,7 +20,9 @@ AppKit is a macOS framework and cannot be the iOS implementation. Qt is a useful
 
 Every client sends coarse operations to the same application/domain layers: import, generate, cancel, apply an editor command, repair, audit, serialize/open a class document and export. The editor state is a display projection, not the full student roster. Full source fields and solve context live in the document; saved revisions and all locks survive reopening. Clients must not independently implement rule semantics or scoring.
 
-Desktop prototypes can use the authenticated loopback API. Mobile clients should use an in-process bridge: a bounded, versioned C ABI or a reviewed generated bridge such as UniFFI. The existing server contract is a transport reference, not a claim that a mobile library ABI has shipped. Explicit ownership, error/status mapping, cancellation, thread affinity and maximum payload sizes must be specified before adding any bridge. Swift/WinUI/Qt clients do not require replacing the Rust solver with C++.
+The macOS preview calls ABI 1 directly without a loopback server or web view. The bounded bridge specifies ownership, sessions, cancellation and error/status mapping. UniFFI remains a candidate for future mobile bindings; the desktop library is not a certified iOS/Android SDK. Swift/WinUI/Qt clients do not require replacing the Rust solver with C++.
+
+The preview supports JSON roster/full-request editing, generation, move/swap/locks, undo/redo, save/reopen, repair, audit and SVG/HTML export. It uses native open/save panels, menus and shortcuts, background dispatch and unsaved-input protection. Candidate sets, rotation, native printing, localized UI, mobile clients and signing remain work. macOS CI builds the actual package and tests the model; manual window/VoiceOver acceptance remains separate.
 
 ## Sequence and acceptance
 
@@ -28,4 +30,4 @@ Implement one vertical client slice first: full roster → solve → keyboard an
 
 A client is releasable only after testing its actual target OS: IME and CJK input, font scaling, high contrast/dark mode, screen-reader completion of the full flow, keyboard focus, touch targets, reduced motion, real file access, cancellation, system printing and offline operation. Record startup time, idle RSS and interaction latency on the same machine before claiming a speed or memory improvement. Verify native packaging, signing and update behavior separately from the solver tests.
 
-The current Linux cloud environment cannot build or certify SwiftUI, WinUI or Android clients. No empty skeleton application is presented as a finished native product. Track each client against this acceptance flow and keep the current workbench available until a replacement reaches parity.
+The local Linux environment cannot run SwiftUI/AppKit, WinUI or Android UI. Target-OS CI supplies macOS compilation and model tests; it does not certify real-device usability. Keep the current workbench available until a replacement reaches parity.

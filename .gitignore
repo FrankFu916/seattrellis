@@ -32,6 +32,8 @@ real_classes/
 .env
 .DS_Store
 node_modules/
+clients/macos/.build/
+clients/macos/.swiftpm/
 .workbuddy/
 .idea/
 .vscode/

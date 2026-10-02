@@ -1,10 +1,10 @@
 # Rust Core
 
-SeatTrellis v2.0.0 is implemented in Rust. `seattrellis_core` is the semantic
-source of truth for rule compilation, legality checks, the editing state model,
-migration-facing contracts, privacy decisions, scoring, and solver statuses.
-The CLI, loopback App server, Tauri shell, and React workbench build on this
-core rather than maintaining separate seating logic.
+SeatTrellis 2.1.0 uses shared Rust layers for rule compilation, legality,
+editing, migration contracts, privacy, scoring, export and solver statuses.
+The CLI, loopback App server, Tauri shell, React workbench and macOS native
+preview reuse those layers. The core solver does not own all of those concerns;
+the domain, IO, export and application crates provide their respective behavior.
 
 ## Runtime
 
@@ -14,7 +14,11 @@ The v2 runtime has no Python, Node.js, or OR-Tools dependency:
   export tool;
 - `seattrellis_web` is the loopback HTTP server at `127.0.0.1` by default and
   embeds the React workbench assets;
-- `app/src-tauri/` is the Tauri 2 desktop shell.
+- `app/src-tauri/` is the Tauri 2 desktop shell;
+- `seattrellis-native-bridge` exposes an in-process [C ABI](native-bridge.md);
+- `clients/macos/` is the first SwiftUI/AppKit preview using that ABI. Its
+  unsigned bundle and model tests build on macOS CI; manual accessibility,
+  signing and notarization remain target-platform work.
 
 The temporary PyO3 compatibility extension used during the v1-to-v2 migration
 was never the default solver. It was retired before the v2.0.0 release and is

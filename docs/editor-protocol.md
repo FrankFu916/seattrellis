@@ -75,6 +75,13 @@ counts as one operation, and students and target seats must each be unique. The
 server validates and replays the complete command before writing the draft; a
 failure never commits a partial result.
 
+Command IDs are nonblank and at most 256 UTF-8 bytes. Each draft retains at
+most 4,096 successfully applied IDs, including undo/redo, and continues to
+reject every previously accepted ID. It does not evict duplicate-detection
+history. At capacity, save and reopen the document to start a new editing
+session; rejected commands do not advance revision or change either history.
+These bounds do not change the protocol version or ordinary UUID commands.
+
 ## Revisions and conflicts
 
 A new draft receives a non-reusable `draft_id` and starts at revision 0. Each

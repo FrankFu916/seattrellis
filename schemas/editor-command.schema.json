@@ -61,10 +61,12 @@
       "type": "string"
     },
     "command_id": {
-      "maxLength": 128,
+      "maxLength": 256,
       "minLength": 1,
       "title": "Command Id",
-      "type": "string"
+      "type": "string",
+      "description": "Nonblank; at most 256 UTF-8 bytes. Each draft retains at most 4096 accepted command IDs; save/reopen to start a new editing session at capacity.",
+      "x-maxUtf8Bytes": 256
     },
     "draft_id": {
       "maxLength": 128,

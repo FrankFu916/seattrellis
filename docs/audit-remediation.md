@@ -30,6 +30,32 @@ The input contract rejects heights outside 0–300 cm and scores outside ±1e9. 
 
 Both npm dependency trees are patched and audited without advisory exceptions. The obsolete Python benchmark and PyInstaller spec are removed. The active benchmark has a distinct frozen corpus, explicit metadata/hashes and a subprocess deadline; it no longer claims to use the Rust long-run generator or to remove timing noise.
 
+## Native and architecture follow-up, 2026-10-02
+
+The first macOS SwiftUI/AppKit preview now implements JSON import, generation,
+editing and locks, undo/redo, complete save/reopen, repair, audit and SVG/HTML
+export through the shared [C ABI](native-bridge.md). It does not start an HTTP
+server or embed a web view. The macOS CI job compiles the client, runs nine
+document/transport tests and packages an unsigned preview. Signing,
+notarization, manual VoiceOver/UI acceptance, additional formats, multiple
+candidates and the other platform clients remain separate development work.
+
+Bridge regressions cover cancellation across consecutive calls, response quota
+exhaustion before mutation, session/buffer ownership, complete source and lock
+restoration, global export-preference isolation, and failed/cancelled publication
+at the stored-context limit. Undo history now stores mutable assignment/lock
+snapshots without copying immutable roster strings. Duplicate detection retains
+all accepted IDs within a 4,096-command session budget; command IDs are limited
+to 256 UTF-8 bytes, consistently in domain and typed DTO validation. Save/reopen
+starts a fresh editing session when that budget is exhausted.
+
+The web refactor extracts document persistence, save baselines and asynchronous
+task ownership into three hooks. Five added lifecycle regressions bring the
+frontend suite to 277 tests. The isolated CP-SAT soft-objective experiment passes
+17 cases, 4,224 exhaustive assignments, 29 rejection controls and 48 actual CP
+model objective probes. It covers a restricted five-goal domain; it is neither
+a production solver backend nor evidence of full objective or platform parity.
+
 ## Verification record
 
 Local integrated validation passed 802 Rust tests (8 opt-in tests excluded from the routine run), 272 frontend tests and all 8 real Chromium workflows. Strict workspace Clippy passed. The ignored release candidate, long-run and rotation gates were run separately, including 500 repeated solves, the planted-feasible corpus, cancellation and independently validated rotation periods. Six fuzz targets each completed 3,000 bounded iterations without a reported failure; this is bounded evidence, not exhaustive coverage. The Tauri crate was excluded from local workspace compilation because its platform libraries are unavailable here.
@@ -44,7 +70,7 @@ The local independent reader verification covers seven 40/60-student configurati
 
 ## Further development
 
-The selected native clients, full browser-local WASM/Worker edition, complex-script shaping, searchable/tagged PDF, native signing and target-OS accessibility certification remain development work. The existing workbench is the supported fallback. The current Linux cloud can validate the Rust server, CLI, web workbench and documents; it cannot certify Apple, WinUI or Android builds, or the Tauri window without its platform libraries. Source versions stay at 2.1.0 until a deliberate release update; the new workflow capabilities are candidates for 2.2.
+The remaining native platforms, full browser-local WASM/Worker edition, complex-script shaping, searchable/tagged PDF, native signing and target-OS accessibility certification remain development work. The existing workbench is the supported fallback. The current Linux cloud can validate the Rust server, CLI, web workbench and documents; it cannot certify Apple, WinUI or Android builds, or the Tauri window without its platform libraries. Source versions stay at 2.1.0 until a deliberate release update; the new workflow capabilities are candidates for 2.2.
 
 ## CI follow-up
 

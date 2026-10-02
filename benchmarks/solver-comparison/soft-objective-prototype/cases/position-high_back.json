@@ -1,0 +1,180 @@
+{
+  "api_version": 2,
+  "student_count": 6,
+  "seed": 42,
+  "time_limit_seconds": 2.0,
+  "students": [
+    {
+      "key": "P0",
+      "score": 0.0
+    },
+    {
+      "key": "P1",
+      "score": 10.0
+    },
+    {
+      "key": "P2",
+      "score": 20.0
+    },
+    {
+      "key": "P3",
+      "score": 30.0
+    },
+    {
+      "key": "P4",
+      "score": 40.0
+    },
+    {
+      "key": "P5",
+      "score": 50.0
+    }
+  ],
+  "seat_positions": [
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      1,
+      2
+    ]
+  ],
+  "layout": {
+    "layout_id": "soft-prototype",
+    "seats": [
+      {
+        "seat_id": "S0",
+        "row": 0,
+        "col": 0,
+        "enabled": true
+      },
+      {
+        "seat_id": "S1",
+        "row": 0,
+        "col": 1,
+        "enabled": true
+      },
+      {
+        "seat_id": "S2",
+        "row": 1,
+        "col": 0,
+        "enabled": true
+      },
+      {
+        "seat_id": "S3",
+        "row": 1,
+        "col": 1,
+        "enabled": true
+      },
+      {
+        "seat_id": "S4",
+        "row": 2,
+        "col": 0,
+        "enabled": true
+      },
+      {
+        "seat_id": "S5",
+        "row": 2,
+        "col": 1,
+        "enabled": true
+      }
+    ]
+  },
+  "edges": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      1,
+      3
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      2,
+      4
+    ],
+    [
+      3,
+      5
+    ],
+    [
+      4,
+      5
+    ]
+  ],
+  "fixed_seats": [],
+  "must_be_adjacent": [],
+  "cannot_be_adjacent": [],
+  "min_distance": [],
+  "rules": {
+    "seed": 42,
+    "groups": [],
+    "soft": {
+      "vision_front": {
+        "enabled": false,
+        "weight": 1
+      },
+      "height_back": {
+        "enabled": false,
+        "weight": 1
+      },
+      "randomize": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_balance": {
+        "enabled": false,
+        "weight": 1
+      },
+      "score_position": {
+        "enabled": true,
+        "weight": 3,
+        "direction": "high_back"
+      },
+      "score_distribution": {
+        "enabled": false,
+        "weight": 1
+      },
+      "mentor_pairing": {
+        "enabled": false,
+        "weight": 1
+      },
+      "fair_rotation": {
+        "enabled": false,
+        "weight": 1
+      },
+      "avoid_recent_neighbors": {
+        "enabled": false,
+        "weight": 1
+      },
+      "cooling": {
+        "enabled": false,
+        "weight": 1
+      }
+    }
+  }
+}

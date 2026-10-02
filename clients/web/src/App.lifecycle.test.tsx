@@ -8,6 +8,7 @@ import type {
   EditorState,
   GenerateClassResponse,
   GenerateClassSolvedResponse,
+  OpenClassDocumentResponse,
 } from "./api/types";
 import { App } from "./App";
 
@@ -402,6 +403,124 @@ describe("full class workflow", () => {
     await waitFor(() => expect(api.repairEditorDraft).toHaveBeenCalledOnce());
     expect(api.repairEditorDraft).toHaveBeenCalledWith("a", 0, [], expect.any(AbortSignal));
     expect(beforeUnloadIsProtected()).toBe(true);
+  });
+
+  it("does not let a cancelled repair clear the busy state of the next class's repair", async () => {
+    const firstRepair = deferred<EditorState>();
+    const nextRepair = deferred<EditorState>();
+    const nextResult: GenerateClassSolvedResponse = {
+      ...result(),
+      recommended_candidate_id: "c",
+      editor: editor("c"),
+      candidates: ["c", "d"].map((candidate_id) => ({ candidate_id, recommended: candidate_id === "c", total_score: 80 })),
+    };
+    vi.mocked(api.generateClass).mockResolvedValueOnce(result()).mockResolvedValueOnce(nextResult);
+    vi.mocked(api.repairEditorDraft).mockReturnValueOnce(firstRepair.promise).mockReturnValueOnce(nextRepair.promise);
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: /Other class/ });
+    await generate(user);
+    await screen.findByRole("button", { name: "Choose plan B" });
+    await user.click(screen.getByRole("button", { name: "Repair plan (keep locks)" }));
+    const oldSignal = vi.mocked(api.repairEditorDraft).mock.calls[0][3];
+    await user.click(screen.getByRole("button", { name: /Other class/ }));
+    expect(oldSignal?.aborted).toBe(true);
+    await generate(user);
+    await screen.findByRole("button", { name: "Choose plan B" });
+    await user.click(screen.getByRole("button", { name: "Repair plan (keep locks)" }));
+    expect(screen.getByRole("button", { name: "Repairing plan…" })).toBeDisabled();
+    await act(async () => firstRepair.resolve({ ...editor("a"), revision: 1 }));
+    expect(screen.getByRole("button", { name: "Repairing plan…" })).toBeDisabled();
+    expect(api.repairEditorDraft).toHaveBeenCalledTimes(2);
+    await act(async () => nextRepair.resolve({ ...editor("c"), revision: 1 }));
+    expect(await screen.findByRole("button", { name: "Repair plan (keep locks)" })).toBeEnabled();
+  });
+
+  it("retains an editor change that completes while an older revision is being saved", async () => {
+    const command = deferred<EditorState>();
+    const write = deferred<"saved">();
+    vi.mocked(api.dispatchEditorCommand).mockReturnValueOnce(command.promise);
+    vi.mocked(classFiles.writeClassFile).mockReturnValueOnce(write.promise);
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: /Other class/ });
+    await generate(user);
+    await screen.findByRole("button", { name: "Choose plan B" });
+    await user.click(screen.getByRole("button", { name: "Row 1, seat 1, Alice" }));
+    await user.click(screen.getByRole("button", { name: "Lock selected seat" }));
+    await user.click(screen.getByRole("button", { name: "Save class" }));
+    await waitFor(() => expect(classFiles.writeClassFile).toHaveBeenCalledOnce());
+    expect(vi.mocked(api.serializeClassDocument).mock.calls[0][1]).toContainEqual({ draft_id: "a", revision: 0 });
+    const changed = { ...editor("a"), revision: 1, undo_depth: 1 };
+    changed.seats[0].locked = true;
+    await act(async () => command.resolve(changed));
+    await act(async () => write.resolve("saved"));
+    await screen.findByText(/Class file saved/);
+    expect(beforeUnloadIsProtected()).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Choose plan B" }));
+    expect(beforeUnloadIsProtected()).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Save class" }));
+    await waitFor(() => expect(api.serializeClassDocument).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.serializeClassDocument).mock.calls[1][1]).toContainEqual({ draft_id: "a", revision: 1 });
+    await waitFor(() => expect(beforeUnloadIsProtected()).toBe(false));
+  });
+
+  it("ignores a malformed class file that finishes reading after changing class", async () => {
+    const text = deferred<string>();
+    const file = new File(["pending"], "old-class.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: () => text.promise });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: /Other class/ });
+    await user.upload(screen.getByLabelText("Open class", { selector: "input" }), file);
+    await user.click(screen.getByRole("button", { name: /Other class/ }));
+    await act(async () => text.resolve("{malformed"));
+    expect(api.openClassDocument).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("aborts generation on unmount and releases drafts from a transport that returns late", async () => {
+    const pending = deferred<GenerateClassResponse>();
+    vi.mocked(api.generateClass).mockReturnValueOnce(pending.promise);
+    const user = userEvent.setup();
+    const workbench = render(<App />);
+    await screen.findByRole("button", { name: /Other class/ });
+    await generate(user);
+    const signal = vi.mocked(api.generateClass).mock.calls[0][1];
+    workbench.unmount();
+    expect(signal?.aborted).toBe(true);
+    await act(async () => pending.resolve(result()));
+    await waitFor(() => {
+      expect(api.deleteEditorDraft).toHaveBeenCalledWith("a");
+      expect(api.deleteEditorDraft).toHaveBeenCalledWith("b");
+    });
+  });
+
+  it("releases every draft from an open response that arrives after unmount", async () => {
+    const pending = deferred<OpenClassDocumentResponse>();
+    vi.mocked(api.openClassDocument).mockReturnValueOnce(pending.promise);
+    const user = userEvent.setup();
+    const workbench = render(<App />);
+    await screen.findByRole("button", { name: /Other class/ });
+    await user.click(screen.getByRole("button", { name: "Save class" }));
+    await screen.findByText(/Class file saved/);
+    const source = vi.mocked(api.serializeClassDocument).mock.calls[0][0];
+    const document = { kind: "seattrellis_class_document", schema_version: 1, class_source: source, drafts: [] };
+    const file = new File([JSON.stringify(document)], "opened.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: async () => JSON.stringify(document) });
+    await user.upload(screen.getByLabelText("Open class", { selector: "input" }), file);
+    await waitFor(() => expect(api.openClassDocument).toHaveBeenCalledOnce());
+    workbench.unmount();
+    await act(async () => pending.resolve({
+      class_source: source,
+      editor: editor("opened"),
+      candidates: [{ candidate_id: "secondary", recommended: false, total_score: 80 }],
+      period_editors: [],
+    }));
+    await waitFor(() => {
+      expect(api.deleteEditorDraft).toHaveBeenCalledWith("opened");
+      expect(api.deleteEditorDraft).toHaveBeenCalledWith("secondary");
+    });
   });
 
   it.each([
